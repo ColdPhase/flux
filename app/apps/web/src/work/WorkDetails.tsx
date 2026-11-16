@@ -748,6 +748,19 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       .find((element) => element.getClientRects().length > 0 && Boolean(mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
     next?.focus({ preventScroll: true });
   }, [decision.status]);
+  // Undo gives the focus back to the control that made the change (F-026 §4): once the decision is proposed again, Accept has it, not the
+  // replaced decision's link the focus went on to (personas-35). Focus the person took out of the panel meanwhile stays where it is.
+  const acceptButton = useRef<HTMLButtonElement>(null);
+  const acceptUndone = useRef(false);
+  useEffect(() => {
+    if (!acceptUndone.current || decision.status !== 'proposed') return;
+    acceptUndone.current = false;
+    const button = acceptButton.current;
+    const active = document.activeElement;
+    const nowhere = !active || active === document.body || active.id === 'content' || !!active.closest('.ui-toast');
+    if (!button || isTyping(active) || (!nowhere && !button.closest('#details')?.contains(active))) return;
+    button.focus({ preventScroll: true });
+  }, [decision.status]);
   // Accept works at once here as in the Inbox, with the same 10 s Undo that takes the acceptance back (round 8, #1424).
   const acceptNow = useAcceptDecision(me.user.id);
   function accept(event?: FormEvent) {
@@ -759,7 +772,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       // The toast says what happened; the panel reads the decision again.
       failed: (conflict) => { setBusy(false); if (isCurrent() && conflict) reload(); },
       // Taken back or kept, the panel shows the decision as it is now.
-      undoing: (back) => { const again = () => { if (isCurrent()) reload(); }; back.then(again, again); },
+      undoing: (back) => { acceptUndone.current = true; const again = () => { if (isCurrent()) reload(); }; back.then(again, () => { acceptUndone.current = false; again(); }); },
     });
   }
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
@@ -786,7 +799,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         <section className="wd-decide" aria-label="Your answer">
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
-              <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
+              <Button ref={acceptButton} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
               {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id)}>Discuss</Button>
             </div>

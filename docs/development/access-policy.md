@@ -139,7 +139,10 @@ company's owners and admins (`requireCompanyAdmin`; the fixture bearer of a test
 it), until a space itself can be encrypted. People call a project a *space*. Everyone in the
 company but a guest creates spaces (`project.create`); a new space is `restricted` and its creator
 gets a `manager` grant. A space's people are its grants: `manager` is a space admin (people only,
-never a guest, and an agent never holds it) and `contributor` a space member. Every member is in
+never a guest, and an agent never holds it) and `contributor` a space member. Becoming a guest turns
+the person's `manager` grants into `contributor` ones marked `admin_held` (migration 0095); becoming a
+member, admin or owner again turns them back, so the role change's Undo restores what it removed
+(personas-35, final design §7 Settings). Every member is in
 Everyone through its `workspace` visibility; guests are not. In the company, only setup makes a
 `workspace`-visible space (`SPACE_NOT_FOR_EVERYONE`).
 

@@ -117,10 +117,16 @@ export function workspaceRepository(db: DbExecutor) {
       return inserted[0] ?? null;
     },
 
-    /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
+    /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership, held for when they stop being one. */
     async endSpaceAdmin(workspaceId: string, userId: string) {
-      await db.update(schema.projectGrants).set({ role: 'contributor', updatedAt: new Date() })
+      await db.update(schema.projectGrants).set({ role: 'contributor', adminHeld: true, updatedAt: new Date() })
         .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.role, 'manager')));
+    },
+
+    /** A guest who is a member (or more) again is an admin again of the spaces they were an admin of; nothing is held any more. */
+    async restoreSpaceAdmin(workspaceId: string, userId: string) {
+      await db.update(schema.projectGrants).set({ role: 'manager', adminHeld: false, updatedAt: new Date() })
+        .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.adminHeld, true)));
     },
 
     /** Whether the account is in the workspace now. */

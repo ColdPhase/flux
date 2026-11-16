@@ -187,9 +187,16 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     if (item.lifecycle?.state === 'creation_reverted') out.push({ kind: 'reverted', key: 'reverted', at: item.lifecycle.revertedAt, actor: item.lifecycle.revertedBy });
     // The task's creation is the oldest line, shown once nothing older is left to load.
     if (!hasEarlier) out.push({ kind: 'created', key: 'created', at: item.createdAt, actor: item.createdBy, source: sourceOf(item, links) });
+    // The timeline is whole from "Show earlier" down, as the decision's is (personas-35): while the messages or the changes have more to read, no
+    // line older than the oldest one loaded of that list is shown, so the first message (read with every page) never stands alone above the newest
+    // page with the ones between it missing. "Show earlier" brings them in, in order.
+    const messagesFrom = olderMessages && oldest ? Date.parse(oldest.createdAt) : Number.NEGATIVE_INFINITY;
+    const changesFrom = nextBefore && changes?.length ? Math.min(...changes.map((entry) => Date.parse(entry.at))) : Number.NEGATIVE_INFINITY;
+    const from = Math.max(messagesFrom, changesFrom);
     // Oldest first (round 8, #1424); the task's creation leads whatever shares its instant.
-    return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.kind === 'created' ? -1 : b.kind === 'created' ? 1 : 0));
-  }, [changes, messages, item, links, hasEarlier]);
+    return out.filter((line) => Date.parse(line.at) >= from)
+      .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.kind === 'created' ? -1 : b.kind === 'created' ? 1 : 0));
+  }, [changes, messages, item, links, hasEarlier, olderMessages, oldest, nextBefore]);
 
   // `/ai` in the task's discussion (#842): the person's own agent answers them alone; Show everyone posts the answer in the discussion.
   const { workspace } = useShellData();

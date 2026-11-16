@@ -126,6 +126,10 @@ export async function changeRole(principal: Principal, workspaceId: string, user
       await workspaces.endSpaceAdmin(workspaceId, userId);
       // A guest of the company is in no encrypted space: becoming one ends the place, as leaving does, with the same key change (C-24).
       await endPlacesInEncryptedSpaces(principal, workspaceId, userId, tx, ports);
+    } else if (target.role === 'guest') {
+      // A guest who is a member again has back what becoming a guest held: their space admin roles (personas-35: the role change's Undo
+      // restores everything it removed), as their agents and keys come back.
+      await workspaces.restoreSpaceAdmin(workspaceId, userId);
     }
     // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);

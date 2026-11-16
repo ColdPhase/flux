@@ -736,6 +736,13 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .app--fab .app__pane { padding-bottom: 64px; }
   .app--fab .app__pane:has(.pane-scroll) { padding-bottom: 0; }
   .app--fab .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) { padding-bottom: 72px; scroll-padding-bottom: 72px; }
+  /* Without the capsule (a space's views) the "+" floats over the page itself, its own bottom room (the safe area, at least 14 px) above
+     the screen's edge: the end of the page clears it by that much more, so no control is ever left under it (personas-35). */
+  .app--fab:has(.phone-dock--solo) .app__pane { padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + 64px); }
+  .app--fab:has(.phone-dock--solo) .app__pane:has(.pane-scroll) { padding-bottom: 0; }
+  .app--fab:has(.phone-dock--solo) .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) {
+    padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + 72px); scroll-padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + 72px);
+  }
 }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: var(--fs-base); font-weight: 500; color: var(--t2); }

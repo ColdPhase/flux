@@ -498,18 +498,34 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
   // only an owner or admin of an encrypted company who stops being one is asked first (F-030), in the line under the row.
   const roleRef = useRef<HTMLButtonElement>(null);
   const roleKeys = useRef(attemptKeys());
+  const toast = useToast();
   const [demoteTo, setDemoteTo] = useState<WorkspaceRole | null>(null);
   const roles = assignable(myRole).includes(member.role) ? assignable(myRole) : [member.role, ...assignable(myRole)];
   async function applyRole(next: WorkspaceRole) {
     if (busy || next === member.role) return;
+    const was = member.role;
+    const confirmed = holder && !isManagerRole(next);
     setBusy(true); setProblem(''); setOpen(null);
     try {
       await changeRole(workspace.id, member.userId, next, roleKeys.current.for(`${member.userId}:${next}`));
       roleKeys.current.done();
       setDemoteTo(null);
       // The menu stays where it was, so focus does too; from the confirm (which goes) it returns to the menu.
-      onChanged(self ? `You’re now ${article(next)} ${ROLE_LABEL[next].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(next)} ${ROLE_LABEL[next].toLowerCase()}.`,
-        holder && !isManagerRole(next), false);
+      // Someone else's role is changed at once with a 10 s Undo, as everything else in the app (coordinator decision, personas-35): Undo
+      // gives the role back, and with it what the change took away (a guest's space admin roles come back with the role). Your own role
+      // and an encrypted company's key change keep their line: after them you may not be able to change roles back.
+      if (self || confirmed) {
+        onChanged(self ? `You’re now ${article(next)} ${ROLE_LABEL[next].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(next)} ${ROLE_LABEL[next].toLowerCase()}.`,
+          confirmed, false);
+      } else {
+        onChanged('', false, false);
+        toast({ message: `${first} is ${article(next)} ${ROLE_LABEL[next].toLowerCase()} now`, tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
+          void changeRole(workspace.id, member.userId, was, crypto.randomUUID()).then(() => onChanged('', false, false), (error: unknown) => {
+            toast({ message: problemText(error, { workspace: workspace.name, who: member.name }), tone: 'danger' });
+            onChanged('', false, false);
+          });
+        } } });
+      }
       requestAnimationFrame(() => { const now = document.activeElement; if (!now || now === document.body) roleRef.current?.focus({ preventScroll: true }); });
     } catch (error) {
       setDemoteTo(null);

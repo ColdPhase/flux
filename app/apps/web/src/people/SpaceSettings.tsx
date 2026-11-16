@@ -168,7 +168,20 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
       if (everyone && role === 'contributor') { if (row.grantId) await revokeGrant(project.id, row.grantId); }
       else await grantPerson(project.id, row.userId, role, keys.current.for(`${row.userId}:${role}`));
       keys.current.done();
-      changed(`${firstName(row.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`);
+      // At once, with a 10 s Undo that gives the role back, as the company's roles (personas-35). Your own role keeps its line: an admin who
+      // made themselves a member can no longer change it back.
+      const words = `${firstName(row.name)} is ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}`;
+      if (row.userId === meId) changed(`${firstName(row.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`);
+      else {
+        changed('');
+        const was = row.role;
+        toast({ message: `${words} now`, tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
+          const back = everyone && was === 'contributor'
+            ? listGrants(project.id).then((grants) => { const grant = grants.find((item) => item.principal.kind === 'human' && item.principal.id === row.userId); return grant ? revokeGrant(project.id, grant.id) : undefined; })
+            : grantPerson(project.id, row.userId, was, crypto.randomUUID());
+          void back.then(() => changed(''), (error: unknown) => { setProblem(lastAdmin(error) ?? problemText(error, { workspace: companyName, who: row.name })); load(); });
+        } } });
+      }
       focusOn(`[data-person="${row.userId}"] [role="combobox"]`, true);
     } catch (error) {
       keys.current.done();
