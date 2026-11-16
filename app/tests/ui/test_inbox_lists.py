@@ -276,6 +276,65 @@ class InboxLists(unittest.TestCase):
         # What came back is in the list, and has focus.
         expect(page.locator(".nyq__list .nyc__open:focus")).to_have_count(1)
 
+    def test_03b_what_comes_back_is_the_open_item_and_e_acts_on_it(self) -> None:
+        # personas-34 P2 2: Put back with the window left open, then Esc: the ring went to the row that came back, but the open item stayed the
+        # one before, and E finished that one. The same when the window closed by itself. What comes back has the ring and is the open item.
+        again = "is the rain gauge still on the shed roof?"
+        self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": f"@Ada Kowalska {again}", "clientMessageId": str(uuid.uuid4())})
+        item = None
+        for _ in range(80):
+            item = next((entry for entry in self.queue()["items"] if again in entry["title"]), None)
+            if item:
+                break
+            time.sleep(0.25)
+        self.assertIsNotNone(item, "the question reached Ada")
+        self.call("ada", "POST", f"/api/v1/needs-you/{item['key']}", {"action": "done"})
+        waiting = lambda: [entry["title"] for entry in self.queue()["items"]]  # noqa: E731
+
+        def put_back_then_e(page: Page, closes_itself: bool) -> None:
+            page.goto("/inbox")
+            other = page.locator(".nyq__list .nyc[aria-current='true']")
+            expect(other).to_have_count(1)
+            expect(other).not_to_contain_text(again)
+            page.get_by_role("button", name=re.compile(r"^\d+ done today$")).click()
+            window = page.get_by_role("dialog", name="Done today")
+            put = window.locator(".nyq-aside__row", has_text=again).get_by_role("button", name=re.compile("^Put back"))
+            expect(put).to_be_focused()
+            page.keyboard.press("Enter")
+            if closes_itself:
+                expect(window).to_have_count(0)
+            else:
+                expect(window.locator(".nyq-aside__row", has_text=again)).to_have_count(0)
+                expect(window).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(window).to_have_count(0)
+            back = page.locator(".nyq__list .nyc", has_text=again)
+            expect(back.locator(".nyc__open")).to_be_focused()
+            expect(back, "the ring and the open item stay together").to_have_attribute("aria-current", "true")
+            expect(page.locator(".nyq__col--open")).to_contain_text(again)
+            shot(page, f"inbox-lists-put-back-open-{'closed' if closes_itself else 'esc'}")
+            page.keyboard.press("e")
+            expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+            expect(back).to_have_count(0)
+            for _ in range(40):
+                if not any(again in title for title in waiting()):
+                    break
+                time.sleep(0.25)
+            titles = waiting()
+            self.assertFalse(any(again in title for title in titles), "E finished the item that came back")
+            self.assertTrue(any(ASKED in title for title in titles), "the item open before is untouched")
+
+        # Two rows: Put back one, the window stays, Esc closes it.
+        self.assertGreaterEqual(self.queue()["doneToday"], 2)
+        put_back_then_e(self.page(), closes_itself=False)
+        # One row: Put back closes the window by itself. The other done item goes back first, through the API.
+        aside = self.contexts["ada"].request.get("/api/v1/needs-you/aside").json()
+        for entry in aside["done"]:
+            if again not in entry["item"]["title"]:
+                self.call("ada", "DELETE", f"/api/v1/needs-you/{entry['item']['key']}")
+        self.assertEqual(self.queue()["doneToday"], 1)
+        put_back_then_e(self.page(), closes_itself=True)
+
     def test_04_phone_the_line_opens_a_sheet(self) -> None:
         page = self.page(phone=True)
         page.goto("/inbox")
