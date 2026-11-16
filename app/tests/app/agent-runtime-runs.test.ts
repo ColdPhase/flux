@@ -143,7 +143,13 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await pool.query(`INSERT INTO personal_runs SELECT (jsonb_populate_record(r, jsonb_build_object('id', $1::uuid, 'owner_user_id', $2::text, 'client_run_id', $3::uuid,
       'status', 'dispatching', 'dispatched_at', now(), 'completed_at', NULL, 'cost_state', 'reserved', 'charged_micros', 0))).* FROM personal_runs r WHERE r.id = $4`,
     [holder, peer.id, randomUUID(), done.id]);
-    await pool.query(`UPDATE agent_runtime_slots SET capacity = 1 WHERE slot = $1`, [slotName]);
+    // The suite shares one server with the files before it, and an agent of theirs may still be at work on it (an API key's run counts
+    // too, #1441). The server's places are those agents' and the colleague's: the colleague holds the last free one.
+    const places = (await pool.query(`UPDATE agent_runtime_slots SET capacity = 1
+      + (SELECT count(*)::int FROM personal_runs WHERE engine IN ('runtime', 'server') AND status IN ('reading', 'dispatching') AND id <> $2)
+      - (SELECT COALESCE(sum(capacity), 0)::int FROM agent_runtime_slots WHERE state = 'ready' AND slot <> $1) WHERE slot = $1 RETURNING capacity`,
+    [slotName, holder])).rows[0] as { capacity: number };
+    assert.ok(places.capacity >= 1, 'this slot holds the colleague\'s place');
     try {
       const waiting = (await ask('Summarize the notes')).run;
       assert.equal(await processor.process(waiting.id), 'skipped', 'it does not start');
@@ -155,7 +161,8 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       await uowRecover();
       assert.equal((await row(waiting.id)).status, 'queued');
       // While there is no room it stays out of the worker's list, so a crowd of these never hides a run on an API key.
-      const offered = () => personalRunWorkerUnitOfWork(db).run((ports) => ports.runs.startableQueued(20));
+      // The worker's own list (apps/worker personal-runs): API-key runs share the runtime's room (#1441).
+      const offered = () => personalRunWorkerUnitOfWork(db).run((ports) => ports.runs.startableQueued(20, true));
       assert.equal((await offered()).includes(waiting.id), false);
       // Still no room: nothing changes, and no second line is announced.
       assert.equal(await processor.process(waiting.id), 'skipped');
