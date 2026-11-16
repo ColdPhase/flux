@@ -4,7 +4,10 @@ import type { FirstStepRows } from './ports.js';
 
 export * from './ports.js';
 
-const NONE: FirstSteps = { steps: [], joined: [], offerPush: false, firstSpaceId: null };
+/** The steps as the person's rows tell them; the server adds the plans its runtime offers (`FirstSteps.plans`). */
+export type FirstStepsRead = Omit<FirstSteps, 'plans'>;
+
+const NONE: FirstStepsRead = { steps: [], joined: [], offerPush: false, firstSpaceId: null };
 
 /** How long after joining the company a person is still a new person (founder direction, 2026-11-13, #1438): days from the membership's start. */
 export const NEW_PERSON_DAYS = 30;
@@ -24,12 +27,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * role that shows it. An owner or admin whose link was used also gets `joined`, one row per new person with no direct message with them yet ("Nia
  * joined · Say hello", #1438, #1424), in the place of "Invite people", which is done once a link was made; the card is still for the steps.
  */
-export async function readFirstSteps(userId: string, rows: FirstStepRows, now = new Date()): Promise<FirstSteps> {
+export async function readFirstSteps(userId: string, rows: FirstStepRows, now = new Date()): Promise<FirstStepsRead> {
   const company = await rows.company(userId);
   if (!company || company.hidden || company.role === 'guest') return NONE;
   if (now.getTime() - company.joinedAt.getTime() > NEW_PERSON_DAYS * DAY_MS) return NONE;
   const steps: FirstStep[] = [];
-  let joined: FirstSteps['joined'] = [];
+  let joined: FirstStepsRead['joined'] = [];
   const admin = company.role === 'owner' || company.role === 'admin';
   if (admin) {
     const [invited, connected] = await Promise.all([rows.invitedAnyone(company.id), rows.aiConnected(userId)]);

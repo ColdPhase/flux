@@ -1,3 +1,5 @@
+import type { AgentRuntimeClient } from './agent-runtime.js';
+
 export const API_VERSION = 'v1';
 export const SAMPLE_COMMAND_PATH = '/api/v1/integration/sample';
 
@@ -92,6 +94,11 @@ export interface FirstSteps {
    * in it, else Everyone; null when there is neither.
    */
   firstSpaceId: string | null;
+  /**
+   * The plans this server's agent runtime offers while `connect_ai` is left, for that step's line ("A Claude or ChatGPT plan, or an API key"):
+   * the programs the operator turned on and this version runs; empty otherwise. In this read, so Home asks nothing more (one read per screen, #1109).
+   */
+  plans: AgentRuntimeClient[];
 }
 /**
  * Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. A sign-up also carries the link it comes from (#1471):

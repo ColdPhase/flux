@@ -360,7 +360,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // flux_web_search only where the route registers it: the web on and a searcher here (#1452 review).
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, webReader.enabled && !!keySearcher?.compute.enabled);
   await app.register(returnRoutes, { db, sessions: identity });
-  await app.register(firstStepRoutes, { db, sessions: identity });
+  await app.register(firstStepRoutes, { db, sessions: identity, runtime: config.agentRuntime });
   await app.register(needsYouRoutes, { db, sessions: identity, github: githubReadProvider });
   await app.register(sidebarRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
