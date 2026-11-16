@@ -201,15 +201,22 @@ describe('in the company', () => {
     expectStatus(await member.browser.request('GET', `/api/v1/projects/${everyoneId}`), 200);
   });
 
-  test('a guest is no space admin, and someone who becomes a guest stops being one', async () => {
+  test('a guest is no space admin, and someone who becomes a guest stops being one until they are a member again', async () => {
     const space = await newSpace(colleague, 'Guest rules');
+    const plain = await newSpace(admin, 'Guest rules, plain member');
+    expectStatus(await setGrant(admin, plain.id, colleague, 'contributor'), 201);
     const refused = await setGrant(colleague, space.id, guest, 'manager');
     assert.equal(refused.status, 422, refused.text);
     assert.equal(raw(refused), 'GUEST_NOT_SPACE_ADMIN');
+    const roles = async () => Object.fromEntries((await pool.query<{ project_id: string; role: string }>('SELECT project_id, role FROM project_grants WHERE project_id = ANY($1::uuid[]) AND user_id = $2',
+      [[space.id, plain.id], colleague.id])).rows.map((row) => [row.project_id, row.role]));
     expectStatus(await admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${colleague.id}`, { body: { role: 'guest' }, headers: { 'idempotency-key': randomUUID() } }), 200);
-    const held = (await pool.query<{ role: string }>('SELECT role FROM project_grants WHERE project_id = $1 AND user_id = $2', [space.id, colleague.id])).rows;
-    assert.deepEqual(held.map((row) => row.role), ['contributor']);
+    assert.deepEqual(await roles(), { [space.id]: 'contributor', [plain.id]: 'contributor' });
+    // Picking the old role again (the role change's Undo, personas-35) gives back what becoming a guest took: the space admin role, and only it.
     expectStatus(await admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${colleague.id}`, { body: { role: 'member' }, headers: { 'idempotency-key': randomUUID() } }), 200);
+    assert.deepEqual(await roles(), { [space.id]: 'manager', [plain.id]: 'contributor' });
+    const held = (await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM project_grants WHERE user_id = $1 AND admin_held', [colleague.id])).rows[0]!.n;
+    assert.equal(held, 0, 'nothing is held once it is given back');
   });
 
   test('a company admin reaches every space but belongs only to the ones they were added to', async () => {

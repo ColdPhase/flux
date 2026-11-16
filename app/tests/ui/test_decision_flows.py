@@ -314,6 +314,10 @@ class DecisionFlows(unittest.TestCase):
         toast.get_by_role("button", name="Undo").click()
         # Undo takes it back for everyone: proposed again, the rule current again, the task waiting again with its reason.
         expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
+        # And it gives the focus back to Accept, the control that made the change, not the replaced decision's link (personas-35).
+        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_focused()
+        page.wait_for_timeout(400)
+        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_focused()
         deadline = time.monotonic() + 5
         while get(f"/api/v1/decisions/{proposal['id']}")["status"] != "proposed" and time.monotonic() < deadline:
             time.sleep(0.1)
