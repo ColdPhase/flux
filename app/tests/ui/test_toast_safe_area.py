@@ -210,9 +210,15 @@ class ToastSafeArea(unittest.TestCase):
                     toast = page.locator(".ui-toast").filter(has_text="Accepted")
                     expect(toast).to_be_visible()
                     self.assert_clear(page, inset, {"create", "places", "search"}, f"home dark={dark} inset={inset}")
-                    toast.get_by_role("button", name="Undo", exact=True).tap()
+                    # Accept works at once with a 10 s Undo (founder decision, 2026-11-15, round 8, #1424): the decision is accepted for
+                    # everyone when Accept is pressed, and Undo takes it back with POST /decisions/:id/unaccept. The status is read once
+                    # that request has been answered, so the next variant finds the decision proposed in the Inbox again.
+                    unaccept = f"/api/v1/decisions/{self.decision['id']}/unaccept"
+                    with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(unaccept)) as undone:
+                        toast.get_by_role("button", name="Undo", exact=True).tap()
+                    self.assertTrue(undone.value.ok, f"Undo's unaccept: {undone.value.status}")
                     status = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]
-                    self.assertEqual(status, "proposed", "Undo kept the decision proposed")
+                    self.assertEqual(status, "proposed", "Undo took the acceptance back: the decision is proposed again")
 
     def test_04_a_newer_toast_replaces_the_older_and_only_its_undo_is_offered(self) -> None:
         """v0.2 visual review: quick changes stacked up to three Undo toasts over a phone's work (the Board's "To do" head). One toast
