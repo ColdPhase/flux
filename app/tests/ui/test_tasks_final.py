@@ -235,7 +235,8 @@ class TasksFinalJourney(unittest.TestCase):
             box = owner.bounding_box()
             assert box
             self.assertEqual((box['width'], box['height']), (20, 20), '#346 AC-1: owner marks are 20 CSS px')
-        expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text("you")
+        # The reader is named as everywhere a person is (design "Naming people", personas-36): "Ada Kowalska (you)", never "you" alone.
+        expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text(f"{ADA['name']} (you)")
         shot(page, "346-tasks-list-1440-light")
 
     # ---------------------------------------------------------------- AC-2: one tap, keys 1-4, Undo
@@ -479,7 +480,7 @@ class TasksFinalJourney(unittest.TestCase):
                 enclosure = self.row(page, ENCLOSURE)
                 expect(enclosure.locator(".ui-pill--inv")).to_have_count(0)
                 expect(enclosure.locator(".ws-item__r .ws-av")).to_have_count(1)
-                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · Waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
+                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · {ADA['name']} (you) · Blocked · Waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-id")).to_have_count(1)

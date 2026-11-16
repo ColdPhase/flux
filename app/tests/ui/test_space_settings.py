@@ -829,6 +829,57 @@ class SpaceSettings(unittest.TestCase):
         page.wait_for_timeout(500)
         expect(offer).to_have_count(0)
 
+    def test_13_someone_new_keeps_the_cursor_for_the_next_address_and_lists_every_link_of_the_space(self) -> None:
+        """personas-36 P3: Invite with the field empty said what to do but left focus on Invite; after an invite focus went to the link's field,
+        so the next address typed was lost. The space's links were held by the page, so they went when Add people folded or on a reload, and
+        links made in New space were never there. Now the cursor is in the field for each, and the links are read from the server."""
+        self.ensure_world()
+        page = self.page("ada")
+        pid = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Glaze lab {STAMP}", "visibility": "restricted"}, status=201)["id"]
+        # A link made for this space somewhere else (New space ties its links to the space it creates): listed here too.
+        elsewhere = f"ula.spaceset+{STAMP}@example.test"
+        self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/invites", {"role": "member", "email": elsewhere, "expiresInDays": 7, "spaceId": pid}, status=201)
+        page.goto(f"/projects/{pid}/settings")
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+        links = page.locator("[data-space-links]")
+        expect(links.get_by_role("heading", name=re.compile(r"^Invited with a link"))).to_contain_text("1")
+        expect(links.get_by_role("listitem").filter(has_text=elsewhere)).to_contain_text("by Ada Kowalska (you)")
+        page.get_by_role("button", name="Add people", exact=True).click()
+        add = page.get_by_role("group", name="Add people")
+        field = add.get_by_label("Someone new?")
+        # Invite with nothing typed: what to do, and the cursor where it is to be done.
+        add.get_by_role("button", name="Invite", exact=True).click()
+        expect(add.get_by_role("alert")).to_have_text("Enter their email address.")
+        expect(field).to_be_focused()
+        # Two addresses typed one after the other, each sent with Enter: the cursor is back in the empty field after each.
+        emails = [f"vera{n}.spaceset+{STAMP}@example.test" for n in (1, 2)]
+        for email in emails:
+            page.keyboard.type(email)
+            page.keyboard.press("Enter")
+            expect(links.get_by_role("listitem").filter(has_text=email)).to_have_count(1)
+            expect(field).to_be_focused()
+            expect(field).to_have_value("")
+        expect(add.get_by_role("status")).to_have_text(re.compile(r"^Invite link created( and copied)?\. "))
+        # The link just made shows once, in its row, to read or select.
+        expect(links.get_by_label(f"Link for {emails[1]}", exact=True)).to_have_value(re.compile(r"/join#"))
+        expect(links.get_by_role("listitem")).to_have_count(3)
+        # Add people folded and the page read again: every live link of the space is still listed, read from the server.
+        add.get_by_role("button", name="Close").click()
+        expect(links.get_by_role("listitem")).to_have_count(3)
+        page.reload()
+        expect(links.get_by_role("listitem")).to_have_count(3)
+        for email in (elsewhere, *emails):
+            expect(links.get_by_role("listitem").filter(has_text=email)).to_have_count(1)
+        # Revoke asks once, in place; the link stops working and leaves the list.
+        row = links.get_by_role("listitem").filter(has_text=elsewhere)
+        row.get_by_role("button", name=f"Revoke link for {elsewhere}").click()
+        row.get_by_role("group", name=f"Revoke link for {elsewhere}").get_by_role("button", name="Revoke link").click()
+        expect(links.get_by_role("listitem")).to_have_count(2)
+        expect(links.get_by_role("status")).to_have_text("Invite link revoked. It no longer works.")
+        live = [item["email"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/invites") if (item.get("space") or {}).get("id") == pid]
+        self.assertEqual(sorted(live), sorted(emails))
+        shot(page, f"p3-36-space-settings-links-1440-{UI_BROWSER}")
+
 
 if __name__ == "__main__":
     unittest.main()

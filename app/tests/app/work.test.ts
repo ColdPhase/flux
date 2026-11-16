@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { DomainError, type Principal } from '@flux/core';
-import type { Agent, Conversation, Decision, Material, Page, Project, TaskDiscussion, Workspace, WorkItem } from '@flux/contracts';
+import type { Agent, Conversation, Decision, Material, Page, Project, ProjectWorkView, TaskActivityPage, TaskDiscussion, WorkDetailProjection, Workspace, WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
@@ -334,14 +334,30 @@ describe('work, decisions and results in a project', () => {
       const one = json<WorkItem>(await get(owner, `/api/v1/work/${given.id}`), 200);
       const other = json<WorkItem>(await get(owner, `/api/v1/work/${waiting.id}`), 200);
       const listed = json<{ items: WorkItem[] }>(await get(owner, `/api/v1/projects/${bench.id}/work`), 200).items;
-      return [one.owner?.name, other.waitingFor?.name, listed.find((item) => item.id === given.id)?.owner?.name, listed.find((item) => item.id === waiting.id)?.waitingFor?.name];
+      // What the web board, List and panel read (personas-36 P3 2): the native rows and the task's detail, and the panel's history.
+      const board = json<ProjectWorkView>(await get(owner, `/api/v1/projects/${bench.id}/work-view?kinds=work&limit=100`), 200).items;
+      const row = (id: string) => board.find((item) => item.id === id);
+      const panel = json<WorkDetailProjection>(await get(owner, `/api/v1/projects/${bench.id}/work-objects/work/${given.id}`), 200);
+      const panelOwner = panel.object.kind === 'work' ? panel.object.owner?.name : undefined;
+      const history = json<TaskActivityPage>(await get(owner, `/api/v1/work/${waiting.id}/activity`), 200).items;
+      const waitedFor = history.find((entry) => entry.kind === 'status')?.status?.waitingFor?.name;
+      const rowOf = (id: string) => { const found = row(id); return found?.kind === 'work' ? found : undefined; };
+      return [one.owner?.name, other.waitingFor?.name, listed.find((item) => item.id === given.id)?.owner?.name, listed.find((item) => item.id === waiting.id)?.waitingFor?.name,
+        rowOf(given.id)?.owner?.name, rowOf(waiting.id)?.waitingFor?.name, panelOwner, waitedFor];
     };
-    assert.deepEqual(await names(), ['work-tomek', 'work-tomek', 'work-tomek', 'work-tomek']);
+    assert.deepEqual(await names(), Array(8).fill('work-tomek'));
+    // Tomek moves a task himself, so the history names him as who did it.
+    const done = json<WorkItem>(await post(tomek, `/api/v1/projects/${bench.id}/work`, { title: 'Oil the lamp base' }), 201);
+    json(await patch(tomek, `/api/v1/work/${done.id}`, { status: 'done' }, { 'if-match': `"${done.version}"` }), 200);
+    const doneBy = async () => json<TaskActivityPage>(await get(owner, `/api/v1/work/${done.id}/activity`), 200).items[0]?.actor.name;
+    assert.equal(await doneBy(), 'work-tomek');
     await removeMember(owner, ws.id, tomek);
-    assert.deepEqual(await names(), Array(4).fill('work-tomek (removed)'), 'the panel, the board and the cards say who is gone');
+    assert.deepEqual(await names(), Array(8).fill('work-tomek (removed)'), 'the panel, the board and the cards say who is gone');
+    assert.equal(await doneBy(), 'work-tomek (removed)', 'the history says who is gone: "work-tomek (removed) marked it done"');
     const still = json<WorkItem>(await get(owner, `/api/v1/work/${given.id}`), 200);
     assert.equal(still.owner?.id, tomek.id, 'the task stays theirs until someone gives it to another person');
     expectStatus(await post(owner, `/api/v1/workspaces/${ws.id}/removed-people/${tomek.id}/restore`, {}), 201);
-    assert.deepEqual(await names(), ['work-tomek', 'work-tomek', 'work-tomek', 'work-tomek'], 'Restore brings the plain name back');
+    assert.deepEqual(await names(), Array(8).fill('work-tomek'), 'Restore brings the plain name back');
+    assert.equal(await doneBy(), 'work-tomek');
   });
 });
