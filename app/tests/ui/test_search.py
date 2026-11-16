@@ -757,9 +757,10 @@ class SearchJourney(unittest.TestCase):
 
     def test_16_a_plain_question_leads_with_the_message_that_answers_it_not_with_a_task_that_shares_a_word(self) -> None:
         """#1424: the results were listed Tasks first, so a task that shared "the" with the question stood above the message that answered it.
-        The server ranks the results; the group of the best match leads."""
+        The server ranks the results; the group of the best match leads. Since persona round 6 a hit that holds only a little word of the
+        question ("the") is not listed at all (docs/development/search.md), so the task here shares "put", a real but common word."""
         owner, lamp = self.page("ari"), self.ids["lamp"]
-        self.api(owner, "POST", f"/api/v1/projects/{lamp}/work", {"title": "Ask the studio about spare veneer sheets"}, status=201)
+        self.api(owner, "POST", f"/api/v1/projects/{lamp}/work", {"title": "Put the spare veneer sheets back on the studio shelf"}, status=201)
         self.api(owner, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": "Where did we put the zinnia seed tray and the veneer offcuts?", "clientMessageId": str(uuid.uuid4())}, status=201)
         question = "Where did we put the zinnia seed tray"
         found = self.api(owner, "GET", f"/api/v1/search?q={quote(question)}&limit=20", status=200)["items"]

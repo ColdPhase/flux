@@ -14,7 +14,7 @@ import {
 // The open tab's notice (#1243): the generator announces a notification that interrupts its person, by the same rule as push (the
 // level, quiet hours, mutes), once per batch and after every row of the batch is stored.
 
-function generator(preferences: StoredPreferences, options: { muted?: boolean; messages?: number } = {}) {
+function generator(preferences: StoredPreferences, options: { muted?: boolean; messages?: number; body?: string } = {}) {
   const workspaceId = randomUUID();
   const dmId = randomUUID();
   const log: string[] = [];
@@ -29,7 +29,7 @@ function generator(preferences: StoredPreferences, options: { muted?: boolean; m
     eventsAfter: async (seq) => (seq ? [] : events),
     facts: {
       audience: async () => ['ada', 'jonas'], projectMessage: async () => null, work: async () => null, decision: async () => null, liveInvitation: async () => null, liveSession: async () => null, waitingChange: async () => null,
-      dmMessage: async (id, messageId) => ({ id: messageId, workspaceId, dmId: id, kind: 'pair', title: null, authorId: 'jonas', body: 'Can you check the probes?', participantIds: ['ada', 'jonas'] }),
+      dmMessage: async (id, messageId) => ({ id: messageId, workspaceId, dmId: id, kind: 'pair', title: null, authorId: 'jonas', body: options.body ?? 'Can you check the probes?', participantIds: ['ada', 'jonas'] }),
       names: async (ids) => new Map(ids.map((id) => [id, id === 'jonas' ? 'Jonas Berg' : 'Ada'])),
     },
     preferences: preferenceRepository({ find: async () => preferences, save: async () => undefined, isMuted: async () => !!options.muted, mutes: async () => [], setMuted: async () => undefined }),
@@ -77,8 +77,14 @@ describe('the notice on an open tab', () => {
     await generateNotifications(nothing.uow, { emailAvailable: false, now });
     assert.deepEqual([nothing.inserted.length, nothing.announced.length], [1, 0], 'Nothing: stored, not announced');
 
-    const muted = generator(fresh(), { muted: true });
+    // A muted place silences an ordinary message; a question in a direct message between two people asks the other person and arrives
+    // even where muted, as every reason that needs the person does (#1424 A, notifications.md "Muted").
+    const muted = generator(fresh(), { muted: true, body: 'The probes are back on the shelf.' });
     await generateNotifications(muted.uow, { emailAvailable: false, now });
     assert.deepEqual([muted.inserted.length, muted.announced.length], [0, 0], 'muted: neither');
+
+    const asked = generator(fresh(), { muted: true });
+    await generateNotifications(asked.uow, { emailAvailable: false, now });
+    assert.deepEqual([asked.inserted.length, asked.announced.length], [1, 1], 'muted, but a question between two people: both');
   });
 });
