@@ -27,6 +27,7 @@ import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { useCreatedToast, WORK_CREATION_UNDONE_EVENT } from '../work/taskState';
 import { SpaceFace } from '../ui/SpaceFace';
+import { leaveFocusToDestination } from '../ui/Overlay';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -351,6 +352,9 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       onTask?.(projectId);
       created(item, () => openCreate({ kind: 'task', projectId }));
       if (!mounted.current) { revalidator.revalidate(); return; }
+      // The window closes to go to the new task's panel: focus is not handed back to what opened the window, so closing the panel gives
+      // it to the task's own card, what stands for it, never to a message the window was opened over (F-026 §4, personas-36).
+      leaveFocusToDestination();
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
       // After the panel's own step (its `?open=` address), so that step does not drop the read that brings the new task's card.
@@ -517,6 +521,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const inFlight = useRef(false);
   const [error, setError] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
+  const whyRef = useRef<HTMLTextAreaElement>(null);
   const project = projects.find((item) => item.id === projectId);
   // Whether anyone else is in the space (persona round 8): the footer says the true thing, also to its only member.
   const [alone, setAlone] = useState<{ projectId: string; alone: boolean } | null>(null);
@@ -533,8 +538,15 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const source = request.projectId === projectId ? request.sources?.find((item) => item.ref.type === 'message') ?? null : null;
   const title = oneLine(carried.text);
   const ready = !!title && title.length <= WORK_LIMITS.title && !!project && !busy;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ids.active && request.kind === 'decision') { titleRef.current?.focus(); if (source) titleRef.current?.select(); } }, []);
+  useEffect(() => {
+    if (!ids.active || request.kind !== 'decision') return;
+    // A `/decide` with its words goes on in Why (F-026 §4, personas-36); a decision from a message starts on its title, selected.
+    if (request.afterTitle && oneLine(carried.text)) { whyRef.current?.focus(); return; }
+    titleRef.current?.focus();
+    if (source) titleRef.current?.select();
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   function submit() {
     if (!ready || !project || inFlight.current) return;
     inFlight.current = true;
@@ -607,7 +619,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
         <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
         {source ? <blockquote className="create__source"><span>From the message</span>{source.label}</blockquote> : null}
-        <textarea className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why (optional)"
+        <textarea ref={whyRef} className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why (optional)"
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}

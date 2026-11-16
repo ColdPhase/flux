@@ -407,6 +407,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
   width smoothly, and the content beside it adapts during the fold. This is the one named exception
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
+  On a short window (under 480 px, a phone on its side or 200 % zoom) the places and the lists scroll as one band under Search (#727);
+  **nothing in it is ever half out of view under Search** (personas-36): the band scrolls a whole place or tile at a time and rests with a
+  whole one at its top, which is not faded; a hairline at its top says there is more above, and its lower edge fades as any list's does.
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
@@ -430,7 +433,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki alike,
   and it never covers the header or a call's strip, so the name, the views, the faces, Call and ⋯ stay in
   view and live. It is never modal: no scrim, the work beside it stays usable, `Esc` in it closes it and
-  focus goes back to what opened it. Above 1000 px it docks beside the work, which narrows (the Tasks
+  focus goes back to what opened it; a panel opened by Create (a new task) has no opener left, since the window closed to go to it, so
+  focus goes to the new task's card, what stands for it, never to the control the window was opened over (personas-36). Above 1000 px it docks beside the work, which narrows (the Tasks
   board then scrolls its columns sideways inside itself, with a thin bar); from 641 to 1000 px the same
   card lies over the work's right edge; on the phone it is the sheet below.
   A reply the person has just sent stays whole above the field in a thread, also in the phone's sheet, whatever the
@@ -438,7 +442,11 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   **A toast never stands on the open panel** (personas-33/34, 200 %): one that would is centred over the work beside the panel instead, as
   narrow as that work, its actions on a second line where needed. **A proposed decision's answer stays in view:** Accept, Not now and
   Discuss stick under the decision's pinned title while its discussion scrolls, so R or Discuss, which bring the newest message into view
-  above the field, never hide them (personas-35, 200 %).
+  above the field, never hide them (personas-35, 200 %). **The discussion keeps its room** (personas-36, 200 %: the title and the answer
+  filled the panel and no message showed): the title and the whole answer stick only while together they take at most two fifths of the
+  panel's scrolling room. Where they would take more (200 %, large text, a phone's half sheet), the title scrolls with the rest and the
+  answer sticks as a bar of its three buttons, its "Waiting for you" line set before them so that it goes out of view above; where even
+  that bar would take more than two fifths, nothing sticks.
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -581,7 +589,9 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   returns is the expanded card, and a card opened from the list (a tap on its title, its Reply or Open) is the open item, so ×, ‹ Inbox or
   Back return with that card expanded, or, when it left meanwhile (a task given to you, Done or Accept in its sheet), with its neighbour
   at its place expanded, never the card that was expanded before. **That card has the focus too** (founder direction, Hubert, 2026-11-16,
-  personas-33 to 35): its title, which raises no keyboard, never the page or the neighbour that stood in for it. Reply puts the cursor in
+  personas-33 to 35): its title, which raises no keyboard, never the page or the neighbour that stood in for it. So does the card that
+  expands when the open one leaves by the tray's Done or Not now, also when a tap on the card's words had left the focus on the page's
+  content (personas-36, the last card). Reply puts the cursor in
   the reply field at once and it stays there while the sheet settles around it, the first time too; Undo of Accept in a decision's sheet
   gives the focus back to Accept.
 - **One press, one action in the Inbox** (personas-34): the open item's neighbour swaps in the moment an action takes it out, so for
@@ -598,8 +608,14 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   focus on its open item, also when the panel left behind still holds the cursor in its field as it closes (R or Discuss, then Back, sweep 34 C10). After **Z** or Undo in the Inbox, the item that came back has the focus.
 - **After Propose:** a `/decide` from the composer leaves the cursor in the composer, as `/task` does; Propose through New focuses the
   new decision's card once it is in the conversation.
+- **`/decide` with its words opens the window with the cursor in Why** (personas-36: after `/decide Bake rye on Tuesdays`, Tab to Send
+  and "Fewer orders on Monday.", the Space on Send opened the window, the rest of the sentence went into the title and Enter proposed it,
+  with no Why, to everyone). The words are the whole title, and a decision reaches everyone at once, so what is typed on is its reason:
+  Enter in Why starts a new line, and only ⌘↵ / Ctrl+↵ or Propose decision proposes it. `/task` keeps the cursor in its title, where Enter
+  creates the task, which is only the person's own. A decision made from a message starts on its title, selected, as before.
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
-- **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself.
+- **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself. The same
+  on a touch screen, where the content raises no keyboard (personas-36: Back from a new conversation left the phone's Spaces page with none).
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
   newest message the reader can see (else the newest message, brought into view) and keeps the draft; the single keys work
   from there. A window that is closing (Create after `/task`) no longer holds Esc. New shows its `C`, and a toast its `Z`, only while the key

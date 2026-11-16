@@ -230,7 +230,12 @@ body:has(.app) { background: var(--side); }
   /* A tile half under the fade is never next to the account face (persona round 29, 200 %: a press on the Messages tile's faded edge
      opened the account menu): a clear gap below the band, and a tile reached by Tab or the arrows scrolls clear of the fade. */
   .side__rail-middle[data-scroll-down] { margin-bottom: 10px; }
-  .side__rail-middle { scroll-padding-block: 24px 28px; }
+  /* Nothing in the band is ever half out of view under Search (personas-36, 200 %: on a space page the band brought the space into view
+     and Home stood half under Search): it scrolls a whole place or tile at a time and rests with a whole one at its top. Its upper edge
+     has no fade, which would fade that whole tile; a hairline says there is more above. The lower edge fades as before (more below). */
+  .side__rail-middle { scroll-snap-type: y mandatory; scroll-padding-block: 4px 28px; border-top: 1px solid transparent; }
+  .side__rail-middle :is(.side__ib, .side__rail-project, .side__rail-dm) { scroll-snap-align: start; }
+  .side--rail .side__rail-middle[data-scroll-up] { --fade-top: 0px; border-top-color: var(--line); }
 }
 /* Where a list can still scroll to, that edge fades softly (#1375): the expanded sidebar's and the drawer's list, the rail's lists. Static,
    set only when the size, the contents or the position change (Sidebar.tsx `useScrollEdges`), so a row cut by the edge reads as "more". */

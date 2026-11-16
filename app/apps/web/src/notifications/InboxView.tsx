@@ -170,7 +170,9 @@ export function InboxView() {
     const left = lastOpen.current !== null && !shown.some((item) => item.key === lastOpen.current);
     lastOpen.current = openKey;
     const active = document.activeElement;
-    if (active && active !== document.body) return;
+    // The page's content holds no place either: on a phone a tap on a card's words (to expand it) leaves the focus there, and the tray's
+    // Done or Not now on that card then left it there as the card above expanded (personas-36 P3-N1); its title takes it (F-026 §4).
+    if (active && active !== document.body && active.id !== 'content') return;
     if (paneFocused.current && paneRef.current) paneRef.current.focus({ preventScroll: true });
     else if ((listFocused.current || left) && openKey) rowControl(openKey)?.focus({ preventScroll: true });
     else if (left && !openKey) clearRef.current?.focus({ preventScroll: true });
