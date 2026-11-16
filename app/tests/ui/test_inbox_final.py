@@ -996,9 +996,9 @@ class InboxFinal(unittest.TestCase):
             with self.subTest(action=action):
                 cards = page.locator(".nyq__list .nyc")
                 expect(cards.filter(has_text=stamp)).to_have_count(2)
-                last = cards.last
-                above = cards.nth(cards.count() - 2)
-                self.assertIn(stamp, last.inner_text())
+                # The lower of the two, so a card that is not the open one first.
+                key = cards.filter(has_text=stamp).last.get_attribute("data-key")
+                last = page.locator(f'.nyq__list .nyc[data-key="{key}"]')
                 # A tap on its words, not on its title, as a person reading it does.
                 last.locator(".nyc__eyebrow:visible").first.tap()
                 page.wait_for_timeout(300)
@@ -1007,8 +1007,9 @@ class InboxFinal(unittest.TestCase):
                 # As the sweep presses it: a click that moves no focus (a tap on a button keeps focus where it was in WebKit).
                 last.locator(".nyc__tray").get_by_role("button", name=action, exact=True).evaluate("button => button.click()")
                 expect(page.get_by_role("status").filter(has_text=re.compile("Marked done|Back tomorrow morning"))).to_be_visible()
-                expect(above).to_have_attribute("aria-current", "true")
-                expect(above.locator(".nyc__open")).to_be_focused()
+                expect(last).to_have_count(0)
+                # The card that expands in its place (the one below it, or above it when it was the last) has the focus on its title.
+                expect(page.locator(".nyq__list .nyc[aria-current='true'] .nyc__open")).to_be_focused()
                 page.get_by_role("button", name="Undo").tap()
                 expect(cards.filter(has_text=stamp)).to_have_count(2)
                 page.wait_for_timeout(600)

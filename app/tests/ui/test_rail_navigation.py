@@ -300,8 +300,10 @@ class RailNavigation(unittest.TestCase):
       let pinned = box.top;
       for (const el of root.querySelectorAll('.wd-decision-identity, .wd-decide')) {
         const r = el.getBoundingClientRect(); if (r.bottom > box.top + 1 && r.top < box.top + 2) pinned = Math.max(pinned, r.bottom); }
-      const field = root.querySelector('#decision-composer');
-      return { buttons, lines, room: Math.round(box.bottom - pinned), height: Math.round(box.height), field: clear(field) };
+      // The field is under the scrolling area, at the panel's foot: in the window and not covered.
+      const field = root.querySelector('#decision-composer'); const f = field?.getBoundingClientRect();
+      const shown = !!f && f.height > 0 && f.bottom <= innerHeight + 0.5 && field.contains(document.elementFromPoint(f.left + Math.min(f.width / 2, 40), f.top + f.height / 2));
+      return { buttons, lines, room: Math.round(box.bottom - pinned), height: Math.round(box.height), field: shown };
     }"""
 
     def assert_discussion_room(self, page, label, *, long):
