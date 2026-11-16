@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { youLabel } from '../docs/format';
 import type { AgentQuestion } from '@flux/contracts';
 import { AGENT_QUESTION_LIMITS } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -81,7 +82,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
         <p className="qcard__answer" role="status">
           <Icon name="check" size={14} />
           <span><span className="ui-vh">Answered: </span>{answered.text}</span>
-          <span className="qcard__by">{answered.by.id === meId ? `${answered.by.name} (you)` : answered.by.name} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
+          <span className="qcard__by">{youLabel(answered.by.name, answered.by.id === meId)} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
         </p>
       ) : interactive ? (
         <>

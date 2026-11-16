@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { youLabel } from '../docs/format';
 import { useNavigate, useRevalidator } from 'react-router';
 import { leaveDm } from '../api/direct-messages';
 import { Avatar, Button } from '../ui';
@@ -34,7 +35,7 @@ export function Details({ view, dm = null, onBack }: {
         <section className="details__sec" aria-labelledby="details-dm-people">
           <h4 id="details-dm-people">People in this conversation</h4>
           <ul className="details__rows">
-            <li className="details__person"><Avatar name={dm.me} id={dm.meId} size="md" tone="me" /><b>{dm.me} (you)</b></li>
+            <li className="details__person"><Avatar name={dm.me} id={dm.meId} size="md" tone="me" /><b>{youLabel(dm.me, true)}</b></li>
             {dm.people.map((name, index) => <li key={`${name}-${index}`} className="details__person"><Avatar name={name} id={dm.peopleIds[index]} size="md" /><b>{name}</b></li>)}
           </ul>
         </section>

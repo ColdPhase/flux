@@ -10,7 +10,7 @@ import { ContributionMark, clock, day, shownAnswer, shownLabel, when } from '../
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
-import { agentDisplayName, personName } from '../docs/format';
+import { agentDisplayName, named, personName, youLabel } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
 import { TaskAgentState, type AgentDone } from '../agents/TaskAgentState';
@@ -98,7 +98,7 @@ function changeText(entry: TaskActivityEntry, meId: string): string {
     if (entry.automation === 'agent_deleted' && to) return `deleted the agent${from ? ` ${from.name}` : ''}, so it came back to ${to.name}`;
     if (!to) return `removed the owner${from ? ` (${from.name})` : ''}${rule}`;
     // A person stopped the agent (v0.2.1 release gate, M21): a stop, not a take or a finish, in the words of the task's state line.
-    if (entry.automation === 'agent_stopped') return `stopped ${from?.name ?? 'the agent'}; the task is back with ${to.kind === 'human' && to.id === meId ? `${to.name} (you)` : to.name}`;
+    if (entry.automation === 'agent_stopped') return `stopped ${from?.name ?? 'the agent'}; the task is back with ${named(to, meId)}`;
     // A person who made themselves the owner took it: "Ana took it", never "Ana assigned it to Ana Souza" (personas-26).
     if (to.kind === entry.actor.kind && to.id === entry.actor.id) return `took it${from ? ` from ${from.name}` : ''}${rule}`;
     return `${to.kind === 'agent' ? 'handed it off to' : from ? 'reassigned it to' : 'assigned it to'} ${to.name}${rule}`;
@@ -352,7 +352,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                 <div className="wd-act__body">
                   <p className="wd-act__who">
                     {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} hue={shown.colour} /><span className="ui-vh">, shown by {name}</span></>
-                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} /> : <b>{mine ? `${name} (you)` : name}</b>}
+                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} /> : <b>{youLabel(name, mine)}</b>}
                     {message.via && !shown ? <span className="project-convo__via">via {message.via}</span> : null}
                     <time dateTime={message.createdAt} title={when(message.createdAt)}>{stamp(message.createdAt)}</time>
                     {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
@@ -377,7 +377,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             <li key={line.key} className="wd-act__item" data-line={line.key} data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
               <Face actor={actor} mine={mine} hue={hueOf(actor.kind === 'agent' ? actor : null)} />
               <p className="wd-act__line">
-                {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={agentAuthorOwner(actor, owners)} icon={false} hue={hueOf(actor)} /> : <b>{actor.name}{mine ? ' (you)' : ''}</b>}
+                {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={agentAuthorOwner(actor, owners)} icon={false} hue={hueOf(actor)} /> : <b>{youLabel(actor.name, mine)}</b>}
                 {' '}{text}
                 <time dateTime={line.at} title={when(line.at)}> · {stamp(line.at)}</time>
                 {line.key === doneLine && agentDone?.undo ? <>{' '}<Button variant="quiet" size="sm" className="wd-act__undo" busy={agentDone.busy} onClick={agentDone.undo}>Undo</Button></> : null}
@@ -504,7 +504,7 @@ function TaskCallLine({ line, nameOf, mine }: { line: LiveCallLine; nameOf: (use
     <li className="wd-act__item" data-activity="call" id={`call-${line.id}`}>
       <Face actor={{ kind: 'human', id: line.startedBy, name: starter }} mine={mine} />
       <p className="wd-act__line">
-        {words.named ? <><b>{mine ? `${starter} (you)` : starter}</b>{' '}</> : null}{words.text}
+        {words.named ? <><b>{youLabel(starter, mine)}</b>{' '}</> : null}{words.text}
         <time dateTime={line.startedAt} title={when(line.startedAt)}> · {stamp(line.startedAt)}</time>
       </p>
     </li>

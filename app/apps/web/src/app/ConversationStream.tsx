@@ -1,5 +1,5 @@
 import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FORMER_MEMBER } from '../docs/format';
+import { FORMER_MEMBER, youLabel } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { agentWords } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, useArrivals, useClearOfToast } from '../ui';
@@ -729,7 +729,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                   const name = notice.createdBy.name ?? (notice.createdBy.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
                   const owner = notice.createdBy.kind === 'agent' ? agentAuthorOwner(notice.createdBy, owners) : undefined;
                   if (owner) return agentWords(name, owner);
-                  return notice.createdBy.kind === 'human' && notice.createdBy.id === meId ? `${name} (you)` : name;
+                  return youLabel(name, notice.createdBy.kind === 'human' && notice.createdBy.id === meId);
                 };
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
@@ -808,7 +808,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
         <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
         <div className="convo-notice__body">
           <p className="convo-notice__meta">
-            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' (you)' : ''}</strong>}
+            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{youLabel(name, mine)}</strong>}
             <button type="button" className="convo-notice__src" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>{words}</button>
             <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
           </p>
@@ -832,7 +832,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
       <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
       <div className="convo-notice__body convo-notice__card">
         <p className="convo-notice__meta">
-          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' (you)' : ''}</strong>}
+          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{youLabel(name, mine)}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
             ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           {notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted'

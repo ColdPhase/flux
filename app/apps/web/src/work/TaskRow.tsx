@@ -4,6 +4,7 @@ import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { useAgentHue, type ColouredAgent } from '../agents/hues';
 import type { AgentHue } from '../ui';
+import { named } from '../docs/format';
 import { STATUS_LABEL, blockedLine, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
@@ -21,7 +22,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (
   const who = !owner ? 'No owner'
     : owner.kind === 'agent'
       ? <AgentIdentity icon={false} name={owner.name} owner={agentAuthorOwner(owner, owners)} hue={hue(owner)} />
-      : owner.id === meId ? 'you' : owner.name;
+      : named(owner, meId);
   const rest = [
     // What it waits for, in the words the board, the panel, Home and the Inbox use (personas-28).
     item.status === 'blocked' ? blockedLine(item) : null,

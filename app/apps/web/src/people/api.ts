@@ -24,6 +24,7 @@ import {
   type WorkspaceMember,
   type WorkspaceRole,
 } from '@flux/contracts';
+import { youLabel } from '../docs/format';
 import { ApiError, NetworkError, request } from '../api/client';
 
 // People in the company and its spaces (#188, F-037). Only the existing access routes (#29): add, change and
@@ -118,7 +119,7 @@ export const startsConversations = startsSpaces;
  * and "· Guest" for a guest of the company, as every list of people says.
  */
 export const personLabel = (person: { userId: string; name: string; guest?: boolean }, meId: string) =>
-  person.userId === meId ? `${person.name} (you)` : person.guest ? `${person.name} · Guest` : person.name;
+  person.userId === meId ? youLabel(person.name, true) : person.guest ? `${person.name} · Guest` : person.name;
 
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;

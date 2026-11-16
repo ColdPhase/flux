@@ -105,6 +105,7 @@ export function VersionPage() {
 
 /** A saved version as the server rendered it, read only. */
 function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice: ReactNode }) {
+  const meId = useShellData().me.user.id;
   const { project } = useWiki();
   const owners = useAgentOwners(project);
   const [prose, setProse] = useState<HTMLElement | null>(null);
@@ -126,7 +127,7 @@ function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice:
   useEffect(() => { if (prose && /^#section-\d{1,3}$/.test(hash)) go(hash.slice(1)); }, [prose, hash, go]);
   return (
     <PageFrame docId={doc.id} title={shown.title} headings={headings} onHeading={go}
-      meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author)}</>}
+      meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author, meId)}</>}
       shown={{ title: shown.title, body: () => shown.body, version: shown.version, current: shown.version === doc.version }}
       notices={notice} onBodyClick={onClick}>
       {shown.body.trim()
@@ -161,6 +162,7 @@ export async function docHistoryLoader({ params, request }: LoaderFunctionArgs):
 
 /** What changed between two versions, as the page reads (#511 AC-1). There is no Markdown view: history shows the rendered version only (Hubert, 2026-11-13, #1376). */
 function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
+  const meId = useShellData().me.user.id;
   const onClick = useReferenceClicks();
   const rows = useMemo(() => {
     const titles = new Map([...(from?.mentions ?? []), ...to.mentions].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title]));
@@ -176,7 +178,9 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
           <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
         </h3>
       </header>
-      <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>
+      {/* Each version is named by who made it, the reader as "Jonas Berg (you)" (personas-36), so the sentence says "by", not a possessive. */}
+      <p className="doc-changes__why">{from ? <>From the version by {authorLabel(from.author, meId)} of {longDate(from.createdAt)} to the one by {authorLabel(to.author, meId)} of </>
+        : <>By {authorLabel(to.author, meId)} on </>}{longDate(to.createdAt)} · {to.reason}</p>
       {from && from.title !== to.title ? <ul className="doc-changes__facts"><li>Title: <del>{from.title}</del> → <ins>{to.title}</ins></li></ul> : null}
       {page.changed ? (
         <>
@@ -207,6 +211,7 @@ function RestoreButton({ docUrl: base, version, quiet = false }: { docUrl: strin
 export function DocHistory() {
   const { doc, versions, from, to } = useLoaderData() as HistoryData;
   const { project } = useWiki();
+  const meId = useShellData().me.user.id;
   const [, setSearch] = useSearchParams();
   const base = docUrl(project.id, doc.id);
   const compare = (next: { from?: number; to?: number }) => {
@@ -234,7 +239,7 @@ export function DocHistory() {
                   <span className="doc-version__dot" aria-hidden="true" />
                   <span className="doc-version__b">
                     <span className="doc-version__t">{item.reason}</span>
-                    <span className="doc-version__s">v{item.version} · {authorLabel(item.author)} · {shortDate(item.createdAt)}</span>
+                    <span className="doc-version__s">v{item.version} · {authorLabel(item.author, meId)} · {shortDate(item.createdAt)}</span>
                   </span>
                 </button>
                 <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>

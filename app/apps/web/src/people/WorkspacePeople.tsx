@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { youLabel } from '../docs/format';
 import type { EncryptedSpaceRef, IdentityCapabilities, RemovedPerson } from '@flux/contracts';
 import { getCapabilities } from '../api/auth';
 import { Link, useNavigate, useRevalidator, useSearchParams } from 'react-router';
@@ -226,7 +227,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
           </ul>
         ) : (
           <ul className="people__list">
-            <li className="people__item"><div className="people__row"><Avatar name={me.user.name} id={me.user.id} size="md" tone="me" /><span className="people__who"><b>{me.user.name} (you)</b><span>{me.user.email}</span></span><span className="people__role">{ROLE_LABEL[myRole]}</span></div></li>
+            <li className="people__item"><div className="people__row"><Avatar name={me.user.name} id={me.user.id} size="md" tone="me" /><span className="people__who"><b>{youLabel(me.user.name, true)}</b><span>{me.user.email}</span></span><span className="people__role">{ROLE_LABEL[myRole]}</span></div></li>
           </ul>
         )}
         </div>
@@ -944,6 +945,7 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
  */
 function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRole: WorkspaceRole; links: InviteLinks }) {
   const { invites, setInvites, fresh, setFresh, status, setStatus, linkRef } = links;
+  const meId = useShellData().me.user.id;
   const [revoking, setRevoking] = useState<string | null>(null);
   const [problem, setProblem] = useState('');
 
@@ -985,7 +987,7 @@ function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRo
         {invites.map((invite) => (
           <li className="people__item" key={invite.id}>
             <div className="people__row">
-              <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]}{where(invite)} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
+              <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]}{where(invite)} · until {until.format(new Date(invite.expiresAt))} · by {youLabel(invite.createdBy.name, invite.createdBy.id === meId)}</span></span>
               <Button variant="quiet" size="sm" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
               {invite.role !== 'admin' || myRole === 'owner'
                 ? <Button variant="quiet" size="sm" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}

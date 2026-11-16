@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { named } from '../docs/format';
 import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
@@ -127,7 +128,7 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
             ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} hue={hue(owner)} /></span>
             : <span className="tb-card__owner">
               <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>
-              <span className="tb-card__name">{owner.id === meId ? `${owner.name} (you)` : owner.name}</span>
+              <span className="tb-card__name">{named(owner, meId)}</span>
             </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
       </div>

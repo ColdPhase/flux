@@ -8,7 +8,7 @@ import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
 import { projectMessageHref } from '../conversations/api';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import { linkPath, PAD, PLANE_MARGIN, project, rectOf, type Rect } from './geometry';
-import { provenance, quote } from './format';
+import { provenance, quote, who } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
 import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
@@ -1353,7 +1353,7 @@ const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' 
     {file ? <ThoughtImage className="sk-img" fileId={file.id} name={file.name} style={{ maxHeight: Math.max(48, height - 64) }} /> : null}
     <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
     <span className="sk-p">{provenance(props, meId)}</span>
-    {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${linked.tasks[0].owner.name}` : ''}</span></span> : null}
+    {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${who(linked.tasks[0].owner, meId)}` : ''}</span></span> : null}
     {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
     {/* Room for the count, which is its own button beside this one. */}
     {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}

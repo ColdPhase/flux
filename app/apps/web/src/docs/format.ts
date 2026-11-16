@@ -37,8 +37,18 @@ export function personName(userId: string, me: { id: string; name: string }, mem
   return members.find((member) => member.userId === userId)?.name
     ?? people?.find((person) => person.kind === 'human' && person.id === userId)?.name ?? FORMER_MEMBER;
 }
-/** Who made a version: an agent writing under its owner's standing grant (#152) is named "name · agent", as in the conversation. */
-export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? agentAuthorLabel(who) : who.name);
+/**
+ * The one way a person is named as the author or owner of something (design §5 "Naming people"): the full name, and "Ada Kowalska (you)"
+ * for the reader, never "You" alone or a first name. `mine` says the person is the reader; `named` decides it from a person and the reader's id.
+ */
+export const youLabel = (name: string, mine: boolean) => (mine ? `${name} (you)` : name);
+export const named = (person: { kind?: string; id: string; name: string }, meId: string) =>
+  youLabel(person.name, (person.kind ?? 'human') === 'human' && person.id === meId);
+/**
+ * Who made a version: the reader is "Ada Kowalska (you)" as everywhere a person is named (personas-36); an agent writing under its owner's
+ * standing grant (#152) is named "name · agent", as in the conversation.
+ */
+export const authorLabel = (who: NamedPrincipal, meId: string) => (who.kind === 'agent' ? agentAuthorLabel(who) : named(who, meId));
 
 const KIND: Record<string, string> = {
   doc: 'Wiki page', work: 'Task', decision: 'Decision', message: 'Message', thought: 'Thought', sketch: 'Map', material: 'Wiki page',

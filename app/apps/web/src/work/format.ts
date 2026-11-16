@@ -1,4 +1,5 @@
 import { blockedWords, type Decision, type ObjectLink, type WorkItem, type WorkStatus } from '@flux/contracts';
+import { named } from '../docs/format';
 
 /**
  * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped is Done with a "dropped" note
@@ -38,9 +39,9 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 export type StatePiece = { text: string; extra?: boolean };
 export const stateText = (pieces: StatePiece[]) => pieces.map((piece) => piece.text).join('');
 
-export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'> & { dropped?: boolean }): StatePiece[] {
+export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'> & { dropped?: boolean }, meId: string): StatePiece[] {
   if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'undone' }];
-  return [{ text: statusPhrase(item) }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : [])];
+  return [{ text: statusPhrase(item) }, ...(item.owner?.name ? [{ text: ` · ${named(item.owner, meId)}`, extra: true }] : [])];
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
