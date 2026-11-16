@@ -29,11 +29,21 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
   const last = useRef(0);
   const known = useRef(new Set<string>());
   useEffect(() => { known.current = new Set(directMessages.map((dm) => dm.id)); }, [directMessages]);
+  // The conversation just left was read here: it stays read until a read of the list asked after leaving it answers, so it never turns
+  // bold again in between from what was known while it was open (the shell's list, or a read asked before its reading was saved).
+  const [shown, setShown] = useState(open);
+  const [justRead, setJustRead] = useState<string | null>(null);
+  if (shown !== open) { setShown(open); if (shown) setJustRead(shown); }
+  const leftRef = useRef<string | null>(null);
+  useEffect(() => { leftRef.current = justRead; }, [justRead]);
   const read = useCallback(() => {
     last.current = Date.now();
     const base = directMessages;
-    void listAllDms(undefined, workspaces).then((list) => setFetched({ identity, base,
-      counts: new Map(list.flatMap((dm) => (dm.unread ?? 0) > 0 ? [[dm.id, dm.unread!] as const] : [])) }), () => undefined);
+    const asked = leftRef.current;
+    void listAllDms(undefined, workspaces).then((list) => {
+      setFetched({ identity, base, counts: new Map(list.flatMap((dm) => (dm.unread ?? 0) > 0 ? [[dm.id, dm.unread!] as const] : [])) });
+      if (asked) setJustRead((current) => (current === asked ? null : current));
+    }, () => undefined);
   }, [directMessages, workspaces, identity]);
   const soon = useCallback((wait = 1200) => {
     if (timer.current) return;
@@ -63,8 +73,8 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
   const counts = useMemo(() => {
     const current = fetched && fetched.identity === identity && fetched.base === directMessages ? fetched.counts
       : new Map(directMessages.flatMap((dm) => dm.unread > 0 ? [[dm.id, dm.unread] as const] : []));
-    return open && current.has(open) ? new Map([...current].filter(([id]) => id !== open)) : current;
-  }, [fetched, identity, directMessages, open]);
+    return (open && current.has(open)) || (justRead && current.has(justRead)) ? new Map([...current].filter(([id]) => id !== open && id !== justRead)) : current;
+  }, [fetched, identity, directMessages, open, justRead]);
   return <Unread.Provider value={counts}>{children}</Unread.Provider>;
 }
 
