@@ -143,13 +143,14 @@ function holdFocus(field: HTMLElement): () => void {
     field.removeEventListener('focusout', lost);
     document.removeEventListener('pointerdown', end, true);
   };
+  // The page, or the surface around the field (a sheet that focuses its body as it opens, WebKit), took it: not a place the person chose.
+  const around = (element: Element | null) => !element || element === document.body || (element !== field && element.contains(field));
   const lost = (event: FocusEvent) => {
-    if (event.relatedTarget) { end(); return; }
+    if (!around(event.relatedTarget as Element | null)) { end(); return; }
     frame = requestAnimationFrame(() => {
-      const active = document.activeElement;
       // Another field asked for meanwhile (New message's Enter blurs its search for the conversation's composer) is left to come.
       if (performance.now() > until || !field.isConnected || fieldOnItsWay()) { end(); return; }
-      if (!active || active === document.body) field.focus({ preventScroll: true }); else end();
+      if (around(document.activeElement)) field.focus({ preventScroll: true }); else end();
     });
   };
   const timer = window.setTimeout(end, HOLD_MS);

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { isTyping, windowOrMenuOpen } from '../ui/keys';
+import { isTyping } from '../ui/keys';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
 import { NO_BLOCK_REASON, waitingPhrase, withoutCiteMarks, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
@@ -774,7 +774,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
     const active = document.activeElement;
     const nowhere = !active || active === document.body || active.id === 'content' || !!active.closest('.ui-toast');
     if (!button) return;
-    if (window.matchMedia('(hover: none)').matches ? windowOrMenuOpen() : isTyping(active) || (!nowhere && !button.closest('#details')?.contains(active))) return;
+    // The phone's sheet is itself a window: only a menu open over it keeps the focus.
+    if (window.matchMedia('(hover: none)').matches ? !!document.querySelector('[role="menu"]:not([inert])') : isTyping(active) || (!nowhere && !button.closest('#details')?.contains(active))) return;
     button.focus({ preventScroll: true });
     // Read again after the Undo: proposed once more, at a new version, also when the accepted state was never drawn here.
   }, [decision.status, decision.version]);

@@ -823,7 +823,8 @@ class SpaceSettings(unittest.TestCase):
         gone = ada.request.delete(f"{ORIGIN}/api/v1/workspaces/{self.ids['workspace']}/members/{ona_id}", headers={"origin": ORIGIN})
         self.assertEqual(gone.status, 204, gone.text())
         page.reload()
-        expect(page.get_by_text(re.compile(r"^You’re no longer in ")).first).to_be_visible()
+        # Out of the company (this module's company is not the instance's own, so Home says it is in none): no company to be told about.
+        expect(page.get_by_role("heading", name=re.compile(r"^You’re (no longer|not) in "))).to_be_visible()
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(500)
         expect(offer).to_have_count(0)
