@@ -760,9 +760,12 @@ class SpaceSettings(unittest.TestCase):
         noa.go_back()
         expect(noa.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
         expect(noa).to_have_url(re.compile(r"/projects$"))
-        # New message no longer offers the company's people.
-        noa.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages").click()
-        noa.get_by_role("link", name="New message").first.click()
+        # New message no longer offers the company's people: without a company there is nothing to make, so nothing offers New message
+        # (persona round 30, F-026 "A person who is no longer in the company"); with no conversation and no agent, no Messages heading either.
+        expect(noa.get_by_role("navigation", name="Messages")).to_have_count(0)
+        expect(noa.get_by_role("link", name="New message")).to_have_count(0)
+        # Reached by its address, it lists nobody from the company.
+        noa.goto("/dm/new")
         expect(noa.get_by_role("heading", level=1, name="New message")).to_be_visible()
         expect(noa.get_by_role("heading", name="New message")).to_have_count(1)
         expect(noa.get_by_text("Ada Kowalska")).to_have_count(0)
