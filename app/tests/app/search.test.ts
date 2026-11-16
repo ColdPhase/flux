@@ -393,6 +393,25 @@ describe('search: plain words are ranked by BM25, the web search syntax stays ex
     assert.ok(ranked.items.slice(1).every((item) => /^Dach/.test(text(item.title))));
   });
 
+  test('a result that holds all the words ranks above one that holds fewer, whatever its kind (personas-37)', async () => {
+    // "Antenna log 30" selected the decision "Shop opens at 6:30 on fair day", which holds only "30" (in its title, and rare), before the
+    // message that holds all three words: thirty messages also hold "antenna" and "log", so BM25 alone weighed them as almost nothing.
+    const space = await createProject(ari, ws.id, `Antenna ${randomUUID().slice(0, 8)}`, 'workspace');
+    const log = await conversation(ari, space.id, 'Antenna log 1');
+    await inBatches(29, (index) => say(ari, log.id, `Antenna log ${index + 2}`));
+    json<Decision>(await post(ari, `/api/v1/projects/${space.id}/decisions`, { title: 'Shop opens at 6:30 on fair day', rationale: 'The fair starts at 7.' }), 201, 'decision');
+    for (const q of ['Antenna log 30', 'antenna log 30 ', 'log 30 antenna']) {
+      const answer = await search(ari, { q, place: `project:${space.id}` });
+      assert.equal(text(answer.items[0]!.title), 'Antenna log 30', `${q}: the message with every word first`);
+      assert.equal(answer.items[0]!.kind, 'message');
+      const decision = answer.items.findIndex((item) => item.kind === 'decision');
+      assert.ok(decision > 0, `${q}: the decision is still found, below what holds more of the words`);
+      assert.ok(answer.items.slice(1, decision).every((item) => /^Antenna log/.test(text(item.title))), `${q}: two words before one`);
+    }
+    // Among hits that hold as many words, the rarer word still decides: "30" alone puts the decision's title first.
+    assert.equal((await search(ari, { q: '30', place: `project:${space.id}` })).items[0]!.kind, 'decision');
+  });
+
   test('the word being typed is a prefix of what is indexed, with or without its accents', async () => {
     for (const q of ['kalibr', 'kalibracj', 'czujn', 'piat', 'piąt', 'sht4'])
       assert.deepEqual(titles(await search(nia, q)), [KALIBRACJA], q);
