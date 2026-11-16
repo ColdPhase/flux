@@ -215,7 +215,7 @@ async function namesIn(db: DbExecutor, refs: Actor[], workspaceId: string | null
   if (users.length) {
     const u = schema.authUsers;
     const removed = workspaceId ? sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
-      WHERE w.id = ${workspaceId}::uuid AND r.user_id = ${u.id})` : sql<boolean>`false`;
+      WHERE w.id = ${workspaceId}::uuid AND r.user_id = ${u.id}::text)` : sql<boolean>`false`;
     for (const row of await db.select({ id: u.id, name: u.name, removed }).from(u).where(inArray(u.id, users))) {
       names.set(`human:${row.id}`, row.name);
       if (row.removed) gone.add(`human:${row.id}`);
