@@ -171,8 +171,22 @@ export function useNewBelow(feed: HTMLElement | null, onToEnd?: () => void, pres
 }
 
 /**
- * End goes to the end of the feed while the "N new" line is showing: for a person who reads with the keyboard. Typing in a field, a
- * dialog, another view and a feed that is not on screen keep their own End.
+ * The feed's own composer: the first one met climbing from the feed, so a thread's beside the stream is never the stream's. A conversation
+ * opens with the cursor in it (F-026 §4), so it is where a reader is when they press End first.
+ */
+function ownComposer(feed: HTMLElement): HTMLTextAreaElement | null {
+  for (let node = feed.parentElement; node && node !== document.body; node = node.parentElement) {
+    const field = node.querySelector<HTMLTextAreaElement>('.composer__box textarea');
+    if (field) return field;
+  }
+  return null;
+}
+
+/**
+ * End goes to the end of the feed while the "N new" line is showing: for a person who reads with the keyboard. That includes the feed's own
+ * composer while it is empty, where a conversation opens and where End has nothing to move (personas-36: End did nothing right after
+ * opening a long unread conversation); with words in it, End is the field's own. Typing in another field, a dialog, another view and a feed
+ * that is not on screen keep their own End.
  */
 function useEndKey(feed: HTMLElement | null, active: boolean, toEnd: () => void) {
   const latest = useRef(toEnd);
@@ -182,11 +196,12 @@ function useEndKey(feed: HTMLElement | null, active: boolean, toEnd: () => void)
     const press = (event: KeyboardEvent) => {
       if (event.key !== 'End' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (isTyping(target)) return;
-      // Only the surface the person is in: focus inside it, or nowhere in particular (the page itself).
+      const composer = target instanceof HTMLTextAreaElement && !target.value && target === ownComposer(feed);
+      if (!composer && isTyping(target)) return;
+      // Only the surface the person is in: focus inside it or in its empty composer, or nowhere in particular (the page itself).
       const surface = feed.parentElement ?? feed;
       const nowhere = !target || target === document.body || target === document.documentElement;
-      if (!nowhere && !surface.contains(target)) return;
+      if (!nowhere && !composer && !surface.contains(target)) return;
       if (!feed.getClientRects().length || getComputedStyle(feed).visibility === 'hidden' || document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();
       latest.current();
