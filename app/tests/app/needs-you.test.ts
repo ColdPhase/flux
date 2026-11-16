@@ -6,6 +6,7 @@ import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project as createProject, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/push.js';
+import { pool } from './support/db.js';
 
 // The Inbox "Needs you" queue (#342): what asks something of a person is computed from current rows and
 // the access policy; only what the person did with an item is stored. One person accepts a decision
@@ -589,5 +590,75 @@ describe('the Inbox needs-you queue', () => {
     json(await patch(partner, `/api/v1/work/${second2.id}`, { status: 'in_progress', expectedVersion: finished.version }), 200);
     assert.equal((await queue(someone)).doneToday, 0);
     assert.deepEqual((await aside(someone)).done, []);
+  });
+
+  test('what needs you stays however many ordinary notifications arrive after it: a question, a task given to you and a mention done today (sweep-34 C1)', async () => {
+    const flooded = await person('ny-flood');
+    await addMember(owner, ws.id, flooded, 'member');
+    await grant(owner, lamp.id, flooded, 'contributor');
+    const asking = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@ny-flood can you water the beds?', clientMessageId: randomUUID() }), 201);
+    const telling = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@ny-flood the seeds came.', clientMessageId: randomUUID() }), 201);
+    const given = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Sow the beans', owner: { kind: 'human', id: flooded.id } }), 201);
+    const question = await waitFor(async () => (await queue(flooded)).items.find((item) => item.url.includes(asking.id)), 'the question');
+    const mention = await waitFor(async () => (await queue(flooded)).items.find((item) => item.url.includes(telling.id)), 'the mention');
+    const task = await waitFor(() => taskItem(flooded, given.id), 'the task given');
+    assert.equal(mention.kind, 'mention');
+    json(await resolve(flooded, mention.key, { action: 'done' }), 200);
+    const before = await queue(flooded);
+    assert.deepEqual([find(before, question.key)?.kind, find(before, task.key)?.kind, before.doneToday], ['question', 'task', 1]);
+
+    // More ordinary notifications than any page, all newer: one person's direct messages (the sweep's 101, and more).
+    const created = await post(outsider, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [flooded.id] });
+    assert.ok(created.status === 200 || created.status === 201, created.text);
+    const dm = (created.json as { id: string }).id;
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, ai_origin, created_at)
+      SELECT gen_random_uuid(), $1, $2, 'dm', $3::uuid, 'ny-outsider sent you a message', 'Message ' || i, '/dm/' || $3::text, 'dm', false, now() + i * interval '1 millisecond'
+      FROM generate_series(1, 450) AS i`, [flooded.id, ws.id, dm]);
+    const inbox = json<InboxResponse>(await flooded.browser.request('GET', '/api/v1/inbox'), 200);
+    assert.ok(inbox.items.length && inbox.items.every((item) => item.reason === 'dm'), 'the newest notifications are all ordinary messages');
+
+    const after = await queue(flooded);
+    assert.ok(find(after, question.key), 'the unread question is still in the Inbox');
+    assert.ok(find(after, task.key), 'the task given is still in the Inbox');
+    assert.equal(after.count, before.count, 'the count does not drop');
+    assert.equal(after.doneToday, 1, 'the mention done today is still counted');
+    assert.deepEqual((await aside(flooded)).done.map((entry) => entry.item.key), [mention.key], 'and listed in done today');
+    // Put back brings it back from under the flood; the messages still count for the tab's "(N)".
+    assert.equal((await restore(flooded, mention.key)).status, 204);
+    const back = await queue(flooded);
+    assert.ok(find(back, mention.key), 'put back');
+    assert.equal(back.count, before.count + 1);
+  });
+
+  test('a blocked item put back after Done, or after Unblock, comes back in its old place, not at the top (sweep-34 C11)', async () => {
+    const someone = await person('ny-place');
+    await addMember(owner, ws.id, someone, 'member');
+    await grant(owner, lamp.id, someone, 'contributor');
+    const blockedTask = async (title: string) => json<WorkItem>(await post(someone, `/api/v1/projects/${lamp.id}/work`,
+      { title, owner: { kind: 'human', id: someone.id }, status: 'blocked', blocker: 'Waiting for the frames' }), 201);
+    const older = await blockedTask('Paint the frames');
+    // One blocked later by a move, not made blocked.
+    const open = json<WorkItem>(await post(someone, `/api/v1/projects/${lamp.id}/work`, { title: 'Glaze the frames', owner: { kind: 'human', id: someone.id } }), 201);
+    const moved = json<WorkItem>(await patch(someone, `/api/v1/work/${open.id}`, { status: 'blocked', blocker: 'No glass yet', expectedVersion: open.version }), 200);
+    const newer = await blockedTask('Hang the frames');
+    const order = async () => (await queue(someone)).items.filter((item) => item.kind === 'blocked').map((item) => [item.key, item.at, item.blocked?.since]);
+    const first = await order();
+    assert.deepEqual(first.map(([key]) => key), [`blocked:${newer.id}`, `blocked:${moved.id}`, `blocked:${older.id}`], 'newest blocked first');
+    assert.ok(first.every(([, at, since]) => at === since), 'an item\'s time is when it was blocked');
+
+    // Done, then Undo (the same DELETE as Put back): the task is blocked again, in its old place.
+    json(await resolve(someone, `blocked:${older.id}`, { action: 'done' }), 200);
+    assert.equal((await restore(someone, `blocked:${older.id}`)).status, 204);
+    assert.deepEqual(await order(), first, 'Undo of Done puts it back where it was');
+
+    // Unblock, then its Undo: the task's own change back to Blocked with `restore: true`, as the Inbox's Z sends it.
+    const doing = json<WorkItem>(await patch(someone, `/api/v1/work/${moved.id}`, { status: 'in_progress', blocker: null, expectedVersion: moved.version }), 200);
+    json(await patch(someone, `/api/v1/work/${moved.id}`, { status: 'blocked', blocker: 'No glass yet', restore: true, expectedVersion: doing.version }), 200);
+    assert.deepEqual(await order(), first, 'Undo of Unblock puts it back where it was');
+
+    // Editing the reason of a blocked task is no new block.
+    const now = json<WorkItem>(await someone.browser.request('GET', `/api/v1/work/${older.id}`), 200);
+    json(await patch(someone, `/api/v1/work/${older.id}`, { blocker: 'Waiting for the oak frames', expectedVersion: now.version }), 200);
+    assert.deepEqual((await order()).map(([key, at]) => [key, at]), first.map(([key, at]) => [key, at]), 'a new reason keeps its place');
   });
 });

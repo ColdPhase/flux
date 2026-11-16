@@ -164,5 +164,17 @@ export function needsYouRows(db: DbExecutor) {
         .where(inArray(schema.projectWorkItems.id, ids));
       return new Map(rows.map((row) => [row.id, row.status as string]));
     },
+    /**
+     * When each of these tasks last changed status (its newest `status` activity entry, by id): for a task blocked now, when it became blocked.
+     * An Undo takes its own entry back, so a task put back to Blocked keeps the time it was first blocked (sweep-34 C11). A task created
+     * blocked has no entry. Reads the plain columns only, by `project_task_activity_work_idx`.
+     */
+    async statusChangedAt(ids: string[]) {
+      if (!ids.length) return new Map<string, Date>();
+      const a = schema.projectTaskActivity;
+      const rows = await db.select({ workId: a.workId, at: sql<Date>`max(${a.createdAt})`.mapWith(a.createdAt) }).from(a)
+        .where(and(inArray(a.workId, ids), eq(a.kind, 'status'))).groupBy(a.workId);
+      return new Map(rows.map((row) => [row.workId, row.at]));
+    },
   };
 }

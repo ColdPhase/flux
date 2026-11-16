@@ -32,6 +32,10 @@ const CALL_URL = /^\/projects\/([0-9a-f-]{36})\/live\/([0-9a-f-]{36})(?:\?invita
 const MAX_ITEMS = 300;
 const MAX_DECISIONS = 200;
 const MAX_ACCEPTERS = 6;
+/** Most notifications read for the queue's mentions, questions, invitations and tasks given to the person. */
+const MAX_NOTES = 400;
+/** `notifying` (#1243) counts the unread among the person's newest this many notifications. */
+const NOTIFYING_NEWEST = 100;
 const OVER = new Set(['done']);
 
 const DAY_MS = 86_400_000;
@@ -140,6 +144,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const plans = blocked.length ? await ports.work.taskPlans(blocked.map((task) => task.id)) : new Map();
     const askers = await ports.work.names(blocked.flatMap((task) => (task.waitingFor?.id === userId ? [task.owner ?? task.createdBy] : [])));
     const waitedFor = await ports.work.names(blocked.flatMap((task) => (task.waitingFor ? [task.waitingFor] : [])));
+    // An item's time is when the task was blocked (C11), not its last edit: put back to Blocked by an Undo, it keeps its place in the list.
+    const changedAt = blocked.length ? await ports.repository.statusChangedAt(blocked.map((task) => task.id)) : new Map<string, Date>();
     for (const task of blocked) {
       const waiting = task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
         : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status));
@@ -154,13 +160,14 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const on: WaitingOn | null = waitingDecision ? { kind: 'decision', id: waitingDecision.id, title: waitingDecision.title }
         : task.waitingOn?.kind === 'task' && waitingTask ? { kind: 'task', id: waitingTask.id, number: waitingTask.number, title: waitingTask.title } : null;
       const person = task.waitingFor ? { name: waitedFor.get(`${task.waitingFor.kind}:${task.waitingFor.id}`) ?? 'Someone' } : null;
+      const blockedAt = iso(changedAt.get(task.id) ?? task.createdAt);
       items.push({
         key: `blocked:${task.id}`, kind: 'blocked',
         title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}` : `#${task.number} ${excerpt(task.title, 120)}`,
         detail: waitedOn ? reason ?? '' : excerpt(blockedWords({ blocker: task.blocker, waitingFor: person, waitingOn: on }), 160), project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
-        from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
+        from: null, at: blockedAt, url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
-        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
+        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: blockedAt, waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
           waitingDecision: waitingDecision ? { id: waitingDecision.id, title: waitingDecision.title } : null, waitingOn: task.waitingOn,
           ...(waitedOn ? { waitedBy: asker } : {}) },
         snoozeTask: waitingTask ? ref(waitingTask) : null,
@@ -169,7 +176,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
 
     // People's questions and mentions, still unread.
     const since = now().getTime() - MENTION_DAYS * 86_400_000;
-    const inbox = await ports.inbox.listReadable(userId, 100);
+    // Read by kind, never as the newest N of every notification: what needs the person stays however many ordinary messages came since (C1).
+    const inbox = await ports.inbox.needs(userId, { since: new Date(since), keep: [...keep].flatMap((key) => (key.startsWith('note:') ? [key.slice(5)] : [])),
+      limit: MAX_NOTES, newest: NOTIFYING_NEWEST });
     // What would notify the person now and is still unread (#1243): the tab's "(N)" and the app's badge.
     const level = (await ports.level?.(userId)) ?? 'needsYou';
     const channels = channelsOf({ level, emailMe: false });
@@ -200,12 +209,12 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     }
     // An invitation to a call asks something only while someone is in the call (F-041). A call started in a space is no item here (#1438 point 11).
     const callOf = (url: string | null) => { const match = CALL_URL.exec(url ?? ''); return match ? { projectId: match[1]!.toLowerCase(), sessionId: match[2]!.toLowerCase() } : null; };
-    const callNotes = inbox.items.filter((note) => note.reason === 'invitation' && !note.readAt);
+    const callNotes = [...inbox.items.filter((note) => !note.readAt), ...inbox.unreadNewest].filter((note) => note.reason === 'invitation');
     const callIds = [...new Set(callNotes.flatMap((note) => { const call = callOf(note.url); return call ? [call.sessionId] : []; }))];
     const running = callIds.length && ports.runningCalls ? await ports.runningCalls(callIds) : new Set<string>();
     // The tab's "(N)" counts what asks something now: an invitation not once the call is over (F-041).
-    const askingNow = (note: (typeof callNotes)[number]) => { const call = callOf(note.url); return !(call && ports.runningCalls) || running.has(call.sessionId); };
-    const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push
+    const askingNow = (note: { url: string | null }) => { const call = callOf(note.url); return !(call && ports.runningCalls) || running.has(call.sessionId); };
+    const notifying = inbox.unreadNewest.filter((note) => note.reason && note.reason in channels && channels[note.reason].push
       && (note.reason !== 'invitation' || askingNow(note))).length;
     // The space of a notification made in a space, read together (#1424): the Inbox says "Kind · who · space" for every row.
     const noteProjects = [...new Set(inbox.items.filter((note) => note.source.type === 'project' && !note.readAt).map((note) => note.source.id))].filter((id) => !projectNames.has(id));

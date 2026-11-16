@@ -643,6 +643,9 @@ export const notifications = pgTable('notifications', {
   check('notifications_answer_reason', sql`NOT ${table.answer} OR ${table.reason} IN ('mention', 'question')`),
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
+  // Migration 0094 (sweep-34 C1): the rows that can be items of the Inbox's "Needs you" queue, read however many others are newer.
+  index('notifications_needs_idx').on(table.userId, table.createdAt.desc(), table.id.desc())
+    .where(sql`in_inbox AND reason IN ('mention', 'question', 'invitation', 'assigned')`),
 ]);
 // What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
 export const needsYouStates = pgTable('needs_you_states', {

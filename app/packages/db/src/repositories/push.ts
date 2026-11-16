@@ -179,6 +179,55 @@ export function notificationRows(db: DbExecutor) {
         return { ...record, ...(from ? { from } : {}), ...(task ? { given: task } : {}) };
       });
     },
+    /**
+     * The notifications that can be items of the Inbox's "Needs you" queue (#342), newest first, however many other notifications are newer
+     * (an ordinary message never pushes a question out): mentions and invitations since `since` that are unread or in `keep` (done today),
+     * questions since `since` read or not (an agent question finds the notification that announced it), and `assigned` ones that are unread or
+     * in `keep`. With each unread `assigned` one come the read ones that gave the same task later (the newest gives the item). Read from the
+     * partial index `notifications_needs_idx` (migration 0094), which holds only these four reasons, with who each row comes from and its task.
+     */
+    async listNeeds(userId: string, audience: SQL, options: { since: Date; keep: readonly string[]; limit: number }) {
+      const keep = options.keep.filter((id) => UUID.test(id));
+      const kept = keep.length ? sql`${n.id} = ANY(${sql.param(keep)}::uuid[])` : sql`false`;
+      // The index's own predicate, written as it is there, so the planner reads the index whatever the parameters.
+      const wanted = and(eq(n.userId, userId), sql`${n.inInbox} AND ${n.reason} IN ('mention', 'question', 'invitation', 'assigned')`, audience,
+        sql`NOT ${hiddenNotice(n)}`);
+      const rows = await db.select({ notification: n }).from(n)
+        .where(and(wanted, sql`((${n.reason} IN ('mention', 'question', 'invitation') AND ${n.createdAt} >= ${options.since}
+          AND (${n.readAt} IS NULL OR ${n.reason} = 'question' OR ${kept})) OR (${n.reason} = 'assigned' AND (${n.readAt} IS NULL OR ${kept})))`))
+        .orderBy(desc(n.createdAt), desc(n.id)).limit(options.limit);
+      const given = await givenTasks(db, rows.map((row) => row.notification));
+      const open = rows.filter((row) => !row.notification.readAt && given.has(row.notification.id));
+      if (open.length) {
+        const tasks = [...new Set(open.map((row) => given.get(row.notification.id)!))];
+        const oldest = open.reduce((least, row) => (row.notification.createdAt < least ? row.notification.createdAt : least), open[0]!.notification.createdAt);
+        const listed = rows.map((row) => row.notification.id);
+        const e = schema.events;
+        const later = await db.select({ notification: n, workId: sql<string>`lower(${e.data}->>'workId')` }).from(n).innerJoin(e, eq(e.id, n.eventId))
+          .where(and(wanted, eq(n.reason, 'assigned'), sql`${n.readAt} IS NOT NULL`, sql`${n.createdAt} > ${oldest}`,
+            sql`NOT (${n.id} = ANY(${sql.param(listed)}::uuid[]))`, sql`lower(${e.data}->>'workId') = ANY(${sql.param(tasks)}::text[])`,
+            sql`${e.data}->>'assignedTo' = ${userId}`))
+          .orderBy(desc(n.createdAt), desc(n.id)).limit(options.limit);
+        for (const row of later) given.set(row.notification.id, row.workId);
+        rows.push(...later.map((row) => ({ notification: row.notification })));
+        rows.sort((a, b) => b.notification.createdAt.getTime() - a.notification.createdAt.getTime() || b.notification.id.localeCompare(a.notification.id));
+      }
+      const records = await withHistories(rows);
+      const senders = await sendersOf(db, rows.map((row) => row.notification));
+      return records.map((record, at) => {
+        const id = rows[at]!.notification.id;
+        const from = senders.get(id);
+        const task = given.get(id);
+        return { ...record, ...(from ? { from } : {}), ...(task ? { given: task } : {}) };
+      });
+    },
+    /** Of the recipient's newest `limit` notifications in their Inbox, the unread ones: why each exists and its link (#1243 `notifying`). */
+    async unreadAmongNewest(userId: string, audience: SQL, limit: number) {
+      const rows = await db.select({ reason: n.reason, url: n.url, readAt: n.readAt }).from(n)
+        .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenNotice(n)}`))
+        .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
+      return rows.filter((row) => !row.readAt).map((row) => ({ reason: row.reason, url: row.url }));
+    },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,
         sql`NOT ${hiddenNotice(n)}`));

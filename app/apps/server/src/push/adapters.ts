@@ -23,7 +23,7 @@ const n = schema.notifications;
  * projects and direct messages, or the workspace itself must be readable. Applied before the limit and
  * in the unread count, so invisible rows never reach pages, counts or payloads.
  */
-async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
+export async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
   const principal = { id: userId, kind: 'human' as const };
   const rows = notificationRows(db);
   const reader = policySourceReader(accessReader(db));

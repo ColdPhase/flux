@@ -20,6 +20,13 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
 | `task` | Someone else or an agent gave them a task they have not opened, started or finished (#1424 C) | their unread `assigned` notification that gave them the task (below) |
 
+**Nothing that needs you is pushed out by other notifications** (sweep-34 C1). The queue reads the notifications of the four reasons that
+can be its items (`mention`, `question`, `invitation`, `assigned`) by reason and state, never as the person's newest N of every kind: the
+mentions, questions and invitations of the last 14 days that are unread or done today, and the `assigned` ones that are unread or done today
+(with the read ones that gave the same task later, since the newest gives the item). However many direct messages, replies or other
+notices arrive after a question, it stays in the Inbox, and a mention marked done stays in done today. The read follows the partial
+index `notifications_needs_idx` (migration 0094), which holds only those four reasons, and is bounded at 400 notifications.
+
 An item's `from` is who it comes from as its title names them: the notification's `from_actor` (migration 0087), which the generator
 sets to the message's author for a question, a mention, a reply or a direct message, and to the inviter or the caller for a call. A
 question asked before someone joined comes from its asker, never from the joiner or whoever added them (persona round 28). A blocked
@@ -82,7 +89,10 @@ The queue is what waits; it does not interrupt. What interrupts a person while F
 the tab and the badge, and by push is one table, by reason and level, in
 [mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243) (#1243).
 
-Order: newest first, one list for every kind (founder decision, 2026-11-13, #1367; an item's time is when it was proposed, asked, blocked or noticed). At most 300 items, of which
+Order: newest first, one list for every kind (founder decision, 2026-11-13, #1367; an item's time is when it was proposed, asked, blocked or noticed). A blocked task's time is when it became blocked: the
+time of its newest status change, or its creation when it was made blocked, never its last edit (its `blocked.since` is the same time). An Undo
+or a Put back that returns it to Blocked (of the Inbox's Done or Unblock) takes its own status change back, so the item comes back in its old
+place, not at the top (sweep-34 C11). At most 300 items, of which
 at most 200 are decisions.
 
 ## Whom a question asks (personas-27, one rule)
