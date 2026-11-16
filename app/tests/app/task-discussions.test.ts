@@ -93,7 +93,7 @@ test('bounded newest/older windows retain the exact first root and never rewrite
   // Every conversation window carries its current binding, even when the genuine root is outside it.
   for (const query of ['', '?limit=1', '?limit=1&beforeSequence=4']) {
     const conversation = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${sent[0]!.conversationId}${query}`), 200) as Conversation;
-    assert.deepEqual(conversation.task, { workId: f.task.id, title: f.task.title });
+    assert.deepEqual(conversation.task, { workId: f.task.id, number: f.task.number, title: f.task.title });
     if (query) assert.equal(conversation.messages.some((message) => message.sequence === 1), false);
   }
   assert.deepEqual(await f.counts(), before);
@@ -110,7 +110,7 @@ test('conversation task binding is current, absent on ordinary threads, read-onl
   await db.update(schema.projectWorkItems).set({ title: 'Current renamed task' }).where(eq(schema.projectWorkItems.id, f.task.id));
   const before = await f.counts();
   const read = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as Conversation;
-  assert.deepEqual(read.task, { workId: f.task.id, title: 'Current renamed task' });
+  assert.deepEqual(read.task, { workId: f.task.id, number: f.task.number, title: 'Current renamed task' });
   const nonTask = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${ordinary.id}`), 200) as Conversation;
   assert.equal(Object.hasOwn(nonTask, 'task'), false);
   assert.deepEqual(await f.counts(), before);
@@ -120,6 +120,10 @@ test('conversation task binding is current, absent on ordinary threads, read-onl
   const unknown = await f.reader.browser.request('GET', `/api/v1/conversations/${randomUUID()}`);
   assert.equal(revoked.status, 404);
   assert.equal(unknown.status, 404);
+  // The task's number goes with its title: a revoked reader learns neither, nor that the conversation is a task's.
+  assert.equal(Object.hasOwn(revoked.json as object, 'task'), false);
+  assert.deepEqual(Object.keys(revoked.json as object).sort(), ['code', 'error']);
+  assert.equal(JSON.stringify(revoked.json).includes('Current renamed task'), false);
   assert.deepEqual(await f.counts(), afterRevocation);
 });
 
