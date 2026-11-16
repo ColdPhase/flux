@@ -17,6 +17,7 @@ import {
   type WorkObjectType,
   type TaskActivityPage,
   type TaskActivityQuery,
+  type AgentProjectOwner,
   type ObjectNotice,
   type TaskCreationNotice,
   type TaskCreationUndoEligibility,
@@ -307,6 +308,19 @@ async function undoEligibility(ports: WorkPorts, principal: Principal, record: W
   return creationUndoEligibility(await undoFacts(ports, record), principal, canWrite);
 }
 
+/**
+ * An agent a notice names carries its owner as every reader of the project gets it (#339 AC-2, the boundary of a task row and a message's
+ * author): "Planner · Ada's agent" on the created-task and proposed-decision lines for everyone, not only for the owner (v0.2.1 release gate).
+ */
+async function noticeOwners(ports: WorkPorts, first: { projectId: string; workspaceId: string } | undefined, actors: ActorRef[]) {
+  const agents = [...new Set(actors.filter((who) => who.kind === 'agent').map((who) => who.id))];
+  const owners = first && agents.length && ports.work.agentOwners ? await ports.work.agentOwners(first.projectId, first.workspaceId, agents) : new Map<string, AgentProjectOwner>();
+  return <P extends ActorRef>(who: P): P => {
+    const projectOwner = who.kind === 'agent' ? owners.get(who.id) : undefined;
+    return projectOwner ? { ...who, projectOwner } : who;
+  };
+}
+
 export function createWorkUseCases(uow: WorkUnitOfWork) {
   async function list<T, R>(principal: Principal, projectId: string, query: PageQuery | undefined,
     read: (ports: WorkPorts, projectId: string, page: ReturnType<typeof valid.page>) => Promise<{ items: R[]; total: number }>,
@@ -330,25 +344,29 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       list(principal, projectId, query, (ports, project, window) => ports.work.listDecisions(project, window), presentDecisions),
     listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<TaskCreationNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window, reach), async (ports, items) => {
-        const names = await ports.work.names([...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...items.flatMap((item) => item.reverted ? [item.reverted.by] : [])]);
+        const actors = [...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...items.flatMap((item) => item.reverted ? [item.reverted.by] : [])];
+        const names = await ports.work.names(actors);
+        const scoped = await noticeOwners(ports, items[0], actors);
         return items.map((item) => {
           const { waitingFor, reason, reverted, ...notice } = item;
           return { ...notice, createdAt: iso(item.createdAt),
-            ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? { ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' } : null }
+            ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? scoped({ ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' }) : null }
               : item.kind === 'task.resumed' || item.kind === 'task.unblocked' ? { reason: reason ?? null } : {}),
             lifecycle: reverted
               ? { state: 'creation_reverted' as const, noticeId: reverted.noticeId, revertedAt: iso(reverted.at),
-                revertedBy: { ...reverted.by, name: names.get(key(reverted.by)) ?? 'Former member' } }
+                revertedBy: scoped({ ...reverted.by, name: names.get(key(reverted.by)) ?? 'Former member' }) }
               : { state: 'active' as const },
-            createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } };
+            createdBy: scoped({ ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') }) };
         });
       }),
 
     /** What the conversation says about decisions (#694): the project's audience reads it, no one else. */
     listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<ObjectNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window, reach), async (ports, items) => {
-        const names = await ports.work.names([...items.map((item) => item.by), ...items.flatMap((item) => item.decided ? [item.decided.by] : [])]);
-        const named = (who: ActorRef) => ({ ...who, name: names.get(key(who)) ?? (who.kind === 'agent' ? 'Agent' : 'Former member') });
+        const actors = [...items.map((item) => item.by), ...items.flatMap((item) => item.decided ? [item.decided.by] : [])];
+        const names = await ports.work.names(actors);
+        const scoped = await noticeOwners(ports, items[0], actors);
+        const named = (who: ActorRef) => scoped({ ...who, name: names.get(key(who)) ?? (who.kind === 'agent' ? 'Agent' : 'Former member') });
         return items.map((item) => ({ ...item, createdAt: iso(item.createdAt), by: named(item.by),
           decided: item.decided ? { by: named(item.decided.by), at: iso(item.decided.at) } : null,
           discussion: item.discussion ? { ...item.discussion, lastReplyAt: iso(item.discussion.lastReplyAt) } : null }));

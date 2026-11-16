@@ -8,6 +8,7 @@ import {
   type NeedsYouResolved,
   type NeedsYouResponse,
   type ResolveNeedsYouCommand,
+  agentWords,
 } from '@flux/contracts';
 import { KEEP_MS, request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
@@ -19,6 +20,14 @@ import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
 /** `fresh`: a refresh (focus, an event, a change of the Inbox, a poll). The sidebar's count and the page's queue share one read per page (#862). */
+/**
+ * Who an item comes from in words: a person's name, or an agent's one label, "Assistant · Ola's agent", for every reader (v0.2.1 release gate).
+ * An agent whose owner the read does not name (no space, or an owner who can no longer read it) keeps its name and the Agent tag.
+ */
+export const fromWords = (from: NonNullable<NeedsYouItem['from']>): string => (from.kind === 'agent' && from.owner ? agentWords(from.name, from.owner.name) : from.name);
+/** Whether the item's agent is named without its owner, so its name keeps the Agent tag (as `AgentIdentity` does). */
+export const bareAgent = (from: NeedsYouItem['from']): boolean => from?.kind === 'agent' && !from.owner;
+
 export const getNeedsYou = (signal?: AbortSignal, fresh = false) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal, share: true, keep: KEEP_MS, onePage: true, fresh }).then(noteLockedWorkspaces);
 export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });

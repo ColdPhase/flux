@@ -155,6 +155,26 @@ describe('provider-neutral owner AI connections (#179)', () => {
     assert.equal((await list({ provider: 'openai_compatible' })).status, 400);
     assert.equal((await list({ provider: 'openai_compatible', baseUrl: COMPATIBLE }, new Browser())).status, 401);
   });
+
+  test('an endpoint that lists its models only to a key is read with the key the person typed, and a refused key says so (O05)', async () => {
+    const list = async (body: unknown) => expectStatus(await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body }), 200) as AiModelList;
+    const keyed = `${MOCK}/keyed/v1`;
+    // Without a key it is read as before: this endpoint answers 401, so its list can't be read.
+    assert.equal((await list({ provider: 'openai_compatible', baseUrl: keyed })).status, 'unavailable');
+    const answer = await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'openai_compatible', baseUrl: keyed, apiKey: keys.openai_compatible } });
+    const read = expectStatus(answer, 200) as AiModelList;
+    assert.deepEqual([read.status, read.models.map((model) => model.id)], ['listed', ['llama3.1:8b']]);
+    assert.equal(answer.text.includes(keys.openai_compatible), false, 'the key is never echoed');
+    const refusedKey = `local-refused-${marker.repeat(2)}OC02`;
+    assert.equal((await list({ provider: 'openai_compatible', baseUrl: keyed, apiKey: refusedKey })).status, 'key_refused');
+    const asked = (await mock('/__requests')).requests.filter((item) => item.path === '/keyed/v1/models');
+    assert.deepEqual(asked.map((item) => item.key), [null, keys.openai_compatible, refusedKey], 'the key only in the Authorization header, and only when typed');
+    // OpenRouter's public list goes with the typed key too.
+    const openrouter = await list({ provider: 'openrouter', apiKey: keys.openrouter });
+    assert.equal(openrouter.status, 'listed');
+    // The same endpoint guard: a private address is refused before any key is sent.
+    assert.equal((await list({ provider: 'openai_compatible', baseUrl: 'http://10.9.9.9/v1', apiKey: keys.openai_compatible })).status, 'refused');
+  });
 });
 
 describe('a key whose budget is below one request is refused when saved (#179 PROV-3)', () => {

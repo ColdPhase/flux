@@ -152,10 +152,16 @@ describe('the report of a run on a task (#919)', () => {
     const line = await reportOf(live.runId);
     assert.equal(line.body, `Done: #${task.number} Tidy the sensor tasks`);
     assert.deepEqual([line.changes, line.undone], [1, 0], 'the created task is the one change; the agent\'s own thread line does not count');
+    assert.equal((await scene.taskRow(task.id)).status, 'done', 'the agent finished it');
     const undone = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.equal(undone.undone, 1, 'Undo took back exactly what the line counted');
     const after = (await chat()).find((item) => item.runId === live.runId) as AgentChatMessage;
     assert.deepEqual([after.changes, after.undone], [0, 1], 'nothing left to undo, and the line can say it was undone');
+    // The whole finish is taken back (AG-3, AG-5; v0.2.1 release gate M09/M52): not only its change, the Done too. The task is back with its owner,
+    // in Doing, as the task's own Done Undo leaves it, and the agent does not take it up again.
+    const back = (await pool.query('SELECT status, owner_user_id, owner_agent_id FROM project_work_items WHERE id = $1', [task.id])).rows[0];
+    assert.deepEqual(back, { status: 'in_progress', owner_user_id: scene.owner.id, owner_agent_id: null });
+    assert.equal(undone.message, `Undid 1 change. #${task.number} is back with you`);
   });
 
   test('a person\'s stop reports who stopped it; the system giving up, and a run that is not on a task, report nothing', async () => {

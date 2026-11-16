@@ -13,7 +13,10 @@ import type { BackgroundConnectionProviders } from '@flux/core';
 export interface AiConnectionServerComposition {
   policy: AiEndpointPolicy;
   providers: BackgroundConnectionProviders;
-  /** With `apiKey`, Anthropic, OpenAI and Gemini list the models of that key; without one they answer `needs_key`. */
+  /**
+   * With `apiKey`, Anthropic, OpenAI and Gemini list the models of that key; without one they answer `needs_key`. OpenRouter and an endpoint
+   * are read with the key when one is given, and without it otherwise.
+   */
   listModels(provider: AiProviderKind, baseUrl: string | null, apiKey?: string): Promise<AiModelList>;
 }
 
@@ -55,7 +58,8 @@ export function aiConnectionServerComposition(env: NodeJS.ProcessEnv): AiConnect
     providers: { endpoints: endpointPolicyPort(policy), toolCheck: providerToolCheck({ ...keyed }), keyModels: (provider, apiKey) => listsWithKey(provider) ? keyModels(provider, apiKey) : Promise.resolve({ provider, status: 'needs_key', models: [], checkedOn: new Date().toISOString().slice(0, 10) }) },
     listModels: (provider, baseUrl, apiKey) => (listsWithKey(provider)
       ? (apiKey ? keyModels(provider, apiKey) : listProviderModels(provider, baseUrl, { policy }))
-      // OpenRouter's list is also its price list (#1465); a check stack asks its mock for it (`keyListingOptions`).
-      : listProviderModels(provider, baseUrl, provider === 'openrouter' ? keyed : { policy })),
+      // OpenRouter's list is also its price list (#1465); a check stack asks its mock for it (`keyListingOptions`). A key the person has
+      // typed goes with it, for an endpoint that lists its models only to a key (CA-2).
+      : listProviderModels(provider, baseUrl, provider === 'openrouter' ? keyed : { policy }, apiKey)),
   };
 }

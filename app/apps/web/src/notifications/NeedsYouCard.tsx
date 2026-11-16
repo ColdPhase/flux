@@ -6,6 +6,7 @@ import { ClampedWords } from '../assistant/ClampedWords';
 import { peopleNamed } from '../assistant/peopleNamed';
 import { useJoinCall } from '../live/useJoinCall';
 import { useAgentHue } from '../agents/hues';
+import { bareAgent, fromWords } from './needsYou';
 
 /** How an item is put off: Not now (until tomorrow morning, S11) or an agent's suggestion declined. */
 export type SnoozeChoice = 'tomorrow' | 'decline';
@@ -131,17 +132,19 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   // Its name says who and where as its muted line does ("Question from Jonas in Rain barrel monitor: …"), also on a phone row, which has no room
   // to draw the space (#1424): a question's title is what was asked, not a sentence that names them.
   const label = run ? `${run.agentName}, your agent: ${item.title}`
-    : `${[word, item.from?.name ? `from ${item.from.name}` : null, item.about ? `about “${item.about.title}”` : item.project ? `in ${item.project.name}` : null].filter(Boolean).join(' ')}: ${item.title}`;
+    : `${[word, item.from?.name ? `from ${fromWords(item.from)}` : null, item.about ? `about “${item.about.title}”` : item.project ? `in ${item.project.name}` : null].filter(Boolean).join(' ')}: ${item.title}`;
   const meta = (run ? ['Your agent', project]
     : decision ? ['Decision', project] : item.kind === 'blocked' ? [word, item.blocked?.waitedBy ? 'waits for you' : 'your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
-  const who = run?.agentName ?? item.from?.name ?? null;
+  const who = run?.agentName ?? (item.from ? fromWords(item.from) : null);
+  // An agent's one label says "agent" in its words; only an agent named without its owner keeps the Agent tag.
+  const tagged = bareAgent(item.from);
   const asked = item.agentQuestion ?? null;
   // A row of any kind is one muted line, "Kind · who · space", then the title (README §7 Inbox, #1424): a decision "Decision · Maja · Community garden
   // sensors", a question or a mention "Question · Jonas · Rain barrel monitor", an agent's question "Question · Reviewer · Agent · …", a blocked task
   // "Blocked · waits for you · …". No row carries the time: the open item does.
   const rowParts: ReactNode[] = [
     word,
-    ...(who ? [<Fragment key="who">{who}{item.from?.kind === 'agent' ? <> <AgentTag /></> : null}</Fragment>] : []),
+    ...(who ? [<Fragment key="who">{who}{tagged ? <> <AgentTag /></> : null}</Fragment>] : []),
     ...(asked?.task ? [`on #${asked.task.number}`] : []),
     ...(item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'waits for you' : 'your task'] : []),
     ...(project ? [project] : []),
@@ -224,7 +227,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         {full && decision ? (
           <div className="nyc__head">
             <span className="nyc__who">
-              <b>{who}</b>{item.from?.kind === 'agent' ? <AgentTag /> : null}
+              <b>{who}</b>{tagged ? <AgentTag /> : null}
               <span className="nyc__meta">{meta} · {when(item.at)}</span>
             </span>
           </div>
@@ -234,8 +237,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
           </p>
         ) : (
           <p className="nyc__eyebrow">
-            {asked ? <><b>{who}</b><AgentTag />{askedMeta ? <span className="nyc__meta">{[askedMeta, when(item.at)].filter(Boolean).join(' · ')}</span> : null}</>
-              : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' || run ? <AgentTag /> : null}<span className="nyc__meta">{[meta, item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
+            {asked ? <><b>{who}</b>{tagged ? <AgentTag /> : null}{askedMeta ? <span className="nyc__meta">{[askedMeta, when(item.at)].filter(Boolean).join(' · ')}</span> : null}</>
+              : <>{who ? <b>{who}</b> : null}{tagged || run ? <AgentTag /> : null}<span className="nyc__meta">{[meta, item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
           </p>
         )}
         <Title className="nyc__title">{titleOf}</Title>

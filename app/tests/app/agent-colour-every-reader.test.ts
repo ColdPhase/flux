@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import {
-  INBOX_PATH, NEEDS_YOU_PATH, SEARCH_PATH, inboxItemPath, taskAgentPath, taskPeoplePath,
-  type ConversationRootWindow, type InboxItem, type InboxResponse, type NeedsYouResponse, type ProjectPerson, type SearchResponse, type TaskAgentState,
-  type TaskDiscussion, type TaskPeople, type WorkDetailProjection, type WorkItem, type WorkReferenceRows,
+  INBOX_PATH, NEEDS_YOU_PATH, SEARCH_PATH, inboxItemPath, projectObjectNoticesPath, projectTaskNoticesPath, taskAgentPath, taskPeoplePath,
+  type ConversationRootWindow, type InboxItem, type InboxResponse, type NeedsYouResponse, type ObjectNotice, type Page, type ProjectPerson, type SearchResponse,
+  type TaskAgentState, type TaskCreationNotice, type TaskDiscussion, type TaskPeople, type WorkDetailProjection, type WorkItem, type WorkReferenceRows,
 } from '@flux/contracts';
 import { conversationUseCases, type Principal } from '@flux/core';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
@@ -115,5 +115,23 @@ describe('every reader gets an agent in its own colour (#1528)', () => {
     // Search: the agent's message is its face in its colour.
     const found = await waitFor(async () => (await get<SearchResponse>(reader, `${SEARCH_PATH}?q=${word}`)).items.find((item) => item.kind === 'message'), 'the remark is found');
     assert.equal(found.agentColour, 'plum', 'the search result');
+  });
+
+  test('every reader is told whose agent it is: its created-task line, its proposed-decision line and the Inbox name its owner (v0.2.1 release gate J03/J10/M41)', async () => {
+    const actor = { kind: 'agent' as const, id: agentId };
+    const made = await workUseCases(db).createWork(actor, projectId, { title: 'Order the spare gauge' });
+    const wrens = expectStatus(await reader.browser.request('POST', `/api/v1/projects/${projectId}/work`, {
+      body: { title: 'Paint the gauge post', owner: { kind: 'human', id: reader.id } } }), 201) as WorkItem;
+    const decision = await workUseCases(db).proposeDecision(actor, projectId, { title: 'Paint the post white', affects: [wrens.id] });
+    for (const who of [owner, reader]) {
+      const created = (await get<Page<TaskCreationNotice>>(who, `${projectTaskNoticesPath(projectId)}?limit=50`)).items.find((item) => item.workId === made.id);
+      assert.deepEqual(created?.createdBy.projectOwner, { kind: 'human', id: owner.id }, 'the created-task line names its owner');
+      const proposed = (await get<Page<ObjectNotice>>(who, `${projectObjectNoticesPath(projectId)}?limit=50`)).items.find((item) => item.decisionId === decision.id);
+      assert.deepEqual(proposed?.by.projectOwner, { kind: 'human', id: owner.id }, 'the proposed-decision line names its owner');
+    }
+    // Wren's Inbox (and Home, which lists it): "from Planner · Colour's agent", never a bare "Planner".
+    const note = await waitFor(async () => (await get<NeedsYouResponse>(reader, NEEDS_YOU_PATH)).items.find((item) => item.decision?.id === decision.id),
+      'the proposal reaches Wren');
+    assert.deepEqual([note.from?.kind, note.from?.name, note.from?.owner], ['agent', 'Planner', { id: owner.id, name: 'Colour Ines' }]);
   });
 });

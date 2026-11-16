@@ -1,6 +1,7 @@
 import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
+import { agentWords } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, useArrivals, useClearOfToast } from '../ui';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, ShownObjects, shownObjects, TaskObjectRow, useCreateWorkFromMessage } from '../work/inline';
@@ -723,8 +724,11 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const starts = startsUnread(entry);
                 const divider = starts ? <Fragment key={`unread-${key}`}>{dayLine}<UnreadDivider /></Fragment> : dayLine;
                 // The fold names people as the cards inside it do (personas-28): the full name, and "(you)" for the reader.
+                // An agent by its one label, "Assistant · Ola's agent", as its card says it (v0.2.1 release gate: two people's agents are told apart).
                 const foldName = (notice: TaskCreationNotice) => {
                   const name = notice.createdBy.name ?? (notice.createdBy.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
+                  const owner = notice.createdBy.kind === 'agent' ? agentAuthorOwner(notice.createdBy, owners) : undefined;
+                  if (owner) return agentWords(name, owner);
                   return notice.createdBy.kind === 'human' && notice.createdBy.id === meId ? `${name} (you)` : name;
                 };
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}

@@ -73,8 +73,16 @@ describe('pictures in the agent\'s private chat (#1217)', () => {
       assert.match(text(said.message), words, url);
     }
     assert.deepEqual(await pictures(run.runId), []);
-    // A chat's place is no space: naming one is refused like any change outside the run's place.
-    assert.match(text((await run.call('flux_attach_image', { projectId: scene.place.id, url: at('/pic/leaf.webp') })).message), /OUTSIDE_RUN_PLACE/);
+    await scene.complete(run.runId);
+  });
+
+  test('a project the agent names in its chat (one it read in) changes nothing: the picture still goes on the chat\'s answer (O41)', async () => {
+    const run = await chatRun();
+    const said = await run.call('flux_attach_image', { projectId: scene.place.id, clientCommandId: randomUUID(), url: at('/pic/leaf.webp') });
+    assert.equal(result(said.message)?.isError, undefined, text(said.message));
+    assert.match(text(said.message), /only your owner sees it/);
+    assert.equal((await pictures(run.runId)).length, 1);
+    assert.deepEqual(await changesOf(run.runId), [], 'no space was changed');
     await scene.complete(run.runId);
   });
 });

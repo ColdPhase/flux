@@ -71,10 +71,11 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   if (!current?.reader.enabled) refuse(PICTURE_WORDS.off);
   const runId = claims.run?.id ?? claims.approval?.runId ?? null;
   if (!runId) refuse('Only an answer to /ai in a space can carry a picture.');
+  // The agent's private chat (founder decision on #1217, 2026-11-12): no space, no change log; the picture is part of its answer to its owner.
+  // It goes to the run's own answer, never to a space, so a project the call names (one the agent read in) changes nothing there.
+  if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, input, claims);
   // A run changes only its place (AST-5.3): the same refusal as every other change tool, before anything is read.
   if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
-  // The agent's private chat (founder decision on #1217, 2026-11-12): no space, no change log; the picture is part of its answer to its owner.
-  if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, input, claims);
   // What decides whether to fetch, read before anything is sent: the run, its space, and Ask me first. A run's own call checks its token
   // and place first; an owner's Approve is checked again by the change executor, and here only for what makes the fetch pointless.
   const facts = await db.transaction(async (tx) => {

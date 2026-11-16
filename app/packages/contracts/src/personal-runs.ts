@@ -373,6 +373,11 @@ export interface AssistantRun {
   /** While queued: the run it waits behind, so the line can say "Next: …" or "Finishing your daily check first". Optional for older servers. */
   behind?: AssistantRunBehind | null;
   /**
+   * A run on a task (`kind: 'task'`): the task it works on, so the one working card names the agent and the task and opens it (v0.2.1 release
+   * gate, M18). Absent for other runs and for a task that is gone.
+   */
+  task?: { id: string; number: number; title: string };
+  /**
    * A run that ended without an answer and asked for web addresses: every address the server sent a request to, in Flux's words ("Read on the web:",
    * "Requested, not read:"), for its end line (#953). Absent otherwise; an answer lists them itself.
    */

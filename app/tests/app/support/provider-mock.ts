@@ -12,6 +12,7 @@ import { toolAnswer, toolWireOf } from './tool-answers.js';
  *
  *   POST /anthropic/v1/messages, /anthropic/v1/messages/count_tokens   Anthropic Messages
  *   POST /openai/v1/chat/completions, GET /openai/v1/models          OpenAI-compatible Chat Completions
+ *   GET /keyed/v1/models                                             an endpoint that lists its models only to a key
  *   POST /openai/v1/responses                                        OpenAI's Responses API (#954)
  *   GET  /openrouter/v1/models                                       a priced model list (OpenRouter's shape)
  *   POST /__script { wire, mode, text, usage, cost, status, delayMs, search }   the next answers of one wire format
@@ -200,6 +201,9 @@ const server = http.createServer((request, response) => {
     if (request.method === 'GET' && url.pathname === '/openai/v1/models')
       return json(response, 200, { object: 'list', data: [{ id: 'llama3.1:8b', object: 'model' }, { id: 'qwen2.5:7b-instruct', object: 'model' }, { id: 'not a valid id', object: 'model' }] });
     if (request.method === 'GET' && url.pathname === '/openrouter/v1/models') return json(response, 200, OPENROUTER_MODELS);
+    // An endpoint that lists its models only to a key (v0.2.1 release gate, O05): 401 without a bearer or with a refused one.
+    if (request.method === 'GET' && url.pathname === '/keyed/v1/models')
+      return key && !key.includes('refused') ? json(response, 200, { object: 'list', data: [{ id: 'llama3.1:8b', object: 'model' }] }) : json(response, 401, { error: { message: 'invalid api key' } });
     if (wire === 'other') return json(response, 404, { error: 'not found' });
     const script = scripts[wire];
     const answer = () => {

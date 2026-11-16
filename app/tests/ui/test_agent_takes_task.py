@@ -22,7 +22,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -62,16 +62,18 @@ class AgentTakesTask(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, who: str | None) -> BrowserContext:
+    def context(self, who: str | None, phone: bool = False) -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "viewport": DESKTOP, "device_scale_factor": 1}
+        if phone:
+            options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
         context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
-    def page(self, who: str | None) -> Page:
-        page = self.context(who).new_page()
+    def page(self, who: str | None, phone: bool = False) -> Page:
+        page = self.context(who, phone).new_page()
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
@@ -294,6 +296,17 @@ class AgentTakesTask(unittest.TestCase):
         task = self.task(self.page("ada"), "Weigh the full barrel on Thursday", KAI["id"])
         self.give(task)
         self.agent_line(kai, task["id"], "working")
+        # One card for the one run, on the computer's sidebar and the phone's Home (v0.2.1 release gate, M18/M41): it names the agent and the
+        # task and has Stop; no second card calls the agent "not signed in yet", and none says "Your assistant · writing an answer".
+        for phone in (False, True):
+            home = self.page("kai", phone)
+            home.goto("/")
+            card = home.locator("[data-ai-surface='working-assistant']")
+            expect(card).to_have_count(1)
+            expect(card).to_have_attribute("aria-label", f"Planner · Working on #{task['number']} · Weigh the full barrel on Thursday")
+            expect(card.get_by_role("button", name="Stop Planner")).to_be_visible()
+            expect(home.locator("[data-ai-surface='working-agent']")).to_have_count(0)
+            expect(home.get_by_text("not signed in yet")).to_have_count(0)
         # Ada owns the space: she may stop Kai's agent, though she may not prompt it.
         page = self.open_task("ada", task["id"])
         line = page.get_by_role("complementary", name="Details").locator("[data-agent-line='working']")
@@ -308,6 +321,12 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
         view = self.open_task("kai", task["id"])
         expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by Ada Kowalska.")).to_be_visible()
+        # The history says a stop, not a take or a finish (v0.2.1 release gate, M21), to each reader in their words.
+        history = view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")
+        expect(history).to_contain_text("stopped Planner; the task is back with you")
+        expect(history).not_to_contain_text("its agent finished")
+        ada_view = self.open_task("ada", task["id"])
+        expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Planner; the task is back with Kai")
         # #919: the stop is reported to the agent's chat too, by name.
         lines = self.api(kai, "GET", f"/api/v1/agent-chats/{self.ids['agent']}/messages", status=200)["items"]
         self.assertIn(f"Stopped by Ada Kowalska: #{task['number']} Weigh the full barrel on Thursday", [line["body"] for line in lines])

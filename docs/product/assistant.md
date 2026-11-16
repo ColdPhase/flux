@@ -332,7 +332,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   onto its message in the task discussion. They never go to the Inbox. The private conversation
   gets one line when a run on a task ends: "Done: #4 …", "Blocked: #4 …" (the task is waiting and stays with the agent), or "Stopped by Maja: #4 …" (a limit or AI
   turned off is the task's own state line, not a report). The count and Undo are what still stands of
-  the run's changes when the line is read. The agent's row in Messages and in the sidebar shows an
+  the run's changes when the line is read. Undo on a "Done: #4 …" line takes back the whole finish: the
+  run's changes and the Done its agent marked, so the task is back with its owner in Doing, as the task's
+  own Done Undo leaves it, while it is still Done and still the agent's (v0.2.1 release gate). The agent's row in Messages and in the sidebar shows an
   unread dot until its owner opens the chat (#919).
 - **Notifications.** "Only what needs me" includes an agent waiting for you: when a run (or a local
   client) starts waiting for your OK, you alone are told once, and the notification opens its Inbox

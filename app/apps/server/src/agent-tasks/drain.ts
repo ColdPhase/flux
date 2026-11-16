@@ -90,7 +90,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
    * The task goes back to the person who owns the agent. `by` is who changes it; `asAgent` names the agent that hands it back for
    * review, which tells its owner (an Inbox item and a notification, AG-7), and falls back to the person if the agent cannot write.
    */
-  async function giveBack(tx: Transaction, work: WorkRecord, ownerId: string, by: string, asAgent?: string, via: 'agent_rule' | 'agent_unable' = 'agent_rule') {
+  async function giveBack(tx: Transaction, work: WorkRecord, ownerId: string, by: string, asAgent?: string, via: 'agent_rule' | 'agent_unable' | 'agent_stopped' = 'agent_rule') {
     const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
     if (current.owner?.kind !== 'agent') return;
     const give = (principal: Principal) => attempt('give back', () => workUseCases(tx as unknown as Database).updateWork(principal, work.id,
@@ -325,7 +325,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const by = run.stopRequestedBy ? await rows.personName(run.stopRequestedBy) : null;
       // With AI off the agent cannot write here any more: the state line tells its owner (C-17), and the task goes back.
       if (run.endReason !== 'ai_off') await say(tx, work, run.agentId, `Stopped${by ? ` by ${by}` : ''}.`, `stopped:${run.id}`);
-      await giveBack(tx, work, run.ownerUserId, run.stopRequestedBy ?? run.ownerUserId);
+      // A stop, not a finish: the task's history says who stopped it and that it is back with its owner (v0.2.1 release gate, M21).
+      await giveBack(tx, work, run.ownerUserId, run.stopRequestedBy ?? run.ownerUserId, undefined, run.stopRequestedBy ? 'agent_stopped' : 'agent_rule');
       return;
     }
     // The provider's limit paused it: its continuation is queued and starts by itself.

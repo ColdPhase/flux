@@ -101,8 +101,11 @@ export interface NeedsYouItem {
   /** The reason or message, one or two lines. */
   detail: string;
   project: { id: string; name: string } | null;
-  /** Who it comes from: an agent or a person; null for a blocked task of yours. */
-  from: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour } | null;
+  /**
+   * Who it comes from: an agent or a person; null for a blocked task of yours. An agent carries its owner (`owner`, by name) while that person
+   * can read the item's space (#339 AC-2), so every reader sees its one label, "Planner · Ada's agent" (v0.2.1 release gate).
+   */
+  from: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour; owner?: { id: string; name: string } } | null;
   at: string;
   /** Where it opens in full (a same-origin path). */
   url: string;

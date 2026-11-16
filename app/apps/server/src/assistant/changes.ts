@@ -3,7 +3,9 @@ import {
   ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
   conversationAssistantChangesPath, projectAssistantChangesPath, WORK_LIMITS, type AssistantChange, type MessageFile, type AssistantChangeDecision, type AssistantObjectType, type AssistantRunUndone,
 } from '@flux/contracts';
-import { assistantChangeRows, changeGroup, isCompanyGuest, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { randomUUID } from 'node:crypto';
+import { and, desc, eq } from 'drizzle-orm';
+import { assistantChangeRows, changeGroup, isCompanyGuest, schema, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
   type Principal } from '@flux/core';
 import { CHANGED_SINCE, REMOVAL_OPERATIONS, requireAiOn, undoChange } from './undo.js';
@@ -25,6 +27,7 @@ import { registerAgentQuestionActions } from '../agent-connection/agent-question
 import { registerAgentGithubActions } from '../agent-connection/github-actions.js';
 import { registerAgentProposal } from '../agent-connection/mcp-tools.js';
 import type { Provider as GithubProvider } from '../github/adapters.js';
+import { workUseCases } from '../work/adapters.js';
 
 // The owner's side of an agent's changes (F-036 AG-3, AG-7, #855): the change line and Undo on the agent's message, and the
 // waiting changes with Approve, Edit, Skip, Delete and Keep. Only the owner sees or decides a waiting change, in their own
@@ -138,8 +141,30 @@ const statusOf = (row: AssistantChangeRow) => {
   return typeof changes?.status === 'string' ? changes.status : null;
 };
 
+/**
+ * A run on a task that its agent finished (AG-5, Ask me first off: "marks the task Done … with Undo"): when its owner undoes the run's changes, the
+ * Done goes too, the way the task's own Done Undo does it (TaskAgentState): the task is back with the owner, in Doing, where it was while the agent
+ * worked (v0.2.1 release gate, M09/M52). Only while the task is still Done and still the agent's, and only for this run, the agent's last on it.
+ * Returns the task's number when it was taken back.
+ */
+async function takeBackFinishIn(db: Database, principal: Principal, runId: string): Promise<number | null> {
+  if (principal.kind !== 'human') return null;
+  const r = schema.personalRuns;
+  const [run] = await db.select({ kind: r.kind, workId: r.workId, agentId: r.agentId, ownerUserId: r.ownerUserId }).from(r).where(eq(r.id, runId));
+  if (!run || run.kind !== 'task' || !run.workId || run.ownerUserId !== principal.id) return null;
+  const [last] = await db.select({ id: r.id }).from(r).where(and(eq(r.workId, run.workId), eq(r.agentId, run.agentId), eq(r.kind, 'task')))
+    .orderBy(desc(r.createdAt), desc(r.id)).limit(1);
+  if (last?.id !== runId) return null;
+  const work = workUseCases(db);
+  const task = await work.getWork(principal, run.workId);
+  if (task.status !== 'done' || task.owner?.kind !== 'agent' || task.owner.id !== run.agentId) return null;
+  await work.updateWork(principal, task.id, { owner: { kind: 'human', id: principal.id }, status: 'in_progress', clientCommandId: randomUUID() }, task.version);
+  return task.number;
+}
+
 export function assistantChangeUseCases(db: Database, clock: () => Date = () => new Date(), github: GithubProvider | null = null) {
   const rows = () => assistantChangeRows(db as DbExecutor);
+  const takeBackFinish = (principal: Principal, runId: string) => takeBackFinishIn(db, principal, runId);
   const owner = (principal: Principal) => {
     if (principal.kind !== 'human' || !principal.id) throw missing();
     return principal.id;
@@ -450,7 +475,10 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         if (message === null) undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);
         changes.push({ change: await viewOne((await rows().find(row.id))!, principal), message });
       }
-      return { changes, undone, changedSince, message: undoSentence(undone, changedSince) };
+      // The report's Undo takes back the whole finish (AG-3, AG-5): with its changes, the Done its agent marked, as the task's own Done Undo does.
+      const back = list.length && undone > 0 ? await takeBackFinish(principal, runId) : null;
+      const said = undoSentence(undone, changedSince);
+      return { changes, undone, changedSince, message: back ? `${said}. #${back} is back with you` : said };
     },
     /**
      * The owner's waiting changes in projects they can still read; the Inbox groups them into one item per run (AG-7). A guest

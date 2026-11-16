@@ -219,6 +219,7 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     ...(record.answerBody === null && !['queued', 'reading', 'dispatching'].includes(record.status) ? await webSourcesOf(ports, record) : {}),
     authority: record.authority, backgroundLabel: record.backgroundLabel,
     behind: record.status === 'queued' && !record.resumeAt ? await behindView(ports, record) : null,
+    ...(record.kind === 'task' && record.workId ? await ports.runs.workLabel(record.workId).then((label) => (label ? { task: { id: record.workId!, number: label.number, title: label.title } } : {})) : {}),
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
     completedAt: record.completedAt ? iso(record.completedAt) : null,
     shownAt: record.shownAt ? iso(record.shownAt) : null, dismissedAt: record.dismissedAt ? iso(record.dismissedAt) : null,

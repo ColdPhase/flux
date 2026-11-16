@@ -266,8 +266,9 @@ export const aiModelSeesPictures = (provider: AiProviderKind, model: string, eng
 
 /**
  * `POST /api/v1/ai-model-lists`: the provider's models, fetched by the server (CA-2, #1218). OpenRouter and an OpenAI-compatible
- * endpoint are listed without a key. Anthropic, OpenAI and Gemini are listed with the key the person is adding (`apiKey`), and that
- * one call is also the key's test; without a key they answer `needs_key`.
+ * endpoint are listed with the key the person has typed (`apiKey`), or without a key when none is typed; a key they refuse is
+ * `key_refused`. Anthropic, OpenAI and Gemini are listed with the key the person is adding, and that one call is also the key's test;
+ * without a key they answer `needs_key`.
  */
 export const AI_MODEL_LISTS_PATH = '/api/v1/ai-model-lists';
 
@@ -275,7 +276,7 @@ export interface AiModelListQuery {
   provider: AiProviderKind;
   /** `openai_compatible` only. */
   baseUrl?: string;
-  /** Anthropic, OpenAI and Gemini: the key being added. It is only sent to its provider, never stored or echoed. */
+  /** The key being added (for OpenRouter and an endpoint, when one is typed). It is only sent to that provider or endpoint, never stored or echoed. */
   apiKey?: string;
 }
 

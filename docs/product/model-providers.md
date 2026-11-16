@@ -75,8 +75,12 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   - **A key is saved only on a model.** Enter in the key field reads the models like leaving it, Connect before a model is
     known (the list is still being read, or none was) says so, and the server still refuses a command without a model
     (422 `AI_MODEL_REQUIRED`) before it sends the key anywhere; Flux's server never picks one for a client that sends none.
-  - **OpenRouter and an OpenAI-compatible endpoint** keep their `/models` list read without a key
-    (an endpoint's server usually answers it without one), and the free field as a fallback.
+  - **OpenRouter and an OpenAI-compatible endpoint** read their `/models` list with the key the person
+    has typed in the form, when there is one (an endpoint that lists its models only to a key answers
+    401 without it), and without a key when none is typed yet (coordinator decision, 2026-11-16, release
+    gate of v0.2.1). A key they refuse says "This key was refused by …", as for the other providers.
+    The key goes only into that request's `Authorization` header, through the same endpoint guard
+    (CA-4), never into a log or a response. The free field stays as a fallback.
   - **Fresh and bounded.** A key's list is read again when its picker opens and the last reading is
     more than 6 hours old, and with Try again. A saved key's list is read by the worker, the only
     process that opens a stored key (CA-4); a key being added is listed by the API with the key the

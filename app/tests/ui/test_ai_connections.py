@@ -199,6 +199,25 @@ class AiConnectionSettings(unittest.TestCase):
         self.assertLess(cancel["x"], connect["x"], "Cancel is left of the one primary, as in the window's first step")
         self.assertGreater(connect["x"] + connect["width"], page.viewport_size["width"] * 0.5, "the pair sits on the right")
 
+    def test_03c_an_endpoint_that_wants_a_key_lists_its_models_with_the_key_typed(self) -> None:
+        """Release gate O05: "Show available models" reads the list with the key in the field; a refused key says so under it."""
+        page = self.page()
+        page.goto("/settings/ai-connections")
+        page.get_by_role("button", name="Add a key").click()
+        choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
+        page.get_by_label("Endpoint base URL").fill("http://openai-mock:8091/keyed/v1")
+        key = page.get_by_label("API key", exact=True)
+        key.fill(KEYS["openai_compatible"])
+        page.get_by_role("button", name="Show available models").click()
+        expect(page.get_by_role("status").filter(has_text="2 models from OpenAI-compatible endpoint")).to_be_visible()
+        self.assertEqual(values(page.get_by_label("Model", exact=True)), ["llama3.1:8b", "qwen2.5:7b-instruct", "__other__"])
+        asked = [item["authorization"] for item in mock_requests() if item["path"] == "/keyed/v1/models"]
+        self.assertEqual(asked[-1], f"Bearer {KEYS['openai_compatible']}", "the typed key goes with the listing")
+        key.fill("local-refused-placeholder")
+        page.get_by_role("button", name="Show available models").click()
+        expect(page.get_by_role("alert").filter(has_text="This key was refused by the endpoint. Check it and try again.")).to_be_visible()
+        self.no_key_anywhere(page)
+
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()
         page.goto("/settings/ai-connections")
@@ -441,7 +460,9 @@ class AiConnectionSettings(unittest.TestCase):
         expect(window.get_by_role("alert")).to_contain_text("can cost up to $0.27, so the daily budget must be at least that")
         # #1424: the problem is in the budget, so More is open by itself with the field in view.
         expect(window.get_by_label("Daily budget (USD)", exact=True)).to_be_visible()
-        window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
+        # The key was not refused, only the budget: it stays in its field (v0.2.1 release gate, J31).
+        expect(window.get_by_role("alert")).not_to_contain_text("The key was cleared")
+        expect(window.get_by_label("API key", exact=True)).to_have_value(KEYS["anthropic"])
         window.get_by_label("Daily budget (USD)", exact=True).fill("5")
         window.get_by_role("button", name="Connect", exact=True).click()
         expect(window).to_have_count(0)

@@ -16,7 +16,7 @@ import { listAiModels } from './api';
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; so does a key the server
 //   turns away before asking the provider (400 AI_KEY_FORMAT: the key of another provider), in the server's own words. Only a list
 //   that can't be read (a timeout, a 5xx) leaves the plain field with a note (model-providers.md, #1424).
-// - OpenRouter and an OpenAI-compatible endpoint list without a key ("Show available models"), with the plain field as fallback.
+// - OpenRouter and an OpenAI-compatible endpoint list on "Show available models", with the key typed in the field when there is one (an endpoint that wants a key answers 401 without it), with the plain field as fallback.
 //   OpenRouter's list is read as soon as it is chosen: its prices are what an OpenRouter key pays (#1465).
 // No model list is written into Flux: the models are only ever the provider's own (founder direction, Hubert, 2026-11-12), and
 // Flux's price list only prices one.
@@ -63,7 +63,7 @@ const OTHER = '__other__';
 const listFailure = (provider: AiProviderKind, status: Exclude<AiModelList['status'], 'listed'>) => {
   const label = AI_PROVIDERS[provider].label;
   switch (status) {
-    case 'key_refused': return `This key was refused by ${label}. Check it and try again.`;
+    case 'key_refused': return `This key was refused by ${provider === 'openai_compatible' ? 'the endpoint' : label}. Check it and try again.`;
     case 'refused': return 'This endpoint is not allowed on this server. Use a public HTTPS address, or ask the operator to allow a private one.';
     case 'needs_key': return 'Enter the API key first.';
     default: return KEY_LISTED.has(provider)
@@ -113,6 +113,8 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
   const [listing, setListing] = useState<Listing>({ state: 'idle' });
   // The key last listed, so leaving the field again without a change asks nothing; only in memory, like the field itself.
   const listedKey = useRef('');
+  // The key field (it keeps no state of its own): "Show available models" reads an endpoint's or OpenRouter's list with the key typed there.
+  const keyField = useRef<HTMLInputElement>(null);
   const asked = useRef(0);
   const info = provider ? AI_PROVIDERS[provider] : null;
   const keyed = !!provider && KEY_LISTED.has(provider);
@@ -168,7 +170,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
         // and Gemini have their middle family's newest chosen (#1424), and a long keyless list (OpenRouter's, an endpoint's) is left for the owner. An id typed into the plain field while a keyless list was read, and not in it, stays as "Other model id…"
         // instead of being wiped (#1465).
         const current = typed.current;
-        const kept = !query.apiKey && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
+        const kept = !KEY_LISTED.has(kind) && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
         if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : defaultModel(kind, result.models));
         setOther(kept);
       }
@@ -210,7 +212,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
         placeholder="https://llm.example.org/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} aria-describedby={`${id}-endpoint`} /></label>
       <p id={`${id}-endpoint`} className="background-settings__help">A server that works like OpenAI’s, such as Ollama, LM Studio or vLLM. Use an https address.</p>
     </> : null}
-    <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
+    <label>API key<input ref={keyField} name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
       aria-invalid={refused || rejected?.key || undefined} aria-describedby={[keyHelp ? keyHelpId : '', keyProblem ? `${id}-refused` : ''].filter(Boolean).join(' ') || undefined}
       onBlur={(event) => keyLeft(event.currentTarget.value)}
       // Enter before the models are read reads them (the key's test) instead of saving: the form never goes on without a chosen model.
@@ -237,7 +239,11 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
     ) : null}
     <div id={`${id}-model`} className="background-settings__model-help">
       {info?.keylessModelList
-        ? <Button disabled={disabled || listing.state === 'reading' || (provider === 'openai_compatible' && !baseUrl.trim())} busy={listing.state === 'reading'} onClick={() => void read({})}>Show available models</Button>
+        ? <Button disabled={disabled || listing.state === 'reading' || (provider === 'openai_compatible' && !baseUrl.trim())} busy={listing.state === 'reading'} onClick={() => {
+          // With the key the person has typed, if any: an endpoint that lists its models only to a key answers 401 without it (O05).
+          const apiKey = keyField.current?.value.trim() ?? '';
+          void read(apiKey.length >= 8 ? { apiKey } : {});
+        }}>Show available models</Button>
         : null}
       <p className="background-settings__help" role="status">{status || (provider && !keyed && !dropdown ? 'Type the model id exactly as the provider names it.' : '')}</p>
     </div>

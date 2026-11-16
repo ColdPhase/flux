@@ -5,6 +5,7 @@ import { aiAllowedInProject } from '../access/ai-gate.js';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { needsYouUseCases } from './adapters.js';
+import { withAgentOwners } from './agent-owners.js';
 import { assistantChangeUseCases } from '../assistant/changes.js';
 import type { Provider as GithubProvider } from '../github/adapters.js';
 
@@ -34,10 +35,18 @@ export async function needsYouRoutes(app: FastifyInstance, { db, sessions, githu
   } });
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
-  app.get(NEEDS_YOU_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await use.list(await principal(request))));
+  app.get(NEEDS_YOU_PATH, async (request, reply) => {
+    const queue = await use.list(await principal(request));
+    await withAgentOwners(db, queue.items);
+    return reply.header('cache-control', 'no-store').send(queue);
+  });
 
   // What "2 for later" and "4 done today" open (#1424 E); bringing one back is the DELETE below.
-  app.get(NEEDS_YOU_ASIDE_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await use.aside(await principal(request))));
+  app.get(NEEDS_YOU_ASIDE_PATH, async (request, reply) => {
+    const aside = await use.aside(await principal(request));
+    await withAgentOwners(db, [...aside.later, ...aside.done].map((entry) => entry.item));
+    return reply.header('cache-control', 'no-store').send(aside);
+  });
 
   app.post<{ Params: { key: string }; Body: ResolveNeedsYouCommand }>(`${NEEDS_YOU_PATH}/:key`, { schema: { body: command } },
     async (request) => use.resolve(await principal(request), request.params.key, request.body));

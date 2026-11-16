@@ -72,7 +72,12 @@ function openRouterRate(pricing: { prompt?: unknown; completion?: unknown; overr
   return { inputMicrosPerMTok: input, outputMicrosPerMTok: output, ...(tiers.length ? { tiers } : {}) };
 }
 
-export async function listProviderModels(provider: AiProviderKind, baseUrl: string | null, options: ModelListOptions = {}): Promise<AiModelList> {
+/**
+ * OpenRouter's and an endpoint's `/models`. Without a key it is read as most such servers answer it; with the key the person has just typed
+ * (an endpoint that wants one answers 401 without it), the key goes only into the `Authorization` header of this one request, never into
+ * the address, the result or a log, and a 401 or 403 is that key refused.
+ */
+export async function listProviderModels(provider: AiProviderKind, baseUrl: string | null, options: ModelListOptions = {}, apiKey?: string): Promise<AiModelList> {
   const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs = 8_000, maxResponseBytes = provider === 'openrouter' ? OPENROUTER_LIST_MAX_BYTES : MODEL_LIST_MAX_BYTES, resolve = systemResolver } = options;
   const checkedOn = (options.now?.() ?? new Date()).toISOString().slice(0, 10);
   const result = (status: AiModelList['status'], models: AiListedModel[] = []): AiModelList => ({ provider, status, models, checkedOn });
@@ -82,7 +87,8 @@ export async function listProviderModels(provider: AiProviderKind, baseUrl: stri
   if (provider === 'openai_compatible' && await checkEndpoint(url, policy, resolve)) return result('refused');
   try {
     const response = await guardedFetch(policy, { timeoutMs, maxResponseBytes }, resolve)(`${url.replace(/\/+$/, '')}/models`,
-      { method: 'GET', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
+      { method: 'GET', headers: { accept: 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }, signal: AbortSignal.timeout(timeoutMs) });
+    if (apiKey && (response.status === 401 || response.status === 403)) return result('key_refused');
     if (response.status !== 200) return result('unavailable');
     const body = await response.json() as { data?: unknown };
     if (!body || !Array.isArray(body.data)) return result('unavailable');

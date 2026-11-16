@@ -91,8 +91,9 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
       name: { type: 'string', minLength: 1, maxLength: 80 }, dailyBudgetCents: dailyBudget } } },
   }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
-  // A provider's models, listed by this server through the endpoint guard (PROV-1): OpenRouter and an endpoint without a key; Anthropic,
-  // OpenAI and Gemini with the key being added, which is its test (CA-2, #1218). The key is never stored or echoed here.
+  // A provider's models, listed by this server through the endpoint guard (PROV-1): OpenRouter and an endpoint with the key the person has
+  // typed, or without one when none is typed; Anthropic, OpenAI and Gemini with the key being added, which is its test (CA-2, #1218). The key
+  // is never stored, logged or echoed here.
   app.post<{ Body: AiModelListQuery }>(AI_MODEL_LISTS_PATH, {
     schema: { body: { type: 'object', additionalProperties: false, required: ['provider'], properties: {
       provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },

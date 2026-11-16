@@ -124,7 +124,8 @@ function endedWords(run: AssistantRun): string | null {
   // AG-10: turning AI off in the space stops a run at once, and its owner is told in the thread where they asked.
   if (run.endReason === 'ai_off') return 'AI was turned off in this space, so your assistant stopped.';
   if (run.endReason === 'mcp_results_too_large') return 'This needed more reading than one request can carry. Nothing was posted.';
-  if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget. Nothing more was sent today.';
+  // When it comes back and what the owner can do (v0.2.1 release gate, J34): the day's budget starts again tomorrow, and Connect AI raises it.
+  if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget, so nothing more was sent today. It starts again tomorrow, or raise the daily budget in Settings › AI › Connect AI.';
   if (run.endReason === 'credits') return 'API credits used up. API requests stop until your next monthly credits arrive.';
   if (onRuntime(run)) {
     const words = runtimeEndedText(run);

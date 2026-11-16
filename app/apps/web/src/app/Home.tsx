@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, useToast } from '../ui';
 import { Face, kindWord } from '../notifications/NeedsYouCard';
-import { useNeedsYou } from '../notifications/needsYou';
+import { bareAgent, fromWords, useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { WaitingSpaces } from '../encryption/LockedSpace';
 import { SourceLink } from '../returns/SourceLink';
@@ -18,7 +18,8 @@ import './home.css';
 import { RefLink } from '../place/origin';
 import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
-import type { FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import type { AgentRuntimeStatus, FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import { getRuntime } from '../agent-runtime/api';
 import { openDm } from '../api/direct-messages';
 import { awaitField, stopAwaitingField } from '../ui/keys';
 import { attemptKeys, firstName, startsSpaces } from '../people/api';
@@ -211,7 +212,8 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   if ('decisions' in row) {
     const { decisions } = row;
     const places = [...new Set(decisions.map((item) => item.project?.name).filter((name): name is string => !!name))];
-    const from = nameList(decisions.map((item) => item.from?.name).filter((name): name is string => !!name));
+    // Each by its one label: two people's agents both called "Assistant" are told apart by whose they are (v0.2.1 release gate).
+    const from = nameList(decisions.flatMap((item) => (item.from?.name ? [fromWords(item.from)] : [])));
     return (
       <HomeRow to="/inbox" state={{ select: decisions[0]!.key }} face={<span className="nyc__face nyc__face--icon"><Icon name="flag" size={16} /></span>}
         title={`${decisions.length} ${decisions.length === 1 ? 'decision' : 'decisions'} waiting`}
@@ -222,9 +224,10 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   const run = item.assistantChanges ?? null;
   // A question in a decision's discussion says which decision it is about, as the Inbox does (#1424, persona round 8).
   const project = item.about ? `about “${item.about.title}”` : item.project?.name ?? null;
-  // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion says only "Agent", as the Inbox does.
+  // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion names it by its one label,
+  // "Reviewer · Ada's agent", as the Inbox does (only an agent whose owner the read does not name says "Agent").
   const meta = (run ? [run.agentName, 'Your agent', project]
-    : [kindWord(item), item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');
+    : [kindWord(item), item.from ? fromWords(item.from) : null, bareAgent(item.from) ? 'Agent' : null, project]).filter(Boolean).join(' · ');
   // A blocked task says what it waits for under its title, in the words the board, the List and the Inbox use ("Waiting for Basia Wrona · the
   // new seals", persona round 6): one blocked line everywhere.
   return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst
@@ -233,10 +236,21 @@ function WaitingItem({ row }: { row: WaitingRow }) {
 
 type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
 
-const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead, spaceName: (id: string | null) => string) => StepRow> = {
+/**
+ * What Connect AI offers on this server, in the step's one line (v0.2.1 release gate, O01): a plan only where the server runs it, else an API key or
+ * the person's own Claude Code or Codex. Until the server's plans are read, a line that is true either way.
+ */
+function connectOffer(runtime: AgentRuntimeStatus | null | undefined): string {
+  if (!runtime) return 'Choose what your agents run on';
+  const plan = (client: 'claude_code' | 'codex') => runtime.enabled && runtime.clients[client] === 'available';
+  const plans = [plan('claude_code') ? 'Claude' : null, plan('codex') ? 'ChatGPT' : null].filter(Boolean);
+  return plans.length ? `A ${plans.join(' or ')} plan, or an API key` : 'An API key, or Claude Code or Codex on your computer';
+}
+
+const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead, spaceName: (id: string | null) => string, offer: string) => StepRow> = {
   name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
   invite_people: () => ({ key: 'invite_people', icon: 'people', title: 'Invite people', meta: 'Make a link and send it to them', to: '/settings/company?invite=1' }),
-  connect_ai: () => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: 'A Claude or ChatGPT plan, or an API key', to: '/settings/agents?connect=1' }),
+  connect_ai: (_read, _space, offer) => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: offer, to: '/settings/agents?connect=1' }),
   // Said in the space the person landed in (their link's space, else Everyone), by its name (#1424).
   first_message: (read, spaceName) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: `Say hello in ${spaceName(read.firstSpaceId)}`, to: `/projects/${read.firstSpaceId}`, state: { focusComposer: true } }),
   photo: () => ({ key: 'photo', icon: 'person', title: 'Add your photo', meta: 'So people know it’s you', to: '/settings/account' }),
@@ -246,8 +260,8 @@ const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead, spaceName: (id: string
  * The card's rows, at most three: the steps left, with the people who joined with the person's links ("Nia joined · Say hello", #1424) in the place of
  * "Invite people", which is done once a link was made. The steps come first, so a person who joined never pushes one out.
  */
-function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => string): StepRow[] {
-  const steps = read.steps.map((step) => STEP_ROWS[step](read, spaceName));
+function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => string, offer: string): StepRow[] {
+  const steps = read.steps.map((step) => STEP_ROWS[step](read, spaceName, offer));
   const room = Math.max(0, 3 - steps.length);
   const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
   // Everyone who joined is told: the people past the card's rows are named on the last one ("Say hello · Ola joined too"), and each gets
@@ -275,10 +289,13 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   const [pushKey, setPushKey] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [asking, setAsking] = useState(false);
+  // undefined: not read (no Connect AI step, or still reading); null: it could not be read.
+  const [runtime, setRuntime] = useState<AgentRuntimeStatus | null | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController();
     getFirstSteps(controller.signal).then(async (next) => {
       setRead(next);
+      if (next.steps.includes('connect_ai')) getRuntime(controller.signal).then(setRuntime, () => { if (!controller.signal.aborted) setRuntime(null); });
       // Notifications on this device are never a card of their own: only beside a step that is left (the server says so in `offerPush`).
       if (!next.offerPush || !next.steps.length) return;
       const push = await getPushState().catch(() => null);
@@ -288,7 +305,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   }, []);
   const { projects } = useShellData();
   const spaceName = (id: string | null) => projects.find((project) => project.id === id)?.name ?? 'your space';
-  const rows: StepRow[] = read && !hidden ? firstStepRows(read, spaceName) : [];
+  const rows: StepRow[] = read && !hidden ? firstStepRows(read, spaceName, connectOffer(runtime)) : [];
   if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
   const shown = rows.slice(0, 3);
   const pushShown = shown.some((row) => row.key === 'push');

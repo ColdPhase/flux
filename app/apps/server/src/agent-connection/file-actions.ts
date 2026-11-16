@@ -201,13 +201,14 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   if (!current) refuse('Files cannot be attached on this server.');
   const runId = claims.run?.id ?? claims.approval?.runId ?? null;
   if (!runId) refuse('Only an answer to /ai in a space can carry a file.');
-  if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
   // An owner's Approve re-executes the call as it was kept: its file is staged already, so it carries neither the content nor anything to read.
   if (!claims.approval && (input.path === undefined) === (input.content === undefined)) refuse('Give either `path` (a file in your working directory) or `content` (a text file\'s text), not both.');
   const name = (input.name ?? (input.path ? basename(input.path) : '')).trim();
   if (!name) refuse('Give the file a `name`, with its extension.');
-  // The agent's private chat (coordinator decision on #1437, as #1217's pictures): the file is part of its answer to its owner alone.
+  // The agent's private chat (coordinator decision on #1437, as #1217's pictures): the file is part of its answer to its owner alone. It goes to
+  // the run's own answer, never to a space, so a project the call names (one the agent read in) changes nothing and is not its place to check.
   if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, { ...input, name }, claims);
+  if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
   // What is kept of the call (its change line, a waiting change's OK, the fingerprint a retry and an Approve compare) is its name and path, never
   // the content: the file is staged, and a change kept for an OK stays small.
   const kept: AssistantCall | undefined = input.assistantCall ? { ...input.assistantCall, args: Object.fromEntries(Object.entries({ ...input.assistantCall.args, name })

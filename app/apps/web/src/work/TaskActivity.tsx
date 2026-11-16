@@ -70,7 +70,7 @@ const FROM: Record<NonNullable<Source>, string> = {
 };
 
 /** The text after the actor's name; the actor and the time are shown beside it. */
-function changeText(entry: TaskActivityEntry): string {
+function changeText(entry: TaskActivityEntry, meId: string): string {
   const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (its agent finished)'
     : entry.automation === 'agent_unable' ? ' (its agent couldn’t take it)'
     : entry.automation === 'wait_resolved' ? ' (what it waited for is resolved)' : '';
@@ -87,6 +87,8 @@ function changeText(entry: TaskActivityEntry): string {
     // The agent that held it was deleted: say so, rather than a reassignment by the setting (#1003).
     if (entry.automation === 'agent_deleted' && to) return `deleted the agent${from ? ` ${from.name}` : ''}, so it came back to ${to.name}`;
     if (!to) return `removed the owner${from ? ` (${from.name})` : ''}${rule}`;
+    // A person stopped the agent (v0.2.1 release gate, M21): a stop, not a take or a finish, in the words of the task's state line.
+    if (entry.automation === 'agent_stopped') return `stopped ${from?.name ?? 'the agent'}; the task is back with ${to.kind === 'human' && to.id === meId ? 'you' : firstName(to.name)}`;
     // A person who made themselves the owner took it: "Ana took it", never "Ana assigned it to Ana Souza" (personas-26).
     if (to.kind === entry.actor.kind && to.id === entry.actor.id) return `took it${from ? ` from ${from.name}` : ''}${rule}`;
     return `${to.kind === 'agent' ? 'handed it off to' : from ? 'reassigned it to' : 'assigned it to'} ${to.name}${rule}`;
@@ -322,7 +324,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
           }
           const actor = line.kind === 'change' ? line.entry.actor : line.actor;
           const mine = actor.id === me.id && actor.kind === 'human';
-          const text = line.kind === 'change' ? changeText(line.entry) : line.kind === 'reverted' ? 'undid its creation' : line.source ? FROM[line.source] : 'created the task';
+          const text = line.kind === 'change' ? changeText(line.entry, me.id) : line.kind === 'reverted' ? 'undid its creation' : line.source ? FROM[line.source] : 'created the task';
           return (
             <li key={line.key} className="wd-act__item" data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
               <Face actor={actor} mine={mine} hue={hueOf(actor.kind === 'agent' ? actor : null)} />
