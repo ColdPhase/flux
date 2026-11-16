@@ -542,7 +542,7 @@ export function workRows(db: DbExecutor) {
         AND n.source_type = 'project' AND n.source_id = ${work.projectId} AND n.created_at >= ${since}
         AND n.url = ${`/projects/${work.projectId}/tasks?open=work:${work.id}`}
         AND n.event_id IN (SELECT e.id FROM events e WHERE e.kind = 'project.work_updated.v1' AND e.object_id = ${work.projectId}
-          AND e.created_at >= ${since} AND e.data ? 'resumedFor')`);
+          AND e.data ? 'resumedFor')`);
     },
     async messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string) {
       if (!messageIds.length) return false;
