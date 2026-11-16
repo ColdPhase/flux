@@ -1082,11 +1082,22 @@ class LightMotionJourney(unittest.TestCase):
             if entry["props"] != ["scale"]:
                 self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY, f"{entry['target']} animates {entry['props']}")
 
+    def unfold_task_cards(self, page: Page) -> None:
+        """Opens the first "N task updates" fold if it is closed and waits until its cards' state glyphs are drawn."""
+        toggle = page.locator(".convo-stream .convo-fold").first.get_by_role("button", name=re.compile(r"task updates"))
+        expect(toggle).to_be_visible()
+        if toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        expect(page.locator(".convo-stream .convo-fold .convo-notice .ui-glyph").first).to_be_visible()
+
     def test_13d_a_task_notice_does_not_morph_its_glyph_when_the_conversation_opens(self):
         """The notice's state glyph used to flip from the open outline to its state on every visit; it morphs only from a state it knew (#863 rule 5)."""
         page = self.page()
         self.open(page, self.fx.project_url())
-        expect(page.locator(".convo-stream .ui-glyph").first).to_be_attached()
+        # A task card states its state once its row is read, when it comes near the screen, and nothing before (F-026 §7, personas-33:
+        # "until then it states no state and no owner"): the fixture's cards are folded, so the fold is opened for their glyphs to be drawn.
+        self.unfold_task_cards(page)
         page.wait_for_timeout(800)
         self.assertEqual(self.by(page, r"ui-glyph", "script"), [], f"no glyph morphs on the first view: {recorded(page)}")
         page.locator(self.tab("tasks")).click()
@@ -1094,6 +1105,7 @@ class LightMotionJourney(unittest.TestCase):
         clear(page)
         page.locator(self.tab("")).first.click()
         expect(page.locator(".convo-stream")).to_be_visible()
+        self.unfold_task_cards(page)
         page.wait_for_timeout(800)
         self.assertEqual(self.by(page, r"ui-glyph", "script"), [], f"nor when the conversation is visited again: {recorded(page)}")
 
