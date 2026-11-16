@@ -206,9 +206,11 @@ class NoticeJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name=re.compile("^Inbox"))).to_be_visible()
         page.wait_for_timeout(3000)
         self.dm("Could you open the seed shed at eight tomorrow?")
-        # A notice stays about 6 s; before this rule it stood over the Inbox 4 s after the send.
-        page.wait_for_timeout(4000)
-        expect(self.card(page), "the item reaches the list on screen: no notice for it").to_have_count(0)
+        # Before this rule its notice stood over the Inbox from about 0.5 s to 6 s after the send. Sampled, not awaited: a retrying
+        # expectation would wait for the card to leave by itself.
+        for _ in range(14):
+            self.assertEqual(self.card(page).count(), 0, "the item reaches the list on screen: no notice for it")
+            page.wait_for_timeout(500)
         expect(page.locator(".nyc", has_text="open the seed shed")).to_be_visible(timeout=8000)
         self.dm("Plain words: the shed key is under the pot.")
         expect(self.card(page)).to_contain_text("Jonas Berg sent you a message", timeout=5000)
