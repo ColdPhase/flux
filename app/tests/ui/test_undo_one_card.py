@@ -526,6 +526,8 @@ class UndoAndOneCard(unittest.TestCase):
         open_item(row(asks[0])).get_by_role("button", name=re.compile("^Done")).click()
         expect(row(asks[0])).to_have_count(0)
         open_item(row(first["title"]))
+        # It swapped in as the open item, so it takes a key once it has been in view a moment (450 ms).
+        page.wait_for_timeout(600)
         page.keyboard.press("a")
         toast = page.locator(".ui-toast").filter(has_text="Accepted, and 1 more")
         expect(toast).to_be_visible()
