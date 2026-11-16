@@ -306,14 +306,14 @@ class RailNavigation(unittest.TestCase):
       return { buttons, lines, room: Math.round(box.bottom - pinned), height: Math.round(box.height), field: shown };
     }"""
 
-    def assert_discussion_room(self, page, label, *, long):
+    def assert_discussion_room(self, page, label, *, long, lines=2):
         panel = page.locator("#details")
         expect(panel.locator(".wd-discussion__list .wd-act__item").last).to_be_visible()
         page.wait_for_timeout(600)
         seen = panel.evaluate(self.ROOM)
         self.assertTrue(seen["buttons"] and all(seen["buttons"].values()), f"{label}: Accept, Not now and Discuss are in view: {seen}")
         self.assertTrue(seen["field"], f"{label}: “Write about this decision…” is in view: {seen}")
-        self.assertGreaterEqual(seen["lines"], 2 if long else 1, f"{label}: the discussion shows its lines: {seen}")
+        self.assertGreaterEqual(seen["lines"], lines if long else 1, f"{label}: the discussion shows its lines: {seen}")
         if long:
             self.assertGreaterEqual(seen["room"], seen["height"] * 0.5, f"{label}: the discussion keeps at least half of the scrolling room: {seen}")
         return seen
@@ -373,7 +373,8 @@ class RailNavigation(unittest.TestCase):
                 sheet.goto(f"/projects/{pid}?open=decision:{long['id']}")
                 expect(sheet.locator("#details .wd-decide")).to_be_visible()
                 sheet.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
-                self.assert_discussion_room(sheet, "phone, large text", long=True)
+                # A message at twice the size is about as tall as the room for two: one whole line at least, in half the room or more.
+                self.assert_discussion_room(sheet, "phone, large text", long=True, lines=1)
                 shot(sheet, f"p3b-decision-room-phone-large-{engine}")
 
     def test_09_at_200_percent_no_place_in_the_rail_is_half_under_search(self):
