@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import type { ConversationMessage, DecisionDiscussion as Discussion, Project, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
-import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
+import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
 import { ComposerBox } from '../composer/ComposerBox';
 import { LinkPreviews, MessageText } from '../app/MessageText';
@@ -99,12 +99,10 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   const messages = [...stored, ...composer.sent.map((item) => item.message)
     .filter((message) => !stored.some((other) => other.id === message.id) && (!discussion?.conversationId || message.conversationId === discussion.conversationId))]
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  // A message still being sent whose stored copy a read already brought is shown once, as the stored message (#264): never both.
-  const { pending } = outboxView(stored, composer.pending, composer.sent, me.id);
   const author = (message: ConversationMessage) => message.authorId === null ? agentDisplayName(message.author) : personName(message.authorId, me, members, people);
   const list = useRef<HTMLOListElement>(null);
   // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
-  const last = `${messages.at(-1)?.id ?? ''}:${pending.length}`;
+  const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;
   useLayoutEffect(() => { list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' }); }, [last]);
   // What is read here is read in the thread too (persona round 8): the panel records what it shows as viewed, by the thread's own rule
   // (60 % of a message in view for 700 ms), so the thread draws no New divider above a message already read in the panel.
@@ -112,7 +110,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   useLayoutEffect(() => { scroller.current = list.current?.closest<HTMLElement>('.wd__scroll') ?? null; });
   const others = stored.filter((message) => message.authorId !== me.id).map((message) => message.id);
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: others.length > 0, feed: scroller, ids: others, depend: stored.length });
-  if (!messages.length && !pending.length && !state.failed) return null;
+  if (!messages.length && !composer.pending.length && !state.failed) return null;
   return (
     <section className="details__sec wd-discussion" aria-labelledby="wd-discussion-head" data-decision-discussion={discussion?.conversationId ?? ''}>
       <h4 id="wd-discussion-head">Discussion</h4>
@@ -143,7 +141,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
             </li>
           );
         })}
-        {pending.map((pending) => (
+        {composer.pending.map((pending) => (
           <li key={`pending-${pending.id}`} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state}
             className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
             <PendingFiles body={pending.body ? <div className="wd-pending__body"><MessageText body={pending.body} linked={false} /></div> : null} files={pending.files}
@@ -169,8 +167,7 @@ export function DecisionComposer({ state, composer, meId }: { state: DecisionDis
   async function send(event?: FormEvent) {
     event?.preventDefault();
     typing.stop();
-    // Sent after the newest message shown, so a stored copy a read brings while it is in flight takes its place.
-    const outcome = composer.submit(state.messages.reduce((newest, message) => Math.max(newest, message.sequence), 0));
+    const outcome = composer.submit();
     if (!outcome) return;
     const active = captureScope();
     const result = await outcome;
