@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { AssistantChange, ConversationMessage, LiveCallLine, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
-import { useComposerScope, type useComposerDraft } from '../composer/draft';
+import { outboxView, useComposerScope, type useComposerDraft } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
 import { ComposerAudience, ComposerBox } from '../composer/ComposerBox';
 import { LinkPreviews, MessageText } from '../app/MessageText';
@@ -198,7 +198,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     onShown: () => setAttempt((value) => value + 1) });
 
   return {
-    discussion, lines, reads, loading: !discussion && changes === null && failed !== 'all', failed, hasEarlier, loadEarlier, busyEarlier, author, assistant, aiOff,
+    discussion, messages, lines, reads, loading: !discussion && changes === null && failed !== 'all', failed, hasEarlier, loadEarlier, busyEarlier, author, assistant, aiOff,
     retry: () => { setFailed(null); setAttempt((value) => value + 1); },
     reload: () => setAttempt((value) => value + 1),
   };
@@ -260,7 +260,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   useLayoutEffect(() => { setFeed(section.current?.closest<HTMLElement>('.wd__scroll') ?? null); }, []);
   const lineKeys = useMemo(() => state.lines.map((line) => line.key), [state.lines]);
   const below = useNewBelow(feed, undefined, lineKeys);
-  const newest = `${state.lines.at(-1)?.key ?? ''}:${composer.pending.length}`;
+  // A message still being sent whose stored copy a live read already brought is shown once, as the stored line (#264): never both.
+  const { pending } = outboxView(state.messages, composer.pending, composer.sent, me.id);
+  const newest = `${state.lines.at(-1)?.key ?? ''}:${pending.length}`;
   const shownNewest = useRef<string | null>(null);
   const shownLines = useRef<Set<string> | null>(null);
   const shownPending = useRef(0);
@@ -376,7 +378,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         })() })), state.loading ? [] : calls.map((call) => ({ at: call.startedAt,
           node: <TaskCallLine key={call.id} line={call} nameOf={callName} mine={call.startedBy === me.id} /> })))}
       </ol>
-      {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
+      {pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{pending.map((pending) => (
         <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
           <PendingFiles body={pending.body ? <div className="wd-pending__body"><MessageText body={pending.body} linked={false} /></div> : null} files={pending.files} send={{ state: pending.state, ...(writable ? { onRetry: () => composer.retry(pending.id) } : {}) }} />
           {writable ? <OutboxStatus item={pending} onRetry={() => composer.retry(pending.id)} onRemove={() => composer.remove(pending.id)} />
@@ -440,8 +442,9 @@ export function TaskComposer({ state, composer, meId, writable, readOnly, id }: 
     if (!writable || !discussion) return;
     if (asking) { await askAgent(); return; }
     typing.stop();
-    // The message joins the task's queue and the field empties at once (#264); it shows in the timeline until stored.
-    const outcome = composer.submit();
+    // The message joins the task's queue and the field empties at once (#264); it shows in the timeline until stored. It is sent after the
+    // newest message shown, so a stored copy a live read brings while it is in flight takes its place.
+    const outcome = composer.submit(state.messages.reduce((newest, message) => Math.max(newest, message.sequence), 0));
     if (!outcome) return;
     const active = captureScope();
     const result = await outcome;
