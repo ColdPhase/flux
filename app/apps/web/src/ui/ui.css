@@ -24,8 +24,6 @@ time { font-family: inherit; font-variant-numeric: tabular-nums; }
 /* Code, keys and commands use Geist Mono, never the browser's generic monospace (WebKit drew the Agents commands in it). */
 code, kbd, samp, pre { font-family: var(--mono); }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
-/* Selected text is the chosen-row fill, never the browser's blue, the only colour on a monochrome screen (visual review 2026-11-17, core 27). */
-::selection { background: var(--pick); color: var(--t1); }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; font-weight: 600; }
 /* Weights are 400, 500 and 600 only (README §2): bold text is the semibold, never the browser's 700 (#1373). */

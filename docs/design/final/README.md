@@ -133,7 +133,6 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   and it is not drawn while its control's menu is open.
 - **Hover is for a pointer that hovers** (`@media (hover: hover)`): after a tap a touch screen keeps `:hover`, which left a primary button in
   its hover grey (it read as disabled) and a task's Status in a grey pill.
-- **Selected text** is `--pick` with `--t1`, never the browser's blue.
 - **A key hint** (`C`, `S`, `E`) is one style: a 1 px `--line2` outline on the surface it stands on (the toast's key cap keeps its own).
 - **A text button that starts a row of actions under text** ("Reply", "Try again") takes its padding back, so its word starts where the text
   above it starts, as a filled button's edge does.
