@@ -223,10 +223,17 @@ class SpaceSettings(unittest.TestCase):
             const email = [...who.querySelectorAll('.lastactive-line')][0];
             const address = email ? [...email.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('@')) : null;
             const control = el.querySelector('.people__rolecell, .people__role, .spset__rolecell, .spset__role');
-            return { name: lines(who.querySelector('b')), address: address ? lines(address) : 1, text: who.innerText,
+            // The page the row measures (its `sset` container): narrow under 37.5 rem.
+            const page = el.closest('.sset-in'), ps = getComputedStyle(page);
+            const narrow = page.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight) < 37.5 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+            return { name: lines(who.querySelector('b')), address: address ? lines(address) : 1, text: who.innerText, narrow,
                      under: control.getBoundingClientRect().top >= who.getBoundingClientRect().bottom - 1 };
         }"""
-        for size in ({"width": 800, "height": 1280}, {"width": 820, "height": 1180}):
+        # From 641 to 900 px the section list is a row above the page, so a portrait tablet's page keeps its whole width and a row has room
+        # for its role (founder direction 2026-11-17 visual review V24, README "One look for every Settings page"); a 1024 px portrait
+        # tablet has the list beside a narrow page, where the role and the buttons go under the name.
+        narrow_seen = False
+        for size in ({"width": 800, "height": 1280}, {"width": 820, "height": 1180}, {"width": 1024, "height": 1366}):
             context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", service_workers="block", viewport=size, device_scale_factor=1,
                                                has_touch=True, storage_state=self.states["ada"])
             self.addCleanup(context.close)
@@ -237,7 +244,8 @@ class SpaceSettings(unittest.TestCase):
             for row in rows.all():
                 drawn = row.evaluate(words)
                 self.assertEqual((drawn["name"], drawn["address"]), (1, 1), f"{size['width']} px: the name and the address are whole, each on one line: {drawn}")
-                self.assertTrue(drawn["under"], f"{size['width']} px: the role and the buttons go under the name on a narrow page: {drawn}")
+                self.assertEqual(drawn["under"], drawn["narrow"], f"{size['width']} px: the role and the buttons go under the name on a narrow page, beside it on a wide one: {drawn}")
+                narrow_seen = narrow_seen or drawn["narrow"]
             shot(page, f"people-rows-tablet-{size['width']}-{UI_BROWSER}")
             page.goto(f"/projects/{pid}/settings")
             rows = page.locator(".spset .sset-row[data-person]")
@@ -246,6 +254,7 @@ class SpaceSettings(unittest.TestCase):
                 drawn = row.evaluate(words)
                 self.assertEqual((drawn["name"], drawn["address"]), (1, 1), f"{size['width']} px: Space settings keeps names and addresses whole: {drawn}")
             shot(page, f"space-rows-tablet-{size['width']}-{UI_BROWSER}")
+        self.assertTrue(narrow_seen, "one of the tablets has a narrow page, so the rows' stacking is measured")
         # One role control: Space settings' role looks as the company's "Member ▾" does (no field border, the quiet button's type and colour).
         page = self.page("ada")
         look = "el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.backgroundColor, s.fontSize, s.fontWeight, s.color]; }"

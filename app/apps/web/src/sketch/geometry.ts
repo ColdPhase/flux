@@ -47,7 +47,7 @@ const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y
 /**
  * Where each connection's label sits (founder direction 2026-11-17 visual review): on a free part of its own line, never on another label
  * or under a thought. The middle of the line first, then points a little towards either end; a label that every point puts under a thought
- * is not drawn there (`null`), since a card would cover it. Sizes are the labels' boxes in plane units.
+ * gets `null`, and the map draws it at the line's middle over the thoughts' edges (never hidden). Sizes are the labels' boxes in plane units.
  */
 export function placeLabels(labels: { id: string; at(t: number): { x: number; y: number }; w: number; h: number }[], cards: Rect[]): Map<string, { x: number; y: number } | null> {
   const placed: Rect[] = [];

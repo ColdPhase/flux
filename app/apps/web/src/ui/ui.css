@@ -438,7 +438,11 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-empty__action { justify-content: center; }
 /* A text button that starts a row of actions under text starts where the text starts: its padding is taken back, so "Try again" lines up
    with the words above it, as a filled button's edge does (visual review 2026-11-17, core 15). */
-:is(.ui-error__actions, .nyc__card--pane .nyc__actions) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--sm, .ui-btn--block) { margin-inline-start: -14px; }
+/* One rule for every such row: an error's actions, a pane's Needs-you answer, and a panel's line (Add to a thought, Add to a Wiki page: the
+   icon stands on the edge of the labels above it, founder direction 2026-11-17 visual review). The margin is the button's own padding;
+   a filled or outlined button keeps its edge where it is. */
+:is(.ui-error__actions, .nyc__card--pane .nyc__actions, .wd-acts, .wd .wd-actions:not(.wd-pick__cancel)) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--block) { margin-inline-start: -14px; }
+:is(.ui-error__actions, .nyc__card--pane .nyc__actions, .wd-acts, .wd .wd-actions:not(.wd-pick__cancel)) > .ui-btn--sm:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--block) { margin-inline-start: -12px; }
 .ui-error__detail { margin-top: 16px; font: var(--fs-xs)/1.5 var(--mono); color: var(--t3); letter-spacing: var(--tracking); }
 
 /* ---------- Task state glyphs (StatusGlyph.tsx): shape, not colour ---------- */

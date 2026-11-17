@@ -9,7 +9,9 @@
 .sset__link:hover { background: var(--hov); }
 .sset__link[aria-current="page"] { background: var(--el); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12); }
 .sset__link:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-.sset__page { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+/* min-height 0 too: where the section list is a row above the page (900 px or less) the page is a column item, and without it the page
+   grew to its content, so its own scroller never scrolled and the end of a long page was cut off (Notifications' Muted places). */
+.sset__page { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
 /* In a window of 900 px or less (a small window, or 200 % zoom) the section list is one row above the page instead of a 220 px column beside
    it, so the page keeps its width (visual review 2026-11-17 V24: 340 px were left and the company's name wrapped onto three lines). */
 @media (min-width: 641px) and (max-width: 900px) {
