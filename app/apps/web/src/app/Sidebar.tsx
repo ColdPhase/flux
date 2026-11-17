@@ -21,6 +21,7 @@ import type { SpaceIcon } from '@flux/contracts';
 import { SpaceFace } from '../ui/SpaceFace';
 import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedPlace, useLockedWorkspaces } from '../encryption/state';
+import '../encryption/waiting.css';
 import { usePlaceMutes } from '../notifications/mutes';
 import { isTyping } from '../ui/keys';
 import { startsConversations } from '../people/api';

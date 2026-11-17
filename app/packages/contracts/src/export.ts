@@ -270,11 +270,11 @@ const id = { type: 'string', minLength: 1 } as const;
 const time = { type: 'string', format: 'date-time' } as const;
 const text = { type: 'string' } as const;
 const count = { type: 'integer', minimum: 1 } as const;
-const nullable = <T extends object>(schema: T) => ({ anyOf: [schema, { type: 'null' }] }) as const;
-const object = <P extends Record<string, unknown>>(properties: P) =>
+const nullable = /* @__NO_SIDE_EFFECTS__ */ <T extends object>(schema: T) => ({ anyOf: [schema, { type: 'null' }] }) as const;
+const object = /* @__NO_SIDE_EFFECTS__ */ <P extends Record<string, unknown>>(properties: P) =>
   ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties }) as const;
-const list = <T extends object>(items: T) => ({ type: 'array', items }) as const;
-const ref = (name: string) => ({ $ref: `#/definitions/${name}` }) as const;
+const list = /* @__NO_SIDE_EFFECTS__ */ <T extends object>(items: T) => ({ type: 'array', items }) as const;
+const ref = /* @__NO_SIDE_EFFECTS__ */ (name: string) => ({ $ref: `#/definitions/${name}` }) as const;
 
 const actor = object({ kind: { enum: ['human', 'agent'] }, id });
 const namedActor = object({ kind: { enum: ['human', 'agent'] }, id, name: text });

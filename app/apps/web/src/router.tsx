@@ -11,7 +11,6 @@ import { Booting, PlaceError, RouteCodeLoadError, RouteErrorPage } from './app/e
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
 import { AiNotForGuests } from './ai/AiNotForGuests';
-import { LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
 import { authPages, conversationPage, docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
@@ -168,7 +167,7 @@ export const router = createBrowserRouter([
           ErrorBoundary: PlaceError,
           children: [
           { index: true, Component: Home },
-          { path: 'spaces/:workspaceId', Component: LockedSpacePage },
+          { path: 'spaces/:workspaceId', ...lazyComponent(() => import('./encryption/LockedSpace'), (page) => page.LockedSpacePage) },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.

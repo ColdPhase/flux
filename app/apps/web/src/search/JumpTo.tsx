@@ -11,7 +11,7 @@ import { placeIdentity, placeOfPath, useRecentPlaces, type RecentPlace } from '.
 import { groupResults } from './groups';
 import { ResultBody, resultName } from './ResultRow';
 import { useSearch } from './useSearch';
-import { UnsearchedSpaces } from '../encryption/LockedSpace';
+import { UnsearchedSpaces } from '../encryption/WaitingSpaces';
 import './search.css';
 
 /** Results listed at once. There is no second page: a longer list is narrowed by typing more words. */

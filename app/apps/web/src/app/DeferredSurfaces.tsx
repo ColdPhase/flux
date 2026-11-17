@@ -14,6 +14,7 @@ import { useShellActions } from './shellContext';
 import { useShellData } from './data';
 import { placeIdentity, placeOfPath, useRecentPlaces } from '../search/recent';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
+import { loadLockedPanel } from './errors';
 import { conversationPage, preloadProjectViews } from './viewChunks';
 
 /**
@@ -77,6 +78,8 @@ function preloadSurfaces() {
   void notices.download().catch(() => { preloaded = false; });
   // A space opens on its conversation, so its code is here before the first move into one (#1178).
   void conversationPage().catch(() => { preloaded = false; });
+  // A place of a space that waits to be unlocked shows the locked panel at once (F-030).
+  void loadLockedPanel().catch(() => { preloaded = false; });
 }
 function preloadViews() {
   if (viewsPreloaded) return;

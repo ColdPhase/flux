@@ -5,7 +5,7 @@ import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, useToast } fro
 import { Face, kindWord } from '../notifications/NeedsYouCard';
 import { bareAgent, fromWords, useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
-import { WaitingSpaces } from '../encryption/LockedSpace';
+import { WaitingSpaces } from '../encryption/WaitingSpaces';
 import { SourceLink } from '../returns/SourceLink';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL, dueLabel } from '../work/format';

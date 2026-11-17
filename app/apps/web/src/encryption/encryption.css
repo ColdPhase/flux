@@ -87,12 +87,6 @@
   .pane-in.locked { align-items: start; padding-top: clamp(24px, 10vh, 88px); }
 }
 
-/* A space that waits to be unlocked is one row in place of its projects: the lock where a project has its letter. */
-.side__pj--lock { color: var(--t2); }
-.side__locked { padding-block: 4px; }
-.side__locked .side__sub { color: var(--t3); }
-.side__rail-locked .side__pj--lock { color: var(--t2); }
-
 /* ---------- People → Encryption ---------- */
 .details__sec.people__enc { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .details__sec.people__enc h4 { margin-bottom: 8px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
@@ -110,14 +104,6 @@
 .people__problem { margin: 0; font-size: var(--fs-sm) !important; font-weight: 500; color: var(--t1) !important; line-height: 1.45; }
 .people__problem:empty { display: none; }
 .people__enc .people__done { margin-top: 10px; }
-
-/* Home's "Needs you" and search: the spaces that could not be looked into, one quiet row each. */
-/* Home's spaces that wait to be unlocked are a card of Home's rows (home.css); it stands under the waiting items. */
-.waiting-spaces { margin-top: 12px; }
-.unsearched { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; }
-.unsearched li { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-sm); color: var(--t2); line-height: 1.5; }
-.unsearched li > svg { flex: none; align-self: center; color: var(--t3); }
-.unsearched a { color: var(--t1); }
 
 /* The Inbox's security notices (content-free titles, Inbox only): quiet rows, each with its own "Got it". */
 .security-notices { margin: 0 0 24px; }

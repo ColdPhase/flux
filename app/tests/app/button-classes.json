@@ -81,7 +81,8 @@
       "classes": [
         "create__chip",
         "ws-chip",
-        "convo-newbelow__b"
+        "convo-newbelow__b",
+        "ref-chip--open"
       ]
     },
     "dismiss": {
@@ -113,7 +114,6 @@
         "side__search",
         "phone-fab",
         "phone-dock__search",
-        "details__back",
         "ui-panel__back"
       ]
     },
