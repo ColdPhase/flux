@@ -219,7 +219,8 @@ looks ugly"):
 - **The map:** a label sits on a free part of its own line, never on another label or under a thought; a line with no free part (two
   thoughts side by side) keeps its label at its middle, raised over the thoughts' edges, never hidden; the selection's actions never lie
   over another thought (they slide beside it, or rise above it) and never under the map's floating header: where they would lie under it
-  (a thought near the top at 200 %), they stand under their own thought (round 15 look-3 F4); an edit's **Save** and **Cancel** are that toolbar beside the thought
+  (a thought near the top at 200 %), they stand under their own thought (round 15 look-3 F4) where that place is free, never over
+  another thought or a connection label (#481); an edit's **Save** and **Cancel** are that toolbar beside the thought
   (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
   with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
   minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden, down to

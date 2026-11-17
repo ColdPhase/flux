@@ -374,12 +374,14 @@ export function SketchMap(props: SketchMapProps) {
         else if (free(bounds.left + dx, below)) dy = below - bounds.top;
       }
       // Never under the floating header either (round 15 look-3 F4: at 200 % the actions of a thought near the top lay under the map's title
-      // and Map / List, hiding Edit and Connect): where they would, they stand under their own thought, still inside the view.
+      // and Map / List, hiding Edit and Connect): where they would, they stand under their own thought, where that place is free: inside the
+      // view, clear of every other thought and of the connection labels, which the actions never cover (#481: a label under the thought).
       if (own && above) {
         const top = bounds.top + dy;
         const covered = top < view.top + 8 || floating.some((r) => r.width && meets(r, bounds.left + dx, top));
         const under = own.bottom + 14;
-        if (covered && under + bounds.height <= view.bottom - 8) dy = under - bounds.top;
+        const labels = [...canvas.querySelectorAll<HTMLElement>('.sk-labels .sk-el')].map((el) => el.getBoundingClientRect());
+        if (covered && free(bounds.left + dx, under) && !labels.some((r) => meets(r, bounds.left + dx, under))) dy = under - bounds.top;
       }
       bar.style.marginLeft = `${dx / zoom}px`;
       bar.style.marginTop = `${dy / zoom}px`;
