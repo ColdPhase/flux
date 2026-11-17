@@ -192,8 +192,8 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   - **For later's day** is its parts set apart by spaces ("Back Thu 19 Nov at 14:34") in every engine.
   - **Search's failure** has Try again (the secondary button with the refresh icon), unless the server refused the search itself.
   - **A task made on My tasks is yours**, as one made from your own message: it shows on the list it was made from.
-  - **A panel opens at its top** on the phone's sheet and wherever the panel is as short (under 480 px: a computer at 200 %, a short
-    window), and its first scroll to show what it asks (a "Waiting for" card, Accept) never takes the title out of view.
+  - **A panel opened from the Inbox** opens as every panel does (Tasks below: a short panel and the phone's sheet open at the top, never
+    past the title), so a blocked task's sheet and a discussed decision at 200 % show what they are first.
 - **Lists of rows are cards**: My tasks' spaces are cards of rows like Home's, the glyph, the word and the chevron on the first line's middle.
   The phone's Spaces list ends a row in its dot and its ⋯, with no chevron.
 

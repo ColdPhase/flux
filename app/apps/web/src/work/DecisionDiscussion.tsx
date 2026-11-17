@@ -104,7 +104,8 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   const list = useRef<HTMLOListElement>(null);
   // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
   const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;
-  // The phone's sheet opens at its top, the decision first (`usePanelOpening`, round 14 new P2-3); what arrives or is sent later shows there too.
+  // The phone's sheet and a short panel open at their top, the decision first (`opensAtTop`, round 14 new P2-3, round 15 look-1 P2-2); what
+  // arrives or is sent later shows there too.
   const drawn = useRef(false);
   useLayoutEffect(() => {
     const first = !drawn.current && messages.length > 0;

@@ -291,7 +291,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       // The first draw of the read discussion: the panel opens at its newest line, as the decision's panel does. A short discussion (one
       // that fits in the panel's height) moves nothing: its rows stay at the top, where the skeleton drew them (F-026 §7 "Both panels open
       // the same way"; #863 rule 6, no jump from the skeleton). Only the panel's own scroller moves, never the sheet or the page around it.
-      // The phone's sheet opens at its top instead (`usePanelOpening`): its few lines would show the newest and nothing of the task.
+      // The phone's sheet and a short panel (200 % text) open at their top instead (`opensAtTop`): their few lines would show the newest and
+      // nothing of the task.
       const scroller = root?.closest<HTMLElement>('.wd__scroll');
       const list = root?.querySelector<HTMLElement>('.wd-act');
       const last = list?.lastElementChild;
