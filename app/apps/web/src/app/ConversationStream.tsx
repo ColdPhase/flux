@@ -582,6 +582,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const feed = feedRef.current;
     if (!feed) return;
     let width = feed.clientWidth;
+    let feedHeight = feed.clientHeight;
     let frame = 0;
     // Only the person's own scrolling moves the opened root's place. A width change (the thread or Details
     // docking) makes the browser clamp the scroll position and this view adjust it; those scroll events
@@ -609,7 +610,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const record = () => {
       frame = 0;
       const userMoved = performance.now() - personAt < 500;
-      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || performance.now() <= settleUntil)) return;
+      // A feed that got shorter since the observer last saw it (the composer grew) is not the reader moving away from the end: the observer
+      // keeps the end first (round 15: a scroll measured between the two left the newest message under the staged files).
+      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || feed.clientHeight !== feedHeight || performance.now() <= settleUntil)) return;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
       if (userMoved) {
@@ -625,7 +628,23 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       }
       // The place is kept under this history entry as it changes (#592), but not by what the layout does while the next
       // screen loads after a reference was followed: that is not where the reader was, until they scroll.
-      if (!pendingRestore.current && (performance.now() > leavingUntil || personAt > leavingUntil - 3000)) remember('stream', stickRef.current || !anchorRef.current ? { atEnd: true } : { ...anchorRef.current, conv: anchorElement?.dataset.conversationId ?? null });
+      if (!pendingRestore.current && (performance.now() > leavingUntil || personAt > leavingUntil - 3000)) remember('stream', stickRef.current || !anchorRef.current ? { atEnd: true } : { ...anchorRef.current, conv: conversationNear(anchorElement) });
+    };
+    /**
+     * The conversation to read back to so the entry comes back on return: its own, or for a task card, a decision or a fold (which have none)
+     * the message just above it, which loads it with its range. Without it a phone that kept a task card as its place came back to the top of
+     * the newest messages, with the place never read back (round 15 look-2 P2-2).
+     */
+    const conversationNear = (element: HTMLElement | null): string | null => {
+      if (!element) return null;
+      if (element.dataset.conversationId) return element.dataset.conversationId;
+      let above: HTMLElement | null = null;
+      let below: HTMLElement | null = null;
+      for (const message of feed.querySelectorAll<HTMLElement>('[data-conversation-id]')) {
+        if (message.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) above = message;
+        else { below = message; break; }
+      }
+      return (above ?? below)?.dataset.conversationId ?? null;
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
     // The stream's own content also changes height: after a width change (the thread docking or becoming
@@ -633,7 +652,14 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const observer = new ResizeObserver(() => {
       const widened = feed.clientWidth !== width;
       const grown = !!column && column.offsetHeight !== height;
-      if (!widened && !grown) return;
+      // The feed itself gets shorter when the composer grows (two lines, a tray of staged files): a reader at the end stays at the end, so the
+      // newest message never hides under the tray (round 15 look-2 P2-1); a reader above keeps their place, which the top edge already holds.
+      const squeezed = feed.clientHeight !== feedHeight;
+      feedHeight = feed.clientHeight;
+      if (!widened && !grown) {
+        if (squeezed && (stickRef.current || atEndRef.current)) { stickRef.current = true; feed.scrollTop = feed.scrollHeight; }
+        return;
+      }
       width = feed.clientWidth;
       height = column?.offsetHeight ?? 0;
       // A row growing above the reader (a reply count appearing, a task chip after a refresh) must not

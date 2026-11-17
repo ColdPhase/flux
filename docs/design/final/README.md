@@ -239,6 +239,28 @@ looks ugly"):
   no ring: it is where reading starts, not a control (visual review 2026-11-17 V1).
 - A radio is drawn by the app at 16 px in every engine: a 1.5 px `--t3` ring, chosen a `--t1` ring and dot (V22).
 
+**The conversation and Create, one look** (release gate round 15, 2026-11-17, the last fix wave of v0.2.1):
+- **A chip in text** (`#4`, a Wiki page, a person) is a pill with the code span's 1 px `--line` hairline, so its padding reads as the pill and
+  never as a space before "." or after "("; on your own bubble (`--own`) the pill is `--el`. A chip or a code span and the punctuation that
+  touches it ("(#2", "rota;") never part at a line's edge. `#1–#5` and `#1/#2` are two chips. A `#N` chip of the space being read opens the
+  task in the panel beside the conversation, as its card does; a task of another place opens where it lives.
+- **A photo's name and size** ("IMG_2042.png · 39.8 KB") stand right under the photo they name, before its caption and its file rows; the
+  caption under a photo is as wide as the photo at most (340 px).
+- **Send keeps the field.** Pressing Send (a tap on a phone) never takes the focus from the field, so a phone's keyboard stays up for the next
+  message, in a space, a thread, a direct message and a task.
+- **Composers side by side end at one height** on a computer: a stream's composer box ends 31 px above its pane's foot (a direct message's typing line is
+  inside those 31 px), a panel's 21 px above the panel's foot, which floats 10 px in. A direct message's composer has no rule above it, as a space's.
+- **A stream keeps its end:** a reader at the end stays at the end when the composer grows (two lines, staged files). Coming back to a
+  conversation whose place was a task card, a decision or a fold reads back to the message above it, so the place returns.
+- **The phone's staged tiles** stand one under the other at one width, so their × form one column.
+- **A task's "↓ N new"** in its panel stands on a band of the panel's colour at the scroll's foot, never on the words of a line.
+- **Task updates** give their numbers one width (4ch), so the titles of #8 and #10 start at one edge.
+- **A direct message's start** names nobody again: the header says who is in it, the start says "Only the people in it can read this
+  conversation. It stays outside every space." Its faces stand side by side, 4 px apart, never overlapped into one word.
+- **An empty state's lines are balanced** (`text-wrap: balance`), so two words never stand alone under three long lines.
+- **⋯ menus** have the message menu's rows: 14 px words and 40 px rows; a space row's (Move up, Move down) and the Spaces heading's (Mark all
+  as read) lead with their icon in `--t2`.
+
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.
 
@@ -1811,6 +1833,12 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Create task on your own message, `T` on it, the same action in a thread opened from the Inbox, and your own `/task` words open the
   window with you as its Owner, so the task is in My tasks at once; the Owner chip still changes it, and No owner is kept as chosen. A
   task made from someone else's message starts with No owner, as before, even when the message names you or someone else in the space.
+  A task made from **My tasks** (New, `C` or the phone's "+" there) is yours as well, so it is on the list it was made from (round 15).
+- **The title wraps** (round 15): a task's and a decision's title is a field whose words go on to the next line, on the computer and the
+  phone, never out of sight sideways; Enter still makes it, as in a one-line field. **+ From a message or thought** keeps the window's
+  height until a word is typed ("Type a few words of the message or the thought."), then grows for the results. In the Owner list, "No
+  owner" has the person glyph in the face's place. In the New space window "Name" is a heading like "People", 16 px under the head's line,
+  and the AI row leads with its icon as Encrypted does.
 - **A guest has no Space tab** (persona round, 2026-11-15, on the founder's "nothing appears that the user cannot use", [#1424](https://github.com/ColdPhase/flux/issues/1424)).
   A guest does not start spaces, so New shows them Task, Thought, Decision and Page only, and nothing in Flux offers them New space
   (Home, the Spaces list, My tasks). With no space yet a guest's New has Thought alone (it goes on My map; a task, a decision and a

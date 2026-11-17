@@ -5,7 +5,8 @@
 .dm__head { display: flex; align-items: center; gap: 12px; padding: 20px 0 18px; }
 .dm__faces { display: flex; flex: none; }
 .dm__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
-.dm__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
+/* Side by side with a gap, never overlapping: two overlapped faces read as one word ("BV ON", round 15 look-2 P3-3). */
+.dm__faces { gap: 4px; }
 .dm__who { flex: 1; min-width: 0; }
 .dm__who h2 { font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
 .dm__who p { margin-top: 2px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
@@ -20,6 +21,12 @@
 .dm-msg { --dm-lead: 1px; --dm-lh: 1.55; }
 .dm-msg__body { margin-top: var(--dm-lead); font-size: var(--fs-base); line-height: var(--dm-lh); color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 10px; }
+/* On a computer a direct message's composer is a space's (round 15 look-2 P2-4): no rule above it, and its box ends where a space's does (its
+   typing line, 1.4em, is part of the 31 px under the box); its thread's box ends 21 px above the panel's foot, as a space thread's. */
+@media (min-width: 641px) {
+  .dm__composer { border-top: 0; padding-top: 9px; padding-bottom: max(calc(31px - 1.4 * var(--fs-xs)), env(safe-area-inset-bottom)); }
+  .dm__composer.dm-thread__composer { padding-bottom: max(21px, env(safe-area-inset-bottom)); }
+}
 .dm__notice { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
 .dm__notice svg { flex: none; color: var(--t3); }
 .dm__error { display: flex; align-items: center; gap: 6px; margin: 6px 2px 0; font-size: var(--fs-sm); color: var(--t1); }

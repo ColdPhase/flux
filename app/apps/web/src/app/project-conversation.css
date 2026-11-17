@@ -97,7 +97,9 @@ button.project-convo__contribution { cursor: pointer; }
 
 /* Composer: a two-row card in the same column, text above and its tools below, with the
    audience and keyboard hint under the card. */
-.project-convo__composer { border-top: 0; padding: 9px var(--space-page) 21px; padding-bottom: max(21px, env(safe-area-inset-bottom)); }
+/* Composers that stand side by side (the stream's and an open thread's, in a space and in a direct message) end at one height (round 15
+   look-2 P2-4): a stream composer's box ends 31 px above its pane's foot, a panel's 21 px above the panel's, which floats 10 px in. */
+.project-convo__composer { border-top: 0; padding: 9px var(--space-page) 31px; padding-bottom: max(31px, env(safe-area-inset-bottom)); }
 .project-convo__composer .composer__in { max-width: var(--col); display: flex; flex-direction: column; }
 .project-convo__composer .composer__box { order: 1; }
 /* Touch above phone width (#151): the field keeps its 36px line but its own hit area reaches 44px into

@@ -145,10 +145,11 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
         ) : null}
       </div>
       <div className="newspace__switches">
-        {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). */}
+        {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). Each row leads with its icon, as Settings'
+            AI row does, so their words start at one edge (round 15 daily P2-5). */}
         {encrypted
-          ? <SwitchRow label="AI" detail="No AI in encrypted spaces" checked={false} onChange={() => undefined} disabled />
-          : <SwitchRow label="AI" detail="Let AI agents help in this space" checked={ai} onChange={setAi} disabled={busy} />}
+          ? <SwitchRow label="AI" icon={<Icon name="spark" size={16} />} detail="No AI in encrypted spaces" checked={false} onChange={() => undefined} disabled />
+          : <SwitchRow label="AI" icon={<Icon name="spark" size={16} />} detail="Let AI agents help in this space" checked={ai} onChange={setAi} disabled={busy} />}
         <SwitchRow label="Encrypted" icon={<Icon name="lock" size={16} />} checked={encrypted} onChange={chooseEncrypted} disabled={busy || (available === false && !encrypted)}
           detail={available === false && !encrypted ? 'Not available on this server right now: its key service isn’t running.' : 'Can’t be turned off later'} />
       {encrypted ? (

@@ -25,7 +25,7 @@ import { ComposerMenu } from '../app/ComposerMenu';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useClearOfToast, useMediaQuery, useToast } from '../ui';
-import { audienceLine, dmTitle, othersIn } from './names';
+import { dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
 import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
@@ -153,7 +153,6 @@ function DmContent({ initial }: { initial: Dm }) {
   const [copy, setCopy] = useState<{ message: DmMessage; excerpt: string | undefined } | null>(null);
 
   const title = dmTitle(dm, me.user.id);
-  const audience = audienceLine(dm, me.user.id);
   const others = othersIn(dm, me.user.id);
   // An author is named by their full name, the reader "Ada Kowalska (you)", never "You" alone (design §5 "Naming people"); someone who left the
   // company or was removed is "Stefan Kowal (removed)", as the server names them in `people` (#1424, 2026-11-17).
@@ -503,7 +502,8 @@ function DmContent({ initial }: { initial: Dm }) {
               </span>
               <div className="dm__who">
                 <h2>{title}</h2>
-                <p><Icon name="lock" size={12} /> {audience} can read this conversation. It stays outside every space.</p>
+                {/* The header names who is in it ("Only you, Basia and Ola"); the start says what that means, without naming them again (round 15). */}
+                <p><Icon name="lock" size={12} /> Only the people in it can read this conversation. It stays outside every space.</p>
               </div>
             </header>
           )}

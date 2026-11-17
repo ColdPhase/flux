@@ -320,11 +320,12 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd__scroll::after { content: ""; position: sticky; bottom: 0; z-index: 1; display: block; height: 20px; margin: 0 0 -20px; background: linear-gradient(transparent, var(--panel-bg, var(--el))); pointer-events: none; opacity: 0; }
 .wd__scroll[data-scroll-down]::after { opacity: 1; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-/* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
-.wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }
-/* In the panel the line floats over the scroll's foot, never under the field (a feed's own line took its room in the flow in train 37,
-   which put the panel's pill half under the field, where it could not be clicked). */
-.wd-newbelow > .convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; padding: 0; }
+/* A task's "↓ N new" line (S23): held at the foot of the panel's scroll while the reader is above the end. It stands on a band of the panel's
+   own colour as wide as the panel, so it never lies on the words of a card or a line (round 15 ai P3: the pill covered "Waits for your OK…");
+   the band reads as the scroll's lower edge, as the conversation's line does. With nothing new it takes no room. */
+.wd-newbelow { position: sticky; bottom: -20px; z-index: 2; margin: 0 -22px -20px; }
+.wd-newbelow > .convo-newbelow { padding: 0; }
+.wd-newbelow:has(.convo-newbelow__b) > .convo-newbelow { padding: 8px 22px 28px; background: var(--panel-bg, var(--el)); box-shadow: 0 -1px 0 var(--line); }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
 .wd-row dd .ui-avatar { flex: none; }

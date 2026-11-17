@@ -34,6 +34,9 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--ring); outline
 .convo-notice__glyph-wait { flex: none; width: 16px; height: 16px; }
 .convo-notice__state--wait { min-width: 4ch; }
 .convo-notice__num { flex: none; color: var(--t3); }
+/* In a list of task updates the numbers take one width, so the titles start at one edge whether the task is #8 or #10 (round 15 look-2
+   P3-8). The number is mono with tabular figures: 4ch holds "#999". */
+.convo-fold__list .convo-notice__num { min-width: 4ch; }
 /* A long title wraps instead of being cut to one line: whole on a computer (at 200 % text one line cut it to its first words), at most
    two lines on a phone (#266 PF-6, below). */
 .convo-notice__title { flex: 1 1 auto; min-width: min(7em, 40%); overflow: hidden; white-space: normal; overflow-wrap: anywhere; }

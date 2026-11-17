@@ -475,9 +475,9 @@ function AppLayoutContent() {
     openCreate(request: CreateRequest = {}) {
       setNavOpen(false); setJumpOpen(false);
       const kept = keptSpace.current;
-      // A task made while on My tasks is yours, so it shows on the list you made it from (round 15 new P2-1).
-      const mine = pathNow.current === '/tasks' && (!request.kind || request.kind === 'task') ? { ...request, ownerMe: true } : request;
-      setCreate(!mine.kind && kept && kept.path === pathNow.current ? { ...mine, projectId: kept.projectId } : mine);
+      // A task made from My tasks is yours, so it is on the list you made it from (round 15 new P2-1); the Owner chip still changes it.
+      const mine = pathNow.current === '/tasks' && (!request.kind || request.kind === 'task') && request.ownerMe === undefined ? { ownerMe: true } : {};
+      setCreate(!request.kind && kept && kept.path === pathNow.current ? { ...request, ...mine, projectId: kept.projectId } : { ...request, ...mine });
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openConnectAi() { setNavOpen(false); setJumpOpen(false); setConnectAi(true); },
