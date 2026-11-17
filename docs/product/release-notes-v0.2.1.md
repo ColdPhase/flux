@@ -35,8 +35,10 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
 - **The database image changes.** From v0.2.1 the database runs Flux's own image, `ghcr.io/coldphase/flux-database`: the official
   PostgreSQL 18 on Debian with the `pg_search` extension (BM25 search) and `pgvector`. The same PostgreSQL major reads your data
   directory as it is; the release names the new image. The image is about 500 MB larger.
-  Migration `0065` builds the search index and recomputes what the old image (musl) computed differently for rare characters; on
-  302,000 messages it took 28 s (the whole `./flux upgrade`, with its images already built, 77 s), while Flux was stopped. A
+  Migration `0065` builds the search index and recomputes what the old image (musl) computed differently for rare characters, and two
+  later ones rebuild it; on 302,000 messages (2026-11-17, `44947da84`, a busy 24-core host, so upper bounds) `0065` took 29 s, all
+  migrations from `0054` to `0094` 40 s, and the whole `./flux upgrade`, with its images already built, 81 s and 107 s in two runs,
+  while Flux was stopped. A
   database that is not Flux's image (your own PostgreSQL) stops the upgrade before anything changes, with `FLUX_DATABASE_IMAGE …`
   and what to do ([upgrade notes](https://coldphase.github.io/flux/operate/upgrade/#v021-the-database-image-changes)).
 - **`FLUX_SIGNUP` is removed.** Accounts now come only from a link ([below](#accounts-and-passwords)); `./flux upgrade` names the
