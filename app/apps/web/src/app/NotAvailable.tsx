@@ -19,3 +19,18 @@ export function NotAvailable({ title, back = { to: '/', label: 'Go to Home' }, b
     </div></div>
   );
 }
+
+/**
+ * A person who was in the company and is not any more (they left or were removed): every page of the company they can still reach (the
+ * Inbox, My tasks, My map, a conversation's address) says so, in Home's words, and how to come back (personas-37 P3-4). Home and Settings
+ * keep their own pages.
+ */
+export function NoLongerIn({ company }: { company: string }) {
+  return (
+    <div className="pane-scroll"><div className="pane-in" data-no-longer-in="">
+      <EmptyState icon="people" title={`You’re no longer in ${company}`} action={<Link className="ui-btn ui-btn--secondary" to="/">Go to Home</Link>}>
+        <p>Ask an owner or admin of the company for an invite link to come back.</p>
+      </EmptyState>
+    </div></div>
+  );
+}

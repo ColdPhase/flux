@@ -7,6 +7,7 @@ import { useLockedPeople, useLockedPlace } from '../encryption/state';
 import { Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
+import { NoLongerIn } from './NotAvailable';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage, DeferredNotices } from './DeferredSurfaces';
 import { BusyNotice } from './BusyNotice';
@@ -132,6 +133,18 @@ const panelPlace = (pathname: string) => /^\/(?:projects|dm|spaces)\/[^/]+/.exec
 const THREAD_ROUTE = /^\/projects\/([^/]+)\/conversations\/([^/]+)/;
 
 const NO_ORIGIN = { key: '', path: '/', label: '' };
+
+/**
+ * The page at the address, or, for a person who left the company or was removed and has no company now, "You’re no longer in Riverside
+ * Bakery" on every page of the company they can still reach, as Home says it (personas-37 P3-4: /inbox said "Nothing needs you right now").
+ * Home, Spaces (which says it in its list) and Settings stay theirs.
+ */
+function CompanyPage() {
+  const { workspace, removedFrom } = useShellData();
+  const { pathname } = useLocation();
+  if (!workspace && removedFrom && pathname !== '/' && pathname !== '/projects' && !/^\/settings(\/|$)/.test(pathname)) return <NoLongerIn company={removedFrom} />;
+  return <Outlet />;
+}
 /** What a history entry keeps of its panel (#592): an object the panel shows over the page and the way back it left. A thread or an agent a view owns is kept by its own route. */
 interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
 const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
@@ -1113,7 +1126,7 @@ function AppLayoutContent() {
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
           <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1} data-sheet={panelMode === 'sheet' && detailsOpen ? '' : undefined}>
             <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
-              <Outlet />
+              <CompanyPage />
               {switching ? <PendingView view={switching} name={switchingName} userId={me.user.id} /> : null}
               <DeferredLiveStage />
             </ViewFade>
