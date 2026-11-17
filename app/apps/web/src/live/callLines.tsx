@@ -31,10 +31,10 @@ export function useCallLines(projectId: string, taskId: string | null = null): L
 const minutes = (from: string, to: number) => Math.max(1, Math.round((to - Date.parse(from)) / 60_000));
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
 
-/** The words of a call's line without its starter's name (F-041): what a task's activity says after "Hubert". */
 /** The reader's names for a call's people, and "Stefan Kowal (removed)" for one who left the company or was removed (#1424, 2026-11-17). */
 export const callNameOf = (line: LiveCallLine, nameOf: (userId: string) => string) => (userId: string) => line.removed?.[userId] ?? nameOf(userId);
 
+/** The words of a call's line without its starter's name (F-041): what a task's activity says after "Hubert". */
 export function callWords(line: LiveCallLine, nameOf: (userId: string) => string, now: number): { named: boolean; text: string } {
   const others = line.joinedBy.filter((userId) => userId !== line.startedBy);
   if (line.endedAt === null) {
