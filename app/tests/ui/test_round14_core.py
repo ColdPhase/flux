@@ -17,6 +17,7 @@ Run once with FLUX_UI_BROWSER=chromium and once with webkit. Each test measures 
 
 from __future__ import annotations
 
+import re
 import time
 import unittest
 import uuid
@@ -105,7 +106,15 @@ class Round14Core(unittest.TestCase):
         return page
 
     def long_row_lines(self, page: Page) -> tuple[float, str]:
-        title = page.locator(".nyq__list .nyc__open-t").filter(has_text="overflow pipe behind the shed")
+        expect(page.locator(".nyq__list .nyc").first).to_be_visible()
+        # On the phone the open item is the expanded card, whose title is whole: another card is opened, so the long one is a row.
+        long = page.locator(".nyq__list .nyc").filter(has_text="overflow pipe behind the shed")
+        if "nyc--compact" not in (long.get_attribute("class") or ""):
+            other = page.locator(".nyq__list .nyc--compact").first
+            box = other.locator(".nyc__card").bounding_box()
+            page.touchscreen.tap(box["x"] + 10, box["y"] + box["height"] / 2)
+            expect(long).to_have_class(re.compile(r"\bnyc--compact\b"))
+        title = long.locator(".nyc__open-t")
         expect(title).to_be_visible()
         return title.evaluate("""(el) => { const cs = getComputedStyle(el); const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.35;
           return [el.getBoundingClientRect().height / line, cs.whiteSpace]; }""")
