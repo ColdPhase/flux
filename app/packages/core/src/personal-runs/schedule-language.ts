@@ -18,8 +18,9 @@ const LANGUAGES: Record<string, { words: ReadonlySet<string>; letters: RegExp }>
   nl: { words: new Set('de het en is van een voor met op niet dat die elke mij zijn of taken nog nieuwe'.split(' ')), letters: /(?!)/g },
 };
 
-/** The language a text is plainly written in, or null when it is too short or too mixed to say. */
-export function languageOf(text: string): string | null {
+/** The language a text is plainly written in, or null when it is too short or too mixed to say (or there is no text). */
+export function languageOf(text: string | null | undefined): string | null {
+  if (!text) return null;
   const lower = text.toLowerCase();
   const words = lower.split(/[^\p{L}]+/u).filter(Boolean);
   const scores = Object.entries(LANGUAGES).map(([code, language]) => {
@@ -35,10 +36,10 @@ export function languageOf(text: string): string | null {
  * The schedule as it is kept: the model's when both are plainly in one language (or either cannot be told), otherwise the owner's own words as
  * its instruction and its name (their first words, as a schedule without a name takes them), so it is never in a language they did not use.
  */
-export function inOwnersLanguage(schedule: ScheduleRequest, ownerWords: string): ScheduleRequest {
+export function inOwnersLanguage(schedule: ScheduleRequest, ownerWords: string | null | undefined): ScheduleRequest {
   const asked = languageOf(ownerWords);
   const prepared = languageOf(`${schedule.title ?? ''}\n${schedule.text}`);
-  if (!asked || !prepared || asked === prepared) return schedule;
+  if (!ownerWords || !asked || !prepared || asked === prepared) return schedule;
   const text = ownerWords.trim().slice(0, ASSISTANT_JOB_LIMITS.text);
   return { ...schedule, text, title: titleFromText(text) };
 }
