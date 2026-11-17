@@ -864,31 +864,36 @@ class FocusModel(unittest.TestCase):
 
     def test_38_slash_decide_then_typing_on_writes_its_why_and_never_proposes_it_unfinished(self) -> None:
         """personas-36 P3 6: Leo typed `/decide Bake rye on Tuesdays`, Tab (to Send) and "Fewer orders on Monday.": the Space on Send opened
-        the window with the cursor in its title, the rest went into the title, and Enter proposed a decision with no Why to everyone."""
+        the window with the cursor in its title, the rest went into the title, and Enter proposed a decision with no Why to everyone.
+        personas-37 P3-1: Tab still left the focus on Send, so the first word ("Fewer") was lost and the next Space sent it, at 20, 60 and
+        120 ms a key, on both engines. Tab from a `/decide` with its words now does what Enter does: Why, with every letter typed on."""
         page = self.page()
         page.goto(f"/projects/{self.ids['shared']}")
         composer = page.locator("#project-composer")
         expect(composer).to_be_focused()
-        title = f"Bake rye on Tuesdays {uuid.uuid4().hex[:4]}"
-        page.keyboard.type(f"/decide {title}")
-        page.keyboard.press("Tab")
-        page.keyboard.type("Fewer orders on Monday.", delay=30)
-        page.keyboard.press("Enter")
-        window = page.get_by_role("dialog", name="New decision")
-        expect(window).to_be_visible()
-        why = window.get_by_label("Why", exact=True)
-        expect(why).to_be_focused()
-        # The letters typed while the window opened are kept for Why, none lost on the way.
-        expect(why).to_have_value(re.compile(r"^\s*orders on Monday\.\n?$"))
-        expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value(title)
-        page.wait_for_timeout(600)
-        expect(window).to_be_visible()
-        proposed = self.contexts["piotr"].request.get(f"/api/v1/projects/{self.ids['shared']}/decisions").json()
-        items = proposed.get("items", proposed) if isinstance(proposed, dict) else proposed
-        self.assertFalse(any(title in (item.get("title") or "") for item in items), "nothing was proposed while the person was still writing")
-        page.keyboard.press("Escape")
-        expect(window).to_have_count(0)
-        composer.fill("")
+        for delay in (20, 120):
+            title = f"Bake rye on Tuesdays {uuid.uuid4().hex[:4]}"
+            page.keyboard.type(f"/decide {title}")
+            page.keyboard.press("Tab")
+            page.keyboard.type("Fewer orders on Monday.", delay=delay)
+            page.keyboard.press("Enter")
+            window = page.get_by_role("dialog", name="New decision")
+            expect(window).to_be_visible()
+            why = window.get_by_label("Why", exact=True)
+            expect(why).to_be_focused()
+            # Every letter typed from Tab on is in Why, the first word too; none went into the composer or was lost on a button.
+            expect(why, f"{delay} ms a key").to_have_value(re.compile(r"^Fewer orders on Monday\.\n?$"))
+            expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value(title)
+            expect(composer).to_have_value(f"/decide {title}")
+            page.wait_for_timeout(600)
+            expect(window).to_be_visible()
+            proposed = self.contexts["piotr"].request.get(f"/api/v1/projects/{self.ids['shared']}/decisions").json()
+            items = proposed.get("items", proposed) if isinstance(proposed, dict) else proposed
+            self.assertFalse(any(title in (item.get("title") or "") for item in items), "nothing was proposed while the person was still writing")
+            page.keyboard.press("Escape")
+            expect(window).to_have_count(0)
+            composer.fill("")
+            composer.focus()
 
     def test_39_esc_from_a_new_task_s_panel_gives_the_focus_to_the_task_s_card(self) -> None:
         """personas-36 note: Esc in the composer, C, a title and Ctrl+Enter, then Esc from the new task's panel focused a message (the one

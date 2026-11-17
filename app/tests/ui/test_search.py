@@ -205,6 +205,28 @@ class SearchJourney(unittest.TestCase):
         expect(page.locator(".project-convo__message.is-arrived")).to_contain_text("hallway test")
         expect(page.locator(".project-convo__message.is-arrived")).to_be_focused()
 
+    def test_02b_the_searcher_is_named_with_you_on_their_own_results(self) -> None:
+        """personas-37 P3-5: Search named the searcher without "(you)" ("Kasia Wójcik · Bakery floor · 22:51" on her own message, "Ana Costa"
+        among People), unlike every other view (design §5 "Naming people")."""
+        page = self.page("nia")
+        page.goto("/")
+        dialog, _ = self.jump(page, "camera bedside")
+        own = dialog.locator("[role=option].sr").filter(has_text="Camera or sensor for the bedside lamp?")
+        expect(own).to_have_count(1)
+        pieces = own.first.locator(".sr__meta > span:not([aria-hidden])").all_inner_texts()
+        self.assertEqual(pieces[:2], ["Nia Berg (you)", "Gesture lamp"], pieces)
+        self.assertIn("Nia Berg (you)", own.first.get_attribute("aria-label") or "")
+        # Someone else's message names its author as before.
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("sensor reacts")
+        other = dialog.locator("[role=option].sr").filter(has_text="The infrared sensor reacts at 5 lux in the hallway test.")
+        expect(other.first.locator(".sr__meta > span:not([aria-hidden])").first).to_have_text("Ari Nowak")
+        # Among People the reader is "Nia Berg (you)", the others by name.
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("Nia Berg")
+        person = dialog.locator(".jump__sh", has_text="People").locator("xpath=following-sibling::*[@role='option']").filter(has_text="Nia Berg")
+        expect(person.first.locator(".sr__title")).to_have_text("Nia Berg (you)")
+        self.assertTrue((person.first.get_attribute("aria-label") or "").startswith("Nia Berg (you)"))
+        page.keyboard.press("Escape")
+
     def test_03_arrow_keys_choose_and_old_versions_open_at_their_version(self) -> None:
         page = self.page("nia")
         page.goto("/")

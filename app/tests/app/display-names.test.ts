@@ -5,7 +5,7 @@ import { hasInvisibleFormat, myAgentPath, withoutInvisibleFormat, type Agent, ty
 import { profileFromClaims } from '../../apps/server/src/identity/claim-profile.js';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { addMember, expectStatus, person, secondSession, workspace } from './support/people.js';
+import { addMember, expectStatus, person, removeMember, secondSession, workspace } from './support/people.js';
 import { assistantScene } from './support/assistant-scene.js';
 
 // Names are drawn beside other text (#1347, the audits of #1270): a direction control or an invisible character in one would reorder what
@@ -75,6 +75,10 @@ test('a name stored with a direction control is read clean where raw SQL reads i
   assert.ok(hit, JSON.stringify(found.items));
   assert.equal(hit.author, 'Ada Raw');
   assert.deepEqual(hit.place, { type: 'dm', id: dm.id, name: 'Ada Raw' });
+  // Removed from the company she is "Ada Raw (removed)", read clean as before (founder decision, Hubert, 2026-11-17, #1424).
+  await removeMember(owner, ws.id, ada);
+  const later = (expectStatus(await owner.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse).items.find((item) => item.kind === 'dm_message');
+  assert.equal(later?.author, 'Ada Raw (removed)');
 });
 
 test('a name from an identity provider is cleaned, never refused, so single sign-on still works', () => {

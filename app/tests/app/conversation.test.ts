@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, ConversationMessage, Material, MaterialVersion, Page, Project, Workspace } from '@flux/contracts';
+import type { Conversation, ConversationMessage, Decision, DecisionDiscussion, Material, MaterialVersion, ObjectNotice, Page, Project, SearchResponse, TaskCreationNotice,
+  TaskDiscussion, WorkItem, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { expectStatus, person, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, removeMember, type Person } from './support/people.js';
+import { waitFor } from './support/wait.js';
 
 describe('project capture and inline conversation', () => {
   let owner: Person;
@@ -140,5 +142,74 @@ describe('project capture and inline conversation', () => {
       { body: { body: 'after revoke', clientMessageId: randomUUID() } }), 404);
     expectStatus(await partner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
       { body: { ...command, clientMutationId: randomUUID() } }), 404);
+  });
+
+  test('someone removed from the company is "Name (removed)" in messages, threads, discussions, notices and Search, until Restore (#1424, 2026-11-17)', async () => {
+    // Founder decision (Hubert, 2026-11-17, #1424; personas-37 P3-3): one removed person read "Former member" in a task's discussion and a
+    // decision's, "Former member" in the thread opened from Search and "Stefan Kowal" (no mark) in Search's list, beside "Stefan Kowal
+    // (removed)" on the task. Their name is already in the space's history, so its readers see it with the mark everywhere.
+    const stefan = await person('Stefan Kowal');
+    await pool.query('UPDATE auth_users SET name = $1 WHERE id = $2', ['Stefan Kowal', stefan.id]);
+    await addMember(owner, ws.id, stefan, 'member');
+    await grant(owner, project.id, stefan, 'contributor');
+    const word = `millday${randomUUID().slice(0, 6)}`;
+    const thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
+      { body: { body: 'When does the mill deliver?', clientMessageId: randomUUID() } }), 201) as Conversation;
+    expectStatus(await stefan.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: `I called the mill, they deliver on Tuesdays ${word}.`, clientMessageId: randomUUID() } }), 201);
+    const task = expectStatus(await stefan.browser.request('POST', `/api/v1/projects/${project.id}/work`, { body: { title: 'Call the mill' } }), 201) as WorkItem;
+    expectStatus(await stefan.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: { body: 'They deliver on Tuesdays.', clientMessageId: randomUUID() } }), 201);
+    const decision = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/decisions`, { body: { title: 'Bread prices go up', rationale: 'Flour costs more.' } }), 201) as Decision;
+    expectStatus(await stefan.browser.request('POST', `/api/v1/decisions/${decision.id}/discussion`, { body: { body: 'Fine for me, I tell the café.', clientMessageId: randomUUID() } }), 201);
+    const stefans = await stefan.browser.request('POST', `/api/v1/projects/${project.id}/decisions`, { body: { title: 'Open on Sundays', rationale: 'People walk by.' } });
+    const proposed = expectStatus(stefans, 201) as Decision;
+    const found = await waitFor(async () => ((expectStatus(await owner.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse).items.find((item) => item.kind === 'message')), 'the message in Search');
+    assert.equal(found.author, 'Stefan Kowal');
+    assert.equal(found.mine, undefined, 'not the reader\'s');
+
+    const names = async (reader: Person) => {
+      const read = expectStatus(await reader.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
+      const discussion = expectStatus(await reader.browser.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as TaskDiscussion;
+      const decided = expectStatus(await reader.browser.request('GET', `/api/v1/decisions/${decision.id}/discussion`), 200) as DecisionDiscussion;
+      const notices = (expectStatus(await reader.browser.request('GET', `/api/v1/projects/${project.id}/task-notices`), 200) as Page<TaskCreationNotice>).items;
+      const objects = (expectStatus(await reader.browser.request('GET', `/api/v1/projects/${project.id}/object-notices`), 200) as Page<ObjectNotice>).items;
+      const search = (expectStatus(await reader.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse).items.find((item) => item.kind === 'message');
+      const by = (messages: readonly ConversationMessage[]) => messages.find((message) => message.authorId === stefan.id);
+      return {
+        thread: by(read.messages)?.removedAuthorName ?? null, task: by(discussion.messages.length ? discussion.messages : [discussion.root!])?.removedAuthorName ?? null,
+        decision: by(decided.messages)?.removedAuthorName ?? null,
+        notice: notices.find((notice) => notice.workId === task.id)?.createdBy.name, proposed: objects.find((notice) => notice.decisionId === proposed.id)?.by.name,
+        proposedBy: (expectStatus(await reader.browser.request('GET', `/api/v1/decisions/${proposed.id}`), 200) as Decision).proposedBy.name,
+        search: search?.author,
+      };
+    };
+    assert.deepEqual(await names(owner), { thread: null, task: null, decision: null, notice: 'Stefan Kowal', proposed: 'Stefan Kowal', proposedBy: 'Stefan Kowal', search: 'Stefan Kowal' });
+    await removeMember(owner, ws.id, stefan);
+    const removed = { thread: 'Stefan Kowal', task: 'Stefan Kowal', decision: 'Stefan Kowal', notice: 'Stefan Kowal (removed)', proposed: 'Stefan Kowal (removed)',
+      proposedBy: 'Stefan Kowal (removed)', search: 'Stefan Kowal (removed)' };
+    // Every reader of the space, the owner and a member alike; the web shows the message names as "Stefan Kowal (removed)" (`removedName`).
+    assert.deepEqual(await names(owner), removed);
+    assert.deepEqual(await names(partner), removed);
+    // Someone who cannot read the space reads none of it, so is told no name.
+    expectStatus(await outsider.browser.request('GET', `/api/v1/conversations/${thread.id}`), 404);
+    // Restore takes the mark off.
+    expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/removed-people/${stefan.id}/restore`, { body: {} }), 201);
+    assert.deepEqual(await names(owner), { thread: null, task: null, decision: null, notice: 'Stefan Kowal', proposed: 'Stefan Kowal', proposedBy: 'Stefan Kowal', search: 'Stefan Kowal' });
+  });
+
+  test('Search marks what the reader wrote, and a person result that is the reader, so the row says "(you)" (personas-37 P3-5)', async () => {
+    const ana = await person('Ana Costa');
+    await addMember(owner, ws.id, ana, 'member');
+    await grant(owner, project.id, ana, 'contributor');
+    const word = `ownword${randomUUID().slice(0, 6)}`;
+    expectStatus(await ana.browser.request('POST', `/api/v1/projects/${project.id}/conversations`, { body: { body: `My own note ${word}`, clientMessageId: randomUUID() } }), 201);
+    const mine = await waitFor(async () => ((expectStatus(await ana.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse).items.find((item) => item.kind === 'message')), 'the note in Search');
+    assert.equal(mine.author, 'Ana Costa');
+    assert.equal(mine.mine, true);
+    const theirs = (expectStatus(await owner.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse).items.find((item) => item.kind === 'message');
+    assert.equal(theirs?.mine, undefined, 'another reader did not write it');
+    const person_ = (reader: Person) => async () => (expectStatus(await reader.browser.request('GET', `/api/v1/search?q=${encodeURIComponent('Ana Costa')}`), 200) as SearchResponse).items
+      .find((item) => item.kind === 'person' && item.target.type === 'person' && item.target.userId === ana.id);
+    assert.equal((await waitFor(person_(ana), 'Ana among People')).mine, true, 'the reader among People');
+    assert.equal((await waitFor(person_(owner), 'Ana among People for the owner')).mine, undefined);
   });
 });

@@ -568,8 +568,9 @@ class EncryptedWorkspaces(Base):
         expect(page.get_by_text(B_ROOT).first).to_be_visible()
         page.emulate_media(media="screen")
 
-    def test_32_a_former_members_messages_say_former_member(self) -> None:
-        """UI audit XC-2: a removed person's messages are named "Former member", the same in the conversation and its notices."""
+    def test_32_a_removed_persons_messages_say_their_name_removed(self) -> None:
+        """UI audit XC-2 named a removed person's messages "Former member". Founder decision (Hubert, 2026-11-17, #1424; personas-37 P3-3):
+        they are "Ben Okafor (removed)", as the task that names them is, and Restore takes the mark off."""
         world = self.make_world()
         self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.b}/members", {"email": world.emails["ben"], "role": "member"}, 201)
         reply = "The new dock lights are in the shed"
@@ -579,8 +580,14 @@ class EncryptedWorkspaces(Base):
         page.goto(f"/projects/{world.b_project}/conversations/{world.b_conversation}")
         message = page.locator("[data-message-id]").filter(has_text=reply).last
         expect(message).to_be_visible()
-        expect(message).to_contain_text("Former member")
-        expect(message).to_have_attribute("aria-label", "Former member’s message")
+        expect(message).to_contain_text("Ben Okafor (removed)")
+        expect(message).to_have_attribute("aria-label", "Ben Okafor (removed)’s message")
+        expect(page.get_by_text("Former member")).to_have_count(0)
+        self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.b}/removed-people/{world.ids['ben']}/restore", {}, 201)
+        page.reload()
+        message = page.locator("[data-message-id]").filter(has_text=reply).last
+        expect(message).to_have_attribute("aria-label", "Ben Okafor’s message")
+        expect(page.get_by_text("Ben Okafor (removed)")).to_have_count(0)
 
     def test_20_the_encryption_section_sits_before_leave_in_every_state(self) -> None:
         for phone in (False, True):
