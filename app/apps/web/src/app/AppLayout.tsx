@@ -7,10 +7,10 @@ import { useLockedPeople, useLockedPlace } from '../encryption/state';
 import { Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
-import { NoLongerIn } from './NotAvailable';
+import { NoLongerIn, useNotAvailableShown } from './NotAvailable';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage, DeferredNotices } from './DeferredSurfaces';
-import { BusyNotice } from './BusyNotice';
+import { BusyNotice, OfflineNotice } from './BusyNotice';
 
 /** The Connect AI window's code (with its steps and sign-in) comes only when it is opened in place. */
 const ConnectAiDialog = lazy(() => import('../ai/ConnectAiDialog'));
@@ -233,6 +233,20 @@ function AppLayoutContent() {
     if (keptSpace.current && keptSpace.current.path !== location.pathname) keptSpace.current = null;
   });
   const paneRef = useRef<HTMLElement>(null);
+  // A page that is scrolled under the phone's header gets the header's hairline, so its text never slides under the header and is cut
+  // mid-glyph with nothing between them (round 14, look-a B4). Read from the page's own scroller; a new page starts unscrolled.
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return undefined;
+    const read = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.classList.contains('pane-scroll')) return;
+      pane.toggleAttribute('data-scrolled', target.scrollTop > 2);
+    };
+    pane.removeAttribute('data-scrolled');
+    pane.addEventListener('scroll', read, { capture: true, passive: true });
+    return () => pane.removeEventListener('scroll', read, { capture: true });
+  }, [location.pathname]);
   const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();
 
@@ -856,6 +870,7 @@ function AppLayoutContent() {
   const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
   const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
   const lockedHere = !!lockedId && lockedSpace?.encryption?.state === 'locked';
+  const notAvailable = useNotAvailableShown();
   // An encrypted space has a small lock after its name in its header, locked or not (F-026 §4, as the locked space is drawn).
   const encryptedHere = lockedHere || (!!activeProject?.workspaceId && workspaces.some((space) => space.id === activeProject.workspaceId && !!space.encryption));
   const encryptedMark = encryptedHere ? <Icon name="lock" size={14} label="Encrypted" className="title-lock" data-encrypted-mark="" /> : null;
@@ -1123,6 +1138,7 @@ function AppLayoutContent() {
           {/* A thread's own panel is its loading state, with its own cancel: a row across the top would lie over the panel's head. */}
           {threadOpening ? null : <RouteProgress />}
           <BusyNotice />
+          <OfflineNotice />
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
           <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1} data-sheet={panelMode === 'sheet' && detailsOpen ? '' : undefined}>
             <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
@@ -1140,8 +1156,8 @@ function AppLayoutContent() {
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}
-        {phone && !detailsOpen && (lockedHere || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && !!workspace && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
+        {phone && !detailsOpen && (lockedHere || notAvailable || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && !notAvailable && !!workspace && phoneOffersCreate(location.pathname)} capsule={lockedHere || notAvailable || !phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 

@@ -216,7 +216,9 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
   return (
     <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { if (!hovers()) return; held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
       onFocus={() => { held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
-      {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
+      {/* One look for every toast that says what was done (round 14, daily P3-10: Done in the Inbox had no mark, a role change a ✓): no
+          mark beside the words. Only Kreska's Wink for a closed task, and the alert of what failed, stand there. */}
+      {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
       {toast.action && !leaving && !toast.leaving ? (

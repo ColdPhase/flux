@@ -19,7 +19,10 @@
 .auth__head { display: flex; flex-direction: column; gap: 6px; }
 .auth__head > * { margin: 0; }
 .auth__company { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.auth__title { font-size: var(--fs-2xl); line-height: 1.2; font-weight: 600; letter-spacing: var(--tracking-title); }
+.auth__title { font-size: var(--fs-2xl); line-height: 1.2; font-weight: 600; letter-spacing: var(--tracking-title); text-wrap: balance; }
+/* A sign-in page that is an error (a reset link that no longer works) has the pages' one title size, never a 15 px heading among them,
+   and a title that wraps never leaves "(demo)" alone on its line (round 14, look-a B15). */
+.auth .ui-error__title { font-size: var(--fs-2xl); line-height: 1.2; letter-spacing: var(--tracking-title); text-wrap: balance; }
 .auth__lead { font-size: var(--fs-base); color: var(--t2); line-height: var(--lh); }
 .auth__card, .auth__form { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .auth__card .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; }
@@ -88,6 +91,8 @@ body:has(.app) { background: var(--side); }
   font-size: var(--fs-base); font-weight: 500; white-space: nowrap; transition: var(--tr);
 }
 .side__new { flex: 1; justify-content: flex-start; }
+/* New and Search answer a hovering pointer as the rows under them do (round 14, look-a B1). */
+@media (hover: hover) { .side__new:hover, .side__search:hover { background: var(--hov); } }
 /* One key hint everywhere: a 1 px --line2 outline on the surface it stands on, the same in light and dark (it was a fill that vanished on the
    light sidebar and a box in dark, visual review 2026-11-17, core 34). */
 .side__new kbd {
@@ -120,7 +125,7 @@ body:has(.app) { background: var(--side); }
   border-radius: 8px; color: var(--t2); text-decoration: none; font-size: var(--fs-base); font-weight: 500; text-align: left;
   transition: var(--tr);
 }
-.side__item:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .side__item:hover { background: var(--hov); color: var(--t1); } }
 /* The current place is a raised white pill (F-026 §4): only one row is marked. */
 .side__item[aria-current="page"], .side__project.is-open, .side__dm[aria-current="page"] {
   background: var(--el); color: var(--t1); box-shadow: var(--sh-raise);
@@ -292,7 +297,7 @@ body:has(.app) { background: var(--side); }
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--ctl); padding: 4px 8px; border-radius: var(--r);
   text-align: left; transition: var(--tr);
 }
-.me__btn:hover { background: var(--hov); }
+@media (hover: hover) { .me__btn:hover { background: var(--hov); } }
 /* The whole row, face and name, is the one way into Settings, on every device (#1419; the phone's drawer #266 PF-5). */
 a.me__btn { color: inherit; text-decoration: none; }
 /* On Settings the row is the current place, drawn as the sidebar's current row in both themes: --sub was the sidebar's own grey in light, so
@@ -470,22 +475,25 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
    2026-11-17, core 17). */
 .home-tasks__h + .home-tasks__place { margin-top: 0; }
 @media (max-width: 640px) { .home-tasks { padding-top: 12px; } }
-.home-tasks__name { margin: 0 0 2px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
-.home-tasks__list { list-style: none; margin: 0; padding: 0; }
+.home-tasks__name { margin: 0 0 6px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
+/* A space's tasks are one card of rows, as Home's lists are, so a row and its chevron belong together instead of floating 680 px apart on the
+   page; the glyph, the word and the chevron sit on the row's centre line (round 14, look-a B6). */
+.home-tasks__list { list-style: none; margin: 0; padding: 0; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; }
+.home-tasks__list > li + li { border-top: 1px solid var(--line); }
 .home-tasks__item {
-  display: flex; align-items: flex-start; gap: 12px; min-height: 40px; padding: 8px; margin: 0 -8px; border-radius: var(--r);
+  display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 10px 16px;
   color: var(--t1); text-decoration: none; font-size: var(--fs-md); line-height: 1.45;
 }
-.home-tasks__item:hover { background: var(--hov); }
+@media (hover: hover) { .home-tasks__item:hover { background: var(--hov); } }
 .home-tasks__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.home-tasks__status { display: inline-flex; flex: none; align-items: center; align-self: flex-start; gap: 6px; min-width: 88px; min-height: calc(var(--fs-md) * 1.45); color: var(--t3); font-size: var(--fs-sm); }
+.home-tasks__status { display: inline-flex; flex: none; align-items: center; gap: 6px; min-width: 88px; height: calc(var(--fs-md) * 1.45); color: var(--t3); font-size: var(--fs-sm); line-height: 1; }
 .home-tasks__glyph { flex: none; }
 .home-tasks__num { color: var(--t3); }
 .home-tasks__status.is-blocked { color: var(--t1); }
 .home-tasks__body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .home-tasks__title { overflow-wrap: anywhere; }
 .home-tasks__why { color: var(--t3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
-.home-tasks__go { flex: none; align-self: center; color: var(--t3); }
+.home-tasks__go { flex: none; display: block; height: calc(var(--fs-md) * 1.45); color: var(--t3); }
 .home-tasks__more { margin-top: 14px; color: var(--t3); font-size: var(--fs-sm); }
 .home-tasks__center { display: flex; justify-content: center; padding: 48px 0; }
 @media (pointer: coarse) { .home-tasks__item { min-height: 44px; } }
@@ -563,7 +571,7 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 .details__sec h4 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .details__sec p { font-size: var(--fs-md); color: var(--t2); line-height: 1.6; }
 .details__back { display: inline-flex; align-items: center; gap: 4px; min-height: var(--ctl); margin: -6px 0 10px -6px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--t3); transition: var(--tr); }
-.details__back:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .details__back:hover { background: var(--hov); color: var(--t1); } }
 .details__rows { list-style: none; margin: 0; padding: 0; }
 .details__rows li { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; font-size: var(--fs-md); line-height: 1.45; }
 .details__rows li + li { border-top: 1px solid var(--line); }
@@ -653,6 +661,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead {
   display: flex; align-items: center; gap: 10px; flex: none; box-sizing: border-box; min-height: 56px; padding: calc(6px + env(safe-area-inset-top)) 14px 6px;
 }
+/* Scrolled, the page meets the header at a hairline (AppLayout `data-scrolled`, round 14, look-a B4). */
+.app__main:has(.app__pane[data-scrolled]) .phead:not(.phead--space) { box-shadow: 0 1px 0 var(--line); position: relative; z-index: 1; }
 .phead__id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .phead__logo { display: inline-flex; flex: none; }
 .phead__title { flex: 1; min-width: 0; }
@@ -790,6 +800,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: var(--fs-base); font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }
+/* "+ New message" starts where the line above it starts, its padding taken back (round 14, look-a B5; "One look for one element"). */
+.proj-index__dms > .ui-btn--secondary:last-child { margin-inline-start: -14px; }
 
 /* Home as drawn (#342): no header row on the computer; the name stays for assistive technology. */
 .top.top--bare { height: 0; min-height: 0; padding: 0; margin: 0; border: 0; overflow: visible; }

@@ -4,12 +4,7 @@ Run once with FLUX_UI_BROWSER=chromium and once with webkit. Each test measures 
 - an Inbox row's title wraps to two lines and is cut with "…" on the phone and in the list, never cut mid-letter on one line (new P2-2,
   daily P2-1, look-a A2: `white-space: nowrap` under a `-webkit-box` clamp);
 - the keyboard ring of an Inbox card at 200 % is one ring, the card's, never a second one round the title's words (look-a A10);
-- a decision with a discussion, opened from the phone's Inbox, opens with its title in view, not scrolled to the discussion's end with only
-  Accept showing (new P2-3);
-- a task that waits for the reader, opened from the phone's Inbox, opens with what it waits for in view above the field, and names the reader
-  "Ada Kowalska (you)" (look-a A3, A4);
-- a panel's lower fade lies on the panel's own padding at the end and under the pinned answer, never over the newest message or Accept
-  (look-a A5, look-b B1);
+(The phone sheets opened from the Inbox, new P2-3 and look-a A3/A4/A5, are the task and decision panels' own code: test_round14_work.)
 - after a submit by click, the first wrong field keeps its strong edge while no ring is drawn (look-a A1);
 - Home says when what waits for you could not be read, with Try again, instead of "Looking…" for ever (look-a A6);
 - offline, a page without a composer says so, and the line leaves when the connection is back (look-a A7).
@@ -141,49 +136,6 @@ class Round14Core(unittest.TestCase):
         rings = title.evaluate("(el) => [getComputedStyle(el.closest('.nyc').querySelector('.nyc__card')).outlineStyle, getComputedStyle(el).outlineStyle]")
         self.assertEqual(rings, ["solid", "none"], "the card carries the one ring, the title's words none")
         shot(page, f"round14-inbox-ring-200-{UI_BROWSER}")
-
-    def open_from_phone_inbox(self, text: str) -> Page:
-        page = self.page(PHONE, touch=True)
-        page.goto("/inbox")
-        title = page.locator(".nyq__list .nyc__open").filter(has_text=text)
-        expect(title).to_be_visible()
-        title.tap()
-        expect(page.locator(".ui-detent-sheet .wd__scroll")).to_be_visible()
-        return page
-
-    def in_view(self, page: Page, selector: str) -> list[float]:
-        """How far the element's top lies above, and its bottom below, the visible part of the sheet's scrolling area (0 when in view)."""
-        return page.evaluate("""(selector) => { const el = document.querySelector(selector); const box = el.closest('.wd__scroll').getBoundingClientRect();
-          const r = el.getBoundingClientRect(); return [Math.max(0, box.top - r.top), Math.max(0, r.bottom - box.bottom)]; }""", selector)
-
-    def test_03_a_discussed_decision_opens_on_its_title_on_the_phone(self) -> None:
-        page = self.open_from_phone_inbox(DECISION)
-        expect(page.locator(".wd-discussion__list > li")).to_have_count(6)
-        page.wait_for_timeout(400)
-        above, below = self.in_view(page, ".ui-detent-sheet .wd-decision-identity .details__title")
-        self.assertLess(above, 1, "the decision's title is in view, not scrolled away above the discussion")
-        self.assertLess(below, 1)
-        expect(page.locator(".ui-detent-sheet").get_by_role("button", name="Accept")).to_be_in_viewport()
-        shot(page, f"round14-decision-sheet-{UI_BROWSER}")
-
-    def test_04_a_task_waiting_for_you_opens_on_what_it_waits_for(self) -> None:
-        page = self.open_from_phone_inbox(BLOCKED)
-        blocker = page.locator(".ui-detent-sheet .wd-blocker")
-        expect(blocker).to_contain_text("Waiting for Ada Kowalska (you)")
-        page.wait_for_timeout(600)
-        above, below = self.in_view(page, ".ui-detent-sheet .wd-blocker")
-        self.assertLess(below, 1, "what the task waits for, with Done, is whole above the field")
-        self.assertLess(above, 1)
-        shot(page, f"round14-blocked-sheet-{UI_BROWSER}")
-
-    def test_05_the_panel_fade_rests_on_its_padding_and_under_the_answer(self) -> None:
-        page = self.open_from_phone_inbox(DECISION)
-        scroller = page.locator(".ui-detent-sheet .wd__scroll")
-        fade = scroller.evaluate("(el) => { const cs = getComputedStyle(el, '::after'); return [cs.position, cs.bottom, cs.zIndex, getComputedStyle(el).paddingBottom]; }")
-        self.assertEqual(fade[0], "sticky")
-        # Stuck at the scrolling area's edge in the middle, it lies on the 20 px bottom padding at the end, never on the newest message.
-        self.assertEqual(fade[1], f"-{fade[3]}", "the fade sticks a padding below the content's edge")
-        self.assertEqual(fade[2], "0", "under the pinned answer (z-index 1), so it never washes over Accept")
 
     def test_06_after_a_click_the_first_wrong_field_keeps_its_edge(self) -> None:
         page = self.page(DESKTOP, signed_in=False)

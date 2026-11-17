@@ -416,7 +416,7 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for link, path, shell_title, content_title in ((re.compile(r"^My tasks"), "/tasks", "My tasks", "Nothing is waiting for you"),):
+        for link, path, shell_title, content_title in ((re.compile(r"^My tasks"), "/tasks", "My tasks", "No tasks of yours are open"),):
             page.goto("/")
             page.get_by_role("list", name="Your places").get_by_role("link", name=link).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")

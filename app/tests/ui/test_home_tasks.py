@@ -196,7 +196,7 @@ class HomeTasksJourney(unittest.TestCase):
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Olek$"))).to_be_visible()
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My tasks").click()
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         route, response = late[0]
         try:
             route.fulfill(response=response)
@@ -205,7 +205,7 @@ class HomeTasksJourney(unittest.TestCase):
         page.unroute(assigned)
         page.wait_for_timeout(800)
         self.assertNotIn("Mount the PIR sensor", page.content())
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         # Olek has a project (he reached this page from his Home), so the empty state does not offer to create one.
         expect(page.locator("#content").get_by_role("link", name="Create a space")).to_have_count(0)
 

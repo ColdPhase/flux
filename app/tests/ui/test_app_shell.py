@@ -454,7 +454,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         # My tasks, reached from Home, names itself (#763 NV-1).
@@ -533,7 +533,7 @@ class AppShellJourney(unittest.TestCase):
         # #763 FT-1: with no project Home does not list the personal pages; they stay reachable by address and Back.
         page.goto("/tasks")
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -773,7 +773,7 @@ class AppShellJourney(unittest.TestCase):
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")
-        expect(narrow.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(narrow.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         self.assertLessEqual(narrow.evaluate("document.documentElement.scrollWidth"), 360, "no horizontal scroll at 360px")
         shot(narrow, "phone-360-tasks-light")
 

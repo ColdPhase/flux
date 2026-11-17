@@ -77,9 +77,20 @@ export function InboxAside({ queue, onBack }: { queue: Queue; onBack: (key: stri
       setTimeout(() => { if (!mounted && openList) setOpenList(null); }, 0);
     };
   }, []);
+  // What the window put back is taken off its count at once, while the list behind it stays as it was: the line said "2 for later" after
+  // Bring back until the window closed (round 14, daily P3-12). The next read of the Inbox gives the count again.
+  const read = `${queue.later}:${queue.doneToday}`;
+  const [brought, setBrought] = useState<{ read: string; later: number; done: number }>({ read, later: 0, done: 0 });
+  const taken = brought.read === read ? brought : { read, later: 0, done: 0 };
+  const onBrought = useCallback((list: Which, by: number) => setBrought((now) => {
+    const base = now.read === read ? now : { read, later: 0, done: 0 };
+    return list === 'later' ? { ...base, later: base.later + by } : { ...base, done: base.done + by };
+  }), [read]);
+  const later = Math.max(0, queue.later - taken.later);
+  const doneToday = Math.max(0, queue.doneToday - taken.done);
   const parts: { which: Which; label: string }[] = [
-    ...(queue.later ? [{ which: 'later' as const, label: `${queue.later} for later` }] : []),
-    ...(queue.doneToday ? [{ which: 'done' as const, label: `${queue.doneToday} done today` }] : []),
+    ...(later ? [{ which: 'later' as const, label: `${later} for later` }] : []),
+    ...(doneToday ? [{ which: 'done' as const, label: `${doneToday} done today` }] : []),
   ];
   return (
     <>
@@ -93,12 +104,12 @@ export function InboxAside({ queue, onBack }: { queue: Queue; onBack: (key: stri
           ))}
         </p>
       ) : null}
-      <AsideWindow which={which} queue={queue} />
+      <AsideWindow which={which} queue={queue} onBrought={onBrought} />
     </>
   );
 }
 
-function AsideWindow({ which, queue }: { which: Which | null; queue: Queue }) {
+function AsideWindow({ which, queue, onBrought }: { which: Which | null; queue: Queue; onBrought: (list: Which, by: number) => void }) {
   const phone = useMediaQuery(MEDIA.phone);
   const close = useCallback(() => setOpenList(null), []);
   // The window has its own way back (Bring back now, Put back): an Undo toast leaves as it opens, and never floats over its rows.
@@ -108,12 +119,12 @@ function AsideWindow({ which, queue }: { which: Which | null; queue: Queue }) {
     <Overlay open={which !== null} onClose={close} placement={phone ? 'bottom' : 'center'} labelledBy="nyq-aside-title" className="nyq-aside-win">
       {/* On the phone it is a sheet like every other, with the same grabber to pull it down (visual review 2026-11-17, core 19). */}
       {which && phone ? <div className="ui-grabber" aria-hidden="true"><span /></div> : null}
-      {which ? <AsideList key={which} which={which} queue={queue} onClose={close} /> : null}
+      {which ? <AsideList key={which} which={which} queue={queue} onClose={close} onBrought={onBrought} /> : null}
     </Overlay>
   );
 }
 
-function AsideList({ which, queue, onClose }: { which: Which; queue: Queue; onClose: () => void }) {
+function AsideList({ which, queue, onClose, onBrought }: { which: Which; queue: Queue; onClose: () => void; onBrought: (list: Which, by: number) => void }) {
   const toast = useToast();
   const [entries, setEntries] = useState<NeedsYouAsideEntry[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -166,7 +177,9 @@ function AsideList({ which, queue, onClose }: { which: Which; queue: Queue; onCl
     setEntries(rest);
     const restored = restoreNeedsYou(entry.item.key);
     back.current.push({ item: entry.item, restored });
+    onBrought(which, 1);
     restored.catch((error: unknown) => {
+      onBrought(which, -1);
       back.current = back.current.filter((other) => other.item.key !== entry.item.key);
       setEntries((list) => (list && !list.includes(entry) ? [...list.slice(0, at), entry, ...list.slice(at)] : list));
       // A task changed since its Done says so in its own words (personas-33).

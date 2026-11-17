@@ -146,8 +146,11 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
     window.addEventListener(NEEDS_YOU_ACCEPTED, onAccepted);
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', reload);
+    // Back online, what waits is read again at once (round 14, look-a A7: nothing recovered 15 s after the connection came back).
+    window.addEventListener('online', reload);
     window.addEventListener(INBOX_CHANGED, reload);
     return () => {
+      window.removeEventListener('online', reload);
       window.removeEventListener(NEEDS_YOU_ACCEPTED, onAccepted);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', reload);

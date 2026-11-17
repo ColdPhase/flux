@@ -194,6 +194,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   const railGlide = useRef<HTMLSpanElement>(null);
   const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
   const searchKeys = mac ? 'Meta+K' : 'Control+K';
+  // The rail's controls name themselves in the one tooltip, beside the rail (round 14, look-a B1): no native `title` there.
+  const searchTip = mac ? 'Search · ⌘K' : 'Search · Ctrl K';
   useEffect(() => {
     // "C" opens New from anywhere outside a field or dialog (F-026 §4 keyboard); the drawer has its own.
     if (onClose) return undefined;
@@ -226,21 +228,21 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     return (
       <div className="side side--rail" onKeyDown={onRowKeys}>
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
-        <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
+        <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" data-tip-side="end" onClick={onToggleCollapsed} />
         {company ? <NewMenu compact onNew={onNew} /> : null}
         {/* Search stays beside New, outside the band that scrolls: on a short window (200 % zoom) it was half under New, cut by the band's
             edge as the band brought the open space into view (personas-33/34). */}
-        <button type="button" className="side__ib side__rail-search" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
+        <button type="button" className="side__ib side__rail-search" aria-label="Search" aria-keyshortcuts={searchKeys} data-tip={searchTip} data-tip-side="end" onClick={openSearch}><Icon name="search" size={18} /></button>
         {/* Places and the lists share one middle band: on a short window (a phone on its side) the whole band scrolls, so
             projects keep room; the toggle, New, Search, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
         <div className="side__rail-middle" ref={railMiddle}>
         <nav className="side__rail-places" aria-label="Places">
-          <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
-          <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} aria-current={inbox ? 'page' : undefined}>
+          <Link to="/" className="side__ib" aria-label="Home" data-tip="Home" data-tip-side="end" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
+          <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} data-tip="Inbox" data-tip-side="end" aria-current={inbox ? 'page' : undefined}>
             <Icon name="inbox" size={18} />{inboxUnread ? <span className="side__count side__count--rail" aria-hidden="true">{inboxUnread}</span> : null}
           </Link>
-          <Link to="/tasks" className="side__ib" aria-label="My tasks" aria-current={myTasks ? 'page' : undefined}><Icon name="tasks" size={18} /></Link>
-          <Link to="/map" className="side__ib" aria-label="My map" title="Only you can see your map" aria-current={sketchbook ? 'page' : undefined}><Icon name="map" size={18} /></Link>
+          <Link to="/tasks" className="side__ib" aria-label="My tasks" data-tip="My tasks" data-tip-side="end" aria-current={myTasks ? 'page' : undefined}><Icon name="tasks" size={18} /></Link>
+          <Link to="/map" className="side__ib" aria-label="My map" data-tip="My map" data-tip-side="end" aria-current={sketchbook ? 'page' : undefined}><Icon name="map" size={18} /></Link>
         </nav>
         <div className="side__rail-scroll" ref={railScroll}>
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
@@ -291,7 +293,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           <span className="side__word" aria-hidden="true">flux</span>
         </span>
         {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} />
-          : <IconButton icon="sidebar" label="Collapse sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />}
+          : <IconButton icon="sidebar" label="Collapse sidebar" aria-keyshortcuts="[" className="side__toggle" data-tip-side="end" onClick={onToggleCollapsed} />}
       </div>
       <div className="side__actions">
         {company ? <NewMenu onNew={onNew} /> : null}

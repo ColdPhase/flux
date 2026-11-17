@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { flushPlace } from '../place/memory';
-import type { SearchResult } from '@flux/contracts';
+import { removedName, type SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { EmptyState, Icon, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
 import { leaveFocusToDestination } from '../ui/Overlay';
@@ -16,6 +16,9 @@ import './search.css';
 
 /** Results listed at once. There is no second page: a longer list is narrowed by typing more words. */
 const RESULTS = 20;
+
+/** The mark after the name of a person who was removed, "Stefan Kowal (removed)". */
+const REMOVED_MARK = removedName('');
 
 type Option = { id: string; section: string } & (
   | { kind: 'result'; result: SearchResult }
@@ -71,7 +74,7 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
   const openResult = useOpenResult();
   // The empty field lists the places the person opened (F-026 E02).
   const recentPlaces = useRecentPlaces(userId);
-  const { projects, directMessages } = useShellData();
+  const { projects, directMessages, workspace, removedFrom } = useShellData();
   const location = useLocation();
   const text = query.trim();
   const state = useSearch(text, RESULTS);
@@ -102,7 +105,16 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
   ];
   const results: Option[] = groupResults(shown).flatMap((group) => group.items.map((result): Option => ({ kind: 'result', section: group.label, id: result.id, result })));
-  const options: Option[] = text ? results : emptyOptions;
+  // A person who was removed is no longer a person of the company the server searches, yet the sidebar lists the conversation with them as
+  // "Stefan Kowal (removed)": typing their name finds that conversation, under People (round 14, new P3-b).
+  const words = text.toLocaleLowerCase().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word));
+  const removedPeople: Option[] = words.length && state.status === 'ready' ? directMessages
+    .filter((dm) => dm.kind === 'pair' && dm.title.endsWith(REMOVED_MARK)
+      && words.every((word) => dm.title.slice(0, -REMOVED_MARK.length).toLocaleLowerCase().split(/\s+/).some((part) => part.startsWith(word))))
+    .map((dm): Option => ({ kind: 'place', section: 'People', id: `removed-dm-${dm.id}`, place: { key: `dm:${dm.id}`, path: `/dm/${dm.id}`, title: dm.title }, label: dm.title, side: 'Message', icon: 'person' })) : [];
+  const lastPeople = results.map((option) => option.section).lastIndexOf('People');
+  const withRemoved = lastPeople < 0 ? [...results, ...removedPeople] : [...results.slice(0, lastPeople + 1), ...removedPeople, ...results.slice(lastPeople + 1)];
+  const options: Option[] = text ? withRemoved : emptyOptions;
   const current = Math.min(activeFor.text === text ? activeFor.index : 0, Math.max(options.length - 1, 0));
   const setActive = (index: number) => setActiveFor({ text, index });
   useEffect(() => {
@@ -123,7 +135,7 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
     else if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); choose(options[current]); }
   };
 
-  const found = shown.length;
+  const found = shown.length + removedPeople.length;
   const status = !text ? '' : state.status === 'loading' ? 'Searching…' : state.status === 'failed' ? state.message
     : state.status === 'ready' ? (found ? `${found}${state.answer.next ? '+' : ''} ${found === 1 ? 'result' : 'results'}` : 'No results') : '';
 
@@ -146,11 +158,19 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
     </ul>
   ) : null;
   // No results: Kreska looks aside (unless Settings turned the small moments off), then the words (the drawn no-results moment; the guide's S16).
+  // Someone who left the company or was removed has nothing to search: Search says why, in Home's words, instead of "Nothing matches"
+  // (round 14, new P3-c).
   const empty = text && state.status === 'ready' && !found ? (
     <div className="jump__none">
-      <EmptyState mascot="looking" icon="search" level={3} title={`Nothing matches “${text}”`}>
-        <p>{/[\p{L}\p{N}]{2,}/u.test(text) ? 'Try fewer or different words.' : 'Type at least two letters of a word.'}</p>
-      </EmptyState>
+      {!workspace && removedFrom ? (
+        <EmptyState icon="people" level={3} title={`You’re no longer in ${removedFrom}`}>
+          <p>Ask an owner or admin of the company for an invite link to come back.</p>
+        </EmptyState>
+      ) : (
+        <EmptyState mascot="looking" icon="search" level={3} title={`Nothing matches “${text}”`}>
+          <p>{/[\p{L}\p{N}]{2,}/u.test(text) ? 'Try fewer or different words.' : 'Type at least two letters of a word.'}</p>
+        </EmptyState>
+      )}
     </div>
   ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null;
 

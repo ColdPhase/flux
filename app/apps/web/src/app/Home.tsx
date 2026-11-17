@@ -77,6 +77,8 @@ function useContinue(userId: string, workspaceIds: string[]): HomeReads {
     })();
     return () => controller.abort();
   }, [userId, spaces, attempt]);
+  // Back online, Home reads again by itself (round 14, look-a A7).
+  useEffect(() => { window.addEventListener('online', reload); return () => window.removeEventListener('online', reload); }, [reload]);
   const mine = state?.userId === userId ? state : null;
   return { choices: mine?.choices ?? [], tasks: mine?.tasks ?? null, failed: mine?.failed ?? false, reload };
 }
@@ -261,12 +263,12 @@ function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => s
   const steps = read.steps.map((step) => STEP_ROWS[step](read, spaceName, offer));
   const room = Math.max(0, 3 - steps.length);
   const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
-  // Everyone who joined is told: the people past the card's rows are named on the last one ("Say hello · Ola joined too"), and each gets
-  // a row of their own once the one above is greeted (personas-26: the third person who joined was dropped).
-  const fits = read.joined.slice(0, room);
-  const rest = read.joined.slice(room).map(names);
-  const joined = fits.map((person, at): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`,
-    meta: at === fits.length - 1 && rest.length ? `Say hello · ${nameList(rest)} joined too` : 'Say hello' }));
+  // Everyone who joined is told, in one row (personas-26: the third person who joined was dropped; round 14, new P3-g: one batch of five
+  // read as two different rows, "Ana joined · Say hello" and "Leo joined · Say hello · Stefan, Kasia and 1 more joined too"). The row names
+  // who joined, "Ana, Leo and 3 more joined", and greets the first; once greeted, it greets the next, until everyone was greeted.
+  const first = room > 0 ? read.joined[0] : undefined;
+  const joined: StepRow[] = first ? [{ key: `joined:${first.userId}`, icon: 'chat', title: `${nameList(read.joined.map(names))} joined`,
+    meta: read.joined.length > 1 ? `Say hello to ${names(first)}` : 'Say hello' }] : [];
   const lead = steps.findIndex((row) => row.key !== 'name_company');
   return [...steps.slice(0, lead < 0 ? steps.length : lead), ...joined, ...(lead < 0 ? [] : steps.slice(lead))];
 }
@@ -410,7 +412,9 @@ export function Home() {
                 "Waiting for you 4" over three rows adds up (personas-26). */}
             <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/inbox" aria-keyshortcuts="G I">Open Inbox{beyond > 0 ? ` · ${beyond} more` : ''}</Link>
           </div>
-          {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
+          {/* A read that failed says so, with Try again, as Continue does below; it never keeps saying it is looking (round 14, look-a A6). */}
+          {queue.items === null && queue.failed ? <div className="home__card home__quiet" role="alert">This couldn’t be loaded. <Button variant="link" size="sm" onClick={queue.reload}>Try again</Button></div>
+            : queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
             : rows.length ? (
               <ul className="home__rows" aria-label="Top of your Inbox">
                 {rows.map((row) => <WaitingItem key={row.key} row={row} />)}

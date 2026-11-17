@@ -147,6 +147,28 @@ looks ugly"). The same element looks the same on every screen, in light and dark
 - **A panel that scrolls** (the task and decision panels, their phone sheets) fades at its lower edge into the field under it; a pinned
   decision title fades what passes under it once the panel is scrolled; a window's list that is longer than the window fades at its end.
 - **The rail** pins the Inbox count to the Inbox button's corner, and a space's tile has the list's dot for what needs you on its corner.
+- **A clamped title wraps** (round 14 of the release gate, 2026-11-17): a title cut to two lines (an Inbox row on the phone and in the list) is
+  a `-webkit-box` clamp with no `white-space: nowrap` under it, so every engine shows its two lines and ends in "…"; `nowrap` there cut it
+  mid-letter in WebKit. Only a one-column Inbox card on a computer keeps one line with "…".
+- **One ring for a card**: a card whose title is its control (an Inbox card) is ringed as a card, 2 px of `--ring` out from it (just inside
+  it where it lies in a scroller that would cut it), never a second ring round the title's words. A window that takes the focus as it opens
+  draws no ring round itself, as a heading does not; its controls ring as everywhere.
+- **A toast that says what was done** has no mark beside its words (no ✓): Done in the Inbox and a role change look the same. Only Kreska's
+  Wink for a closed task and the alert of what failed stand there.
+- **The end of Search's list**: the lower fade lies on the list's 20 px bottom padding at the end (`position: sticky; bottom: -20px`), so a
+  row is never cut hard at the footer and the last row is never washed out.
+- **A field that is wrong keeps its strong edge** while no ring is drawn (the focus a click on Sign in moved to it); the ring replaces the
+  edge only while it shows.
+- **Offline**, a page without a composer says so in the busy line's place ("You’re offline. Flux shows what it last loaded and catches up
+  when you’re back."); a composer's own line says it where there is one. Back online, Home and the Inbox read again at once, and a read that
+  failed says so with Try again, never "Looking…" for ever.
+- **The phone's header** meets a scrolled page at a `--line` hairline. A place that is not available keeps the phone's tab bar, and its tile
+  is the alert icon, not a magnifier.
+- **The sidebar and the rail**: the rail's places, its Search and both toggles name themselves in the one tooltip (`data-tip`, the item's
+  own name: "Home", "My map", "Search · ⌘K"), drawn beside the rail and the toggle so it never covers New or Search; New and Search have the hover fill of the rows.
+- **No orphan word**: every text of the app wraps with `text-wrap-style: pretty`; titles of the sign-in pages also balance.
+- **Lists of rows are cards**: My tasks' spaces are cards of rows like Home's, the glyph, the word and the chevron on the first line's middle.
+  The phone's Spaces list ends a row in its dot and its ⋯, with no chevron.
 
 **One look for the same element** (founder direction, Hubert 2026-11-17, visual review of the work screens: "a UI check must catch what
 looks ugly"):
@@ -1132,10 +1154,11 @@ Community garden sensors, Rain barrel monitor and Tool library.
     founder's "the inviter learns when the person joins", [#1438](https://github.com/ColdPhase/flux/issues/1438) point 3). The Inbox stays one list of what needs
     you, so it has no "joined" item: the person who made the link is told by push (at their level, "<name> joined <company>") and, while their card is
     shown, by a row in the place of **Invite people**, which is done once a link was made: the title **Nia joined** and the quiet line **Say hello** (a
-    Home row like the others, the `chat` icon; the full name when two share a first name). There is one row for each person who used one of their links
-    and is still in the company, newest first, and none for someone they already have a direct message with. The steps keep their rows first, so
-    together there are at most three. Tapping the row opens the direct message with that person (made if there is none), which is what takes
-    the row away. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
+    Home row like the others, the `chat` icon; the full name when two share a first name). People who used one of their links and are still in the
+    company, newest first, and none they already have a direct message with, are **one row** (round 14, new P3-g: a batch of five read as two
+    different rows): **Ana, Leo and 3 more joined** with the quiet line **Say hello to Ana**. The steps keep their rows first, so together there are
+    at most three. Tapping the row opens the direct message with the first person named (made if there is none); the row then greets the next,
+    and leaves once everyone was greeted. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
   - **A member:** **Write your first message** (the person has written none; opens the space their invite link added them to while they are in it, else Everyone, with the composer ready, and names it: "Say hello in Seed swap"), **Add your
     photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
     where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show

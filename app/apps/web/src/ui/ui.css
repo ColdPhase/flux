@@ -7,6 +7,9 @@ body {
   font: 400 var(--fs-base)/var(--lh) var(--font); letter-spacing: var(--tracking);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   -webkit-tap-highlight-color: transparent;
+  /* No word alone on a text's last line ("too", "spaces"), in every text of the app (round 14, look-a B17). Only the style: where text wraps
+     stays each element's own. */
+  text-wrap-style: pretty;
 }
 button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
 input:is([type="checkbox"], [type="radio"]) { accent-color: var(--t1); }
@@ -72,6 +75,9 @@ svg { flex: none; }
     transition: opacity var(--dur-1) var(--ease-in), transform var(--dur-1) var(--ease-in);
   }
   [data-tip-align="start"]::after { right: auto; left: 0; }
+  /* Beside its control, at its end (the sidebar's toggle and the rail): below it, the sidebar toggle's tooltip covered the New key hint and
+     Search (round 14, look-a B1). Its start stands clear of the rail, so a band that clips it hides it whole. */
+  [data-tip-side="end"]::after { top: 50%; right: auto; left: calc(100% + 12px); margin-top: calc(var(--fs-xs) * -.75 - 3px); transform: translateX(-2px); }
   /* A tooltip is a raised card like a menu or a toast, never an inverted block (visual review 2026-11-17, core 34), and it never shows
      while the control's own menu is open: it stood under the menu and poked out at its corner (core 2). */
   [data-tip][aria-expanded="true"]::after { display: none; }
@@ -160,9 +166,11 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-input:focus-visible, .ui-input:focus { outline: 2px solid var(--ring); outline-offset: -1px; }
 /* The error is said in words next to the field (shape, not colour); the field keeps a strong edge. */
 .ui-field--invalid .ui-input { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
-/* One outline at a time (visual review 2026-11-17, core 3): while the person types in an invalid field the focus ring is its only
-   frame, so focus and error never stack two outlines; the error line under it still says what is wrong. */
-.ui-field--invalid .ui-input:focus { box-shadow: var(--sh-field); }
+/* One outline at a time (visual review 2026-11-17, core 3): while a ring is drawn round an invalid field the ring is its only frame, so
+   focus and error never stack two outlines; the error line under it still says what is wrong. Where no ring is drawn (the focus a submit
+   by click or tap moved to the first wrong field, `data-input="pointer"`), the field keeps its strong edge, so it never looks like the one
+   field that is right (round 14, look-a A1). */
+:root:not([data-input="pointer"]) .ui-field--invalid .ui-input:focus { box-shadow: var(--sh-field); }
 .ui-field__hint { font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .ui-field__error { display: flex; align-items: flex-start; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; }
 .ui-field__error svg { margin-top: 2px; }
@@ -266,7 +274,9 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
   position: absolute; display: flex; flex-direction: column; min-height: 0; background: var(--el);
   box-shadow: var(--sh-pop); outline: none;
 }
-.ui-overlay__surface:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+/* A window takes the focus itself only from a script, as it opens: it is where reading starts, not a control, so it draws no ring, as a
+   heading that takes the focus (round 14, look-b P17: a dark frame round the whole Connect AI sheet). Its controls ring as everywhere. */
+.ui-overlay__surface:focus-visible { outline: none; }
 .ui-overlay--left .ui-overlay__surface { left: 0; top: 0; bottom: 0; width: min(288px, 100%); }
 .ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(var(--panel-w), 100%); }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }
@@ -366,7 +376,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 /* "‹ Task #1": where Back goes (Spokój rule 2); the kind chip after it reads as the next crumb. */
 .ui-panel__back { display: inline-flex; align-items: center; gap: 2px; flex: none; max-width: 40%; min-height: 32px; margin: 0 4px 0 -8px; padding: 0 8px; border-radius: var(--r-pill); color: var(--t2); font: inherit; font-size: var(--fs-sm); font-weight: 500; transition: var(--tr); }
 .ui-panel__back span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-panel__back:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .ui-panel__back:hover { background: var(--hov); color: var(--t1); } }
 .ui-panel__back:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .ui-panel__sep { flex: none; margin: 0 6px 0 2px; color: var(--t3); }
 .ui-panel__sep + .ui-panel__chip .ui-panel__kind { padding: 0; background: none; color: var(--t1); }
@@ -399,7 +409,6 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
      pop-over shadow, in both themes (dark --el is the raised dark surface, and dark --sh-pop adds its light inset edge). */
   background: var(--el); color: var(--t1); font-size: var(--fs-base); font-weight: 500; line-height: 1.4; box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2); pointer-events: auto;
 }
-.ui-toast--success svg:first-child { color: var(--t1); }
 .ui-toast > svg { flex: none; }
 .ui-toast__msg { min-width: 0; padding: 6px 0; overflow-wrap: anywhere; max-height: calc(100dvh - var(--toast-bottom) - 48px); overflow-y: auto; }
 .ui-toast__msg:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -408,12 +417,12 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
   display: inline-flex; align-items: center; flex: none; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); color: inherit; font-weight: 600;
   transition: var(--tr);
 }
-.ui-toast__action:hover { background: var(--hov); }
+@media (hover: hover) { .ui-toast__action:hover { background: var(--hov); } }
 .ui-toast__action kbd { font: 500 var(--fs-glyph)/1 var(--mono); padding: 3px 5px; border-radius: 5px; background: var(--sub); box-shadow: none; color: var(--t2); }
 @media (pointer: coarse) { .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } }
 .ui-toast__close { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .ui-toast__sep { align-self: center; width: 1px; height: 16px; background: var(--line2); }
-.ui-toast__close:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .ui-toast__close:hover { background: var(--hov); color: var(--t1); } }
 @media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } .ui-toast--also .ui-toast__action { padding: 0 10px; } }
 /* On a phone the words keep their line: "Task #12 created · Undo · Another task ×" fits 358 px with tighter gaps and actions, so the
    message is not broken over two lines beside them (visual review 2026-11-17). Large text still wraps it. */
@@ -438,7 +447,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-empty__action { justify-content: center; }
 /* A text button that starts a row of actions under text starts where the text starts: its padding is taken back, so "Try again" lines up
    with the words above it, as a filled button's edge does (visual review 2026-11-17, core 15). */
-:is(.ui-error__actions, .nyc__card--pane .nyc__actions) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--sm, .ui-btn--block) { margin-inline-start: -14px; }
+:is(.ui-error__actions, .nyc__actions) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--sm, .ui-btn--block) { margin-inline-start: -14px; }
 .ui-error__detail { margin-top: 16px; font: var(--fs-xs)/1.5 var(--mono); color: var(--t3); letter-spacing: var(--tracking); }
 
 /* ---------- Task state glyphs (StatusGlyph.tsx): shape, not colour ---------- */
@@ -631,7 +640,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 }
 .origin-back svg { flex: none; }
 .origin-back__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.origin-back:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .origin-back:hover { background: var(--hov); color: var(--t1); } }
 .ui-panel__head > .origin-back { margin: 0 4px 0 -8px; max-width: 46%; }
 .phead > .origin-back { max-width: 44%; min-height: 44px; padding: 0 14px 0 8px; background: var(--el); color: var(--t1); box-shadow: var(--sh-card); }
 @media (pointer: coarse) { .origin-back { min-height: 44px; } }

@@ -69,7 +69,8 @@ export function ProjectsIndex() {
                     <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{calls.has(project.id) ? <Icon name="call" size={12} className="proj-index__live" data-call-mark="" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
                   </span>
                   {fresh && quiet ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : needing.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
-                  <Icon name="chevron-right" size={14} className="set-row__go" />
+                  {/* No chevron: a row of this list ends in its dot and its ⋯, as a Messages row below ends in its time; a dot, a chevron and a
+                      ⋯ in a row were three ends (round 14, look-b P20). */}
                 </Link>
                 {items.length ? <MoreMenu label={`More for ${project.name}`} size={14} className="proj-index__more" items={items} /> : null}
               </li>
@@ -84,7 +85,6 @@ export function ProjectsIndex() {
                     <span className="set-row__t">{space.name}</span>
                     <span className="set-row__s">{lockedLine(space)}</span>
                   </span>
-                  <Icon name="chevron-right" size={14} className="set-row__go" />
                 </Link>
               </li>
             ))}
