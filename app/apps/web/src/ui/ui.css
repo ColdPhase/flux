@@ -12,6 +12,8 @@ body {
   text-wrap-style: pretty;
 }
 button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
+/* The text caret takes the text token in both themes (founder check, Hubert 2026-11-17): every field, the composer, the map's thoughts. */
+input, textarea, [contenteditable] { caret-color: var(--t1); }
 input:is([type="checkbox"], [type="radio"]) { accent-color: var(--t1); }
 /* A radio is drawn by the app, one size in every engine, as the theme tiles' (visual review 2026-11-17 V22: the browser's was 10 px in WebKit and
    12 in Chromium, and in dark an unselected one nearly vanished). Off: a 1.5 px --t3 ring; on: a --t1 ring and dot. */

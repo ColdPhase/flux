@@ -6,7 +6,9 @@
 /* The page's column holds the text: a wide table scrolls inside its own card, never the page. */
 .wiki-editor .cm-editor, .wiki-editor .cm-editor .cm-scroller { min-width: 0; }
 .wiki-editor .cm-editor .cm-scroller { font-family: var(--font); line-height: inherit; overflow: visible; }
-.wiki-editor .cm-editor .cm-content { min-width: 0; width: 100%; padding: 0 0 48px; caret-color: var(--t1); }
+.wiki-editor .cm-editor .cm-content { min-width: 0; width: 100%; padding: 0 0 48px; }
+/* CodeMirror hides the native caret and draws its own, black unless told (founder check, Hubert 2026-11-17: invisible on the dark page): the text token. */
+.wiki-editor .cm-editor .cm-cursor, .wiki-editor .cm-editor .cm-dropCursor { border-left-color: var(--t1); }
 .wiki-editor .cm-editor .cm-line { padding: 0; }
 /* A readable measure, as the reader keeps it (at most 90 characters a line in Chromium and WebKit); code and tables take the column. */
 .wiki-editor .cm-editor .cm-line:not(.cm-md-pre):not(.cm-md-table) { max-width: 62ch; }
