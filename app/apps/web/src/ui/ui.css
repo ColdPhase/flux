@@ -35,11 +35,10 @@ svg { flex: none; }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 [tabindex="-1"]:focus-visible { outline-offset: -2px; }
 /* Only the keyboard draws a ring (founder direction, Hubert 2026-11-17, #1424). After a tap or a click (data-input="pointer", inputMode.ts)
-   the ring is transparent, so the focus a script moves after one (the phone Inbox's expanded title) is not framed; the next key brings it
-   back. A text field keeps its ring when it is tapped or clicked: the caret is going there. Every ring takes --ring, so this is the one switch. */
-:root[data-input="pointer"]:not(:has(:is(textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"], [type="image"])):focus)) {
-  --ring: transparent; --ring-inv: transparent;
-}
+   the ring is transparent, so the focus a script moves after one (the phone Inbox's expanded title, a window's first field, the composer of a
+   conversation just opened) is not framed; the next key brings it back. A text field tapped or clicked keeps its ring (data-input="field"):
+   the caret is going there. Every ring takes --ring, so this is the one switch. */
+:root[data-input="pointer"] { --ring: transparent; --ring-inv: transparent; }
 
 .ui-vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .ui-skip { position: absolute; left: 12px; top: 12px; z-index: 100; padding: 8px 12px; border-radius: var(--r-pill); background: var(--el); color: var(--t1); box-shadow: var(--sh-pop); transform: translateY(-200%); opacity: 0; text-decoration: none; font-size: var(--fs-md); }
@@ -53,7 +52,8 @@ svg { flex: none; }
   [data-tip] { position: relative; }
   [data-tip]::after {
     content: attr(data-tip) / ""; position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); right: 0;
-    padding: 3px 8px; border-radius: var(--r-sm); background: var(--inv); color: var(--oninv);
+    /* A raised card like a menu or a toast, never an inverted block (visual review 2026-11-17: a white block on a dark page). */
+    padding: 3px 8px; border-radius: var(--r-sm); background: var(--el); color: var(--t1); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2);
     font: 500 var(--fs-xs)/1.5 var(--font); letter-spacing: 0; white-space: pre; pointer-events: none;
     opacity: 0; transform: translateY(-2px);
     transition: opacity var(--dur-1) var(--ease-in), transform var(--dur-1) var(--ease-in);
@@ -81,7 +81,8 @@ svg { flex: none; }
 .ui-btn:disabled { color: var(--t3); background: transparent; }
 .ui-btn--primary { background: var(--inv); color: var(--oninv); }
 .ui-btn--primary:hover { background: var(--inv-hov); color: var(--oninv); }
-.ui-btn--primary:disabled { background: var(--sub); color: var(--t2); }
+/* A primary that waits keeps its shape on any surface, also --sub on a dark sheet (visual review 2026-11-17): a 1 px --line2 edge. */
+.ui-btn--primary:disabled { background: var(--sub); color: var(--t2); outline: 1px solid var(--line2); outline-offset: -1px; }
 .ui-btn--outline { padding: 0 11px; border: 1px solid var(--choice); color: var(--t1); }
 .ui-btn--outline[aria-pressed="true"], .ui-btn--outline[aria-checked="true"] { border-color: var(--t1); }
 /* A composer's Send: a soft fill, never the screen's inverted primary. */
@@ -375,6 +376,9 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-toast__sep { align-self: center; width: 1px; height: 16px; background: var(--line2); }
 .ui-toast__close:hover { background: var(--hov); color: var(--t1); }
 @media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } .ui-toast--also .ui-toast__action { padding: 0 10px; } }
+/* On a phone the words keep their line: "Task #12 created · Undo · Another task ×" fits 358 px with tighter gaps and actions, so the
+   message is not broken over two lines beside them (visual review 2026-11-17). Large text still wraps it. */
+@media (max-width: 480px) { .ui-toast { gap: 4px; padding-left: 14px; } .ui-toast .ui-toast__action { padding: 0 8px; } .ui-toast__sep { margin: 0 2px; } }
 
 /* ---------- Empty and error states ---------- */
 .ui-empty, .ui-error { display: flex; flex-direction: column; align-items: flex-start; max-width: 440px; }

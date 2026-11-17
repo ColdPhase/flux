@@ -10,4 +10,6 @@
 
 /* Where what is new begins (#763 A3): one quiet rule with a word, like a day line. */
 .convo-unread { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); list-style: none; }
-.convo-unread::before, .convo-unread::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line2, var(--line)); }
+/* One divider in a conversation (visual review 2026-11-17): its words in the middle and a hairline to each edge, as the day line ("Today")
+   and a thread's "2 replies · Today" draw it; "New" keeps its stronger words and line. */
+.convo-unread::before, .convo-unread::after { content: ""; flex: 1; height: 1px; background: var(--line2, var(--line)); }

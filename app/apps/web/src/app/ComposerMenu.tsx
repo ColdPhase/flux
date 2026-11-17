@@ -134,7 +134,8 @@ function ComposerMenuList({ id, options, active, onPick, onHover, trigger, popPr
             : option.kind === 'suggestion' ? <span className="cmenu__name">{option.label}</span>
               : <Fragment><Avatar name={option.label} id={option.personId} size="md" /><span className="cmenu__name">{option.label}</span></Fragment>}
           {option.kind === 'suggestion' ? null : <span className="cmenu__hint">{option.hint}</span>}
-          {index === active ? <kbd className="cmenu__kbd" aria-hidden="true">↵</kbd> : null}
+          {/* Every row keeps the ↵ badge's slot, so the hints stay in one column as the highlight moves (visual review 2026-11-17). */}
+          <kbd className="cmenu__kbd" aria-hidden="true" style={index === active ? undefined : { visibility: 'hidden' }}>↵</kbd>
         </div>
       ))}
     </div>

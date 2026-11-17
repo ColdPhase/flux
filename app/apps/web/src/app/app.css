@@ -481,7 +481,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border-radius: var(--r-composer);
   box-shadow: var(--sh-field); background: var(--el); transition: var(--tr);
 }
-.composer__box:focus-within { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
+/* The composer takes the one focus ring (README §2), 2 px of --ring round its card, never a dark frame (visual review 2026-11-17). */
+.composer__box:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
 .composer__box[aria-disabled="true"] { background: var(--sub); }
 .composer__box textarea {
   field-sizing: content; flex: 1; min-height: 32px; max-height: 180px; padding: 6px 4px; border: 0; resize: none; background: transparent;
@@ -490,7 +491,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__box textarea::placeholder { color: var(--t3); opacity: 1; }
 .composer__box textarea:disabled { cursor: not-allowed; }
 /* The button keeps its full hit area; only its fill scales, so enabling reads as a soft arrival. */
-.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: var(--r); color: var(--t1);
+/* Send is a circle, concentric with the round composer it sits in (visual review 2026-11-17); on touch its fill keeps a 4 px inset inside the 44 px target. */
+.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: 50%; color: var(--t1);
   transition: color var(--dur-1) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
 .composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--own);
   transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
@@ -579,6 +581,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .composer__box { padding: 4px 4px 4px 6px; }
   .composer__box textarea { min-height: 44px; padding: 10px 4px; }
   .composer__send, .composer__ask, .composer__attach { width: 44px; height: 44px; }
+  .composer__send::before { inset: 4px; }
   /* 16px text: iOS zooms the page into any smaller field on focus. */
   .composer__box textarea { font-size: var(--fs-input-touch); }
   .composer__ask { margin-left: -10px; }

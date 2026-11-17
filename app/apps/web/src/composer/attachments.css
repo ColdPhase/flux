@@ -62,6 +62,8 @@ a.file-row__act:hover { background: var(--hov); color: var(--t1); }
 .photo-grid--3 .photo-grid__tiles { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 .photo-grid--3 .photo-grid__tile:first-child { grid-row: span 2; }
 .photo-grid__tile { position: relative; min-width: 0; background: var(--sub); aspect-ratio: 1; }
+/* A hairline on every photo, so a light picture keeps its edge on a light page and never reads as part of the interface (visual review 2026-11-17). */
+.photo-grid__tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line2); pointer-events: none; }
 .photo-grid--1 .photo-grid__tile { aspect-ratio: 4 / 3; border-radius: 16px; }
 .photo-grid--3 .photo-grid__tile:first-child { aspect-ratio: auto; }
 .photo-grid__file { grid-column: 1 / -1; }
@@ -71,7 +73,8 @@ span.photo-grid__open { cursor: default; }
 .photo-grid__open img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: var(--fs-xl); font-weight: 600; color: #fff; }
 .photo-grid:has(.photo-grid__file) + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-bubble + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-files + .photo-meta { display: none; }
-.project-convo__message > .photo-grid { width: min(100%, 340px); }
+/* A fixed 340 px (at most the column): a percentage here let the picture's own size widen the message, and its toolbar stood 70 px off the photo. */
+.project-convo__message > .photo-grid { width: 340px; max-width: 100%; }
 .photo-meta { margin: 6px 2px 0; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .photo-grid__tile.is-unavailable { display: grid; place-items: center; padding: 12px; color: var(--t3); font-size: var(--fs-xs); text-align: center; }
 /* Sending, offline and failure show on the photo itself. */
@@ -101,11 +104,13 @@ span.photo-grid__open { cursor: default; }
 .photo-viewer__dots { display: flex; justify-content: center; gap: 8px; padding: 12px 0 4px; }
 .photo-viewer__dots span { width: 7px; height: 7px; border-radius: 50%; background: #5a5a60; }
 .photo-viewer__dots span.is-on { background: #f4f4f5; }
-.photo-viewer__caption { width: min(100%, 760px); margin: 0 auto; padding: 8px 20px 12px; box-sizing: border-box; }
+/* The caption is centred under the photo, as the name and the date are above it (visual review 2026-11-17). */
+.photo-viewer__caption { width: min(100%, 760px); margin: 0 auto; padding: 8px 20px 12px; box-sizing: border-box; text-align: center; }
 .photo-viewer__caption p { margin: 0 0 4px; font-size: var(--fs-lg); }
 .photo-viewer__caption small { color: #b4b4bb; font-size: var(--fs-md); overflow-wrap: anywhere; }
 .photo-viewer__note { display: block; min-height: 1em; color: #b4b4bb; font-size: var(--fs-xs); }
-.photo-viewer__actions { display: flex; justify-content: space-around; gap: 8px; padding: 8px 12px 12px; border-top: 1px solid #26262a; }
+/* The actions keep together under the photo (at most 600 px of the bar), never spread over a wide window. */
+.photo-viewer__actions { display: flex; justify-content: space-around; gap: 8px; padding: 8px max(12px, calc((100% - 600px) / 2)) 12px; border-top: 1px solid #26262a; }
 .photo-viewer__actions > * { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 64px; min-height: 56px; padding: 4px 10px; border: 0; border-radius: var(--r); background: none; color: #f4f4f5; font: inherit; font-size: var(--fs-md); text-decoration: none; cursor: pointer; }
 .photo-viewer__actions > *:hover { background: #1f1f22; }
 .photo-viewer__actions > *:disabled { opacity: .4; cursor: default; }
@@ -157,21 +162,23 @@ span.photo-grid__open { cursor: default; }
 .file-viewer__cell.is-end { text-align: right; }
 @media (max-width: 680px) { .file-viewer__sheet, .file-viewer__sheet--text, .file-viewer__sheet--json, .file-viewer__sheet--markdown { width: 100%; border-radius: 0; } .file-viewer__scroll, .file-viewer__markdown { padding: 12px 16px; } .file-viewer__table-scroll { padding: 0; } }
 
-/* Before sending: thumbnails with × in the composer; several choices on a phone are numbered in send order. */
-.composer-files .composer-files__list { display: flex; flex-wrap: wrap; gap: 10px; max-height: 176px; padding: 8px 6px 2px 0; }
-.composer-files .composer-files__list li.composer-thumb { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; padding: 6px 14px 6px 6px; border: 0; border-radius: var(--r); background: var(--sub); }
-.composer-files .composer-files__list li.composer-thumb.is-photo { flex-direction: column; align-items: flex-start; width: 64px; padding: 0; background: none; }
-.composer-thumb__face { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 44px; }
-.composer-thumb.is-photo .composer-thumb__face { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--sub); }
-.composer-thumb.is-photo .composer-thumb__face img { width: 100%; height: 100%; object-fit: cover; }
-.composer-thumb.is-photo .composer-files__name { width: 64px; font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-thumb.is-photo .composer-files__name small { overflow: hidden; text-overflow: ellipsis; }
-.composer-thumb .composer-files__name { font-family: inherit; font-weight: 500; max-width: 220px; }
+/* Before sending: one tile per file in the composer, a photo and any other file alike (visual review 2026-11-17: a bare 64 px photo
+   beside a 250 px file card, × in two places, the order badge over the icon). Every tile is 240 × 56 on --sub: a 44 px face (the photo,
+   cropped, or the file's page icon), the name and its line on one line each, × at the tile's top corner. On a touch screen several choices
+   carry a small order number on the face's lower corner. The tray stands on the pane's --bg, so the conversation never shows between tiles. */
+.composer-files:has(.composer-thumb) { background: var(--bg); border-radius: var(--r); }
+.composer-files .composer-files__list { display: flex; flex-wrap: wrap; gap: 10px; max-height: 176px; padding: 10px 10px 2px 0; }
+.composer-files .composer-files__list li.composer-thumb { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; box-sizing: border-box;
+  width: 240px; max-width: 100%; min-height: 56px; padding: 6px 12px 6px 6px; border: 0; border-radius: var(--r); background: var(--sub); }
+.composer-thumb__face { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; }
+.composer-thumb.is-photo .composer-thumb__face { border-radius: var(--r-sm); background: var(--el); }
+.composer-thumb.is-photo .composer-thumb__face img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.composer-thumb .composer-files__name { flex: 1; min-width: 0; font-family: inherit; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-thumb .composer-files__name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
 .composer-files .composer-thumb__x { position: absolute; top: -12px; right: -12px; display: grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; background: none; }
-.composer-thumb__xface { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
+.composer-thumb__xface { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--bg); }
 .composer-files .composer-thumb__retry { flex: none; }
-.composer-thumb.is-photo .composer-thumb__retry { width: 64px; padding: 0 4px; white-space: normal; line-height: 1.2; }
-.composer-thumb__order { position: absolute; top: 4px; left: 4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-glyph); font-weight: 600; box-shadow: 0 0 0 1.5px var(--el); }
+.composer-thumb__order { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-glyph); font-weight: 600; box-shadow: 0 0 0 2px var(--sub); }
 @media (hover: none), (max-width: 680px) {
   .composer-files .composer-thumb__x { top: -17px; right: -17px; width: 44px; height: 44px; min-width: 44px; }
 }
@@ -201,6 +208,8 @@ a.ref-chip--thought:focus-visible { outline: 2px solid var(--ring); outline-offs
 .link-preview__site { display: flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
 .link-preview strong { font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .link-preview small { color: var(--t2); font-size: var(--fs-xs); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* A card without a description shows the address: one line that ends in "…", never an address broken mid-word (visual review 2026-11-17). */
+.link-preview:not([data-page="described"]) small { display: block; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 @media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } .photo-grid__retry { min-height: 44px; min-width: 44px; } }
 
 /* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2).
