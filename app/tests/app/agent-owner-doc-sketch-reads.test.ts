@@ -5,7 +5,7 @@ import type { DocSummary, NamedPrincipal, Page, SketchPage } from '@flux/contrac
 import { pool } from './support/db.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
-import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeFromSpace, removeMember, workspace, type Person } from './support/people.js';
 
 /**
  * A self-owned agent with exactly its owner's rights (F-036 AG-3), and a viewer who reads the project lists (#339 AC-2). The
@@ -31,7 +31,24 @@ async function scene() {
 const expectedAgent = (f: Awaited<ReturnType<typeof scene>>, projectOwner?: { kind: 'human'; id: string }): NamedPrincipal =>
   ({ kind: 'agent', id: f.agent.id, name: 'List writer', ...(projectOwner ? { projectOwner } : {}) });
 
-test('a doc an agent last changed names its owner in the project list while that person has access, and drops it when access ends', async () => {
+/**
+ * (b) The owner stays in the company and loses the space (an admin reaches every space, so they become a member first): omitted entirely.
+ * (a) Then they are removed from the company: Founder decision (Hubert, 2026-11-17, #1424), "List owner (removed)" wherever their name is already in the space's history,
+ * so the agent carries its owner with `removedName` ("List writer · List owner (removed)'s agent").
+ */
+async function losesAccessThenTheCompany(f: Awaited<ReturnType<typeof scene>>, owner: () => Promise<NamedPrincipal>) {
+  expectStatus(await f.manager.browser.request('PATCH', `/api/v1/workspaces/${f.ws.id}/members/${f.owner.id}`, { body: { role: 'member' } }), 200);
+  await removeFromSpace(f.manager, f.place.id, f.owner);
+  const hidden = await owner();
+  assert.equal(Object.hasOwn(hidden, 'projectOwner'), false, 'an owner in the company who lost access is omitted entirely');
+  assert.equal(hidden.name, 'List writer');
+  await removeMember(f.manager, f.ws.id, f.owner);
+  const removed = await owner();
+  assert.deepEqual(removed.projectOwner, { kind: 'human', id: f.owner.id, removedName: 'List owner' }, 'an owner removed from the company is "List owner (removed)"');
+  assert.equal(removed.name, 'List writer');
+}
+
+test('a doc an agent last changed names its owner in the project list while that person has access, drops it when access ends, and marks it "(removed)" once they leave the company', async () => {
   const f = await scene();
   const created = toolValue(await f.connection.tool('flux_create_doc', {
     projectId: f.place.id, runtimeSessionId: f.connection.runtimeSessionId, clientCommandId: randomUUID(),
@@ -46,10 +63,7 @@ test('a doc an agent last changed names its owner in the project list while that
   };
   assert.deepEqual((await listed()).updatedBy, expectedAgent(f, { kind: 'human', id: f.owner.id }), 'the authorized owner is named while the agent is in the audience');
 
-  await removeMember(f.manager, f.ws.id, f.owner);
-  const hidden = (await listed()).updatedBy;
-  assert.equal(Object.hasOwn(hidden, 'projectOwner'), false, 'an owner who lost access is omitted entirely');
-  assert.equal(hidden.name, 'List writer');
+  await losesAccessThenTheCompany(f, async () => (await listed()).updatedBy);
 
   await addMember(f.manager, f.ws.id, f.owner, 'admin');
   // Leaving ended the grant: the admin is back in the company, and in the space once they are added again (Add me).
@@ -57,7 +71,7 @@ test('a doc an agent last changed names its owner in the project list while that
   assert.deepEqual((await listed()).updatedBy.projectOwner, { kind: 'human', id: f.owner.id }, 'restored access restores the scoped owner');
 });
 
-test('a project sketch an agent created names its creator with the scoped owner, and drops it when access ends', async () => {
+test('a project sketch an agent created names its creator with the scoped owner, drops it when access ends, and marks it "(removed)" once they leave the company', async () => {
   const f = await scene();
   const created = toolValue(await f.connection.tool('flux_create_map', {
     projectId: f.place.id, runtimeSessionId: f.connection.runtimeSessionId, clientCommandId: randomUUID(),
@@ -72,10 +86,7 @@ test('a project sketch an agent created names its creator with the scoped owner,
   };
   assert.deepEqual(await listed(), expectedAgent(f, { kind: 'human', id: f.owner.id }), 'the authorized owner is named while the agent is in the audience');
 
-  await removeMember(f.manager, f.ws.id, f.owner);
-  const hidden = await listed();
-  assert.equal(Object.hasOwn(hidden, 'projectOwner'), false, 'an owner who lost access is omitted entirely');
-  assert.equal(hidden.name, 'List writer');
+  await losesAccessThenTheCompany(f, listed);
 
   await addMember(f.manager, f.ws.id, f.owner, 'admin');
   await grant(f.manager, f.place.id, f.owner, 'contributor');

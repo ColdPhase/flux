@@ -51,7 +51,7 @@ function unchangedIdentity(row: ConversationMessage, receipt: ConversationMessag
   assert.deepEqual({ ...row, author }, receipt, 'only the optional display metadata differs from the stored receipt');
 }
 
-test('the current-project owner stays visible in genuine agent history; deny/member removal clears its ID', async () => {
+test('the current-project owner stays visible in genuine agent history; losing the space clears its ID, removal from the company marks it "(removed)"', async () => {
   const f = await scene();
   const before = (await pool.query('SELECT * FROM project_messages WHERE id=$1', [f.receipt.id])).rows[0];
   const exactReceipt = JSON.stringify(f.receipt);
@@ -68,6 +68,7 @@ test('the current-project owner stays visible in genuine agent history; deny/mem
     unchangedIdentity(row, stored);
     assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   }
+  // (b) The owner loses the space and stays in the company: they are not named here, and the ID is omitted entirely.
   await removeFromSpace(f.manager, f.place.id, f.owner);
   // The owner kept out, its agent is too (F-036 AG-3): it can no longer write here.
   await assert.rejects(taskDiscussionUseCases(db).contribute(f.actor, f.task.id, { ...f.command, clientMessageId: randomUUID() }), NotFoundError);
@@ -77,8 +78,13 @@ test('the current-project owner stays visible in genuine agent history; deny/mem
   }
   await grant(f.manager, f.place.id, f.owner, 'contributor');
   for (const [row] of await f.read()) assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
+  // (a) The owner is removed from the company: Founder decision (Hubert, 2026-11-17, #1424), they are "Name (removed)" wherever their name is already in a space's
+  // history, so their agent is "Historical analyst · Visible historical owner (removed)'s agent" (`projectOwner.removedName`).
   await removeMember(f.manager, f.ws.id, f.owner);
-  for (const [row] of await f.read()) assert.equal(Object.hasOwn(row.author!, 'projectOwner'), false);
+  for (const [row] of await f.read()) assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id, removedName: 'Visible historical owner' });
+  // Restore takes the mark off.
+  expectStatus(await f.manager.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/removed-people/${f.owner.id}/restore`), 201);
+  for (const [row] of await f.read()) assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [f.receipt.id])).rows[0], before);
 });
 

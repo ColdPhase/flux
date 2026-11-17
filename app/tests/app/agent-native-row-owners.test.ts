@@ -48,6 +48,7 @@ test('an agent keeps its name, and its owner stays scoped while that person has 
   assert.deepEqual(await f.detailOwner(), { kind: 'agent', id: f.agent.id, name: 'Retained analyst', projectOwner: { kind: 'human', id: f.owner.id } },
     'the task detail carries the same scoped owner');
 
+  // (b) The owner loses the space and stays in the company: omitted entirely, as before.
   await removeFromSpace(f.manager, f.place.id, f.owner);
   const hidden = await f.rowOwner();
   assert.equal(Object.hasOwn(hidden, 'projectOwner'), false, 'an owner without project access is omitted entirely');
@@ -57,6 +58,10 @@ test('an agent keeps its name, and its owner stays scoped while that person has 
   await grant(f.manager, f.place.id, f.owner, 'contributor');
   assert.deepEqual((await f.rowOwner()).projectOwner, { kind: 'human', id: f.owner.id }, 'restored access restores the scoped owner');
 
+  // (a) The owner is removed from the company: Founder decision (Hubert, 2026-11-17, #1424), "Native owner (removed)" wherever their name is already in the space's
+  // history, so the row and the detail carry the owner with `removedName` ("Retained analyst · Native owner (removed)'s agent").
   await removeMember(f.manager, f.ws.id, f.owner);
-  assert.equal(Object.hasOwn(await f.rowOwner(), 'projectOwner'), false, 'a former workspace member is not named');
+  const removed = { kind: 'human', id: f.owner.id, removedName: 'Native owner' };
+  assert.deepEqual((await f.rowOwner()).projectOwner, removed, 'an owner removed from the company is "Native owner (removed)"');
+  assert.deepEqual((await f.detailOwner())!.projectOwner, removed, 'the detail too');
 });
