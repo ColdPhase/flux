@@ -438,7 +438,10 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         project = self.ids["project"]
         task = self.call("ada", f"/api/v1/projects/{project}/work", {"title": "Calibrate the soil probes", "clientCommandId": str(uuid.uuid4())})
         say = lambda index, kind: self.call("bob", f"/api/v1/work/{task['id']}/discussion", {"body": words(kind, index), "clientMessageId": str(uuid.uuid4())})["id"]  # noqa: E731
-        seen = [say(index, "Panel") for index in range(4)]
+        # Taller than the panel, so the panel opens at its newest line. A short discussion moves nothing and keeps its rows at the top (F-026 §7
+        # "Both panels open the same way"): at 1440 x 900 the rows push the fourth of four such lines below the panel's foot, unseen, so it is
+        # rightly not viewed until the reader scrolls to it.
+        seen = [say(index, "Panel") for index in range(12)]
         talk = self.call("ada", f"/api/v1/work/{task['id']}/discussion", method="GET")
         page = self.page()
         # The panel opens at the newest line; what it shows is viewed after a moment, as in a thread (in one write or a few).
