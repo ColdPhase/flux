@@ -17,7 +17,7 @@ import { TypingNotice } from '../typing/TypingNotice';
 import { useObservation } from '../app/receipts';
 import { observeProjectMessages } from '../conversations/api';
 import { DECISION_COMPOSER } from './discuss';
-import { inPhoneSheet } from './panelOpening';
+import { opensAtTop } from './panelOpening';
 
 
 const MESSAGES = 50;
@@ -109,7 +109,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   useLayoutEffect(() => {
     const first = !drawn.current && messages.length > 0;
     if (messages.length) drawn.current = true;
-    if (first && inPhoneSheet(list.current)) return;
+    if (first && opensAtTop(list.current)) return;
     list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [last]);
