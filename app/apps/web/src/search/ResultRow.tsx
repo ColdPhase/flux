@@ -70,6 +70,13 @@ function Tile({ result }: { result: SearchResult }) {
 
 const plainTitle = (result: SearchResult) => result.title.map((part) => part.text).join('');
 
+/**
+ * The title as it reads: a message's or a thought's matching words are a slice of its Markdown, so they read as the message does, a Wiki
+ * page's `[[Opening checklist]]` as its title and no other mark (round 15 new k).
+ */
+const shownTitle = (result: SearchResult): SearchText => (result.kind === 'message' || result.kind === 'dm_message' || result.kind === 'thought'
+  ? plainSnippet(result.title) ?? result.title : result.title);
+
 /** A space's tile in its result: the icon the shell knows for it (F-040), or its letter. */
 function ProjectFace({ result }: { result: SearchResult }) {
   const shell = useRouteLoaderData('app') as ShellData | undefined;
@@ -105,10 +112,11 @@ function pieces(result: SearchResult): Array<Line | null> {
       return snippet ? [quoted(snippet)] : [where];
     }
     case 'file': {
-      // What the file says where it matched (and the page, for a PDF); a file found by its name says where it lives.
+      // Who sent it, where and when, as a file found by its name says, then what it says where it matched (led by the page, for a PDF): two
+      // files of one name sent twice are told apart by their first words, never two identical rows (round 15 new P2-3).
       const snippet = plainSnippet(result.snippet);
       const page = result.target.type === 'file' ? result.target.page : undefined;
-      return snippet ? [page ? `Page ${page}` : null, quoted(snippet)] : [author, where, written(result)];
+      return snippet ? [author, where, written(result), page ? `Page ${page}` : null, quoted(snippet)] : [author, where, written(result)];
     }
     case 'thought': case 'sketch': return place.type === 'private' ? ['My map', 'only you'] : [result.label, where];
     case 'project': return [];
@@ -122,7 +130,7 @@ function pieces(result: SearchResult): Array<Line | null> {
  * screen reader, which would otherwise run the pieces together ("Ada KowalskaCommunity garden sensors18:45").
  */
 export function resultName(result: SearchResult) {
-  return [personTitle(result) ?? plainTitle(result), ...meta(result).map(lineText)].join(', ');
+  return [personTitle(result) ?? shownTitle(result).map((part) => part.text).join(''), ...meta(result).map(lineText)].join(', ');
 }
 
 /** A person found by name who is the reader: "Ana Costa (you)", as People names them (personas-37). */
@@ -136,7 +144,7 @@ export function ResultBody({ result }: { result: SearchResult }) {
     <>
       <Tile result={result} />
       <span className="sr__main">
-        <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={result.title} />{personTitle(result) ? <span> (you)</span> : null}</span>
+        <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={shownTitle(result)} />{personTitle(result) ? <span> (you)</span> : null}</span>
         {lines.length ? <span className="sr__meta">{lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{lineNode(line)}</span></Fragment>)}</span> : null}
       </span>
       <kbd className="sr__enter" aria-hidden="true">↵</kbd>

@@ -17,6 +17,9 @@ function clean(text: string): string {
     .replace(/^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*$/gm, '')
     .replace(/^[ \t]*\|/gm, '').replace(/\|[ \t]*$/gm, '')
     .replace(/[ \t]*\|[ \t]*/g, ' · ')
+    // A Wiki page named in a message, `[[Opening checklist]]`, is its title; a slice can cut it at either end.
+    .replace(/\[\[([^\]\n]{1,160})\]\]/g, '$1')
+    .replace(/^\[\[|\]\]$/g, '')
     // Images and links keep their words; code, emphasis and strike-through markers go.
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     // A slice can start or end inside a link (CW-4): its target goes, its words stay. `Pickup ideas](flux:sketch/…)` reads

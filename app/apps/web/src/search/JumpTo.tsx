@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { flushPlace } from '../place/memory';
 import { removedName, type SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
-import { EmptyState, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
 import { leaveFocusToDestination } from '../ui/Overlay';
 import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
@@ -174,7 +174,8 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
     </div>
   ) : state.status === 'failed' ? (
     // The one error state, as every other place has it, never an 11 px line in an empty box (round 14, look-a B7).
-    <div className="jump__none"><ErrorState title="Search couldn’t answer"><p>{state.message}</p></ErrorState></div>
+    <div className="jump__none"><ErrorState title="Search couldn’t answer"
+      actions={state.retry ? <Button variant="secondary" icon="refresh" onClick={state.retry}>Try again</Button> : undefined}><p>{state.message}</p></ErrorState></div>
   ) : null;
 
   // More than the dialog lists (it does not page): one quiet last line says so, and typing more words narrows the list. It stays while the

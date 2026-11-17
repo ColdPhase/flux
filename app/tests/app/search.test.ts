@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { SearchWork } from '@flux/core';
 import type { Conversation, Decision, Dm, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, Workspace } from '@flux/contracts';
+import { searchTargetPath } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -234,14 +235,18 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal(first.items.length, 1);
     assert.equal(first.items[0]!.kind, 'doc');
     assert.equal(first.items[0]!.label, 'Wiki page');
-    assert.deepEqual(first.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
+    assert.deepEqual(first.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1, current: true });
     json(await patch(ari, `/api/v1/docs/${created.id}`, { body: 'Fit the brass collar first, then the switch.' },
       { 'if-match': `"${created.version}"` }), 200, 'edit doc');
     const edited = await search(nia, 'collar');
     assert.equal(edited.items[0]!.label, 'Wiki page');
-    assert.deepEqual(edited.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2 });
+    assert.deepEqual(edited.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2, current: true });
     const old = await search(nia, 'dimmer');
     assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2', 'the old text is found at its own version');
+    // Round 15 (new P2-4): the page as it is now opens itself, not "You are reading a saved version"; an earlier version opens as one.
+    assert.deepEqual(old.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
+    assert.equal(searchTargetPath(edited.items[0]!.target), `/projects/${lamp.id}/docs/${created.id}`);
+    assert.equal(searchTargetPath(old.items[0]!.target), `/projects/${lamp.id}/docs/${created.id}/versions/1`);
     const both = await search(nia, 'brass');
     assert.equal(both.items.filter((item) => item.kind === 'doc').length, 1, 'one result per doc');
     assert.deepEqual((await search(olek, 'brass')).items, [], 'not outside the project');
