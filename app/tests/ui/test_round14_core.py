@@ -144,6 +144,11 @@ class Round14Core(unittest.TestCase):
         field = page.locator(".ui-field--invalid .ui-input").first
         expect(field).to_be_focused()
         self.assertEqual(page.evaluate("document.documentElement.dataset.input"), "pointer")
+        # The edge eases in (the field's transition): wait for where it settles, a second at most.
+        try:
+            page.wait_for_function("() => getComputedStyle(document.activeElement).boxShadow.includes('1.5px')", timeout=2000)
+        except Exception:
+            pass
         edge = field.evaluate("(el) => getComputedStyle(el).boxShadow")
         self.assertIn("1.5px", edge, "the focused wrong field has the strong edge every wrong field has while no ring is drawn")
         shot(page, f"round14-sign-in-invalid-{UI_BROWSER}")

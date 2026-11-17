@@ -274,9 +274,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
   position: absolute; display: flex; flex-direction: column; min-height: 0; background: var(--el);
   box-shadow: var(--sh-pop); outline: none;
 }
-/* A window takes the focus itself only from a script, as it opens: it is where reading starts, not a control, so it draws no ring, as a
-   heading that takes the focus (round 14, look-b P17: a dark frame round the whole Connect AI sheet). Its controls ring as everywhere. */
-.ui-overlay__surface:focus-visible { outline: none; }
+.ui-overlay__surface:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .ui-overlay--left .ui-overlay__surface { left: 0; top: 0; bottom: 0; width: min(288px, 100%); }
 .ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(var(--panel-w), 100%); }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }

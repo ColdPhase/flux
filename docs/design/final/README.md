@@ -151,8 +151,7 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   a `-webkit-box` clamp with no `white-space: nowrap` under it, so every engine shows its two lines and ends in "…"; `nowrap` there cut it
   mid-letter in WebKit. Only a one-column Inbox card on a computer keeps one line with "…".
 - **One ring for a card**: a card whose title is its control (an Inbox card) is ringed as a card, 2 px of `--ring` out from it (just inside
-  it where it lies in a scroller that would cut it), never a second ring round the title's words. A window that takes the focus as it opens
-  draws no ring round itself, as a heading does not; its controls ring as everywhere.
+  it where it lies in a scroller that would cut it), never a second ring round the title's words.
 - **A toast that says what was done** has no mark beside its words (no ✓): Done in the Inbox and a role change look the same. Only Kreska's
   Wink for a closed task and the alert of what failed stand there.
 - **The end of Search's list**: the lower fade lies on the list's 20 px bottom padding at the end (`position: sticky; bottom: -20px`), so a
