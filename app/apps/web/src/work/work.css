@@ -322,6 +322,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 /* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
 .wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }
+/* In the panel the line floats over the scroll's foot, never under the field (a feed's own line took its room in the flow in train 37,
+   which put the panel's pill half under the field, where it could not be clicked). */
+.wd-newbelow > .convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; padding: 0; }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
 .wd-row dd .ui-avatar { flex: none; }

@@ -167,9 +167,9 @@ class Round14Work(unittest.TestCase):
         page.locator(".tb-card").filter(has_text="Print the volunteer rota").locator(".tb-card__open").click()
         expect(page.locator("#details .wd--task")).to_be_visible()
         page.wait_for_timeout(500)
-        names = page.locator(".tb-card__name")
+        names = page.locator(".tb-card__name").filter(has_text=ADA["name"])
         expect(names.first).to_be_visible()
-        self.assertGreaterEqual(names.count(), 4)
+        self.assertEqual(names.count(), 4, "Ada owns four of the cards")
         width = page.locator(".tb-col").first.evaluate("el => el.getBoundingClientRect().width")
         self.assertLess(width, 200, f"the columns are narrow beside the panel: {width}")
         for index in range(names.count()):
