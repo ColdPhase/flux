@@ -124,19 +124,20 @@ export function webSourcesStart(text: string): number {
 
 /**
  * Why an address the server asked for a run was not read, as the block says it (`webSourcesLine`) and as the reader's list of sources says
- * it, short (founder check, Hubert 2026-11-17). `redirected`: the site sent the request on to the next address, which is listed too.
+ * it, short (founder check, Hubert 2026-11-17). `redirected`: the site sent the request on to the next address, which is listed too, so
+ * it is no failure and says only that.
  */
 export const WEB_NOT_READ = {
-  asked: { says: 'the request was sent; no answer was recorded', short: 'no answer' },
+  asked: { says: 'the request was sent; no answer was recorded', short: 'not read · no answer' },
   redirected: { says: 'it sent the request on to another address', short: 'redirected' },
-  blocked: { says: 'refused: not a public address', short: 'not public' },
-  unreachable: { says: 'not reached', short: 'not reached' },
-  timeout: { says: 'took too long', short: 'too slow' },
-  status: { says: 'the site answered with an error', short: 'site error' },
-  type: { says: 'not a web page or a text page', short: 'not a page' },
-  redirects: { says: 'too many redirects', short: 'too many redirects' },
-  invalid: { says: 'not a web address', short: 'not an address' },
-  empty: { says: 'no text on the page', short: 'empty page' },
+  blocked: { says: 'refused: not a public address', short: 'not read · not public' },
+  unreachable: { says: 'not reached', short: 'not read · not reached' },
+  timeout: { says: 'took too long', short: 'not read · too slow' },
+  status: { says: 'the site answered with an error', short: 'not read · site error' },
+  type: { says: 'not a web page or a text page', short: 'not read · not a page' },
+  redirects: { says: 'too many redirects', short: 'not read · too many redirects' },
+  invalid: { says: 'not a web address', short: 'not read · not an address' },
+  empty: { says: 'no text on the page', short: 'not read · empty page' },
 } as const;
 
 /** One address of the block: `read` came back, `found` an answer cited it, `asked` was sent and not read (with its short reason). */

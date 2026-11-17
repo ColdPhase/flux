@@ -798,7 +798,7 @@ describe('the list of sources as a reader sees it (founder check, Hubert 2026-11
     const list = webSourceList(block);
     assert.deepEqual(list.queries, ['ceramic mugs photo']);
     assert.deepEqual(list.items.map((item) => [item.address, item.state, item.reason]), [[wiki, 'read', null], ['https://en.wikipedia.org/wiki/Tiki_mug', 'found', null],
-      [hop, 'asked', 'redirected'], ['https://example.org/n', 'asked', 'site error']]);
+      [hop, 'asked', 'redirected'], ['https://example.org/n', 'asked', 'not read · site error']]);
     assert.equal(webSourceList('Found on the web:\n- https://a.example/x\n- and 3 more').more, 3);
   });
 

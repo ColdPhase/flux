@@ -2575,8 +2575,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   address once, read, cited or only asked, as **its site › the last words of its path** ("commons.wikimedia.org › Coffee mugs":
   decoded, `_` and `-` as spaces, no extension, no wiki `Category:` prefix), the site in `--t1`, the rest in `--t2`, a link that
   opens in a new tab with the full address as its title, on one line cut with an ellipsis, never a raw address wrapping over lines.
-  An address asked for and not read stays in the same list with "not read · site error" (or "redirected", "not public", "too
-  slow", "not a page") in `--t3`. A defanged address stays as written and is no link. It is the same in the private answer, an
+  An address asked for and not read stays in the same list with "not read · site error" (or "not read · not public", "· too
+  slow", "· not a page") in `--t3`; a hop that sent the request on to the next listed address says only "redirected". A defanged address stays as written and is no link. It is the same in the private answer, an
   answer shown to everyone, the agent's chat, a task's report and the end line of a run without an answer; the stored text keeps
   the full list for Copy, notifications and what an agent reads.
 - **An answer cites what it used from Flux as the same numbered chips** (#1381, [C-62](../../product/decisions.md), founder decision, Hubert, 2026-11-13). A Wiki page,

@@ -16,7 +16,7 @@ function SourceLine({ item, linked }: { item: WebSourceItem; linked: boolean }) 
       {label && linked
         ? <a className="web-sources__link" href={item.address} target="_blank" rel="noopener noreferrer nofollow" title={item.address}>{words}</a>
         : <span className="web-sources__link" title={item.address}>{words}</span>}
-      {item.reason ? <span className="web-sources__why">not read · {item.reason}</span> : null}
+      {item.reason ? <span className="web-sources__why">{item.reason}</span> : null}
     </li>
   );
 }
