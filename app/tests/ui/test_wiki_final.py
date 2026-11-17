@@ -292,8 +292,16 @@ class WikiFinal(unittest.TestCase):
             data['html'] = rendered
             route.fulfill(response=response, json=data)
 
+        def later(route):
+            # The page has a later version, so version 1 opens in the reader (the current version by its address opens the page itself).
+            response = route.fetch()
+            data = response.json()
+            data['version'] = data['version'] + 1
+            route.fulfill(response=response, json=data)
+
         # A saved version is read as the server rendered it.
-        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '$'), reader)
+        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '$'), later)
+        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '/versions/1$'), reader)
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}/versions/1")
         prose = page.locator('.doc-prose')
         expect(prose.get_by_role('link', name='Literal table title')).to_have_attribute('title', literal)

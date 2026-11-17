@@ -294,8 +294,9 @@ class LiveEditingJourney(LiveFixture):
         # One bold span can be drawn in pieces (the writer's underline marks part of it), so its pieces are read together.
         await kai.wait_for_function("() => [...document.querySelectorAll('.wiki-editor .cm-md-strong')].map((el) => el.textContent).join('') === 'as it is typed'")
         await expect(kai.get_by_role("status").filter(has_text="Ada is here too")).to_be_visible()
-        await kai.goto(self.doc_url + "/versions/1")
-        await expect(kai.locator(".doc-prose")).not_to_contain_text("Reader sees this")
+        # The saved version 1 does not hold what is being typed (the current version by its address opens the page itself, round 15).
+        saved = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
+        self.assertNotIn("Reader sees this", saved["body"])
         self.assertFalse(any(row["direction"] == "sent" and row["header"].get("type") == "cursor" for row in self.frames["kai"]),
                          "A page open without writing publishes no caret")
 

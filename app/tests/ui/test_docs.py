@@ -428,13 +428,14 @@ class DocsJourney(unittest.TestCase):
         page.get_by_role("button", name="Page actions").click()
         page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="History").click()
 
-        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · +N −M".
+        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · 9 words added, 2 removed" (round 15
+        # daily P3-7: the count is the words the comparison marks).
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
         expect(versions.first).to_contain_text("Edited the text")
         expect(versions.first).to_contain_text(f"v2 · {OWNER['name']}")
         expect(versions.last).to_contain_text("v1 · ")
-        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+$"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \d+ words? (added(, \d+ removed)?|removed)$"))).to_be_visible()
         expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Edited the text")
 
         # AC-1: the changes are the page itself, in its typography: headings, a list, a table.
