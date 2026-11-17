@@ -456,6 +456,44 @@ class InboxLists(unittest.TestCase):
         page.wait_for_timeout(1500)
         expect(field).to_be_focused()
 
+    def test_07_opening_tasks_of_yours_reads_the_set_aside_list_once_and_still_reads_a_put_off_task(self) -> None:
+        # Pre-review P3: every open of a task of yours that has not started read the uncached set-aside list while anything was set aside. It is
+        # kept like the queue now: one read for as many opens, and a task given to you that you put off for later is still read when opened.
+        tag = uuid.uuid4().hex[:4]
+        given = self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/work", {"title": f"Fit the spigot {tag}", "owner": {"kind": "human", "id": self.ids["ada"]}})
+        for _ in range(80):
+            item = next((entry for entry in self.queue()["items"] if entry["kind"] == "task" and entry["task"]["workId"] == given["id"]), None)
+            if item:
+                break
+            time.sleep(0.25)
+        self.assertIsNotNone(item, "the task reached Ada")
+        until = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 86400))
+        self.call("ada", "POST", f"/api/v1/needs-you/{item['key']}", {"action": "snooze", "until": until})
+        later = lambda: [entry["item"]["key"] for entry in self.contexts["ada"].request.get("/api/v1/needs-you/aside").json()["later"]]  # noqa: E731
+        self.assertIn(item["key"], later())
+        page = self.page()
+        asides: list[str] = []
+        page.on("request", lambda request: asides.append(request.url) if request.method == "GET" and request.url.split("?")[0].endswith("/api/v1/needs-you/aside") else None)
+        page.goto(f"/projects/{self.project_id}/tasks?view=list")
+        panel = page.locator("#details .wd[data-detail-kind='work']")
+        # Her own task (nobody gave it to her): opened twice, the lists are looked in once.
+        for _ in range(2):
+            page.locator(f'.ws-task[data-work-id="{self.tasks["own"]["id"]}"] .ws-item').click()
+            expect(panel).to_contain_text("Paint the barrel")
+            page.wait_for_timeout(1200)
+            page.locator("#details").get_by_role("button", name="Close details").click()
+            expect(panel).to_have_count(0)
+        self.assertEqual(len(asides), 1, f"the set-aside lists were read once for two opens: {asides}")
+        # The one she put off is read when she opens it, from what was kept: it leaves the list and nothing is read again.
+        page.locator(f'.ws-task[data-work-id="{given["id"]}"] .ws-item').click()
+        expect(panel).to_contain_text(f"Fit the spigot {tag}")
+        for _ in range(80):
+            if item["key"] not in later():
+                break
+            time.sleep(0.25)
+        self.assertNotIn(item["key"], later(), "opening it read the notice that gave it, though it was put off")
+        self.assertEqual(len(asides), 1, f"and no list was read again: {asides}")
+
 
 if __name__ == "__main__":
     unittest.main()
