@@ -143,3 +143,26 @@ test('"Stan Kowal (removed)" in the readers that still named him plainly: an age
   assert.deepEqual([await proposer(), await accepter()], ['Stan Kowal (removed)', 'Stan Kowal (removed)'], 'a decision\'s proposer and accepter in its rows');
   assert.deepEqual(await removedInCall(), { [stan.id]: 'Stan Kowal (removed)' }, 'the call\'s line, which the space\'s people no longer list');
 });
+
+test('Home\'s "since you left" lines name a person removed from the company by the whole marked name, "Stefan Kowal (removed)" (delta review N2)', async () => {
+  const lead = await person('Away lines lead');
+  const ws = await workspace(lead, 'Away lines');
+  const stefan = await person('Stefan Kowal');
+  await addMember(lead, ws.id, stefan, 'member');
+  const place = await project(lead, ws.id, 'Kiln room', 'restricted');
+  await grant(lead, place.id, stefan, 'contributor');
+  expectStatus(await stefan.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, { body: { body: 'Kiln firing plan', clientMessageId: randomUUID() } }), 201);
+  const line = async () => {
+    const summary = expectStatus(await lead.browser.request('GET', `/api/v1/return?place=project&id=${place.id}`), 200) as { items: { actor: string | null; text: string }[] };
+    const found = summary.items.find((item) => item.text.includes('Kiln firing plan'));
+    assert.ok(found, JSON.stringify(summary.items));
+    return [found.actor, found.text];
+  };
+  assert.deepEqual(await line(), ['Stefan', 'Stefan started “Kiln firing plan”'], 'a member: by first name, as in conversation');
+  // Out of the space only: no mark, the space's people just no longer list him.
+  await removeFromSpace(lead, place.id, stefan);
+  assert.deepEqual((await line())[0], 'Stefan', 'leaving one space is not leaving the company');
+  // Out of the company: the whole marked name (founder decision, Hubert, 2026-11-17, #1424).
+  await removeMember(lead, ws.id, stefan);
+  assert.deepEqual(await line(), ['Stefan Kowal (removed)', 'Stefan Kowal (removed) started “Kiln firing plan”']);
+});

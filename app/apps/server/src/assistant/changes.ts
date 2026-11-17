@@ -219,13 +219,13 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
    * The made decisions and messages of the assistant's that people's use keeps for good (a discussion, a decision, a reply): their Undo is not
    * offered, here or in the message's Undo (round 15 ai P2-4). A line in a task's thread is its owner's to delete whatever follows (TA-3).
    */
-  async function keptByUse(list: readonly AssistantChangeRow[]): Promise<Set<string>> {
-    const kept = new Set<string>();
-    for (const row of list) {
-      if ((row.state !== 'applied' && row.state !== 'applied_after_wait') || !row.objectId || !REMOVAL_OPERATIONS.has(row.operation) || isThreadLine(row)) continue;
-      if (await assistantRemovalRows(db as DbExecutor).keptByUse(row.operation, row.objectId)) kept.add(row.id);
-    }
-    return kept;
+  async function keptByUse(list: readonly AssistantChangeRow[], undoing = false): Promise<Set<string>> {
+    const asked = list.filter((row) => (row.state === 'applied' || row.state === 'applied_after_wait') && !!row.objectId && REMOVAL_OPERATIONS.has(row.operation) && !isThreadLine(row));
+    const decisions = asked.filter((row) => row.operation === 'decision.propose').map((row) => row.objectId!);
+    const messages = asked.filter((row) => row.operation === 'conversation.create' || row.operation === 'conversation.reply').map((row) => row.objectId!);
+    // In an Undo of them all, the run's own later message is no reply: the Undo takes it back first (delta review N1).
+    const keptIds = await assistantRemovalRows(db as DbExecutor).keptByUse(decisions, messages, undoing ? messages : []);
+    return new Set(asked.filter((row) => keptIds.has(row.objectId!)).map((row) => row.id));
   }
   /** `hideState`: a space the viewer can no longer read does not tell them where a hand-off's unit stands now (#1003). */
   async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true, hideState: (row: AssistantChangeRow) => boolean = () => false): Promise<AssistantChange[]> {
@@ -494,7 +494,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         // A line the run put in a task's thread is taken back at the line (#923), not with the run's other changes.
         && !isThreadLine(row)).reverse();
       // What people's use keeps (a discussed proposal, a message with replies) is not part of an Undo any more, as it is not offered (P2-4).
-      const kept = await keptByUse(list);
+      const kept = await keptByUse(list, true);
       for (let index = list.length - 1; index >= 0; index--) if (kept.has(list[index]!.id)) list.splice(index, 1);
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       // The tasks whose Done, marked by the agent itself, this Undo took back.

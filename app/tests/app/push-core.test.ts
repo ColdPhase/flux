@@ -7,6 +7,7 @@ import {
   deliverPushJob,
   getInboxItem,
   PUSH_CONTACT_FIX,
+  PUSH_PAYLOAD_BYTES,
   type NotificationRecord,
   type PushDeliveryTarget,
   type PushSubscriptionRecord,
@@ -56,6 +57,15 @@ describe('push payload privacy (core)', () => {
     assert.deepEqual(buildPushPayload(notification, { visible: true, allowed: false, workspaceId }), generic);
     assert.deepEqual(buildPushPayload(notification, { visible: false, allowed: false, workspaceId: null }), generic);
     assert.deepEqual(buildPushPayload(notification, { ...reads, workspaceId: randomUUID() }), generic, 'a source in another workspace is not this notification\'s source');
+  });
+
+  test('a body of control characters is cut short, with "…", so the push fits what a push service takes; an ordinary one is sent whole (delta review N-P3-7)', () => {
+    const heavy = { ...notification, body: `Look ${'\u0001'.repeat(595)}` };
+    const sent = buildPushPayload(heavy, reads) as Extract<PushPayload, { preview: 'full' }>;
+    assert.ok(new TextEncoder().encode(JSON.stringify(sent)).length <= PUSH_PAYLOAD_BYTES, `${JSON.stringify(sent).length} bytes`);
+    assert.ok(sent.body.startsWith('Look ') && sent.body.endsWith('…') && sent.body.length < heavy.body.length);
+    const long = { ...notification, body: 'Zażółć gęślą jaźń. '.repeat(31).slice(0, 600) };
+    assert.equal((buildPushPayload(long, reads) as Extract<PushPayload, { preview: 'full' }>).body, long.body, '600 ordinary characters fit');
   });
 
   test('a recipient who lost read access gets the generic payload; one who cannot see the source gets nothing', async () => {

@@ -59,6 +59,13 @@ describe('cite marks in what an agent writes (C-62, v0.2.1 real-model gate)', ()
     await scene.complete(live.runId);
     const decision = expectStatus(await scene.peer.browser.request('GET', `/api/v1/decisions/${made.decisionId}`), 200) as { rationale: string };
     assert.equal(decision.rationale, `Booked at https://print.example/order?ref= for #${task.number}.`);
+    // An address written without a scheme is one too (C-30's sites named without one; delta review N-P3-2): no title goes into it.
+    const bare = await scene.liveRun();
+    const written = JSON.parse(text((await bare.call('flux_propose_decision', { decision: { title: 'Print at the other shop',
+      rationale: `Booked at print.example/order?ref=[doc:${page.id}] for #${task.number} [task:${task.id}].` } })).message)) as { decisionId: string };
+    await scene.complete(bare.runId);
+    const other = expectStatus(await scene.peer.browser.request('GET', `/api/v1/decisions/${written.decisionId}`), 200) as { rationale: string };
+    assert.equal(other.rationale, `Booked at print.example/order?ref= for #${task.number}.`);
   });
 
   test('a change that waits for the owner\'s OK keeps the readable words, and Approve writes them', async () => {

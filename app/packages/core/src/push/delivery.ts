@@ -30,7 +30,28 @@ export function buildPushPayload(notification: NotificationRecord, decision: Sou
     const title = typeof hide.hiddenTitle === 'string' ? hide.hiddenTitle.trim().slice(0, 200) : '';
     return title ? { preview: 'hidden', notificationId: notification.id, title } : generic;
   }
-  return { preview: 'full', notificationId: notification.id, title: notification.title, body: notification.body, url: notification.url ?? '/' };
+  return withinPushSize({ preview: 'full', notificationId: notification.id, title: notification.title, body: notification.body, url: notification.url ?? '/' });
+}
+
+/**
+ * The most a push carries, as the JSON the sender encrypts. A push service takes 4,096 bytes of encrypted record (RFC 8030, RFC 8291), and a
+ * body of up to 600 characters (`MESSAGE_WORDS`) written as control characters is 3,600 bytes of escapes alone: refused with a 413 (delta review
+ * N-P3-7). This leaves room for the encryption's own bytes.
+ */
+export const PUSH_PAYLOAD_BYTES = 3_000;
+const payloadBytes = (payload: PushPayload) => new TextEncoder().encode(JSON.stringify(payload)).length;
+
+/** The payload with its body cut short, at a character and with "…", until the whole fits `PUSH_PAYLOAD_BYTES`. */
+function withinPushSize(payload: Extract<PushPayload, { preview: 'full' }>): PushPayload {
+  if (payloadBytes(payload) <= PUSH_PAYLOAD_BYTES) return payload;
+  const chars = Array.from(payload.body);
+  const cut = (length: number) => ({ ...payload, body: length ? `${chars.slice(0, length).join('').trimEnd()}…` : '' });
+  let low = 0; let high = chars.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (payloadBytes(cut(middle)) <= PUSH_PAYLOAD_BYTES) low = middle; else high = middle - 1;
+  }
+  return cut(low);
 }
 
 export interface DeliveryPorts {

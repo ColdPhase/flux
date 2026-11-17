@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { CITE_MARK_SOURCE, type CiteKind } from '@flux/contracts';
-import { fluxMarks, type CitedObject } from '@flux/core';
+import { fluxMarks, insideAddress, type CitedObject } from '@flux/core';
 import { personalRunRows, schema, type Database } from '@flux/db';
 
 // An agent copies a cite mark (`[task:ID]`, C-62) from its tool results after what it states. In its answer Flux turns the mark into a numbered
@@ -61,13 +61,17 @@ export async function readableMarks<T>(db: Database, projectId: unknown, args: T
       for (const object of await personalRunRows(db).cites({ workspaceId: place.workspaceId, projectId }, requests)) objects.set(`${object.kind}:${object.id}`, object);
     }
   }
-  const words = (text: string) => text.replace(MARK, (_whole, lead: string, kind: string, id: string, _section: string | undefined, at: number) => {
-    if (!lead && inAddress(text, at)) return '';
-    const name = typeof projectId === 'string' ? named(objects.get(`${kind}:${id.toLowerCase()}`), projectId) : null;
-    if (!name) return '';
-    const before = text.slice(Math.max(0, at - SAID_WITHIN), at);
-    const said = name.startsWith('#') ? new RegExp(`${name}(?![0-9])`).test(before) : before.includes(name);
-    return said ? '' : `${lead}${name}`;
-  });
+  const words = (text: string) => {
+    // An address written without a scheme (`print.example/?q=[decision:ID]`) is one too: C-30's own spans, read once per text (delta review N-P3-2).
+    let withinAddress: ((at: number) => boolean) | null = null;
+    return text.replace(MARK, (_whole, lead: string, kind: string, id: string, _section: string | undefined, at: number) => {
+      if (!lead && (inAddress(text, at) || (withinAddress ??= insideAddress(text))(at))) return '';
+      const name = typeof projectId === 'string' ? named(objects.get(`${kind}:${id.toLowerCase()}`), projectId) : null;
+      if (!name) return '';
+      const before = text.slice(Math.max(0, at - SAID_WITHIN), at);
+      const said = name.startsWith('#') ? new RegExp(`${name}(?![0-9])`).test(before) : before.includes(name);
+      return said ? '' : `${lead}${name}`;
+    });
+  };
   return rewrite(args, words);
 }
