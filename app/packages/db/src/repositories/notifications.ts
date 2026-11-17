@@ -239,8 +239,8 @@ export function notificationFactRows(db: DbExecutor) {
       // applies to the messages sent after it, so reading an event again later (a rewound cursor) decides as it did.
       const chosen = await db.select({ userId: f.userId, following: f.following }).from(f)
         .where(and(eq(f.conversationId, message.conversationId), lte(f.updatedAt, message.createdAt)));
-      // The owner's mark in the agent's label (#1424, 2026-11-17): removed from this workspace or from the company of an encrypted space.
-      const ownerRemoved = sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+      // The owner's mark in the agent's label (#1424, 2026-11-17): removed from the company (of an encrypted space: its company), as `namesIn` reads it.
+      const ownerRemoved = sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
         WHERE w.id = ${message.workspaceId}::uuid AND r.user_id = ${schema.agents.ownerUserId})`;
       const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId, ownerRemoved }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];

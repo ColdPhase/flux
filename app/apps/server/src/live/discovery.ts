@@ -170,7 +170,7 @@ export async function listCallLines(db: Database, media: Pick<LiveMedia, 'partic
   const people = [...new Set(items.flatMap((item) => [item.startedBy, ...item.joinedBy, ...(item.inCall ?? [])]))];
   if (people.length) {
     const gone = (await db.execute(sql`SELECT u.id, u.name FROM projects p JOIN workspaces w ON w.id = p.workspace_id
-      JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id JOIN auth_users u ON u.id = r.user_id
+      JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id) JOIN auth_users u ON u.id = r.user_id
       WHERE p.id = ${projectId}::uuid AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { id: string; name: string }[];
     const names = new Map(gone.map((row) => [row.id, removedName(withoutInvisibleFormat(row.name))]));
     if (names.size) for (const item of items) {

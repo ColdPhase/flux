@@ -539,7 +539,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
       h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name,
-      (au.id IS NOT NULL AND EXISTS (SELECT 1 FROM workspace_removed_people r WHERE r.user_id = au.id AND (r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id))) AS author_removed, ${cleanName(sql`agu.name`)} AS agent_owner_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      (au.id IS NOT NULL AND EXISTS (SELECT 1 FROM workspace_removed_people r WHERE r.user_id = au.id AND r.workspace_id = coalesce(w.company_workspace_id, w.id))) AS author_removed, ${cleanName(sql`agu.name`)} AS agent_owner_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL

@@ -82,7 +82,7 @@ const SUMMARY_SKETCHES = 'SELECT id, workspace_id AS "workspaceId", project_id A
 const PEOPLE_NAMES = 'SELECT id, name FROM auth_users WHERE id = ANY($1::text[])';
 // The owner of an agent who left its workspace's company or was removed, and has not come back, is marked (#1424, 2026-11-17).
 const AGENT_NAMES = `SELECT a.id, a.name, u.name AS owner_name, EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r
-  ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id WHERE w.id = a.workspace_id AND r.user_id = a.owner_user_id) AS owner_removed
+  ON r.workspace_id = coalesce(w.company_workspace_id, w.id) WHERE w.id = a.workspace_id AND r.user_id = a.owner_user_id) AS owner_removed
   FROM agents a LEFT JOIN auth_users u ON u.id = a.owner_user_id WHERE a.id = ANY($1::uuid[])`;
 type PointRow = { key: string; seq: string | number; savedAt: Date; previousSeq: string | number | null; previousSavedAt: Date | null };
 

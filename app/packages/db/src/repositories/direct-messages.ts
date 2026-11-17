@@ -96,7 +96,7 @@ export async function removedInDm(db: DbExecutor, dmId: string, userIds: readonl
   const people = [...new Set(userIds)];
   if (!people.length) return new Set();
   const rows = (await db.execute(sql`SELECT r.user_id FROM dms d JOIN workspaces w ON w.id = d.workspace_id
-    JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
     WHERE d.id = ${dmId}::uuid AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { user_id: string }[];
   return new Set(rows.map((row) => row.user_id));
 }
