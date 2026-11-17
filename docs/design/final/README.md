@@ -123,6 +123,10 @@ every ring in the app:
 `--t1` words, the pop-over shadow and a `--line2` hairline, in both themes; a message toolbar's tooltip is centred on its
 button. A primary button that waits (`disabled`) keeps a 1 px `--line2` edge, so it never melts into a dark sheet.
 
+**The caret is the text's colour** (founder check, Hubert 2026-11-17: in dark mode the Wiki's caret was black on the black page): every
+place a person types (the Wiki's editor, the composer, every field, a map's thought, a task's title) shows its caret in `--t1`, in both
+themes. A native field takes it from `caret-color`; the Wiki's editor draws its own caret and gives it the same `--t1`.
+
 **One look for one element** (founder direction, Hubert 2026-11-17, the fresh-eyes visual review of v0.2.1: "a UI check must catch what
 looks ugly"). The same element looks the same on every screen, in light and dark, on the computer and the phone:
 - **Empty states** are one component (`EmptyState`): centred in their place, Kreska (a small moment, 80 px) or a 40 px icon tile, a title
@@ -1958,6 +1962,11 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   switcher.
 - You edit on the rendered page, and versions save by themselves. Live co-editing shows the other
   person's cursor and name.
+- **The save line is calm** (founder check, Hubert 2026-11-17: it flickered and jumped at every key). What is typed is kept
+  in the tab from the first key, so while the person writes the line keeps "Saved · just now" (its time moving on quietly) and
+  never swaps to "Saving…" at a key. "Saving…" shows only once text has waited about a second with no save finished; a problem
+  ("Not saved yet", "Reconnecting · your text is kept", a conflict) shows at once. The line is one row in its place: it never
+  changes height or moves the title.
 - **History** (⋯ › History) lists the versions on the left as a timeline: one continuous mid-grey line from dot to dot,
   the chosen version's dot filled. The chosen row says in words what can be done with it, under its line: **Read this version** (**Open
   the page** for the current one) and Restore this version; the other rows are only chosen (round 14 daily 9: a "Read" on every row was
