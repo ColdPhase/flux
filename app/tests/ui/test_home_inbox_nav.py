@@ -168,7 +168,7 @@ class HomeInboxNav(unittest.TestCase):
         expect(row.locator(".nyc__face .kreska")).to_be_visible()
         expect(row).to_contain_text("Question")
         # The agent by its one label, whose it is (v0.2.1 release gate): never a bare name with "Agent".
-        expect(row.locator(".home__row-k")).to_contain_text(re.compile(r"Question · .+ · \w+'s \S.* · Community garden sensors"))
+        expect(row.locator(".home__row-k")).to_contain_text(re.compile(r"Question · \w+'s .+ · Community garden sensors"))
         # Home only lists (#865): the ready answers are in the Inbox, and the row opens it on this item.
         expect(row.get_by_role("button")).to_have_count(0)
         shot(page, "home-question-1440")
@@ -220,7 +220,7 @@ class HomeInboxNav(unittest.TestCase):
         page.goto("/")
         row = page.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Should the gate latch face the lane?")
         expect(row).to_be_visible()
-        expect(row.locator(".home__row-k")).to_have_text(re.compile(r"^Question · .+ · Jonas's \S.* · Community garden sensors$"))
+        expect(row.locator(".home__row-k")).to_have_text(re.compile(r"^Question · Jonas's .+ · Community garden sensors$"))
         expect(row).not_to_contain_text("Your agent")
         # Answered, so the later tests find only their own questions.
         self.api("ada", "POST", f"/api/v1/agent-questions/{asked['questionId']}/answer", {"optionIndex": 0}, status=200)

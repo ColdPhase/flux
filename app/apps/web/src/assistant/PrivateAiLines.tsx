@@ -59,8 +59,9 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
   const pictures = changes.flatMap((change) => (change.file && (change.state === 'applied' || change.state === 'applied_after_wait') ? [change.file] : []));
   useForgetLiveRun(run.id, true);
   // Its asker took back what it made (Undo): the answer still names it ("#6"), so it is not shown to anyone (round 15 ai P3: Show everyone stayed
-  // offered and posted chips to a task that is not there). It stays the asker's to read and dismiss.
-  const madeOnes = changes.filter((change) => !change.file && (change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone'));
+  // offered and posted chips to a task that is not there). It stays the asker's to read and dismiss. A picture or file it attached is not such a
+  // change: taking it off leaves the words, which Show everyone posts alone.
+  const madeOnes = changes.filter((change) => !change.operation.startsWith('answer.') && (change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone'));
   const undone = madeOnes.length > 0 && madeOnes.every((change) => change.state === 'undone');
   return (
     <li id={`answer-${run.id}`} tabIndex={-1} className="assistant-private" role="note" aria-label="Private answer" data-answer-run={run.id} data-private-answer="">

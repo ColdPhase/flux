@@ -156,7 +156,8 @@ class AgentColourForEveryone(unittest.TestCase):
             page.goto(f"/projects/{self.ids['project']}")
             card = page.locator(f'.convo-notice[data-work-id="{self.ids["task"]}"]')
             expect(card.locator(".convo-notice__owner .kreska")).to_have_class(TEAL)
-            expect(card.locator(".convo-notice__owner-name")).to_have_text("Planner")
+            # The card names the agent by its one label (round 15 ai P3: a removed owner's agent read only "Assistant").
+            expect(card.locator(".convo-notice__owner-name")).to_have_text(LABEL)
             shot(page, f"agent-colour-conversation-{who}-{UI_BROWSER}")
 
     def test_02_tasks_draw_planner_in_teal_for_ben(self) -> None:
