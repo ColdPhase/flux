@@ -327,8 +327,9 @@ class MessageFormatting(unittest.TestCase):
         gap = chip.evaluate("""el => { const next = el.nextSibling; const r = document.createRange(); r.setStart(next, 0); r.setEnd(next, 1);
           return r.getBoundingClientRect().left - el.getBoundingClientRect().right; }""")
         self.assertLessEqual(gap, 0.5, "the ')' sits against the chip")
+        # A task of the space being read opens in the panel beside the conversation, as its card does (round 15 look-2 P2-3).
         chip.click()
-        page.wait_for_url(re.compile(rf"/projects/{project}/tasks\?open=work:{task['id']}"))
+        page.wait_for_url(re.compile(rf"/projects/{project}\?open=work:{task['id']}"))
         expect(page.get_by_role("complementary", name="Details")).to_contain_text("Calibrate the probes")
         page.go_back()
         wiki = page.locator(".message-body", has_text="Wiring first").first.locator(".ref-chip[data-ref=wiki]")
