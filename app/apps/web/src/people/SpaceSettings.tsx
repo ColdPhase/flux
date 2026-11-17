@@ -104,12 +104,13 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   // The search or the first person, else "Someone new?" when nobody else is in the company (F-026 §4).
   useEffect(() => { if (adding) focusOn('.spset__add input:not([disabled])'); }, [adding]);
   // Opened from the header's faces or ⋯ › Settings, the settings take the focus as any opened panel does (F-026 §4, personas-33): the button
-  // that opened them is no longer where the person works. A control inside them, or a field being typed in, keeps it.
+  // that opened them is no longer where the person works. A control inside them, a field being typed in, or a control in the open detail
+  // panel beside them keeps it: an admin who unlocks the space in its keys panel stays on Lock now while the settings come back behind it.
   const headRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const active = document.activeElement;
-      if (active?.closest('[data-space-settings]') || isTyping(active)) return;
+      if (active?.closest('[data-space-settings], #details') || isTyping(active)) return;
       headRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
