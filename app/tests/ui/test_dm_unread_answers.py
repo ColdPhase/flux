@@ -24,7 +24,7 @@ from test_work_pagination import api
 PASSWORD = "an answer reaches the one who asked"
 SPACE = "Corner shop"
 BOLD = re.compile(r"\bis-unread\b")
-# The page's sockets, so a test can drop them. While `__refuse` is set a new one asks for an address the server does not serve and never opens;
+# The page's sockets, so a test can drop them. While `__refuse` is set a new one is closed before it opens, as a refused connection is;
 # while `__drop` is set the page is never told of a sent message (a connection that missed it, as one whose cursor was refused does). `__frames`
 # is what the sockets were sent.
 SOCKETS = """(() => {
@@ -35,10 +35,9 @@ SOCKETS = """(() => {
   window.__drop = false;
   window.WebSocket = class extends Native {
     constructor(url, protocols) {
-      const address = new URL(url);
-      if (window.__refuse) address.pathname = '/api/v1/__refused__';
-      super(address, protocols);
+      super(url, protocols);
       window.__sockets.push(this);
+      if (window.__refuse) queueMicrotask(() => this.close());
     }
     set onmessage(handler) {
       super.onmessage = handler && ((event) => {
