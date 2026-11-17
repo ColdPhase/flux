@@ -19,7 +19,7 @@
 .sk-switch .wiki-switch { min-height: 32px; margin: 0 0 0 -6px; padding: 0 6px; gap: 4px; border-radius: var(--r-sm); font-weight: 600; }
 .sk-switch .wiki-menu { z-index: var(--z-menu); max-width: calc(100vw - 20px); }
 .sk-title-edit { min-width: 12ch; height: 28px; padding: 0 6px; margin: 0 -6px; border: 0; border-radius: var(--r-sm); font: 600 var(--fs-md)/1 var(--font);
-  color: var(--t1); background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--t1), 0 0 0 3px var(--sub); outline: none; }
+  color: var(--t1); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
 .sk-aud { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--t3); }
 .sk-mode { flex: none; }
 .sk-mode .seg__b { min-width: 52px; padding: 0 10px; }
@@ -100,7 +100,9 @@
 .sk-t { font-size: var(--fs-base); font-weight: 600; color: var(--t1); line-height: var(--lh); overflow-wrap: anywhere; white-space: pre-line; }
 .sk-p { margin-top: 3px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .sk-resize { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none;
-  background: linear-gradient(135deg, transparent 50%, var(--inv) 50%, var(--inv) 60%, transparent 60%, transparent 72%, var(--inv) 72%, var(--inv) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0; opacity: .7; }
+  background: linear-gradient(135deg, transparent 50%, var(--t3) 50%, var(--t3) 60%, transparent 60%, transparent 72%, var(--t3) 72%, var(--t3) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0;
+  opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+.sk-node:hover .sk-resize, .sk-resize:hover, .sk-node.is-dragging .sk-resize { opacity: 1; }
 
 /* UI116-4: a thought shows how many tasks link to it, never their titles or results. The count is its
    own button in a slot over the room kept at the bottom of the thought, so a thought stays one
@@ -116,7 +118,8 @@
   font-size: var(--fs-xs); font-weight: 500; line-height: 1; white-space: nowrap; transition: var(--tr); }
 .sk-work svg { flex: none; color: var(--t3); }
 .sk-work:hover, .sk-work[aria-expanded="true"] { background: var(--hov); color: var(--t1); }
-.sk-work--map { position: absolute; left: 7px; bottom: 10px; height: var(--sk-work-h); padding: 0 6px 0 5px; pointer-events: auto; }
+.sk-work--map { position: absolute; left: 7px; bottom: 10px; max-width: calc(100% - 14px); height: var(--sk-work-h); padding: 0 6px 0 5px; pointer-events: auto; }
+.sk-work__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sk-work-slot--pill .sk-work--map { left: 13px; }
 .sk-work-slot--circle .sk-work--map { left: 50%; bottom: 16px; translate: -50% 0; }
 
@@ -164,23 +167,27 @@
 .sk-phone__note svg { flex: none; color: var(--t3); }
 /* Said once (#1424): its own quiet close, inside the pill, remembers that it was seen. */
 .sk-phone__note-x { margin: -6px -10px -6px 0; }
-/* A button like the others (#763, 2026-10-31): --r-btn corners and no drop shadow; the inverted fill sets it off the map. */
+/* The phone map's one floating action looks like the phone's floating "+" everywhere else (#763 2026-10-31, founder direction 2026-11-17
+   visual review): the soft --own fill with --t1, --r-btn corners, no drop shadow, so a phone screen never has a dark slab at its foot. */
 .sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-btn);
-  background: var(--inv); color: var(--oninv); font-size: var(--fs-lg); font-weight: 500; }
+  background: var(--own); color: var(--t1); font-size: var(--fs-lg); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line); }
+.sk-fab:hover { background: var(--hov); }
 @media (pointer: coarse) { .sk-dot { width: 16px; height: 16px; } .sk-dot::before { inset: -14px; } }
 @media (prefers-reduced-motion: reduce) { .sk-dot { transition: none; } }
 
 .sk-actions { position: absolute; left: 0; top: 0; z-index: 4; display: flex; align-items: center; gap: 8px; transform-origin: 0 0; }
-.sk-plus { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
-  background: var(--inv); color: var(--oninv); box-shadow: var(--sh-card); transition: background-color var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
-.sk-plus:hover { background: var(--t1); }
+.sk-plus { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-pill);
+  background: transparent; color: var(--t1); transition: background-color var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
+.sk-plus:hover { background: var(--sub); }
 .sk-plus--labelled { display: inline-flex; align-items: center; width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 28px; padding: 0 12px; border-radius: var(--r-pill); background: var(--el);
   color: var(--t1); font-size: var(--fs-sm); font-weight: 500; box-shadow: var(--sh-card), inset 0 0 0 1px var(--line2); transition: var(--tr); }
-.sk-edit-btn:hover { background: var(--sub); }
+@media (hover: hover) { .sk-edit-btn:hover { background: var(--sub); } }
 .sk-edit { position: absolute; left: 0; top: 0; z-index: 5; resize: none; overflow: hidden; font: 500 var(--fs-md)/1.35 var(--font); letter-spacing: var(--tracking);
-  padding: 6px 8px; border: 0; border-radius: var(--r); background: var(--bg); color: var(--t1);
-  box-shadow: inset 0 0 0 1.5px var(--t1), 0 0 0 3px var(--sub); outline: none; }
+  padding: 6px 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--line2); }
+/* Every field on the map is one field (founder direction 2026-11-17 visual review): the field hairline, and the one --ring while it is being written in. */
+.sk-edit:focus, .sk-li-edit:focus, .sk-title-edit:focus, .sk-draft textarea:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 .sk-canvas-wrap { position: relative; }
 /* The map uses the height actually left by the shell, including wrapped project state and
@@ -193,7 +200,7 @@
 .sk--map .sk-canvas { height: 100%; }
 .sk-zoom { position: absolute; right: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 0;
   padding: 2px; border-radius: var(--r); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
-.sk-zoom button { font-family: var(--mono); display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--t3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
+.sk-zoom button { font-family: var(--font); display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--t3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
 .sk-zoom button:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .sk-zoom button:disabled { opacity: .45; cursor: default; }
 .sk-zoom .sk-zoom__level { min-width: 44px; }
@@ -213,7 +220,7 @@
 
 .sk-li-s { display: block; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .sk-li-edit { display: block; width: 100%; min-height: 36px; resize: none; overflow: hidden; font: 500 var(--fs-md)/1.35 var(--font); padding: 6px 8px; border: 0;
-  border-radius: var(--r); background: var(--bg); color: var(--t1); box-shadow: inset 0 0 0 1.5px var(--t1); outline: none; }
+  border-radius: var(--r); background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line2); }
 
 /* The Sketchbook's one privacy line under its title (#508). */
 .sk-book__private { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t3); }
@@ -264,7 +271,7 @@
 /* Private capture belongs to the map view and survives List/Map projection changes. */
 .sk-draft { margin: 0 var(--s-4) var(--s-3); padding: var(--s-3); border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); }
 .sk-draft__context { margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
-.sk-draft textarea { width: 100%; min-height: 64px; padding: var(--s-2) var(--s-3); font-family: var(--font); resize: vertical; }
+.sk-draft textarea { width: 100%; min-height: 64px; padding: var(--s-2) var(--s-3); font-family: var(--font); resize: none; field-sizing: content; max-height: 40vh; }
 .sk-draft__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 .sk-draft__actions span { color: var(--t2); font-size: var(--fs-sm); }
 .sk-edit-controls { display: flex; gap: var(--s-2); margin: 0 var(--s-4) var(--s-3); }
@@ -356,12 +363,12 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* The actions of the selection float above it (below it where there is no room, and on the phone). */
 .sk-actions { gap: 2px; padding: 4px; width: max-content; flex-wrap: wrap; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-actions .sk-edit-btn { background: transparent; box-shadow: none; }
-.sk-actions .sk-edit-btn:hover { background: var(--sub); }
+@media (hover: hover) { .sk-actions .sk-edit-btn:hover { background: var(--sub); } }
 .sk-actions .sk-edit-btn[aria-pressed="true"] { background: var(--sub); }
 .sk-actions .sk-edit-btn[aria-disabled="true"] { opacity: .5; }
 .sk-edit-btn--icon { display: inline-grid; place-items: center; width: 28px; padding: 0; }
-.sk-taskline { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: var(--fs-xs); color: var(--t2); line-height: 1.4; }
-.sk-taskline svg { flex: none; }
+/* The edit's Save and Cancel, in the toolbar's place beside the thought (founder direction 2026-11-17 visual review). */
+.sk-actions .sk-edit-controls { display: flex; align-items: center; gap: 4px; margin: 0; }
 @media (pointer: coarse) { .sk-edit-btn--icon { width: 44px; } .sk-tool { width: 44px; height: 44px; } .sk-dock .ui-btn { min-height: 44px; } }
 /* S15: one primary Thought. Secondary map and selection controls open named sheets. */
 .sk-phone { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
@@ -394,7 +401,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-phone .sk-line { max-width: calc(100% - 20px); }
 /* The selected outline and named action entry already identify the phone selection; announce
    it without a second visual pill. Changes and errors remain visible in the measured dock. */
-.sk-phone .sk-line:has(.sk-status--selection) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sk-phone .sk-line:has(.sk-status--selection), .sk-composition .sk-line { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk-phone__secondary { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 20px); }
 .sk-phone__secondary:empty { display: none; }
 .sk-phone__secondary .sk-edit-btn { display: inline-flex; align-items: center; gap: 6px; }
@@ -407,7 +414,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-options-sheet .sk-mode { align-self: flex-start; }
 .sk-options__thought { margin: 0 0 8px; color: var(--t2); font-size: var(--fs-base); line-height: var(--lh); overflow-wrap: anywhere; }
 .sk-options__action { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 10px 12px; border-radius: var(--r); color: var(--t1); text-align: left; font-size: var(--fs-base); line-height: var(--lh); }
-.sk-options__action:hover { background: var(--hov); }
+@media (hover: hover) { .sk-options__action:hover { background: var(--hov); } }
 .sk-options__action svg { flex: none; color: var(--t2); }
 .sk-undo { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--el); color: var(--t1);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); font-weight: 500; }
@@ -418,7 +425,10 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-canvas-wrap { container-type: size; }
 .sk-corner { position: absolute; right: 16px; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
 .sk-corner > * { pointer-events: auto; }
-@container (max-width: 1080px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
+/* Beside the minimap the corner needs the room of a wide pane; with the minimap gone (a short pane, below) the zoom alone fits beside the
+   centred tools down to about 680 px, so it stays in its corner instead of floating mid-edge (founder direction 2026-11-17 visual review). */
+@container (max-width: 1080px) and (min-height: 561px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
+@container (max-width: 680px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
 /* A short pane keeps the zoom controls and lets the minimap go; the arrows and Fit still reach every thought. */
 @container (max-height: 560px) { .sk-minimap { display: none; } }
 .sk-corner .sk-zoom { position: static; margin: 0; padding: 4px; gap: 2px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
@@ -428,7 +438,7 @@ span.sk-li-img { width: 160px; height: 96px; }
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); cursor: pointer; touch-action: none; }
 .sk-minimap svg { display: block; }
 .sk-minimap rect { fill: var(--t3); opacity: .6; }
-.sk-minimap__view { position: absolute; box-sizing: border-box; border-radius: 4px; background: color-mix(in srgb, var(--t1) 5%, transparent); box-shadow: inset 0 0 0 1.5px var(--t2); pointer-events: none; }
+.sk-minimap__view { position: absolute; box-sizing: border-box; border-radius: 4px; background: color-mix(in srgb, var(--t1) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line2); pointer-events: none; }
 /* The toolbar's groups: pointer tools | adding | undo (Spokój board A03). */
 .sk-dock .sk-tools .sk-div { height: 20px; margin: 0 2px; background: var(--line2); }
 

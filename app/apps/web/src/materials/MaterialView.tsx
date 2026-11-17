@@ -3,6 +3,7 @@ import type { MaterialOrDoc, MaterialVersion, ProjectPerson } from '@flux/contra
 import type { materialLoader } from './loader';
 import { useShellData } from '../app/data';
 import { agentAuthorLabel, personName, youLabel } from '../docs/format';
+import { Icon } from '../ui';
 import './material.css';
 
 export function MaterialView() {
@@ -22,7 +23,8 @@ function MaterialPage({ material, version, people }: { material: MaterialOrDoc; 
   const earlier = version.version !== material.version;
   return (
     <div className="pane-scroll"><article className="pane-in material-view">
-      <Link className="ui-link material-view__back" to={`/projects/${material.projectId}`}>Back to the conversation</Link>
+      {/* The Wiki's way back, "‹ Back to the page", in its quiet button (founder direction 2026-11-17 visual review). */}
+      <Link className="ui-btn ui-btn--quiet material-view__back" to={`/projects/${material.projectId}`}><Icon name="chevron-left" size={14} />Back to the conversation</Link>
       <p className="material-view__meta">Version {version.version}{earlier ? ' · An earlier version' : ''}</p>
       <h2>{version.title}</h2>
       <p className="material-view__meta">{author} · Saved {saved.format(new Date(version.createdAt))}</p>

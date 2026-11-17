@@ -3,7 +3,7 @@
 .material-view h2 { margin: 0; font-size: var(--fs-xl); line-height: 1.3; letter-spacing: -.015em; }
 /* The way back is a real target, 32 px with a mouse and 44 with a finger (--ctl), as "‹ AI" is in Settings. Its word stays where it was on the page
    (the target grows upward by the negative margin, and downward below it) and the target never covers the line under it (#1424). */
-.material-view__back { display: inline-flex; align-items: center; min-height: var(--ctl); min-width: var(--ctl); margin-top: calc((1lh - var(--ctl)) / 2); font-size: var(--fs-md); }
+.material-view__back { display: inline-flex; align-items: center; gap: 4px; min-height: var(--ctl); min-width: var(--ctl); margin: calc((1lh - var(--ctl)) / 2) 0 0 -8px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 .material-view__meta { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
 .material-view__body { align-self: stretch; margin: 6px 0 0; padding: 20px 24px; border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card);
   font-size: var(--fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -489,7 +489,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
             <div className="wd-blocker__head">
-              <span className="ui-pill ui-pill--inv">Blocked</span>
+              <span className="ui-pill ui-pill--line"><StatusGlyph status="blocked" size={12} />Blocked</span>
               <p className="wd-blocker__text">
                 {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
                   : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>

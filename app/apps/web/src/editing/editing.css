@@ -1,6 +1,8 @@
 /* The page being written (#869): the reader's type with no box around it; the marks show only where the caret is. */
 .wiki-editor .cm-editor { color: var(--t2); font: inherit; background: none; }
 .wiki-editor .cm-editor.cm-focused { outline: none; }
+/* CodeMirror draws its own selection (a lavender by default): the app's one --selection, focused or not. */
+.wiki-editor .cm-editor .cm-selectionLayer .cm-selectionBackground, .wiki-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: var(--selection); }
 /* The page's column holds the text: a wide table scrolls inside its own card, never the page. */
 .wiki-editor .cm-editor, .wiki-editor .cm-editor .cm-scroller { min-width: 0; }
 .wiki-editor .cm-editor .cm-scroller { font-family: var(--font); line-height: inherit; overflow: visible; }
@@ -14,6 +16,8 @@
 .wiki-editor .cm-editor .cm-md-h2 { padding-top: 10px; font-size: var(--fs-xl); letter-spacing: -0.02em; }
 .wiki-editor .cm-editor .cm-md-h3 { padding-top: 6px; font-size: var(--fs-lg); }
 .wiki-editor .cm-editor .cm-md-h4 { font-size: var(--fs-base); }
+/* The empty line under a heading is a short step (half the reader's 14 px under an H2 plus the heading's own leading), not a whole line. */
+.wiki-editor .cm-editor .cm-line.cm-md-after-h { line-height: 6px; font-size: 6px; }
 .wiki-editor .cm-editor .cm-md-setext { color: var(--t3); }
 .wiki-editor .cm-md-strong { font-weight: 600; color: var(--t1); }
 .wiki-editor .cm-md-em { font-style: italic; }

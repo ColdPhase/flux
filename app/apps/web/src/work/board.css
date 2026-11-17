@@ -92,10 +92,14 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card__open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .tb-card__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; }
 .tb-card__blocker { margin-top: 0; padding-left: 9px; border-left: 2px solid var(--t2); font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
-.tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: var(--fs-sm); }
+/* One line: a long owner's name ends in an ellipsis beside the number, so cards keep one height (founder direction 2026-11-17 visual review). */
+.tb-card__foot { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: var(--fs-sm); }
+.tb-card__foot > :not(.tb-card__owner) { flex: none; }
+/* An agent's one label (#1364) keeps its whole words and takes the next line when it must. */
+.tb-card__foot:has(.tb-card__owner--agent) { flex-wrap: wrap; }
 .tb-card__due { color: var(--t2); font-size: var(--fs-sm); }
 .tb-card__foot > .tb-card__owner { margin-left: auto; }
-.tb-card__owner { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
+.tb-card__owner { display: inline-flex; align-items: center; gap: 7px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {
@@ -130,7 +134,10 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   /* Beside a docked panel a computer's or tablet's board is this narrow too (#1365): the columns that do not fit are shown by a thin bar,
      so they can be reached with a mouse as well as by a swipe. The phone keeps its bare swipe. */
   @media (min-width: 641px) {
-    .tb-board { scrollbar-width: thin; scrollbar-color: var(--t3) transparent; padding-bottom: 20px; }
+    /* The columns that run on past the edge fade into it, and the last one ends with the page's margin (founder direction 2026-11-17 visual review). */
+    .tb-board { scrollbar-width: thin; scrollbar-color: var(--t3) transparent; padding-bottom: 20px; padding-right: 0;
+      mask-image: linear-gradient(to right, transparent 0, #000 var(--space-page), #000 calc(100% - var(--space-page)), transparent 100%); }
+    .tb-board::after { content: ""; flex: 0 0 calc(var(--space-page) - 12px); }
     .tb-board::-webkit-scrollbar { display: block; height: 8px; }
     .tb-board::-webkit-scrollbar-thumb { border-radius: var(--r-pill); background: var(--t3); }
   }

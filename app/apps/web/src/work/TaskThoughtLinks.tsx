@@ -129,6 +129,10 @@ export function LinkThoughtButton({ links, toggle }: { links: ThoughtLinks; togg
 /** The thoughts the task is linked to and the picker that adds one; empty and closed it shows nothing (Spokój rule 4). */
 export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
   const { item, project, open, maps, mapId, setMapId, current, candidates, busy, error, status, sectionId, panelId, mapFieldId, listed, close, onKeyDown, link } = links;
+  // The chooser opens where it is seen (founder direction 2026-11-17 visual review): a phone's half sheet ends above it, so it scrolls into view,
+  // and again as its maps and thoughts arrive.
+  const pick = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) pick.current?.scrollIntoView({ block: 'nearest' }); }, [open, maps, mapId, current]);
   if (!listed.length && !open && !status && !error) return null;
   return (
     <section className="details__sec" aria-labelledby={sectionId} onKeyDown={onKeyDown}>
@@ -142,7 +146,7 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
         </ul>
       ) : null}
       {open ? (
-        <div id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
+        <div ref={pick} id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
           <div className="wd-actions wd-pick__cancel">
             <Button variant="secondary" disabled={busy} onClick={close}>Cancel</Button>
           </div>

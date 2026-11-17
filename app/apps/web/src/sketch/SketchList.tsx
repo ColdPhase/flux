@@ -228,11 +228,12 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           {row.children.length ? <button type="button" tabIndex={-1} className="sk-outline-toggle" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${quote(thought.text)}`}
             onClick={(event) => { quiet(event); view.toggle(thought.id); focus(thought.id); }}><Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} /></button>
             : <span className="sk-outline-leaf" aria-hidden="true" />}
-          {label ? <span className="sk-outline-tag" id={tagId}>{label}</span> : null}
           <span className="sk-outline-main">
             {editing?.id === thought.id && canWrite
               ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} />
               : <span className="sk-outline-title" id={titleId}>{thought.text}</span>}
+            {/* The connection's label follows the title, so every title starts at one edge (founder direction 2026-11-17 visual review). */}
+            {label ? <span className="sk-outline-tag" id={tagId}>{label}</span> : null}
             {also.length ? <span className="sk-outline-also" onClick={quiet}><Icon name="link" size={12} /><span>also under </span>{also.map(({ other, relation }, at) => (
               <Fragment key={relation.id}>{at ? ', ' : ''}<button type="button" className="sk-outline-also__b" aria-label={`Also under ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button></Fragment>
             ))}</span> : null}

@@ -70,6 +70,7 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
 | `--ring` | `--t3` (`#636363`) | `--t3` (`#A1A1A1`) | The keyboard focus ring, everywhere (founder direction, Hubert 2026-11-17, #1424) |
+| `--selection` | `--t3` at 34 % | `--t3` at 34 % | Selected text everywhere: fields, the Wiki's editor, the map; the text keeps its own colour (founder direction 2026-11-17 visual review) |
 | `--seg` / `--seg-on` / `--seg-off` | `--act` / `--el` / `--t2` | `--sub` / `--pick` / `--t3` | A segmented control: its track, the selected option's pill and an unselected label (#1238). Roles over existing colours, no new colour |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
@@ -107,6 +108,32 @@ every ring in the app:
   black frame, and stays distinct from the selection, which is a fill and never an outline.
 - Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
   `data-input` on `<html>` (`pointer` or `keys`), set by the first pointer or key event.
+
+**One look for the same element** (founder direction, Hubert 2026-11-17, visual review of the work screens: "a UI check must catch what
+looks ugly"):
+- **Fields.** Every text field (a thought being written or edited on the map or in its List, a map's or a task's title being renamed, What came
+  of it, the date field, a picker) has the field hairline (`--line2` or the field shadow) on `--el`, and while it is written in the one
+  2 px `--ring`. None draws its own black frame.
+- **Selected text** is `--selection` behind the text's own colour, in both themes; never the browser's blue or CodeMirror's lavender.
+- **A state in a pill** is its glyph and word on a 1 px `--line2` hairline in `--t1` (the task panel's "Blocked"), never an inverted slab.
+- **A text button that starts a line** in a panel (Add to a thought, Add to a Wiki page) hangs its padding outside, so its icon stands on
+  the edge of the labels above it.
+- **Hover fills need a hovering pointer** (`@media (hover: hover)`): a tap on a phone leaves no fill on whatever lies under the finger.
+- **A menu's rows lead with their icon**, and a line sets the destructive row apart (the Wiki's ⋯, as the maps' switcher).
+- **The Wiki's prose is one prose:** the editor, the history and an old version hang a list's "•" (`--t1`) at the column's edge with the
+  words 1.5em in, in `--t2`; the line under a heading is a short step, not a whole empty line. A version's banner puts its links in a row
+  of their own under the sentence. The title's chevron follows its last word.
+- **The map:** a label sits on a free part of its own line, never on another label or under a thought; the selection's actions never lie
+  over another thought (they slide beside it, or rise above it); an edit's **Save** and **Cancel** are that toolbar beside the thought
+  (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
+  with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
+  minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden. A
+  thought with one task shows that task's state, number and owner as its count; with several, "N tasks". The phone's **Thought** is
+  the soft fill of the phone's floating "+". In the map's List a connection's label follows the title, and the tree's ticks reach their rows.
+- **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
+  an ellipsis); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
+  in a 10 px gutter of `--bg`; the blocked card's words keep the room on a phone and Edit and Unblock take the next line; a multi-line
+  value keeps its label on its first line; the thought chooser scrolls into view when it opens.
 
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.

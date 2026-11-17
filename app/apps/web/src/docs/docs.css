@@ -5,6 +5,8 @@
 .doc-muted { font-size: var(--fs-sm); color: var(--t3); }
 .doc-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 14px 0; padding: 8px 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
 .doc-notice svg { color: var(--t3); flex: none; }
+.doc-notice--version > span:first-of-type { flex: 1 1 0; min-width: 0; }
+.doc-notice__links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; flex-basis: 100%; padding-left: 24px; }
 @media (pointer: coarse) { .doc-notice a, .doc-notice .ui-link { display: inline-flex; align-items: center; min-height: 44px; } }  /* a link is a 44 px target on touch (#1380) */
 .doc-notice a, .doc-notice .wiki-restore-link { color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .doc-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
@@ -52,6 +54,8 @@
 .wiki-switch:hover, .wiki-switch[aria-expanded="true"] { background: var(--sub); }
 .wiki-switch__t { min-width: 0; overflow-wrap: anywhere; }
 .wiki-switch svg { flex: none; color: var(--t3); }
+.wiki-switch__go { display: inline-block; margin-left: 8px; white-space: nowrap; vertical-align: -3px; }
+.wiki-switch__go svg { display: block; }
 .wiki-rename { display: block; }
 .wiki-rename__field { display: block; width: 100%; height: 44px; margin: 0 0 0 -10px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--sub); color: var(--t1); font: inherit; letter-spacing: inherit; }
 .wiki-rename__field:focus { outline: 2px solid var(--ring); outline-offset: 0; }
@@ -73,7 +77,8 @@
 .wiki-menu__row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .wiki-menu__row[aria-current="page"] { background: var(--sub); font-weight: 500; }
 .wiki-menu__row > svg { flex: none; margin-left: auto; }
-.wiki-menu__new > svg { margin-left: 0; color: var(--t2); }
+.wiki-menu__new > svg, .wiki-menu__row--icon > svg:first-child { margin-left: 0; color: var(--t2); }
+.wiki-menu__row--icon > svg:last-child:not(:first-child) { color: var(--t3); }
 .wiki-menu__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wiki-contents .wiki-menu__row[data-level="1"] { padding-left: 22px; }
 .wiki-contents .wiki-menu__row[data-level="2"] { padding-left: 34px; }
@@ -98,18 +103,18 @@
 
 /* A space without pages. */
 .wiki-empty { padding-top: 64px; }
-.wiki-empty__t { margin: 0 0 8px; font-size: var(--fs-xl); font-weight: 600; }
+.wiki-empty .ui-empty { max-width: 640px; }
 .wiki-gone__mine { margin-top: 16px; max-width: 640px; }
 .wiki-gone__mine p { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 .wiki-gone__mine textarea { display: block; width: 100%; margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--sub); color: var(--t1); font: inherit; font-size: var(--fs-sm); resize: vertical; }
-.wiki-empty__acts { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-top: 20px; }
+.wiki-empty__acts { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; flex: 1; }
 /* In the empty Wiki the naming field and its Create are in the row of the two buttons, the field as wide as a name needs. */
 .wiki-empty__acts .wiki-newpage { flex: 1 1 340px; flex-wrap: nowrap; max-width: 460px; padding: 0; }
 
 
 /* ---------- The page's typography (read and written alike) ---------- */
 .doc-prose { font-size: var(--fs-read); line-height: 1.667; color: var(--t2); overflow-wrap: anywhere; }
-.doc-prose :is(h1, h2, h3, h4, h5, h6, strong, li) { color: var(--t1); }
+.doc-prose :is(h1, h2, h3, h4, h5, h6, strong) { color: var(--t1); }
 /* A compact 62ch reading column inside the 820px page (at most 90 characters on a line in Chromium and WebKit, whose
    proportional fonts fit different numbers of narrow letters into the same width: 64ch reached 91 in WebKit);
    tables, code and images keep the full available width, with tables scrolling in their own region. */
@@ -126,8 +131,13 @@
 .doc-prose h2 { font-size: var(--fs-xl); letter-spacing: -0.02em; }
 .doc-prose h3 { font-size: var(--fs-lg); }
 .doc-prose h4, .doc-prose h5, .doc-prose h6 { font-size: var(--fs-base); }
-.doc-prose ul, .doc-prose ol { padding-left: 26px; }
-.doc-prose li { margin: 4px 0; }
+/* One prose for the editor, the history and an old version (founder direction 2026-11-17 visual review): a list item hangs from a "•" in --t1 at the
+   column's edge, 1.5em before its words in the body's --t2, as the editor's live preview draws it. */
+.doc-prose ul, .doc-prose ol { padding-left: 1.5em; }
+.doc-prose ul { list-style: none; }
+.doc-prose ul > li::before { content: "•"; display: inline-block; width: 1.5em; margin-left: -1.5em; color: var(--t1); }
+.doc-prose ol > li::marker { color: var(--t1); }
+.doc-prose li { margin: 0; }
 .doc-prose blockquote { margin-left: 0; margin-right: 0; padding: 8px 14px; border-left: 2px solid var(--line2); border-radius: 0 5px 5px 0; background: var(--sub); color: var(--t2); }
 .doc-prose code { padding: 1px 5px; border-radius: 4px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--mono); font-size: 0.86em; }
 .doc-prose pre { padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--sub); overflow-x: auto; line-height: 1.65; }

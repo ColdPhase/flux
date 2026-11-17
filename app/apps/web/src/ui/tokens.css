@@ -45,6 +45,9 @@
      inverted fill. Both are transparent after a tap or a click (ui.css, data-input on <html>), so only the keyboard draws them. */
   --ring: var(--t3);
   --ring-inv: var(--oninv);
+  /* Selected text (founder direction 2026-11-17 visual review): a grey wash of --t3 behind the text's own colour, the same in every field,
+     the Wiki's editor and the map, in both themes; never the browser's blue or a lavender. */
+  --selection: color-mix(in srgb, var(--t3) 34%, transparent);
   --scrim: rgba(0, 0, 0, .28);
   --dot: #d4d4d8;
   /* Volume: layers get lighter as they rise */
