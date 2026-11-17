@@ -428,8 +428,9 @@ class DirectMessageJourney(unittest.TestCase):
 
 
     def call(self, who: str, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
-        response = self.context(who).request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
-                                                   data=json.dumps(body) if body is not None else None)
+        # No content type without a body: the server refuses an empty JSON body (a DELETE).
+        headers = {"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {})}
+        response = self.context(who).request.fetch(f"{ORIGIN}{path}", method=method, headers=headers, data=json.dumps(body) if body is not None else None)
         if status is not None:
             self.assertEqual(response.status, status, f"{method} {path}: {response.text()}")
         return json.loads(response.text()) if response.text() else {}
@@ -450,7 +451,7 @@ class DirectMessageJourney(unittest.TestCase):
         agent = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/agents", {"name": "Planner", "owner": "self"}, status=201)["id"]
         self.call("rhea", "POST", "/api/v1/integration/agent-connections", {"agentId": agent, "name": "Rhea's laptop", "clientDesignation": "claude_code"}, status=201)
         task = self.call("rhea", "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Sort the glaze buckets", "owner": {"kind": "agent", "id": agent}}, status=201)["id"]
-        self.call("ada", "DELETE", f"/api/v1/workspaces/{self.workspace_id}/members/{self.ids['rhea']}")
+        self.call("ada", "DELETE", f"/api/v1/workspaces/{self.workspace_id}/members/{self.ids['rhea']}", status=204)
 
         kai = self.page("kai")
         kai.goto("/dm")
