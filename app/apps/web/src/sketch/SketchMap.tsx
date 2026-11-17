@@ -1101,7 +1101,7 @@ export function SketchMap(props: SketchMapProps) {
               });
               const cards = [...rects.values()].map((r) => ({ ...r, ...place(r) }));
               const spots = placeLabels(shownLinks.map(({ link, path, w, h }) => ({ id: link.id, at: path.at, w, h })), cards);
-              return shownLinks.map(({ link, path }) => {
+              return shownLinks.map(({ link }) => {
               const on = highlighted(link.fromId) || highlighted(link.toId);
               const spot = spots.get(link.id);
               // A label every point of which lies under a thought is not drawn: a card would show only a piece of it.
