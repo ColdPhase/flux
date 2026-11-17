@@ -19,8 +19,9 @@ export interface AcceptSteps {
 const conflicting = (error: unknown) => error instanceof ApiError && (error.status === 409 || error.status === 404 || error.status === 403);
 
 /**
- * The Undos of this tab still on their way, by decision: Accept pressed again before one is answered waits for it and sends the version it
- * left, so a quick Z then A is not refused as stale (the card back in the list still has the version from before the accept).
+ * The last Undo of this tab, by decision, on its way or answered: Accept pressed again waits for it and sends the version it left, so Z then A
+ * is not refused as stale (the card back in the list still has the version from before the accept, also after the Undo's answer: Inbox
+ * final test 06 sent A 29 ms after the Undo's 200 and got 409). The next accept of the decision takes it.
  */
 const returning = new Map<string, Promise<Decision>>();
 
@@ -40,6 +41,7 @@ export function useAcceptDecision(userId: string) {
     const release = holdAccepting(decision.id);
     const idempotencyKey = crypto.randomUUID();
     const before = returning.get(decision.id);
+    returning.delete(decision.id);
     const sent = before
       ? before.then((proposed) => acceptDecision({ id: decision.id, version: Math.max(proposed.version, decision.version) }, idempotencyKey),
         () => acceptDecision(decision, idempotencyKey))
@@ -59,8 +61,6 @@ export function useAcceptDecision(userId: string) {
       // Pressed before the accept was answered, it is taken back as soon as it is accepted.
       const back = sent.then((accepted) => unacceptDecision(accepted));
       returning.set(decision.id, back);
-      const settled = () => { if (returning.get(decision.id) === back) returning.delete(decision.id); };
-      back.then(settled, settled);
       steps.undoing?.(back);
       back.then(() => { announceReturnedInboxItem(userId, key); announceInboxChange(); }, (error: unknown) => {
         if (refused) return;
