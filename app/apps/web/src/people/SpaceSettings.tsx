@@ -324,14 +324,17 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
                     </Select>
                   </span>
                 ) : <span className="spset__role">{roleWord(row)}</span>}
+                {/* Remove, or its Remove / Keep, in one column as wide as both, so the role never moves when it asks (visual review 2026-11-17 V8). */}
                 {manager && !everyone ? (row.userId !== meId && row.grantId ? (
-                  removing === row.userId ? (
-                    <span className="spset__confirm" role="group" aria-label={`Remove ${row.name}`} onKeyDown={onEscape(() => closeRemoving(row.userId))}>
-                      <Button variant="danger" size="sm" busy={busy === row.userId} onClick={() => void remove(row)}>Remove</Button>
-                      <Button variant="quiet" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
-                    </span>
-                  ) : <Button variant="quiet" size="sm" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>
-                ) : <span className="spset__remove-gap" aria-hidden="true" />) : null}
+                  <span className="spset__acts">
+                    {removing === row.userId ? (
+                      <span className="spset__confirm" role="group" aria-label={`Remove ${row.name}`} onKeyDown={onEscape(() => closeRemoving(row.userId))}>
+                        <Button variant="danger" size="sm" busy={busy === row.userId} onClick={() => void remove(row)}>Remove</Button>
+                        <Button variant="quiet" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
+                      </span>
+                    ) : <Button variant="quiet" size="sm" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>}
+                  </span>
+                ) : <span className="spset__acts spset__acts--none" aria-hidden="true" />) : null}
               </li>
             ))}
             {manager && removing ? <li className="sset-row spset__removing" role="status"><span className="sset-row__s">{firstName(rows.find((row) => row.userId === removing)?.name ?? 'They')} stops seeing {project.name} at once, not even its name.</span></li> : null}
@@ -410,8 +413,11 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
         {editing ? (
           <form onSubmit={(event) => void save(event)} noValidate onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
             <Input label="Space name" value={value} maxLength={200} autoFocus error={problem || undefined} onChange={(event) => { setValue(event.target.value); setProblem(''); }} />
-            <Button type="submit" variant="primary" busy={busy}>Save</Button>
-            <Button variant="secondary" onClick={close}>Cancel</Button>
+            {/* Save and Cancel under the field, as the company name's (visual review 2026-11-17 V3): beside it they left a phone ~175 px for the name. */}
+            <div className="details__actions">
+              <Button type="submit" variant="primary" busy={busy}>Save</Button>
+              <Button variant="secondary" onClick={close}>Cancel</Button>
+            </div>
           </form>
         ) : <>
           <b>{project.name}</b>

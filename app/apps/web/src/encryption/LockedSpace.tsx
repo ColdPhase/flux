@@ -100,8 +100,8 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
 
 /**
  * The unlock field (F-030): the person's own unlock password, or the recovery code swapped in place. Used by the locked panel
- * and, after Lock now, by People → Encryption in Lock now's slot (UI audit EN-1). Errors are shown below the buttons, so
- * they never move.
+ * and, after Lock now, by People → Encryption in Lock now's slot (UI audit EN-1). An error is said right under the field; in the
+ * centred card its lines are kept free, so the field and Unlock never move.
  */
 export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, onUnlocked, onCancel, more }: {
   workspaceId: string; name: string; encryption: WorkspaceEncryption | null; autoFocus?: boolean; onUnlocked?: () => void; onCancel?: () => void;
@@ -154,14 +154,14 @@ export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, o
           onChange={(event) => { setSecret(event.target.value); if (problem) setProblem(''); }} />
         <Button type="submit" variant="primary" busy={busy}>Unlock</Button>
       </div>
+      {/* Right under the field it is about, as every field's error (visual review 2026-11-17 V9: it was under two links at the card's foot). */}
+      <p className="locked__status" id={statusId} role="alert">{problem}</p>
       <div className="locked__actions">
         {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
         {onCancel ? <Button variant="secondary" onClick={onCancel}>Cancel</Button> : null}
       </div>
       {/* Its own row, so a longer "Use my unlock password" never wraps the row above and moves the field. */}
       {more ? <div className="locked__actions">{more}</div> : null}
-      {/* Below the buttons, so an error never moves them. */}
-      <p className="locked__status" id={statusId} role="alert">{problem}</p>
     </form>
   );
 }

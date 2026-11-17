@@ -34,7 +34,8 @@
 .people__edit .details__actions { flex-wrap: wrap; }
 .people__field { display: grid; gap: 6px; }
 .people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
+/* A form's select is drawn as the field above it: the same edge (--sh-field) and the same 14 px inset (visual review 2026-11-17 V14). */
+.people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: var(--sh-field); }
 .people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--t3) !important; line-height: 1.45; }
 /* The company-name form is also an .sset-card: the compound selector keeps it a grid whatever order the stylesheets load in. */
 .people__add, .sset-card.people__add { display: grid; gap: 14px; }
@@ -55,6 +56,8 @@
 /* A reset link next to a person (#1471): the editor's last group, under the same rule as a confirmation; its link box sits flush in it. */
 .people__reset { padding-top: 10px; border-top: 1px solid var(--line); }
 .people__reset .people__link { margin-top: 0; }
+/* As the group's first part it has the group's own edge above it, so no second rule (visual review 2026-11-17 V10: it read as a double border). */
+.people__edit > .people__reset:first-child, .people__edit > .people__confirm:first-child { padding-top: 0; border-top: 0; }
 .people__reset .people__hint, .people__reset .people__invite-status { margin: 0; }
 .people__confirm p { font-size: var(--fs-md); color: var(--t2); line-height: 1.5; }
 .people__remove.ui-btn { justify-self: start; margin-left: -8px; }
@@ -115,6 +118,9 @@
 /* The company's page in Settings' own language (#872, SettingsCompany): a title for each block, its list in a card, the role as "Admin ▾". */
 .people--page .details__sec { margin-top: 0; }
 .people--page .details__sec > h4, .people--page .access__head h4 { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); }
+/* The company's headings are Settings' section heading (settings.css .sset-sec, visual review 2026-11-17 V11). */
+.people--page .details__sec > h4, .people--page .access__head h4 { margin: 26px 2px 10px; font-size: var(--fs-base); }
+@media (max-width: 640px) { .people--page .details__sec > h4, .people--page .access__head h4 { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); } }
 .people--page .access__head { align-items: baseline; margin-bottom: 0; }
 .people--page .access__invite.ui-btn { margin-right: 0; }
 /* A count is a quiet mono number after its title, "People 6", as in Space settings and "Inbox 5" (personas-27). */
@@ -135,6 +141,11 @@
 .people__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .people__rolecell .ui-select[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .people__rolecell .ui-select .ui-select__chev { color: inherit; }
+/* The chevron sits 4 px after the role's word, whatever the word (visual review 2026-11-17 V17: "Admin   ⌄" beside "Member ⌄"); the column is
+   right-aligned, so the chevrons still stand in one line and a role chosen grows to the left, never moving its chevron. Space settings too. */
+:is(.people__rolecell, .spset__rolecell) button.ui-select { gap: 4px; }
+:is(.people__rolecell, .spset__rolecell) .ui-select__value { flex: none; }
+:is(.people__rolecell, .spset__rolecell) .ui-select__value[data-widest]::after { display: none; }
 .people__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--ring); outline-offset: 1px; }
 @media (pointer: coarse) { .people__rolecell .ui-select { min-height: 44px; font-size: var(--fs-sm); } }
 /* On the narrowest phone a row gives its side padding to the address, so a usual one stays whole beside the role (#1374). */
@@ -149,7 +160,8 @@
 .people--page .people__acts { min-width: 10rem; }
 .people__act.ui-btn { flex: none; color: var(--t2); }
 .people__act[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
-.people__confirmrow { display: inline-flex; gap: 6px; }
+/* Remove and Keep asking on a row, here and in Space settings: 8 px apart, never touching (visual review 2026-11-17 V8). */
+.people__confirmrow, .spset__confirm { display: inline-flex; flex: none; gap: 8px; }
 .people__removing, .people__rownote { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
 .people--page .people__removing, .people--page .people__rownote { margin-inline: 18px; }
 @media (pointer: coarse) { .people__act.ui-btn, .people__confirmrow .ui-btn { min-height: 44px; } }

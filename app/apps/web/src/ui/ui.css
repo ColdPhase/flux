@@ -10,6 +10,15 @@ body {
 }
 button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
 input:is([type="checkbox"], [type="radio"]) { accent-color: var(--t1); }
+/* A radio is drawn by the app, one size in every engine, as the theme tiles' (visual review 2026-11-17 V22: the browser's was 10 px in WebKit and
+   12 in Chromium, and in dark an unselected one nearly vanished). Off: a 1.5 px --t3 ring; on: a --t1 ring and dot. */
+input[type="radio"] {
+  appearance: none; -webkit-appearance: none; flex: none; width: 16px; height: 16px; margin: 0; border-radius: 50%; background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--t3); cursor: pointer; transition: box-shadow var(--dur-1) var(--ease-out);
+}
+input[type="radio"]:checked { background: radial-gradient(circle, var(--t1) 0 3.5px, transparent 4px); box-shadow: inset 0 0 0 1.5px var(--t1); }
+input[type="radio"]:disabled { cursor: default; opacity: .5; }
+@media (forced-colors: active) { input[type="radio"] { appearance: auto; -webkit-appearance: auto; } }
 /* A time is Geist with tabular figures, as the line under a message (#1231, #1373); Geist Mono is for ticket numbers, keys and file labels. */
 time { font-family: inherit; font-variant-numeric: tabular-nums; }
 /* Code, keys and commands use Geist Mono, never the browser's generic monospace (WebKit drew the Agents commands in it). */
@@ -37,6 +46,9 @@ svg { flex: none; }
 :where(a[href], button, textarea, input, select, [tabindex]) { outline: 2px solid transparent; outline-offset: 4px; }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 [tabindex="-1"]:focus-visible { outline-offset: -2px; }
+/* A heading takes the focus only from a script, as a page opened like a panel (Space settings) or an emptied list: it is where reading starts,
+   not a control, so it draws no ring (visual review 2026-11-17 V1: a hard frame around "Space settings" as the page opened). */
+:is(h1, h2, h3, h4)[tabindex="-1"]:focus-visible { outline-color: transparent; }
 /* Only the keyboard draws a ring (founder direction, Hubert 2026-11-17, #1424). After a tap or a click (data-input="pointer", inputMode.ts)
    the ring is transparent, so the focus a script moves after one (the phone Inbox's expanded title, a window's first field, the composer of a
    conversation just opened) is not framed; the next key brings it back. A text field tapped or clicked keeps its ring (data-input="field"):
@@ -260,6 +272,11 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-overlay--left .ui-overlay__surface { left: 0; top: 0; bottom: 0; width: min(288px, 100%); }
 .ui-overlay--right .ui-overlay__surface { right: 0; top: 0; bottom: 0; width: min(var(--panel-w), 100%); }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }
+/* A window that asks something, on the phone (Connect AI, as Delete space and New space): a bottom sheet as tall as what it says, its actions at
+   the bottom of the screen and the page above it in view (visual review 2026-11-17 V4: Connect AI filled the screen from the top). */
+.ui-overlay--bottom .ui-overlay__surface.ui-dialog-sheet {
+  inset: auto 0 0 0; max-height: 92dvh; overflow-y: auto; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop);
+}
 .ui-overlay--right .ui-overlay__surface { border-radius: var(--r-panel) 0 0 var(--r-panel); }
 .ui-drawer { background: var(--side); }
 /* The drawer is where focus lands as it opens, not a control: no frame around the whole panel (it read as a focus ring, #1375). */

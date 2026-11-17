@@ -32,7 +32,8 @@
 .connection__requested { padding-top: 15px; border-top: 1px solid var(--line); }
 .connection__requested h2 { font-size: var(--fs-sm); color: var(--t2); }
 .connection__requested p { margin-top: 7px; color: var(--t2); font-size: var(--fs-sm); line-height: 1.5; }
-.connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
+/* A white card like every other Settings card, never a grey one (visual review 2026-11-17 V12). */
+.connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 18px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .connection__create h2 { font-size: var(--fs-lg); }
 .connection__create > p, .connection__group > p, .connection__help { color: var(--t3); font-size: var(--fs-sm); line-height: 1.55; }
 .connection__create .ui-select, .connection__create > input:not(.ui-select__field) { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); }
@@ -45,10 +46,10 @@
 .connection__project { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .connection__project:last-child { border-bottom: 0; }
 .connection__project small { display: block; color: var(--t3); font-size: var(--fs-xs); }
-.connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
+.connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 18px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .connection__guide h2 { font-size: var(--fs-lg); }
 .connection__guide p { color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
-.connection__guide code { display: block; white-space: pre-wrap; padding: 9px 11px; border-radius: var(--r-sm); background: var(--el); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
+.connection__guide code { display: block; white-space: pre-wrap; padding: 9px 11px; border-radius: var(--r-sm); background: var(--sub); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
 .connection__client { display: flex; flex-direction: column; gap: 6px; }
 .connection__client h3 { font-size: var(--fs-sm); margin: 4px 0 -2px; }
 .connection__client p code { display: inline; padding: 1px 4px; }

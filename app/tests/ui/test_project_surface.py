@@ -398,7 +398,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 # The GitHub page keeps its place and leads back to the settings, the one way in (not to a panel).
                 page.goto(f"/projects/{self.ids['project']}/github")
                 expect(page.get_by_role("heading", level=2, name="GitHub repositories")).to_be_visible()
-                page.get_by_role("link", name="‹ Space settings").click()
+                page.get_by_role("link", name="Space settings", exact=True).click()
                 expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
                 shot(page, f"project-settings-{'phone-390' if phone else 'desktop-1440'}")
 
