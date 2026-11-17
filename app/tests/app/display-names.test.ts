@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { hasInvisibleFormat, myAgentPath, projectCallsPath, removedName, viaName, withoutInvisibleFormat, type Agent, type Decision, type LiveCallLinesResponse, type MyAgent, type SearchResponse,
+import { hasInvisibleFormat, myAgentPath, removedName, viaName, withoutInvisibleFormat, type Agent, type Decision, type MyAgent, type SearchResponse,
   type WorkReferenceRows } from '@flux/contracts';
 import { notificationFactRows, returnRows } from '@flux/db';
 import { profileFromClaims } from '../../apps/server/src/identity/claim-profile.js';
+import { listCallLines } from '../../apps/server/src/live/discovery.js';
 import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, removeMember, secondSession, workspace } from './support/people.js';
@@ -125,7 +126,9 @@ test('"Stan Kowal (removed)" in the readers that still named him plainly: an age
   const rowOf = async (id: string) => (expectStatus(await lead.browser.request('GET', `/api/v1/projects/${place.id}/work-reference-rows?objects=decision:${id}`), 200) as WorkReferenceRows).items[0];
   const proposer = async () => { const row = await rowOf(proposed.id); return row?.kind === 'decision' ? row.proposedBy.name : null; };
   const accepter = async () => { const row = await rowOf(asked.id); return row?.kind === 'decision' ? row.decidedBy?.name : null; };
-  const removedInCall = async () => ((expectStatus(await lead.browser.request('GET', projectCallsPath(place.id)), 200) as LiveCallLinesResponse).items.find((item) => item.id === call) as { removed?: Record<string, string> } | undefined)?.removed;
+  // The space's call lines as its conversation reads them (the route is the live server's; no media is needed for an ended call).
+  const removedInCall = async () => ((await listCallLines(db, { participants: async () => [] }, { kind: 'human', id: lead.id }, place.id, null)).items
+    .find((item) => item.id === call) as { removed?: Record<string, string> } | undefined)?.removed;
   assert.equal(await label(), 'Planner · Stan\'s agent');
   assert.deepEqual([await proposer(), await accepter(), await removedInCall()], ['Stan Kowal', 'Stan Kowal', undefined]);
   // Out of the space only: his name is not told to the guest, who no longer shares the space with him (the space's rule, `projectAuthorOwners`).
