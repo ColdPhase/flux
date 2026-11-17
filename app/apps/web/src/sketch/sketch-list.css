@@ -3,6 +3,10 @@
    the actions on the selected row. Nothing that appears moves a control: dates keep their room. */
 .sk-list-scroll { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; padding: 72px 24px 140px; }
 .sk-list-scroll .sk-outline { max-width: 860px; margin: 0 auto; }
+/* The notices that stay (read-only, a private movement, a kept edit) open the list's column in its flow, under the floating header, so
+   they never lie on its first rows (founder check, Hubert 2026-11-17). */
+.sk-list-notices { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: 860px; margin: 0 auto 12px; }
+.sk-list-notices .sk-draft { width: min(440px, 100%); margin: 0; }
 .sk-outline { min-width: 0; }
 .sk-outline-return { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0 8px; margin-bottom: 4px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .sk-list-scroll .sk-outline-return { top: -8px; padding-top: 8px; }

@@ -192,6 +192,26 @@ export function SketchMap(props: SketchMapProps) {
     ro.observe(el);
     return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, [compact, hasComposition]);
+  // A notice under the floating header (a kept private movement, the read-only line, a kept edit) takes its own room: the plane starts
+  // under it, so it never lies on a thought, on the computer or the phone (founder check, Hubert 2026-11-17). The header alone keeps the
+  // canvas's own inset, so a map without a notice is where it always was.
+  const [overBottom, setOverBottom] = useState(0);
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const over = wrap?.parentElement?.querySelector<HTMLElement>(':scope > .sk-over');
+    if (!wrap || !over) return;
+    const measure = () => {
+      const notices = [...over.children].some((el) => !el.classList.contains('sk-head') && el.getBoundingClientRect().height > 0);
+      setOverBottom(notices ? Math.ceil(over.getBoundingClientRect().bottom - wrap.getBoundingClientRect().top) : 0);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    // The room moves the canvas, which other observers watch: taken in the next frame, as the phone's tools are.
+    let frame = 0;
+    const ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); });
+    ro.observe(over);
+    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
+  }, []);
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -1062,7 +1082,7 @@ export function SketchMap(props: SketchMapProps) {
   }
 
   return (
-    <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
+    <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={{ ...(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }), ...(overBottom ? { '--sk-over-bottom': `${overBottom}px` } : {}) } as unknown as CSSProperties}>
     {props.presenceStore ? <MapPeople source={props.presenceStore} /> : null}
     <div data-layout={columns ? 'columns' : 'plane'} className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}

@@ -802,22 +802,16 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     <Button variant="primary" size="sm" aria-label="Save edit" disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save'}</Button>
     <Button variant="secondary" size="sm" aria-label="Cancel edit" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel</Button>
   </div> : null;
-  const notices = (
-    <>
-        {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
-
-        {/* On the map the edit's Save and Cancel stand beside the thought, in its toolbar (SketchMap); in the List they stay here. */}
-        {!mapMode ? editControls : null}
-
-        {!mapMode ? draftForm() : null}
-        {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
-
-        {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
-          <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
-          <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
-        </label> : null}
-    </>
-  );
+  const recovery = doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null;
+  const uploadingNote = uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null;
+  const keptEdit = editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
+    <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
+    <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
+  </label> : null;
+  // On the map the edit's Save and Cancel stand beside the thought, in its toolbar (SketchMap), and the notices float over the plane under
+  // the header. In the computer's List they would lie on its first rows (founder check, Hubert 2026-11-17: "elements sit on top of each
+  // other"), so there the notices that stay (read-only, a private movement, a kept edit) open the list's column, in its flow.
+  const notices = <>{recovery}{uploadingNote}{keptEdit}</>;
   // What a local client changed on this space's map, with its change line and Undo (#868); a private map has no client in it.
   const clientChanges = taskProjectId ? <ClientChanges key={sketchId} projectId={taskProjectId} kind="map" id={sketchId} refreshKey={sketch.version} /> : null;
   const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
@@ -855,8 +849,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
         </button>
         <span className={`sk-div${mapMode ? '' : ' sk-tool--away'}`} aria-hidden="true" />
       </>}
-      <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
-      {coarse && !bare ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
+      {/* The dock is a pill, so its word tools are pills like its round tools (founder check, Hubert 2026-11-17): a hover fill follows the dock's curve. */}
+      <button type="button" className="sk-tool sk-tool--word sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
+      {coarse && !bare ? <button type="button" className="sk-tool sk-tool--word sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
       {bare ? null : <>
         <span className="sk-div" aria-hidden="true" />
         <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
@@ -920,14 +915,16 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       <div className="sk-page sk-page--map sk-page--list" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
         <div className="sk sk--map">
           <div className="sk-list-scroll">
+            {readonlyNote || recovery || keptEdit ? <div className="sk-list-notices">{readonlyNote}{recovery}{keptEdit}</div> : null}
             {clientChanges}
             {list}
             <p className="sk-help" id={helpId}>{listHelp}</p>
           </div>
           <div className="sk-over">
             {head}
-            {readonlyNote}
-            {notices}
+            {editControls}
+            {draftForm()}
+            {uploadingNote}
           </div>
           <div className="sk-dock">
             <div className="sk-line">{statusLine}</div>
