@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import { youLabel } from '../docs/format';
 import type { EncryptedSpaceRef, IdentityCapabilities, RemovedPerson } from '@flux/contracts';
 import { getCapabilities } from '../api/auth';
@@ -801,14 +802,14 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
     links.setFresh(invite);
     links.setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
     setEmail('');
-    links.setStatus(madeSentence(await copyText(invite.link), days), invite.id);
+    const said = madeSentence(await copyText(invite.link), days);
     // The link is in its row of the list under the people, with its sentence under it: the whole row comes into view (round 15, new P3-i: the
-    // field stood on the pane's bottom edge and the sentence below the fold), and the link is selected.
-    requestAnimationFrame(() => {
-      const field = links.linkRef.current;
-      field?.closest('li')?.scrollIntoView({ block: 'nearest' });
-      field?.focus({ preventScroll: true }); field?.select();
-    });
+    // field stood on the pane's bottom edge and the sentence below the fold), and the link is selected. The row is drawn with its sentence
+    // first (`flushSync`): a frame could come before React drew it, and the row came into view without the sentence's two lines.
+    flushSync(() => links.setStatus(said, invite.id));
+    const field = links.linkRef.current;
+    field?.closest('li')?.scrollIntoView({ block: 'nearest' });
+    field?.focus({ preventScroll: true }); field?.select();
   }
 
   async function submit(event: FormEvent) {
