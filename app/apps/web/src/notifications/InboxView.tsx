@@ -269,7 +269,8 @@ export function InboxView() {
   const clear = (
     <div className="nyq__clear">
       <EmptyState mascot="done" icon="inbox" title="Nothing needs you right now" headingRef={clearRef}
-        action={<Link className="ui-btn ui-btn--quiet" to="/settings/notifications">Notification settings</Link>} after={later}>
+        // The empty state's action is a button that looks like one (outline), never bare text beside the underlined "1 for later" (round 15 look-1 P3-7).
+        action={<Link className="ui-btn ui-btn--outline" to="/settings/notifications">Notification settings</Link>} after={later}>
         <p>When someone asks you something, it shows up here.</p>
       </EmptyState>
     </div>
@@ -290,7 +291,7 @@ export function InboxView() {
           {list}
           {later}
         </div>
-        <section className="nyq__col nyq__col--open" aria-label="Open item" ref={paneRef} tabIndex={-1}
+        <section className="nyq__col nyq__col--open" aria-label="Open item" ref={paneRef} tabIndex={-1} data-toast-home=""
           onFocus={() => { paneFocused.current = true; }} onBlur={(event) => { if (event.relatedTarget) paneFocused.current = paneRef.current?.contains(event.relatedTarget as Node) ?? false; }}>
           <div className="nyq__sticky"><NeedsYouCard key={current.key} item={current} pane handlers={handlers} /></div>
         </section>

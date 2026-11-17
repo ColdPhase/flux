@@ -27,7 +27,9 @@ const date = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeri
 function moment(iso: string, now = new Date()) {
   const at = new Date(iso);
   const days = Math.round((new Date(at).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86_400_000);
-  const day = days === 0 ? 'today' : days === 1 ? 'tomorrow' : days === -1 ? 'yesterday' : date.format(at);
+  // The day's parts set apart by spaces alone: Chromium wrote "Thu 19 Nov" and WebKit "Thu, 19 Nov" from the same format (round 15 look-1 P3-9).
+  const day = days === 0 ? 'today' : days === 1 ? 'tomorrow' : days === -1 ? 'yesterday'
+    : date.formatToParts(at).filter((part) => part.type !== 'literal').map((part) => part.value).join(' ');
   return `${day} at ${time.format(at)}`;
 }
 

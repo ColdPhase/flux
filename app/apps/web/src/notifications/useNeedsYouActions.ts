@@ -17,6 +17,7 @@ import { useAcceptDecision } from '../work/acceptDecision';
 import { answerAgentQuestion } from '../agents/api';
 import { rememberQuestion } from '../agents/questions';
 import { restoreNeedsYou, resolveNeedsYou, type Queue } from './needsYou';
+import { waitingHash } from '../assistant/waitingHash';
 
 const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiError && error.message ? error.message : fallback);
 
@@ -166,6 +167,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       else if (item.kind === 'blocked' && item.blocked && item.project) void navigate(`/projects/${item.project.id}/tasks?open=work:${item.blocked.workId}`, { state: { openPushed: true } });
       // A task given to you: opening it takes it out of the Inbox (#1424 C, `useGivenTaskOpened`).
       else if (item.kind === 'task' && item.task && item.project) void navigate(`/projects/${item.project.id}/tasks?open=work:${item.task.workId}`, { state: { openPushed: true } });
+      // What an agent run waits for opens at its waiting changes, Approve and Skip in view, never at the thread's start (round 15 AI P2-3).
+      else if (item.assistantChanges) void navigate(`${item.url}${waitingHash(item.assistantChanges.runId)}`, { state: { openPushed: true } });
       // A question, a mention or a reply opens where it is answered, with its own entry too: closing it (Esc, × "Close replies", the sheet's ×)
       // goes Back to the Inbox with its open item, as a decision does (F-026 §4, personas-33 P2 1). Enter, R and Reply open it the same way
       // (personas-34 P2 1): its thread, also when nobody has replied yet (`openThread`), or a direct message, with the cursor in the field

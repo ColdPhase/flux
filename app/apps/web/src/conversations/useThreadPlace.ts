@@ -11,6 +11,7 @@ import type { PaneCore } from './paneCore';
 import type { ThreadReading } from './useThreadReading';
 import type { ThreadReplies } from './useThreadReplies';
 import { focusArrival } from '../ui/keys';
+import { WAITING_HASH_PREFIX } from '../assistant/waitingHash';
 
 interface Options {
   thread: ThreadReplies; reading: ThreadReading; outbox: ReturnType<typeof outboxView>;
@@ -62,7 +63,8 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     // whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
     // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
     // message cannot take focus. A return to this entry keeps the place the reader left (useMessageWork).
-    if (threadRestore) return;
+    // Opened at a run's waiting changes (the Inbox's Open, `#waiting-<runId>`): they bring themselves into view (WaitingChanges).
+    if (threadRestore || hash.startsWith(WAITING_HASH_PREFIX)) return;
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) focusArrival(anchor); return; }
@@ -73,7 +75,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     }
     if (stopUnread.current) return;
     feed.scrollTop = revealed && leftOff === null ? feed.scrollHeight : 0;
-  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff, hash]);
   // Genuine replies arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.

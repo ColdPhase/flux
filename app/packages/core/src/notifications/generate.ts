@@ -44,6 +44,11 @@ function excerpt(body: string, max = 140) {
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
 const quote = (text: string) => `“${text}”`;
+/**
+ * What a message asks or says, kept whole up to this length: the Inbox's open item and Home read a long question in full, never cut at
+ * "…because the suppl…" (round 15 look-1 P2-3). A row clamps it to two lines; a push shows what fits.
+ */
+export const MESSAGE_WORDS = 600;
 
 export interface Candidate {
   userId: string;
@@ -183,7 +188,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
           : reason === 'mention' ? `${author} ${named ? 'mentioned' : 'answered'} you ${place}`
             : message.decision ? `${author} replied about ${quote(excerpt(message.decision.title, 60))}` : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
-          body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
+          body: askedThis ? excerpt(message.asked!.question, MESSAGE_WORDS) : excerpt(messagePreview(message.body, message.attachmentCount), MESSAGE_WORDS), url,
           aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent', where: message.projectName,
           from: `${message.author.kind}:${message.author.id}`,
           ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}), ...(addressed && !named && !askedThis ? { answer: true } : {}) });
@@ -206,7 +211,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const authorName = (await facts.names([asked.authorId])).get(asked.authorId) ?? 'Someone';
       const author = viaName(authorName, asked.via, asked.viaAgent);
       return [{ userId: joined, reason: 'question', source: { type: 'project', id: asked.projectId }, title: `${author} asked you in ${asked.projectName}`,
-        body: excerpt(messagePreview(asked.body, asked.attachmentCount)), url: `/projects/${asked.projectId}/conversations/${asked.conversationId}#message-${asked.id}`,
+        body: excerpt(messagePreview(asked.body, asked.attachmentCount), MESSAGE_WORDS), url: `/projects/${asked.projectId}/conversations/${asked.conversationId}#message-${asked.id}`,
         aiOrigin: !!asked.via, who: authorName, from: `human:${asked.authorId}`, where: asked.projectName, thread: asked.conversationId }];
     }
     case 'dm.message_sent.v1': {
@@ -230,7 +235,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} ${named ? 'mentioned' : 'answered'} you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
-        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
+        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body, MESSAGE_WORDS) : 'Sent a file',
           url: `/dm/${message.dmId}#message-${message.id}`, who: author, from: `human:${message.authorId}`, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
           ...(message.via ? { aiOrigin: true } : {}), ...(answered.has(userId) && !named ? { answer: true } : {}) };
       });

@@ -253,7 +253,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const project = note.source.type === 'project' ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null;
       // A message between two people has a sender and no space: its sentence ends with the phrase, where a group's names the group.
       const pair = note.source.type === 'dm' && / (asked|mentioned|answered) you$/.test(note.title);
-      const words = from && (project || pair) ? excerpt(note.body) : '';
+      // What it says is its title, whole: the open item reads a long question in full (round 15 look-1 P2-3); a row clamps it to two lines.
+      const words = from && (project || pair) ? excerpt(note.body, 600) : '';
       const plain = words && (note.reason === 'mention' || note.reason === 'question');
       // An answer to a question the person asked (#1424 decision 1), as the generator recorded it: a Reply in a plain and an encrypted space alike.
       const answer = note.answer === true;

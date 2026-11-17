@@ -265,6 +265,17 @@ function besidePanel(node: HTMLElement | null): Beside {
   return right - left >= 200 ? { left: Math.round((left + right) / 2), width: Math.floor(right - left) } : null;
 }
 
+/**
+ * A page of two columns names the column its toasts stand under (`data-toast-home`): the two-column Inbox's open item, where Done and Not now
+ * were pressed, so a toast never straddles the line between the columns or covers the list's last card (round 15 look-1 P3-4).
+ */
+function toastHome(): Beside {
+  const home = document.querySelector<HTMLElement>('[data-toast-home]');
+  if (!home || window.innerWidth <= 640 || document.querySelector('[aria-modal="true"]')) return null;
+  const box = home.getBoundingClientRect();
+  return box.width >= 280 ? { left: Math.round(box.left + box.width / 2), width: Math.floor(box.width - 24) } : null;
+}
+
 function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { inset: number; movedAt: number; beside: Beside } {
   const [lift, setLift] = useState<{ inset: number; movedAt: number; beside: Beside }>({ inset: 0, movedAt: -Infinity, beside: null });
   useLayoutEffect(() => {
@@ -323,7 +334,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
         const settled = placedAt !== null && now - placedAt >= ACTION_ARMED_MS;
         placedAt ??= now;
         // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
-        const beside = besidePanel(node);
+        const beside = besidePanel(node) ?? toastHome();
         setLift((current) => current.inset === inset && current.beside?.left === beside?.left && current.beside?.width === beside?.width ? current
           : { inset, beside, movedAt: settled && (Math.abs(inset - current.inset) >= MOVE_PX || Math.abs((beside?.left ?? 0) - (current.beside?.left ?? 0)) >= MOVE_PX) ? now : current.movedAt });
         // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
