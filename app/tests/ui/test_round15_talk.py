@@ -126,6 +126,10 @@ class RoundFifteenTalk(unittest.TestCase):
         page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
         page.wait_for_timeout(300)
 
+    def open_new(self, page: Page) -> None:
+        """New from the sidebar (a conversation's composer has the focus, so C would type)."""
+        page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
+
     def message(self, page: Page, text: str):
         return page.locator(".project-convo__message", has_text=text).last
 
@@ -137,7 +141,7 @@ class RoundFifteenTalk(unittest.TestCase):
         page.goto("/tasks")
         expect(page.get_by_role("heading", name="My tasks").first).to_be_visible()
         page.wait_for_timeout(800)
-        page.keyboard.press("c")
+        self.open_new(page)
         expect(title_field(page)).to_be_focused()
         # The Owner starts as you, before anything is chosen.
         expect(dialog(page).locator(".create__chip", has=page.get_by_role("combobox", name="Owner"))).to_contain_text("(you)")
@@ -169,7 +173,8 @@ class RoundFifteenTalk(unittest.TestCase):
     def test_03_the_new_space_window_has_one_kind_of_label_and_one_edge(self) -> None:
         page = self.page("ada")
         page.goto("/projects")
-        page.keyboard.press("c")
+        expect(page.get_by_role("list", name="Spaces")).to_be_visible()
+        self.open_new(page)
         expect(page.get_by_role("tab", name="Space")).to_be_visible()
         page.get_by_role("tab", name="Space").click()
         form = page.locator("form.newspace")
@@ -190,7 +195,7 @@ class RoundFifteenTalk(unittest.TestCase):
     # ---------------------------------------------------------------- look-2 P2-1: staged files never hide the end
 
     def test_04_staging_files_at_the_end_keeps_the_newest_message_in_view(self) -> None:
-        project = self.space("Staged", LINES)
+        project = self.space("Staged", LINES * 3)
         for viewport in (DESKTOP, PHONE):
             with self.subTest(phone=viewport == PHONE):
                 page = self.page("ada", viewport)
@@ -275,6 +280,8 @@ class RoundFifteenTalk(unittest.TestCase):
             self.call(who, "POST", f"/api/v1/conversations/{conversation}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
         page = self.page("ada")
         page.goto(f"/projects/{project}")
+        expect(page.locator("#project-composer")).to_be_visible()
+        self.settle(page)
         alone = page.evaluate(BOXES)["project-composer"]
         self.message(page, "Short update").locator(".convo-replies__open").click()
         expect(page.locator("#thread-composer")).to_be_visible()
@@ -302,7 +309,7 @@ class RoundFifteenTalk(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{project}")
         expect(self.message(page, LINES[2][1])).to_be_visible()
-        page.keyboard.press("c")
+        self.open_new(page)
         expect(title_field(page)).to_be_focused()
         window = page.locator(".create").first
         height = window.evaluate("e => e.getBoundingClientRect().height")
