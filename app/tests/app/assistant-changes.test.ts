@@ -550,6 +550,27 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(listed?.undoable, true, 'the agent\'s line in a task\'s discussion keeps its owner\'s delete');
   });
 
+  test('delta review N1: Undo of a run that posted twice in one thread takes back both messages, its own later one being no reply', async () => {
+    // A run's two messages in one people's thread (it started one and replied in it): no run posts by itself today (#1063), so the two
+    // agent-authored lines are posted by a local client and then made one run's plain posts, as earlier runs left them.
+    const item = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Two lines in one thread' } }), 201) as { id: string };
+    const root = expectStatus(await owner.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'What is left?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    const first = await post('flux_reply_in_conversation', { conversationId: root.conversationId, message: { body: 'The probes are left' } });
+    const second = await post('flux_reply_in_conversation', { conversationId: root.conversationId, message: { body: 'And the lamp driver' } });
+    const run = await liveRun();
+    await complete(run.runId);
+    await pool.query(`UPDATE assistant_changes SET run_id = $2, connection_id = NULL, receipt = jsonb_set(receipt, '{undo,plan}', '{"kind":"removal"}')
+      WHERE id = ANY($1::uuid[])`, [[first.change.id, second.change.id], run.runId]);
+    const listed = await listRun(run.runId);
+    assert.deepEqual(listed.map((change) => change.undoable), [false, true], 'alone, the first is kept by the second; the run\'s Undo takes both');
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 2, undone.message);
+    assert.equal(undone.message, 'Undid 2 changes');
+    const removed = (await pool.query(`SELECT id, removed_at IS NOT NULL AS removed FROM project_messages WHERE id = ANY($1::uuid[])`, [[first.messageId, second.messageId]])).rows as { id: string; removed: boolean }[];
+    assert.deepEqual(removed.filter((row) => row.removed).length, 2, 'neither message stays behind');
+    assert.deepEqual([(await stateOf(first.change.id)).state, (await stateOf(second.change.id)).state], ['undone', 'undone']);
+  });
+
   test('#68 map: Undo removes an untouched map the assistant made and refuses once renamed, filled or cited', async () => {
     const run = await liveRun();
     const made = value(await run.call('flux_create_map', { title: 'Probe layout' }));
