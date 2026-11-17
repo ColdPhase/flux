@@ -21,6 +21,12 @@
 .sr__hit { background: none; color: var(--t1); font-weight: 600; }
 .sr__meta { display: block; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr__meta time { font-variant-numeric: tabular-nums; }
+/* A file found by what it says: who, where and when give way first, down to a few letters, then the quote with the matched words (round 15
+   confirm S3). */
+.sr__meta--quote { display: flex; }
+.sr__lead { flex: 0 1000 auto; min-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr__sep { flex: none; white-space: pre; }
+.sr__quote { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The key that opens the selected row. Its place is kept on every row, so the text never shifts as the selection moves. */
 .sr__enter { flex: none; visibility: hidden; font: 500 var(--fs-glyph) var(--mono); color: var(--t2); border: 1px solid var(--line2); border-radius: 5px; padding: 0 5px; }
 .is-active > .sr__enter { visibility: visible; }

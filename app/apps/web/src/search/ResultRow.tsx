@@ -86,10 +86,11 @@ function ProjectFace({ result }: { result: SearchResult }) {
 }
 
 /** One piece of a result's second line: a plain string, or what is drawn together with the same in words for the row's name. */
-type Line = string | { text: string; node: ReactNode };
+type Line = string | { text: string; node: ReactNode; quote?: boolean };
 const lineText = (line: Line) => (typeof line === 'string' ? line : line.text);
 const lineNode = (line: Line) => (typeof line === 'string' ? line : line.node);
-const quoted = (snippet: SearchText): Line => ({ text: `“${snippet.map((part) => part.text).join('')}”`, node: <span key="snip">“<Highlighted parts={snippet} />”</span> });
+const quoted = (snippet: SearchText): Line => ({ text: `“${snippet.map((part) => part.text).join('')}”`, node: <span key="snip">“<Highlighted parts={snippet} />”</span>, quote: true });
+const isQuote = (line: Line) => typeof line !== 'string' && !!line.quote;
 const written = (result: SearchResult): Line => ({ text: when(result.at), node: <time key="at" dateTime={result.at}>{when(result.at)}</time> });
 
 /** The second line: the words the group does not already say, then where it lives and when it was written. */
@@ -136,6 +137,8 @@ export function resultName(result: SearchResult) {
 /** A person found by name who is the reader: "Ana Costa (you)", as People names them (personas-37). */
 const personTitle = (result: SearchResult) => (result.kind === 'person' && result.mine ? youLabel(plainTitle(result), true) : null);
 
+const pieceNodes = (lines: Line[]) => lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{lineNode(line)}</span></Fragment>);
+
 /** The body of a row; the caller supplies the option element. */
 export function ResultBody({ result }: { result: SearchResult }) {
   const lines = meta(result);
@@ -145,7 +148,13 @@ export function ResultBody({ result }: { result: SearchResult }) {
       <Tile result={result} />
       <span className="sr__main">
         <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={shownTitle(result)} />{personTitle(result) ? <span> (you)</span> : null}</span>
-        {lines.length ? <span className="sr__meta">{lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{lineNode(line)}</span></Fragment>)}</span> : null}
+        {lines.length > 1 && isQuote(lines[lines.length - 1]!) ? (
+          // Who, where and when give way first, the quote with the matched words last (round 15 confirm S3: a long space name cut "Rye 720" out).
+          <span className="sr__meta sr__meta--quote">
+            <span className="sr__lead">{pieceNodes(lines.slice(0, -1))}</span><span className="sr__sep" aria-hidden="true"> · </span>
+            <span className="sr__quote">{lineNode(lines[lines.length - 1]!)}</span>
+          </span>
+        ) : lines.length ? <span className="sr__meta">{pieceNodes(lines)}</span> : null}
       </span>
       <kbd className="sr__enter" aria-hidden="true">↵</kbd>
     </>

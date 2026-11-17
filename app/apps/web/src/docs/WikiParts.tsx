@@ -16,6 +16,9 @@ import { holdTyping } from './typeAhead';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
 import { useFitInWindow } from '../ui/pickerPlace';
+import { RefLink, useFollow } from '../place/origin';
+
+const isSource = (to: string) => to.startsWith('/materials/');
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
 // quiet row: "Saved · just now · Jonas is here too", the faces of the people writing, Contents (≡) and ⋯. The title is the
@@ -148,6 +151,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   const surface = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  // A saved source is a page by its own address: it is followed as a reference, so its way back returns to this Wiki (round 15 confirm S2).
+  const follow = useFollow();
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
@@ -196,18 +201,18 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
             <Icon name="search" size={15} />
             <input ref={findRef} type="text" placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query}
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(shown[0].to); } }} />
+              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); void (isSource(shown[0].to) ? follow : navigate)(shown[0].to); } }} />
           </label>
           <ul className="wiki-menu__list" aria-label="Pages">
-            {shown.map((doc) => (
+            {shown.map((doc) => { const Row = isSource(doc.to) ? RefLink : Link; return (
               <li key={doc.id}>
-                <Link className="wiki-menu__row" to={doc.to} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
+                <Row className="wiki-menu__row" to={doc.to} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
                   onClick={() => close(false)}>
                   <span className="wiki-menu__t">{doc.title}</span>
                   {doc.id === docId ? <Icon name="check" size={15} /> : null}
-                </Link>
+                </Row>
               </li>
-            ))}
+            ); })}
           </ul>
           {needle && !shown.length ? <p className="wiki-menu__empty" role="status">No page matches “{query.trim()}”.</p> : null}
           <div className="wiki-menu__sep" />

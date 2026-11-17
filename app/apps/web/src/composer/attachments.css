@@ -278,8 +278,9 @@ button.ref-chip--open[aria-busy] { cursor: progress; }
 .message-bubble:has(.message-files, .link-preview, .link-previews:not(:empty), .ws-chip, .wiki-card, .photo-grid) { width: max-content; min-width: min(100%, 300px); max-width: 100%; }
 .message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card, .photo-grid) { width: 100%; }
 .message-bubble .photo-grid { margin: 0; max-width: 100%; }
-/* Photo captions with references keep the media width after the generic minimum-width rule (§6/#482). */
-.photo-grid ~ .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
+/* Photo captions with references or files keep the media width after the generic minimum-width rule (§6/#482; round 15 confirm S5: a file
+   card widened the caption to 373 px under a 340 px photo). */
+.photo-grid ~ .message-bubble:has(.ws-chip, .ws-attach, .wiki-card, .message-files) { width: min(100%, 340px); }
 /* So do captions whose task card stands under the message in a thread (#1424, work.css .msg-tasks). */
 :is(.project-convo__message, .thread__root):has(> .msg-tasks) > .photo-grid ~ .message-bubble { width: min(100%, 340px); }
 /* On your own bubble (--own, a step from --sub) a chip and a page card are --el, so the pill shows in both themes and its padding never reads

@@ -418,9 +418,10 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             : <p className="wd-muted" role="status">{pending.state === 'failed' ? 'Unsent message kept.' : 'Send not confirmed. Your message is kept.'} You cannot send to this task.</p>}
         </li>
       ))}</ol> : null}
+      {/* The "↓ N new" line, held over the foot of the panel's scroll while the reader is above the end (S23). Inside the discussion, so it
+          never rises over the task's fields above it (round 15 confirm S1: it covered Due on the phone's sheet). */}
+      <div className="wd-newbelow"><NewBelow count={below.count} onClick={below.toEnd} /></div>
     </section>
-    {/* The "↓ N new" line, held over the foot of the panel's scroll while the reader is above the end (S23). */}
-    <div className="wd-newbelow"><NewBelow count={below.count} onClick={below.toEnd} /></div>
   </>);
 }
 

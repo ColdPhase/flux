@@ -60,6 +60,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { accessLost, hideIfDenied } = usePaneAccess(core);
   const drafts = useComposerDrafts(core);
   const { asking, publicComposer } = drafts;
+  // Whether a reply is written: only then do the lines about linked work say it is kept (round 15 confirm S4).
+  const typed = !!publicComposer.draft.body.trim() || publicComposer.draft.files.length > 0;
   const thread = useThreadReplies(core, { sent: publicComposer.sent, hideIfDenied, onThreadSize });
   const { messages } = thread;
   // The signed-in person's own assistant (#68, #842): ask mode, their working line and their private answers, here or in the space's main conversation.
@@ -104,8 +106,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     {!conversation ? feed?.(<PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={privateAi.lookups} own />) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} privateAi={privateAi} owners={owners}
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
       waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} onOpenDiscussion={onOpenDiscussion} />}
-    {conversation ? <MessageWorkPages read={messageWork} /> : null}
-    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
+    {conversation ? <MessageWorkPages read={messageWork} typed={typed} /> : null}
+    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked.{typed ? ' Your reply is kept.' : ''} <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
     <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} typing={typing}
       readFailure={thread.readFailure} />
   </div>;
