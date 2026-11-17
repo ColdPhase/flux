@@ -209,8 +209,8 @@ looks ugly"):
 - **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
   an ellipsis); where the number, a due day and the owner's face, mark and a few letters do not fit one line (a column beside the open
   panel), the owner takes the line under them, at the right, never shrinking to "AK (you)" with "(you)" past the card (round 15 look-3 F1);
-  the List has the Board's order (To do, Doing, Blocked, Done), a row's line says its due day as the card does ("Due 25 Nov"), and the row
-  of the task open in the panel is marked as its card is (round 15 look-3 e); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
+  a List row's line says its due day as the card does ("Due 25 Nov"), and the row of the task open in the panel is marked as its card is
+  (round 15 look-3 e); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
   in a 10 px gutter of `--bg`; the blocked card's words take the card's whole width and Edit and Unblock (or Done) take the line under
   them, starting where the words start, on the computer and the phone; a multi-line
   value keeps its label on its first line; the thought chooser scrolls into view when it opens. **A name keeps its mark:** where a row is

@@ -495,6 +495,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
                 </div>
               </form>
             ) : null}
+          </section>
+        ) : null}
 
         <dl className="wd-rows">
           <div className="wd-row">
@@ -522,9 +524,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           </div> : null}
         </dl>
         {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {named(reverted.revertedBy, me.user.id)} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
-
-          </section>
-        ) : null}
         {error ? <p className="wd-error" role="alert">{error}</p> : null}
 
         {writable ? (
