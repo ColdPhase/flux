@@ -677,7 +677,7 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 
 - **Plain words** (⌘K, the search API, an agent's `flux_search`) are answered by the BM25 statement: any of the words, Polish and English
   stems, accents folded, ranked by rarity among the hits the caller may see with a word in a title counting double; the word being typed is also a prefix, and a title
-  tolerates one typo in a word of four letters or more, used only when no visible hit holds one of the words whole (v0.2.1 personas round:
+  tolerates one typo in a word of four letters or more, used only when no visible hit holds any of the searched words whole, in any form the index finds it and a little word included (founder decision H, #1424; v0.2.1 personas round:
   "price list" listed a person one edit from "list"); a hyphenated word is one word ("mock-up" is "mockup", migration 0085). Quotes, `or` and `-word` ask for exactly what they say and stay on the exact
   index (every word, no stems). The groups of the dialog, its keys and its one request per debounce are unchanged.
 - **No statistic of the whole index may influence what a caller sees** (founder decision, Hubert, 2026-11-13, on the review of #1326, which
