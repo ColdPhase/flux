@@ -12,10 +12,9 @@
 .sk-outline-list, .sk-outline-list ul { list-style: none; margin: 0; padding: 0; }
 .sk-outline-list ul { margin-left: 13px; padding-left: 22px; border-left: 1px solid var(--line2); }
 .sk-outline-list li { position: relative; }
-/* The tick runs from the branch line to its row, so it ends at something (founder direction 2026-11-17 visual review). */
+/* The tick runs from the branch line to its row's edge, so it ends at the row, never short of it (founder direction 2026-11-17 visual review;
+   it stops at the row so the selected row's fill starts after it, #1237). */
 .sk-outline-list ul > li::before { content: ''; position: absolute; left: -22px; top: 20px; width: 22px; height: 1px; background: var(--line2); pointer-events: none; }
-/* A leaf has no toggle in its slot: the tick runs on through the empty slot to 10 px before the title. */
-.sk-outline-list ul > li:has(> .sk-outline-row > .sk-outline-leaf)::before { width: 48px; }
 /* A row is one 32 px line (40 px with its 4 px padding): the toggle or leaf slot, the title and the row's end are each a 32 px box centred on it, so
    a one-line row's title and actions share a centre line; a longer title wraps under its first line and the end stays beside that line (#1237). */
 .sk-outline-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 10px; min-width: 0; min-height: 40px; padding: 4px 10px 4px 6px; border-radius: var(--r-sm); cursor: default; transition: var(--tr); }
@@ -26,6 +25,7 @@
 .sk-outline-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; height: 32px; margin: 0 -4px 0 0; border-radius: var(--r-sm); color: var(--t2); }
 .sk-outline-toggle:hover { background: var(--hov); color: var(--t1); }
+.sk-outline-tagslot { flex: none; display: flex; justify-content: flex-end; min-width: 84px; margin-block: 6px; }
 .sk-outline-tag { flex: none; margin-block: 0; padding: 0 7px; border-radius: 7px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); line-height: 20px; white-space: nowrap; }
 /* Title and "also under" share the flexible middle; the row's end stays at the right, below when there is no room. */
 .sk-outline-main { flex: 1 1 16em; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
@@ -59,13 +59,13 @@
 @media (max-width: 640px) {
   .sk-outline-list ul { margin-left: 11px; padding-left: 12px; }
   .sk-outline-list ul > li::before { left: -12px; width: 12px; }
-  .sk-outline-list ul > li:has(> .sk-outline-row > .sk-outline-leaf)::before { width: 46px; }
   /* Deep branches stop indenting after three steps; the row's level is still announced. */
   .sk-outline-list ul ul ul ul { margin-left: 0; padding-left: 0; border-left: 0; }
   .sk-outline-list ul ul ul ul > li::before { display: none; }
   .sk-outline-row { padding-left: 2px; }
   .sk-outline-title { line-height: 1.45; }
   .sk-outline-row .sk-li-s { display: none; }
+  .sk-outline-tagslot { min-width: 0; }
 }
 @media (pointer: coarse) {
   .sk-outline-row { min-height: 44px; }

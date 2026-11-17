@@ -128,8 +128,9 @@ looks ugly"):
   (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
   with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
   minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden. A
-  thought with one task shows that task's state, number and owner as its count; with several, "N tasks". The phone's **Thought** is
-  the soft fill of the phone's floating "+". In the map's List a connection's label follows the title, and the tree's ticks reach their rows.
+  thought's tasks show once, as its quiet count (UI116-4); the line that repeated its first task beside the count is gone. The phone's
+  **Thought** is the soft fill of the phone's floating "+". In the map's List a connection's label stays the tag before the title (#510),
+  in a slot of one width right against the title, so labelled siblings' titles start at one edge; the tree's ticks reach their rows.
 - **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
   an ellipsis); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
   in a 10 px gutter of `--bg`; the blocked card's words keep the room on a phone and Edit and Unblock take the next line; a multi-line

@@ -141,7 +141,6 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
   const phone = useMediaQuery(MEDIA.phone);
   const { openDetails } = useShellActions();
   const titleId = useId();
-  const { me } = useShellData();
   // Escape and Close return focus to the count; opening a task leaves it with the task's details.
   const refocus = useRef(false);
   const close = useCallback((returnFocus: boolean) => { refocus.current = returnFocus; setOpen(false); }, []);
@@ -175,11 +174,6 @@ export function ThoughtTasks({ thought, tasks: entry, projectId, variant, onOpen
         {variant === 'list' && entry.tasks[0] ? <>
           <StatusGlyph status={entry.tasks[0].status} size={12} />
           <span>{taskNumber(entry.tasks[0])} {STATUS_LABEL[entry.tasks[0].status]}{total > 1 ? ` +${total - 1}` : ''}</span>
-        </> : variant === 'map' && total === 1 && entry.tasks[0] ? <>
-          {/* One indicator on a thought (founder direction 2026-11-17 visual review): its one task's state, number and owner is the count. */}
-          <StatusGlyph status={entry.tasks[0].status} size={12} />
-          <span className="sk-work__t">{taskNumber(entry.tasks[0])} {STATUS_LABEL[entry.tasks[0].status]}{entry.tasks[0].owner ? ` · ${named(entry.tasks[0].owner, me.user.id)}` : ''}</span>
-          <Icon name="chevron-right" size={11} />
         </> : <>
           <Icon name="tasks" size={12} />
           <span>{count(total)}</span>

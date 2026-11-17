@@ -1404,7 +1404,8 @@ const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' 
     <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
     <span className="sk-p">{provenance(props, meId)}</span>
     {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
-    {/* Room for the count, which is its own button beside this one. */}
+    {/* Room for the count, which is its own button beside this one: a thought's one indicator of its tasks (UI116-4; the line that
+        repeated its first task beside the count is gone, founder direction 2026-11-17 visual review). */}
     {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
   </>;
 });
