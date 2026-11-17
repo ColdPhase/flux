@@ -75,6 +75,10 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       assert.deepEqual(main.messages.map((m) => m.id), [root.id, other1.id], 'replies are not in the conversation window');
       assert.equal(main.messages[0]!.replyCount, 3, 'the root carries the thread size');
       assert.equal(main.messages[1]!.replyCount, 0);
+      // "3 replies · last 9:40", as a space's root says (round 14): the newest reply's time; none without replies and on a reply.
+      assert.equal(main.messages[0]!.lastReplyAt, last.createdAt, 'the root says when its newest reply was written');
+      assert.equal(main.messages[1]!.lastReplyAt, null);
+      assert.equal(first.lastReplyAt, null);
 
       const opened = expectStatus(await thread(lee, dm.id, root.id), 200) as DmThread;
       assert.equal(opened.root.id, root.id);

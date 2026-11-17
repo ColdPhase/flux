@@ -15,3 +15,4 @@
 /* One divider in a conversation (visual review 2026-11-17): its words in the middle and a hairline to each edge, as the day line ("Today")
    and a thread's "2 replies · Today" draw it; "New" keeps its stronger words and line. */
 .convo-unread::before, .convo-unread::after { content: ""; flex: 1; height: 1px; background: var(--line2, var(--line)); }
+.convo-unread__day { font-weight: 400; color: var(--t3); }

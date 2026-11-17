@@ -119,7 +119,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
     ...(record.files?.length ? { files: record.files } : {}),
-    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
+    threadRootId: record.threadRootId, replyCount: record.replyCount, lastReplyAt: iso(record.lastReplyAt), ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
     ...(record.editedAt && !record.removedAt ? { editedAt: record.editedAt.toISOString() } : {}), ...(record.removedAt ? { removedAt: record.removedAt.toISOString() } : {}) };
 }
 

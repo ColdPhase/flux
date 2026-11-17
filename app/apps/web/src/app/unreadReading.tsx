@@ -30,9 +30,14 @@ const HOLD_MS = 2000;
  */
 export const UNREAD_READ_BACK = 2;
 
-/** A quiet divider where what is new begins: one rule with a word, like a day line (final design §5, S23). */
-export function UnreadDivider() {
-  return <li className="convo-unread" data-unread-start="" role="separator" aria-label="New"><span>New</span></li>;
+/**
+ * A quiet divider where what is new begins: one rule with a word, like a day line (final design §5, S23). Where what is new also starts a
+ * day, the one divider names both, "New · Today", and no day line stands over it (round 14: "Today" and "New" stacked with nothing between).
+ */
+export function UnreadDivider({ day = null }: { day?: string | null }) {
+  return <li className="convo-unread" data-unread-start="" role="separator" aria-label={day ? `New · ${day}` : 'New'}>
+    <span>New{day ? <span className="convo-unread__day"> · {day}</span> : null}</span>
+  </li>;
 }
 
 /** The "↓ 3 new" line at the foot of a feed, in its own room while it shows (no text under it), announced once per change. Its frame is `.convo-stream`. */

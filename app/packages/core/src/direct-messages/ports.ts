@@ -39,6 +39,8 @@ export interface DmMessageRecord {
   threadRootId: string | null;
   /** Replies of a root; always 0 for a reply. */
   replyCount: number;
+  /** When the newest reply of a root was written; null for a root without replies and for a reply. */
+  lastReplyAt: Date | null;
   /** When the author last changed the words (#1006); null when they never did. */
   editedAt: Date | null;
   /** When the author deleted the message (#1006): `body` is then the fixed marker; null otherwise. */

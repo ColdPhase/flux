@@ -210,7 +210,8 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         page, feed = self.open(surface, phone=phone)
         divider = feed.get_by_role("separator", name="New")
         expect(divider).to_have_count(1)
-        expect(divider).to_have_text("New")
+        # "New", or "New · Today" where what is new also starts a day: one divider, never a day line stacked over it (round 14).
+        expect(divider).to_have_text(re.compile(r"^New( · \w.*)?$"))
         first = page.locator(surface["first"])
         # The first new message starts its own group: its author is named, whoever wrote the message above the divider.
         expect(first).to_contain_text(surface.get("author", "Bob"))

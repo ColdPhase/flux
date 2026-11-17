@@ -126,7 +126,7 @@ class PersonaAiAndGuests(unittest.TestCase):
         expect(window).to_have_count(0)
         # The ask bar still says so, and its Connect your AI opens the same window again.
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("You haven’t set up your assistant.")
+        expect(bar).to_contain_text("Not set up yet.")
         bar.get_by_role("button", name="Connect your AI").click()
         expect(self.connect_window(page)).to_be_visible()
         page.keyboard.press("Escape")

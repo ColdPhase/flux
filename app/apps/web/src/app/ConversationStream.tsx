@@ -1,4 +1,4 @@
-import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER, youLabel } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { agentWords } from '@flux/contracts';
@@ -418,6 +418,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     onOpen(root, reply);
   };
   const stickRef = useRef(!reveal && !restore);
+  // Whether the view stands at the stream's end, as last seen (a scroll, or the layout settling). The stream may stand there without the
+  // person ever scrolling (it opened at "New" and everything new fits): an entry that joins the end then follows them, as for a reader who
+  // scrolled down (round 14: the card of a task just created stayed under the composer and the toast).
+  const atEndRef = useRef(false);
   // A place to come back to waits here until its message is on screen; nothing is written over it meanwhile.
   const pendingRestore = useRef<StreamPlace | null>(restore);
   const [failure, setFailure] = useState('');
@@ -546,7 +550,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const changed = lastKey !== edge.last || firstKey !== edge.first || shownCount !== edge.count;
     edgeRef.current = { first: firstKey, last: lastKey, count: shownCount };
     if (!feed || !changed) return;
-    if (stickRef.current) { feed.scrollTop = feed.scrollHeight; return; }
+    if (stickRef.current || (atEndRef.current && lastKey !== edge.last)) { stickRef.current = true; feed.scrollTop = feed.scrollHeight; return; }
     const anchor = anchorRef.current;
     const element = anchor ? document.getElementById(anchor.id) : null;
     const drift = anchor && element ? element.getBoundingClientRect().top - feed.getBoundingClientRect().top - anchor.offset : 0;
@@ -680,6 +684,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     record();
     const unflush = onFlush(() => { record(); leavingUntil = performance.now() + 3000; });
     feed.addEventListener('scroll', onScroll, { passive: true });
+    // Measured after every scroll and after the observer above has kept the reader's place (observers run in the order they were made).
+    const atEnd = () => { atEndRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 2; };
+    const ends = new ResizeObserver(atEnd);
+    feed.addEventListener('scroll', atEnd, { passive: true });
     for (const name of ['wheel', 'touchmove'] as const) feed.addEventListener(name, person, { passive: true });
     feed.addEventListener('pointerdown', press, { passive: true });
     feed.addEventListener('keydown', key);
@@ -688,9 +696,13 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     feed.addEventListener(REVEAL_EVENT, reveal);
     observer.observe(feed);
     if (column) observer.observe(column);
+    ends.observe(feed);
+    if (column) ends.observe(column);
     return () => {
       unflush();
       feed.removeEventListener('scroll', onScroll);
+      feed.removeEventListener('scroll', atEnd);
+      ends.disconnect();
       for (const name of ['wheel', 'touchmove'] as const) feed.removeEventListener(name, person);
       feed.removeEventListener('pointerdown', press);
       feed.removeEventListener('keydown', key);
@@ -738,7 +750,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
                 const dayLine = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
                 const starts = startsUnread(entry);
-                const divider = starts ? <Fragment key={`unread-${key}`}>{dayLine}<UnreadDivider /></Fragment> : dayLine;
+                const divider = starts ? <UnreadDivider key={`unread-${key}`} day={dayLine ? label : null} /> : dayLine;
                 // The fold names people as the cards inside it do (personas-28): the full name, and "(you)" for the reader.
                 // An agent by its one label, "Assistant · Ola's agent", as its card says it (v0.2.1 release gate: two people's agents are told apart).
                 const foldName = (notice: TaskCreationNotice) => {

@@ -49,8 +49,8 @@ export function ThreadFeed(props: Props) {
   const { assistant, changes } = privateAi;
   const { attachFeed, columnRef, revealed, messageWork, discussedRow } = reading;
   // Every entry, then every queued reply, with a day line where the day changes.
-  const rows: { at: string; key: string; items: ReactNode[] }[] = [];
-  const withDay = (at: string, key: string, items: ReactNode[]) => { rows.push({ at, key, items }); };
+  const rows: { at: string; key: string; items: ReactNode[]; unread?: boolean }[] = [];
+  const withDay = (at: string, key: string, items: ReactNode[], unread = false) => { rows.push({ at, key, items, unread }); };
   entries.forEach((entry, index) => {
     const dayKey = `day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`;
     if (entry.type === 'object') withDay(entry.at, dayKey, [<ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
@@ -63,9 +63,9 @@ export function ThreadFeed(props: Props) {
       const nextMessage = next?.type === 'message' ? next.message : !next && outbox.pending[0] ? { authorId: me.user.id, createdAt: outbox.pending[0].at } : undefined;
       const groupLast = (next?.type === 'message' && next.message.id === props.unreadFrom) || !sameMessageAuthor(message, nextMessage);
       // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
-      withDay(entry.at, dayKey, [...(message.id === props.unreadFrom ? [<UnreadDivider key="unread" />] : []), <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
+      withDay(entry.at, dayKey, [<ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
         project={project} owners={owners} people={props.people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={props.makeWork} writable={writable} onDenied={props.hideIfDenied}
-        observed={message.authorId !== me.user.id} receipt={seen.get(message.id)} />]);
+        observed={message.authorId !== me.user.id} receipt={seen.get(message.id)} />], message.id === props.unreadFrom);
     }
   });
   outbox.pending.forEach((item, index) => {
@@ -73,10 +73,17 @@ export function ThreadFeed(props: Props) {
     const continued = sameMessageAuthor(previous, { authorId: me.user.id, createdAt: item.at });
     withDay(item.at, `day-pending-${item.id}`, [<ThreadReply key={`pending-${item.id}`} continued={continued} pending={item} name={me.user.name} onRetry={() => props.publicComposer.retry(item.id)} onRemove={() => props.publicComposer.remove(item.id)} />]);
   });
-  // The first replies' day joins the root's "3 replies" line ("3 replies · Today", #763 A5): one separator, not two.
-  const firstDay = props.rootHeader && entries[0]?.type === 'message' && rows[0] ? day(rows[0].at) : null;
-  const list = rows.flatMap((row, index) => !row.items.length ? [] : day(row.at) !== (index ? day(rows[index - 1]!.at) : '') && !(index === 0 && firstDay)
-    ? [<MessageDay key={row.key} label={day(row.at)} />, ...row.items] : row.items);
+  // The first replies' day joins the root's "3 replies" line ("3 replies · Today", #763 A5): one separator, not two. Where what is new begins,
+  // a day that starts there is named by the "New" divider itself ("New · Today", round 14), and when that is the first reply the root has no
+  // line of its own (the panel's head keeps the count), so two dividers never stack.
+  const newFirst = !!props.rootHeader && !!rows[0]?.unread;
+  const firstDay = props.rootHeader && entries[0]?.type === 'message' && rows[0] && !newFirst ? day(rows[0].at) : null;
+  const list = rows.flatMap((row, index) => {
+    if (!row.items.length) return [];
+    const dayLine = day(row.at) !== (index ? day(rows[index - 1]!.at) : '') && !(index === 0 && firstDay) ? day(row.at) : null;
+    if (row.unread) return [<UnreadDivider key="unread" day={dayLine} />, ...row.items];
+    return dayLine ? [<MessageDay key={row.key} label={dayLine} />, ...row.items] : row.items;
+  });
   // A decision made in this thread is its card among the replies (#1424): the message it came from carries no chip of it.
   const shown = useMemo(() => shownObjects(entries.flatMap((entry) => entry.type === 'object' && entry.notice.kind === 'decision.proposed' ? [{ kind: 'decision' as const, id: entry.notice.decisionId, sources: entry.notice.sources }] : [])), [entries]);
   // A task made from one of its messages is the task card under that message (#1424, design L1059): a thread has no task notices.
@@ -85,7 +92,7 @@ export function ThreadFeed(props: Props) {
   {revealed ? null : <div className="thread__opening"><OpeningRows rows={Math.min(4, Math.max(2, thread.messages.length))} /></div>}
   <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
     <div className="thread__in" ref={columnRef}>
-      {props.rootHeader?.({ preview: props.rootMessageId ? messageWork.previews?.get(props.rootMessageId) ?? null : null, taskRow: discussedRow, firstDay })}
+      {props.rootHeader?.({ preview: props.rootMessageId ? messageWork.previews?.get(props.rootMessageId) ?? null : null, taskRow: discussedRow, firstDay, newFirst })}
       <section aria-label="Replies to this message" className="project-convo__messages">
         {thread.olderCursor ? <Button variant="quiet" busy={thread.olderBusy} onClick={() => void thread.loadOlder()}>Load earlier replies</Button> : null}
         <ol className="thread__list">{list}
