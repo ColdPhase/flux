@@ -18,6 +18,12 @@ export const TAKEN_WORDS = 'Got it, I\'m on it.';
  */
 export const BUDGET_WAIT_WORDS = 'Waiting: today\u2019s AI budget is used up, so I\u2019ll start when it starts again.';
 
+/** The state line of a run that the key's budget stopped part way (round 15 ai P2-1): what was left could not hold its next request. */
+export const BUDGET_SHORT_WORDS = 'Stopped: not enough of today\u2019s AI budget was left';
+
+/** What the agent says in the task when that happens, instead of "I couldn't finish this.": the budget, never a riddle. */
+export const BUDGET_SHORT_SAID = 'I stopped: not enough of today\u2019s AI budget was left for my next step.';
+
 /** The words of a task's start: on it, or waiting for the key's next day when its run was admitted paused (#854). */
 export function takenWords(run: { resumeAt: Date | null; endReason: string | null }): string {
   return run.resumeAt && run.endReason === 'budget' ? BUDGET_WAIT_WORDS : TAKEN_WORDS;
@@ -125,6 +131,10 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
     return state('stopped', `Stopped by ${by?.id === viewerId ? 'you' : by?.name ?? 'someone'}${whereNow()}`, { stoppedBy: by });
   }
   if (!holds) return none();
+  // The key's budget had too little left for the run's next request (the gateway holds a request's most before it is sent): it stopped
+  // there, with budget still shown in Settings, so the line says so instead of "Couldn't finish" (v0.2.1 round 15 ai P2-1).
+  if (run.endReason === 'budget') return state('failed', mine ? BUDGET_SHORT_WORDS : `Stopped: not enough of ${agent.owner.name}\u2019s AI budget for today was left`,
+    { canTryAgain: mine, canTakeBack: mine, canStop: false, budget: true });
   const reason = run.endReason === 'sign_in_again' ? `Sign in to ${vendor(run)} again` : run.status === 'denied' || run.status === 'revoked' ? 'No longer allowed here'
     : run.status === 'input_too_large' ? 'Too much to read at once' : 'Couldn\'t finish';
   return state('failed', reason, { canTryAgain: mine, canTakeBack: mine, canStop: false });

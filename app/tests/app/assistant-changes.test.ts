@@ -209,6 +209,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [lens.id])).rows[0].title, 'Jonas checks the lens today');
     // Skip closes it; a later Approve cannot revive it.
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'skip'), { body: {} }), 200);
+    // Round 15 ai P2-2: the Skip is heard at once by the owner's other screens (a task panel open on the computer), and by nobody else.
+    const heard = await pool.query(`SELECT a.recipient FROM events e JOIN event_audience a ON a.event_id = e.id WHERE e.kind = 'project.assistant_change_skipped.v1' AND e.data->>'changeId' = $1`, [declined!.id]);
+    assert.deepEqual(heard.rows.map((entry) => entry.recipient), [`human:${owner.id}`], 'the skip is a live event for its owner alone');
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'apply'), { body: {} }), 409);
     // Ada was removed from the space: refused, nothing changes; being added back cannot revive the saved change.
     await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
@@ -624,8 +627,12 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const proposed = value(await run.call('flux_propose_decision', { decision: { title: 'Meet at 15:00', rationale: 'Everyone is free then' } }));
     await complete(run.runId);
     const asked = expectStatus(await peer.browser.request('POST', decisionDiscussionPath(proposed.decisionId), { body: { body: 'Why 15:00?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    // Round 15 ai P2-4: what people's discussion keeps is no longer offered for Undo, and the run's Undo does not count it as "changed since".
+    const listed = expectStatus(await owner.browser.request('GET', `/api/v1/assistant-runs/${run.runId}/changes`), 200) as { items: AssistantChange[] };
+    assert.deepEqual(listed.items.map((change) => [change.operation, change.undoable]), [['decision.propose', false]], 'no Undo is offered for a discussed proposal');
     const undone = await undoRun(run.runId);
     assert.equal(undone.undone, 0, undone.message);
+    assert.deepEqual(undone.changedSince, [], 'the discussed proposal is not part of the run\'s Undo');
     const [row] = await changesOf(run.runId);
     assert.equal((await undoOne(row!.id)).message, 'Replies since. Open it');
     assert.equal(await count('project_decisions', proposed.decisionId), 1, 'the decision stays');

@@ -95,6 +95,20 @@ export function assistantRemovalRows(db: DbExecutor) {
 
   return {
     /**
+     * Whether people's use keeps a decision or a message of the assistant's for good, so its Undo is not offered (round 15 ai P2-4: Undo of a
+     * discussed proposal stayed offered and answered "Replies since"): a decision someone wrote about or decided, a message with a reply after
+     * it. A plain read for the change line, without locks: the Undo itself checks everything again under its own.
+     */
+    async keptByUse(operation: string, id: string): Promise<boolean> {
+      if (operation === 'decision.propose') return yes(db, sql`SELECT (
+        EXISTS (SELECT 1 FROM project_decisions WHERE id = ${id} AND status <> 'proposed')
+        OR EXISTS (SELECT 1 FROM project_decision_discussions WHERE decision_id = ${id})) AS found`);
+      if (operation === 'conversation.create' || operation === 'conversation.reply') return yes(db, sql`SELECT EXISTS (
+        SELECT 1 FROM project_messages m JOIN project_messages later ON later.conversation_id = m.conversation_id AND later.sequence > m.sequence AND later.removed_at IS NULL
+        WHERE m.id = ${id} AND m.removed_at IS NULL) AS found`);
+      return false;
+    },
+    /**
      * A map's row, `FOR NO KEY UPDATE`, taken before anything else: the strength and the order every writer of a map's thoughts and links
      * uses (the row, then the project graph), so the Undo of a map queues behind them and never crosses them. It does not wait for key-shares.
      */

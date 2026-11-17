@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext } from 'react';
 import { useNavigate } from 'react-router';
-import { messagePreview, type ConversationMessage, type NativeWorkRow, type Project, type WorkRowProjection } from '@flux/contracts';
+import { agentNamed, messagePreview, type ConversationMessage, type NativeWorkRow, type Project, type WorkRowProjection } from '@flux/contracts';
 import { Avatar, Icon, Kreska, StatusGlyph } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { named } from '../docs/format';
+import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { decisionPieces, firstClause, firstLine, STATUS_LABEL, taskNumber, workPieces, type StatePiece } from './format';
 import type { MessageWorkPreview } from './message-associations';
 import './work.css';
@@ -43,9 +44,12 @@ function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKin
  * and its state word, opening it in the one panel. `row` is the task's current row from the visible reference read; until it answers,
  * the title and number it was announced with stand, with no owner. Where the card is narrow the owner's name gives way first.
  */
-export function TaskObjectRow({ workId, number, title, row, reverted = false, onOpen }: { workId: string; number: number; title: string; row: WorkRowProjection | null; reverted?: boolean; onOpen: () => void }) {
+export function TaskObjectRow({ workId, number, title, row, reverted = false, onOpen, owners }: { workId: string; number: number; title: string; row: WorkRowProjection | null; reverted?: boolean; onOpen: () => void;
+  /** The space's agent owners: an agent owner is named by its one label, "Ola's Assistant", never its bare name (round 15 ai P3). */
+  owners?: AgentOwners }) {
   const owner = row?.owner ?? null;
   const { me } = useShellData();
+  const agentOwner = owner?.kind === 'agent' && owners ? agentAuthorOwner(owner, owners) : undefined;
   // Until its row is read (a card off screen is read when it comes near, #155) the card never states a status or an owner it does not
   // know: the glyph's and the word's places stay, empty and quiet, so nothing reads "To do" with no owner and then changes (personas-33).
   const unknown = !row && !reverted;
@@ -56,7 +60,7 @@ export function TaskObjectRow({ workId, number, title, row, reverted = false, on
       {/* The immutable announcement number names the task before and after the current row arrives. */}
       <span className="convo-notice__num ui-task-number">#{number}</span>
       <span className="convo-notice__title">{title}</span>
-      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{named(owner, me.user.id)}</span></span>
+      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{agentOwner ? agentNamed(owner.name, agentOwner) : named(owner, me.user.id)}</span></span>
         // Nobody owns it: "No owner", the Board's and the panel's word, with the panel's person glyph where the face would be (F-026 §7).
         : row ? <span className="convo-notice__owner convo-notice__owner--none"><Icon name="person" size={16} /><span className="convo-notice__owner-name">No owner</span></span> : null}
       {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}

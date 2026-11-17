@@ -19,9 +19,22 @@ export function clockIn(at: Date, timeZone: string): string {
   return shortClock(part('hour') * 60 + part('minute'));
 }
 
+/**
+ * The row's words of a run's answer (round 15 ai P3: "…created today between", cut mid-sentence): its first sentence when that fits 120
+ * characters, else the words that fit, ending in "…", never a word cut in two.
+ */
+export function excerpt(line: string, max = 120): string {
+  if (line.length <= max) return line;
+  const sentence = /^.{20,}?[.!?](?=\s|$)/.exec(line.slice(0, max))?.[0];
+  if (sentence) return sentence;
+  const cut = line.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > 40 ? cut.slice(0, space) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
+}
+
 /** The words of a finished run for the schedule's history (AST-7 "Output", "Failures", "Missed runs"). A schedule reads and reports, so a run has no changes to count. */
 export function resultOf(run: RunRecord, timeZone: string, now: Date): { state: 'done' | 'skipped' | 'failed'; line: string } {
-  const first = (run.answerBody ?? '').trim().split('\n')[0]!.replace(/\s+/g, ' ').slice(0, 120);
+  const first = excerpt((run.answerBody ?? '').trim().split('\n')[0]!.replace(/\s+/g, ' '));
   switch (run.status) {
     case 'completed': case 'truncated': return { state: 'done', line: nothingToReport(run.answerBody) ? 'Done: nothing to report' : `Done: ${first}` };
     case 'cap_reached':

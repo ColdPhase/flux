@@ -58,6 +58,11 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
   // message's attachments are (photos in a grid, other files as rows that open in the preview).
   const pictures = changes.flatMap((change) => (change.file && (change.state === 'applied' || change.state === 'applied_after_wait') ? [change.file] : []));
   useForgetLiveRun(run.id, true);
+  // Its asker took back what it made (Undo): the answer still names it ("#6"), so it is not shown to anyone (round 15 ai P3: Show everyone stayed
+  // offered and posted chips to a task that is not there). It stays the asker's to read and dismiss. A picture or file it attached is not such a
+  // change: taking it off leaves the words, which Show everyone posts alone.
+  const madeOnes = changes.filter((change) => !change.operation.startsWith('answer.') && (change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone'));
+  const undone = madeOnes.length > 0 && madeOnes.every((change) => change.state === 'undone');
   return (
     <li id={`answer-${run.id}`} tabIndex={-1} className="assistant-private" role="note" aria-label="Private answer" data-answer-run={run.id} data-private-answer="">
       <div className="assistant-private__who">
@@ -75,10 +80,11 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmThreadRootId ? 'this thread' : run.dmId ? 'this conversation' : 'this space')}</p> : null}
       <div className="assistant-private__foot">
         <span className="assistant-private__note">
-          {others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)}'s {name}”.
+          {undone ? 'You undid what it made, so this stays yours.'
+            : <>{others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)}'s {name}”.</>}
         </span>
         <Button variant="quiet" busy={busy === 'dismiss'} disabled={!!busy} onClick={() => void act('dismiss')}>Dismiss</Button>
-        <Button variant="primary" busy={busy === 'show'} disabled={!!busy} onClick={() => void act('show')}>Show everyone</Button>
+        {undone ? null : <Button variant="primary" busy={busy === 'show'} disabled={!!busy} onClick={() => void act('show')}>Show everyone</Button>}
       </div>
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
     </li>

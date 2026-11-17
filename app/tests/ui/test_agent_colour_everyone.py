@@ -28,7 +28,7 @@ PASSWORD = "one colour for every reader"
 STAMP = int(time.time() * 1000)
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.colour+{STAMP}@example.test"), "ben": ("Ben Okafor", f"ben.colour+{STAMP}@example.test"),
           "gus": ("Gus Lind", f"gus.colour+{STAMP}@example.test")}
-LABEL = "Planner · Ada's agent"
+LABEL = "Ada's Planner"
 READING = "The rain gauge on the shed roof reads 4 mm more than the one by the beds."
 TASK = "Compare the two rain gauges"
 BENS_TASK = "Move the shed gauge away from the gutter"
@@ -156,7 +156,8 @@ class AgentColourForEveryone(unittest.TestCase):
             page.goto(f"/projects/{self.ids['project']}")
             card = page.locator(f'.convo-notice[data-work-id="{self.ids["task"]}"]')
             expect(card.locator(".convo-notice__owner .kreska")).to_have_class(TEAL)
-            expect(card.locator(".convo-notice__owner-name")).to_have_text("Planner")
+            # The card names the agent by its one label (round 15 ai P3: a removed owner's agent read only "Assistant").
+            expect(card.locator(".convo-notice__owner-name")).to_have_text(LABEL)
             shot(page, f"agent-colour-conversation-{who}-{UI_BROWSER}")
 
     def test_02_tasks_draw_planner_in_teal_for_ben(self) -> None:
@@ -197,7 +198,7 @@ class AgentColourForEveryone(unittest.TestCase):
 
     def test_05_planner_has_one_label_for_its_owner_a_member_and_a_guest(self) -> None:
         """Release audit ffcb07c P2-4: for anyone but Ada the board card, the List row, the panel's Owner and "marked it done" said "Planner [Agent]"
-        while the discussion said "Planner · Ada's agent". One label for every reader (final design L1414–1416, L277): the Agent tag only while the
+        while the discussion said "Planner · Ada's agent". One label for every reader, now "Ada's Planner" (round 15 ai P2-5) (final design L1414–1416, L277): the Agent tag only while the
         owner is unknown."""
         project = self.ids["project"]
         for who in ("ada", "ben", "gus"):
@@ -216,9 +217,11 @@ class AgentColourForEveryone(unittest.TestCase):
                 expect(panel.get_by_role("button", name="Owner").locator(".agent-id__label")).to_have_text(LABEL)
                 done = panel.locator('.wd-act__item[data-activity="status"]').filter(has_text="Planner").first
                 expect(done.locator(".agent-id__label")).to_have_text(LABEL)
-                expect(panel.locator(".wd-act .agent-tag")).to_have_count(0)
+                expect(panel.locator(".wd-act__item:not(.wd-act__item--message) .agent-tag")).to_have_count(0)
                 said = panel.locator(".wd-act__item--message").filter(has_text="the gutter")
                 expect(said.locator(".agent-id__label")).to_have_text(LABEL)
+                # A message's name line carries the Agent tag, as an answer shown to everyone does (#1232, round 15 ai P2-5).
+                expect(said.locator(".agent-tag")).to_have_count(1)
                 shot(page, f"agent-label-task-panel-{who}-{UI_BROWSER}")
 
     def test_04_the_chat_task_chip_ends_in_an_ellipsis_and_the_agent_page_fields_are_14_px_round(self) -> None:

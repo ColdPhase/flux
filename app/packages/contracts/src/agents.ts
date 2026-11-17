@@ -110,11 +110,19 @@ export function nextAgentColour(inUse: readonly string[]): AgentColour {
 }
 
 /**
- * An agent's one label in words (principle 5, #1364), as `AgentIdentity` draws it: "Planner · Ada's agent", its owner by first name, and
- * "Planner · Stefan Kowal (removed)'s agent" when the owner left the company or was removed (`ownerInLabel`, #1424). An agent whose owner
- * the reader cannot be told is "Planner · a former member's agent". Used where the label is text (Search, a notice, a push, Home's lines).
+ * An agent's one label (principle 5, #1364), as `AgentIdentity` draws it: "Ada's Planner", its owner's first name and its own name, the one name
+ * an answer Ada showed everyone has too ("Ada's Assistant", #1232), so one agent is never named two ways on one screen (v0.2.1 release gate
+ * round 15, ai P2-5). An owner who left the company or was removed keeps the whole marked name, "Stefan Kowal (removed)'s Planner"
+ * (`ownerInLabel`, #1424).
+ */
+export const agentNamed = (name: string, owner: string) => `${ownerInLabel(owner)}'s ${name}`;
+
+/**
+ * The same label in words, where it is text (Search, a notice, a push, Home's lines): an agent whose owner the reader cannot be told is "a former
+ * member's Planner". What an agent reads names agents its own way, "Planner (Ada's agent)" (C-56), so a shown answer, "Ada's Planner", stays
+ * the person's to it.
  */
 export function agentWords(name: string, ownerName: string | null | undefined): string {
   const owner = ownerName?.trim();
-  return `${name} · ${owner ? `${ownerInLabel(owner)}'s agent` : 'a former member\'s agent'}`;
+  return owner ? agentNamed(name, owner) : `a former member's ${name}`;
 }

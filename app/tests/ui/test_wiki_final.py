@@ -466,7 +466,7 @@ class WikiReferences(unittest.TestCase):
         page.route("**/work-reference-rows?**", rows)
         page.goto(self.url)
         expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-tag")).to_have_count(0)
-        expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-for")).to_have_text("· Ada's agent")
+        expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-for")).to_have_text("Ada's")
 
     def test_history_names_an_agent_author_in_the_timeline(self) -> None:
         """An agent's version reads "name · agent" in the timeline (#511). The author is stubbed in the list

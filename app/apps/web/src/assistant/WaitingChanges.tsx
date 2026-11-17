@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { assistantChangeLine, WORK_LIMITS, type AssistantChange } from '@flux/contracts';
+import { agentNamed, assistantChangeLine, WORK_LIMITS, type AssistantChange } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 
 import { Button } from '../ui';
@@ -80,8 +80,11 @@ function Said({ text, change, here }: { text: string; change: AssistantChange | 
   if (here && open) return <>{text.slice(0, open.index + 1)}</>;
   if (!open || !change?.objectId) return <>{text}</>;
   const head = text.slice(0, open.index + 1);
-  const target = change.objectType === 'work' ? <button type="button" className="ui-link" onClick={() => openDetails({ kind: 'work', id: change.objectId! })}>{open[1]}</button>
-    : change.objectType === 'doc' ? <RefLink className="ui-link" to={`/projects/${change.projectId}/docs/${change.objectId}`}>{open[1]}</RefLink> : null;
+  // A decision opens in Details and a message in its conversation (round 15 ai P2-4: "Replies since. Open it" was words that opened nothing).
+  const target = change.objectType === 'work' || change.objectType === 'decision'
+    ? <button type="button" className="ui-link" onClick={() => openDetails({ kind: change.objectType as 'work' | 'decision', id: change.objectId!, projectId: change.projectId })}>{open[1]}</button>
+    : change.objectType === 'doc' ? <RefLink className="ui-link" to={`/projects/${change.projectId}/docs/${change.objectId}`}>{open[1]}</RefLink>
+    : change.objectType === 'message' && change.conversationId ? <RefLink className="ui-link" to={`/projects/${change.projectId}/conversations/${change.conversationId}#message-${change.objectId}`}>{open[1]}</RefLink> : null;
   return target ? <>{head} {target}</> : <>{text}</>;
 }
 
@@ -118,7 +121,7 @@ function ChangeLine({ changes, onChanged, meId, standalone, here }: { changes: A
   return (
     <section ref={home} tabIndex={-1} className="assistant-message" aria-label={via ? `What ${via} changed` : `What ${whose} assistant changed`} data-run={runId}>
       {standalone && via ? <p className="assistant-message__who">{first} · via {via}</p>
-        : standalone && whose !== 'your' ? <p className="assistant-message__who">{whose[0]!.toUpperCase()}{whose.slice(1)} assistant</p> : null}
+        : standalone && whose !== 'your' ? <p className="assistant-message__who">{agentNamed(changes[0]!.agentName || 'Assistant', owner.name)}</p> : null}
       {done.length ? <p className="assistant-message__line" role="status" aria-live="polite">
         {live.length ? <span>{assistantChangeLine(live)}</span> : <s>{assistantChangeLine(done)}</s>}
         {live.length && live.some((change) => change.undoable) ? <><span aria-hidden="true"> · </span>

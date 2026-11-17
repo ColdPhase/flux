@@ -205,14 +205,14 @@ class AgentTakesTask(unittest.TestCase):
         expect(ada_line.get_by_role("button", name="Undo")).to_have_count(0)
         self.assertEqual(ada_line.inner_text().strip(), kai_text, "the same words for every reader")
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
-        # Train 37 row 24: the conversation's lines name the agent "Planner · Kai's agent", with the space before the dot (an inline-block part
+        # Train 37 row 24: the conversation's lines name the agent "Kai's Planner", with the space before the dot (an inline-block part
         # dropped it: "Planner· Kai's agent"). innerText is the text as drawn.
         talk = self.api(ada, "GET", f"/api/v1/work/{task['id']}/discussion", status=200)
         stream = self.page("ada")
         stream.goto(f"/projects/{self.ids['project']}/conversations/{talk['conversationId']}")
         label = stream.locator(":is(.project-convo__message-meta, .thread__root-meta) .agent-id__label").filter(has_text="Planner").first
         expect(label).to_be_visible(timeout=20000)
-        self.assertEqual(" ".join(label.inner_text().split()), "Planner · Kai's agent")
+        self.assertEqual(" ".join(label.inner_text().split()), "Kai's Planner")
 
     def test_04a_the_report_waits_in_the_agents_chat_with_an_unread_dot_and_never_in_the_inbox(self) -> None:
         """#919: when the run ends, one line in the agent's private chat; the agent's name is bold in the sidebar and in Messages until Kai opens
@@ -376,14 +376,16 @@ class AgentTakesTask(unittest.TestCase):
         page.wait_for_timeout(1500)
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
         view = self.open_task("kai", task["id"])
-        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by Ada Kowalska.")).to_be_visible()
+        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped.")).to_be_visible()
+        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by")).to_have_count(0)
+        # Round 15 ai P3: the agent's own line no longer names who stopped it ("Stopped by Marek Zieliński." to Marek, without "(you)"): the history line does.
         # The history says a stop, not a take or a finish (v0.2.1 release gate, M21), to each reader in their words.
         history = view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")
         # The owner is named by the full name, the reader with "(you)" (F-026 "Naming people", personas-33).
-        expect(history).to_contain_text(f"stopped Planner; the task is back with {KAI['name']} (you)")
+        expect(history).to_contain_text(f"stopped Kai's Planner; the task is back with {KAI['name']} (you)")
         expect(history).not_to_contain_text("its agent finished")
         ada_view = self.open_task("ada", task["id"])
-        expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Planner; the task is back with Kai")
+        expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Kai's Planner; the task is back with Kai")
         # #919: the stop is reported to the agent's chat too, by name.
         lines = self.api(kai, "GET", f"/api/v1/agent-chats/{self.ids['agent']}/messages", status=200)["items"]
         self.assertIn(f"Stopped by Ada Kowalska: #{task['number']} Weigh the full barrel on Thursday", [line["body"] for line in lines])

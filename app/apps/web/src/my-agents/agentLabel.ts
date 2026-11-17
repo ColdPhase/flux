@@ -18,6 +18,3 @@ export const mayDoLabel = (agent: Pick<MyAgent, 'mayDo'>) => AGENT_MAY_DO_LABELS
 
 /** The first line of the instructions, as the one line about what the agent is for in the list. */
 export const jobLine = (agent: Pick<MyAgent, 'instructions'>): string => agent.instructions.split('\n').map((line) => line.trim()).find(Boolean) ?? '';
-
-/** The one label of an agent everywhere (final design §1): "Planner · Ada's agent". */
-export const agentLabel = (name: string, ownerFirstName: string) => `${name} · ${ownerFirstName}'s agent`;

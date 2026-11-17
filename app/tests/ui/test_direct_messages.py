@@ -484,7 +484,7 @@ class DirectMessageJourney(unittest.TestCase):
 
         kai.goto(f"/projects/{self.project_id}/tasks?view=list")
         row = kai.locator(f'.ws-task[data-work-id="{task}"]')
-        expect(row.locator(".agent-id__label")).to_have_text("Planner · Rhea Stone (removed)'s agent")
+        expect(row.locator(".agent-id__label")).to_have_text("Rhea Stone (removed)'s Planner")
         expect(row.locator(".agent-tag")).to_have_count(0)
 
         self.call("ada", "POST", f"/api/v1/workspaces/{self.workspace_id}/removed-people/{self.ids['rhea']}/restore", {}, status=201)
@@ -495,7 +495,7 @@ class DirectMessageJourney(unittest.TestCase):
         back = kai.locator(".project-convo__message", has_text=said).locator(".project-convo__message-meta strong").first
         expect(back.get_by_role("link", name="Rhea Stone")).to_have_attribute("title", "Message Rhea Stone directly")
         kai.goto(f"/projects/{self.project_id}/tasks?view=list")
-        expect(kai.locator(f'.ws-task[data-work-id="{task}"] .agent-id__label')).to_have_text("Planner · Rhea's agent")
+        expect(kai.locator(f'.ws-task[data-work-id="{task}"] .agent-id__label')).to_have_text("Rhea's Planner")
 
 if __name__ == "__main__":
     unittest.main()

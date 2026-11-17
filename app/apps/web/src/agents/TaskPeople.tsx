@@ -17,17 +17,23 @@ export function TaskPeople({ workId, revision }: { workId: string; revision: unk
     return () => controller.abort();
   }, [workId, revision]);
   if (!people?.some((person) => person.agents.length)) return null;
-  const names = people.map((person) => person.name.trim().split(/\s+/)[0] || person.name);
+  const first = (name: string) => name.trim().split(/\s+/)[0] || name;
+  const names = people.map((person) => first(person.name));
   const agents = people.reduce((count, person) => count + person.agents.length, 0);
+  // "Basia and Ola, with Ola's agent", never "Basia and Ola and their agent" (round 15 ai P3): whose agents they are, when one person has them.
+  const owners = people.filter((person) => person.agents.length);
+  const whose = owners.length === 1 ? `${first(owners[0]!.name)}'s` : 'their';
+  const listed = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+  const words = `${listed}, with ${whose} ${agents === 1 ? 'agent' : 'agents'}`;
   return (
     <div className="wd-row" data-task-people="">
       <dt>In this task</dt>
       <dd>
-        <span className="wd-people" role="img" aria-label={`${people.map((person) => person.name).join(', ')} and ${agents === 1 ? 'their agent' : 'their agents'}`}>
+        <span className="wd-people" role="img" aria-label={`${people.map((person) => person.name).join(', ')}, with ${whose} ${agents === 1 ? 'agent' : 'agents'}`}>
           {people.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}
           {people.flatMap((person) => person.agents.map((agent) => <Kreska key={agent.id} size={16} hue={hue(agent)} />))}
         </span>
-        <span className="wd-muted"> {names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} and {agents === 1 ? 'their agent' : 'their agents'}</span>
+        <span className="wd-muted"> {words}</span>
       </dd>
     </div>
   );

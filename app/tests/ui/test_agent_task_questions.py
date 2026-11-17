@@ -245,7 +245,7 @@ class AgentTaskQuestions(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{task['id']}")
         row = page.get_by_role("complementary", name="Details").locator("[data-task-people]")
-        expect(row).to_contain_text("their agent")
+        expect(row).to_contain_text("Ada, with Ada's agent")
         expect(row).not_to_contain_text("Jonas")
         self.api(jonas, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "I can read it", "clientMessageId": str(uuid.uuid4())}, status=201)
         # The panel reads the task and its thread again when the task changes; the row follows the thread it shows.

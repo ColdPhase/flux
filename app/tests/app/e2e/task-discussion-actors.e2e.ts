@@ -232,7 +232,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     await row.waitFor();
     assert.equal(await page.locator(`#message-${root.id}`).count(), 0, 'the discussion\'s root is not a row of the stream');
     await assertAuthorColumn(row, 1280);
-    assert.match(await row.innerText(), /Trial analyst\s*· .+'s agent/);
+    assert.match(await row.innerText(), /.+'s Trial analyst/);
     assert.equal(await row.locator('.kreska').count() > 0, true, 'an agent author is Kreska, never initials (#339)');
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.message-time time').getAttribute('datetime'), root.createdAt);
@@ -273,7 +273,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.equal(await page.locator(`#thread-root-${root.id}`).count(), 1);
     assert.equal(await page.locator(`#message-${root.id}`).count(), 0);
     await assertAuthorColumn(row, 1280);
-    await row.locator('.agent-for').filter({ hasText: "Casey's agent" }).waitFor();
+    await row.locator('.agent-for').filter({ hasText: "Casey's" }).waitFor();
     const notice = page.locator(`.convo-notice[data-work-id="${task.id}"]`);
     await assertAuthorColumn(notice, 1280);
     assert.equal(await notice.locator('.convo-notice__meta strong').innerText(), 'Casey Human (you)');
@@ -289,8 +289,8 @@ test('agent root renders without a human DM link, real human reply persists, and
       await agentRow.waitFor();
       assert.equal(await view.locator(`#message-${root.id}`).count(), 0, 'the reader\'s stream has no row for the discussion\'s root');
       await assertAuthorColumn(agentRow, width);
-      await agentRow.locator('.agent-for').filter({ hasText: "Casey's agent" }).waitFor();
-      assert.match(await agentRow.innerText(), /Trial analyst\s*· Casey's agent/);
+      await agentRow.locator('.agent-for').filter({ hasText: "Casey's" }).waitFor();
+      assert.match(await agentRow.innerText(), /Casey's\s*Trial analyst/);
       assert.equal(await agentRow.locator('a[href*="/dm/new"]').count(), 0);
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();
@@ -348,7 +348,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
       await assertAuthorColumn(workspaceEvent, 390);
       await workspaceEvent.locator('.agent-for').waitFor();
-      assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*· .+'s agent/);
+      assert.match(await workspaceEvent.innerText(), /.+'s\s*Workspace analyst/);
       await captureVisibleAuthor(workspaceView, workspaceEvent, `workspace-agent-event-390-dark-text200${touch ? '-touch' : ''}`, evidence);
       assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
       if (touch) {
@@ -426,7 +426,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
       for (const labels of samples) {
         assert.ok(labels.length > 0, `${name}: an actual owner label is rendered`);
         for (const label of labels) {
-          assert.equal(label.text.trim(), "· Scoped's agent");
+          assert.equal(label.text.trim(), "Scoped's");
           assert.ok(label.rect.width > 0 && label.rect.height > 0 && label.inViewport && label.uncovered, `${name}: owner is visibly drawn and uncovered`);
           assert.ok(label.ancestors.every((node) => node.display !== 'none' && node.visibility === 'visible' && node.opacity >= .999
             && !node.hidden && !node.inert && node.ariaHidden !== 'true'), `${name}: every owner ancestor is visible at full opacity`);
@@ -450,7 +450,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     const card = page.locator(`[data-card-id="${task.id}"]`);
     await card.waitFor();
     await card.locator('.agent-for').waitFor();
-    assert.equal((await card.locator('.agent-for').innerText()).trim(), "· Scoped's agent", 'the space read named the owner');
+    assert.equal((await card.locator('.agent-for').innerText()).trim(), "Scoped's", 'the space read named the owner');
     let failedRead!: () => void;
     const readFailed = new Promise<void>((resolve) => { failedRead = resolve; });
     await page.route(endpoint, (route) => {
@@ -467,12 +467,12 @@ test('native agent owners retry failed reads, fence stale permission answers and
     for (let frame = 0; frame < 3; frame++) {
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
       assert.equal(await card.locator('.agent-for').count(), 1, 'a failed people read keeps the owner the space read names');
-      assert.equal((await card.locator('.agent-for').innerText()).trim(), "· Scoped's agent");
+      assert.equal((await card.locator('.agent-for').innerText()).trim(), "Scoped's");
     }
     await page.unrouteAll({ behavior: 'wait' });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await card.locator('.agent-for').waitFor();
-    assert.equal((await card.locator('.agent-for').innerText()).trim(), "· Scoped's agent", '503 was not cached');
+    assert.equal((await card.locator('.agent-for').innerText()).trim(), "Scoped's", '503 was not cached');
     await capture('scoped-owner-board', '.tb-card__owner .agent-for');
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     const row = page.locator(`[data-work-id="${task.id}"]`);
@@ -484,14 +484,14 @@ test('native agent owners retry failed reads, fence stale permission answers and
     // The row's open button is `.ws-item`; the status glyph is a second button in the same row (#346).
     await row.locator('button.ws-item').click();
     await page.locator('.wd-activity .agent-for').waitFor();
-    assert.equal(await page.locator('.wd-activity .agent-tag').count(), 0);
-    assert.equal((await page.locator('.wd-activity .agent-for').innerText()).trim(), "· Scoped's agent");
+    assert.equal(await page.locator('.wd-activity .wd-act__item:not(.wd-act__item--message) .agent-tag').count(), 0);
+    assert.equal((await page.locator('.wd-activity .agent-for').innerText()).trim(), "Scoped's");
     await capture('scoped-owner-task-details', '.wd-activity .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.goto(`/projects/${place.id}?open=decision:${proposal.id}`);
     await page.locator('.details .agent-for').waitFor();
-    assert.equal((await page.locator('.details .agent-for').innerText()).trim(), "· Scoped's agent");
+    assert.equal((await page.locator('.details .agent-for').innerText()).trim(), "Scoped's");
     await capture('scoped-owner-decision-details', '.details .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
@@ -605,7 +605,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     assert.equal((await context.request.get(`/api/v1/workspaces/${ws.id}/members`)).status(), 403, 'guest cannot request the roster');
     await grant(owner, place.id, casey, 'contributor');
     await page.locator(`[data-card-id="${task.id}"] .agent-for`).waitFor();
-    assert.equal((await page.locator(`[data-card-id="${task.id}"] .agent-for`).innerText()).trim(), "· Scoped's agent", 'guest sees only project-authorized identity');
+    assert.equal((await page.locator(`[data-card-id="${task.id}"] .agent-for`).innerText()).trim(), "Scoped's", 'guest sees only project-authorized identity');
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, '339-scoped-agent-owner-board.png'), fullPage: true }); }
   });

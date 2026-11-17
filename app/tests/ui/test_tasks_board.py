@@ -224,9 +224,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text(f"{ADA['name']} (you)")
         expect(self.card(doing, CALIBRATE).locator(".tb-av")).to_have_css("width", "20px")
         owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
-        expect(owner.locator(".agent-id__name")).to_have_text("Codex")
+        expect(owner.locator(".agent-id__name")).to_have_text(f"{ADA['name'].split()[0]}'s Codex")
         expect(owner.locator(".agent-id > .kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
-        expect(owner.locator(".agent-tag, .agent-for")).to_have_count(1)  # one label: "Codex · Ada's agent", or the tag while the owner is unknown (#1364)
+        expect(owner.locator(".agent-tag, .agent-for")).to_have_count(1)  # one label: "Ada's Codex", or the tag while the owner is unknown (#1364)
         # A due day shows on its card (#868).
         expect(self.card(open_, MOUNT).locator(".tb-card__due")).to_have_text(re.compile(r"^Due "))
         # A dropped task is Done with a "dropped" note (#868).

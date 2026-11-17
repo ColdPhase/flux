@@ -332,6 +332,14 @@ describe('the state line of an agent on a task (#856)', () => {
       ['stopped', 'Stopped by Maja · the task is back with you'], 'while the agent still holds it, the hand-back is the next step');
   });
 
+  test('round 15 ai P2-1: a run the key\'s budget stopped part way says the budget, never "Couldn\'t finish"', () => {
+    const budget = (viewerId: string) => taskAgentState(facts({ viewerId, run: run({ status: 'cap_reached', engine: 'runtime', endReason: 'budget' }) }));
+    const own = budget('ada');
+    assert.deepEqual([own.line, own.text, own.budget, own.canTryAgain, own.canTakeBack], ['failed', 'Stopped: not enough of today’s AI budget was left', true, true, true]);
+    const other = budget('jonas');
+    assert.deepEqual([other.text, other.canTryAgain], ['Stopped: not enough of Ada’s AI budget for today was left', false]);
+  });
+
   test('Stop is the owner\'s or a space admin\'s; Try again and Take it back are the owner\'s', () => {
     const working = (extra: Partial<TaskAgentFacts>) => taskAgentState(facts(extra));
     assert.equal(working({}).canStop, true);

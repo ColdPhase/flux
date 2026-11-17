@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import type { AssistantJobSchedule } from '@flux/contracts';
 import { InvalidInputError } from '../../packages/core/src/access/errors.js';
 import { nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, timeLabel } from '../../packages/core/src/assistant/schedule.js';
+import { answerWithSchedule } from '../../packages/core/src/personal-runs/index.js';
 
 // F-027 AST-7 "When" (A8 #408): the schedule picker's kinds and cron become the same calendar, found in the
 // owner's time zone. Pure; the clock is always the `after` argument.
@@ -155,5 +156,31 @@ describe('schedules: 9:00 stays 9:00 on the owner\'s wall clock across clock cha
     assert.equal(scheduleWords(weekdays, 'Europe/Warsaw'), 'Weekdays at 9:00');
     // The defect of #1168: a schedule stored in UTC for a person in Warsaw says 9:00 and runs at 10:00 on their clock.
     assert.deepEqual(wall(nextRuns(weekdays, 'UTC', at('2026-11-10T05:00:00Z'), 1), 'Europe/Warsaw'), ['Tue 10:00']);
+  });
+});
+
+describe('round 15 ai P2-6: a schedule is in the language its owner asked in, held by Flux', () => {
+  const asked = 'Every Friday at 16:00 tell me which tasks in Spring fair 2027 are still open and who has them.';
+  const polish = { title: 'Otwarte zadania Spring fair 2027', text: 'Sprawdź, które zadania w Spring fair 2027 są nadal otwarte, i podaj, kto je ma.', schedule: { kind: 'weekly', at: '16:00', weekday: 5 } as AssistantJobSchedule };
+  const prepare = async (schedule: typeof polish) => {
+    const kept: (typeof polish)[] = [];
+    const ports = { schedules: { prepare: async (_owner: string, _agent: string, _run: string, request: typeof polish) => { kept.push(request); return { ok: true as const, title: request.title, words: 'every Friday at 16:00' }; } } };
+    const run = { id: 'r1', kind: 'ask' as const, ownerUserId: 'ola', projectId: null, dmId: null, agentId: 'a1', prompt: asked };
+    await answerWithSchedule(ports as never, run, { text: 'I prepared a Friday 16:00 check of open tasks.', schedule });
+    return kept[0]!;
+  };
+
+  test('the observed drift: an English request whose schedule came back in Polish keeps the owner\'s own words', async () => {
+    const kept = await prepare(polish);
+    assert.equal(kept.text, asked);
+    assert.equal(kept.title, 'Every Friday at 16:00 tell me which tasks in Spring fair…');
+    assert.deepEqual(kept.schedule, polish.schedule, 'when it runs is the model\'s, as prepared');
+  });
+
+  test('a schedule in the owner\'s language, or one that cannot be told, is kept as the model wrote it', async () => {
+    const english = { ...polish, title: 'Open Spring fair tasks', text: 'Check which tasks in Spring fair 2027 are still open and list who has each of them.' };
+    assert.deepEqual(await prepare(english), english);
+    const short = { ...polish, title: 'Fair', text: 'Spring fair 2027 overview' };
+    assert.deepEqual(await prepare(short), short, 'too short to tell a language: not replaced');
   });
 });

@@ -104,9 +104,9 @@ class KreskaJourney(unittest.TestCase):
         owner = agent_card.locator(".tb-card__owner")
         expect(owner.locator(".agent-id > .kreska")).to_have_count(1)
         # One label on one line (#1364): the agent, a dot and whose agent it is, with no tag of its own.
-        expect(owner.locator(".agent-id")).to_have_text(re.compile(r"^\S.* · Ada's agent$"))
+        expect(owner.locator(".agent-id")).to_have_text(re.compile(r"^Ada's \S.*$"))
         expect(owner.locator(".agent-tag")).to_have_count(0)
-        expect(owner.locator(".agent-for")).to_have_text("· Ada's agent")
+        expect(owner.locator(".agent-for")).to_have_text("Ada's")
         label = owner.locator(".agent-id__label").evaluate("el => ({ h: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.4 })")
         self.assertLess(label["h"], label["line"] * 1.5, f"the label is on one line: {label}")
         expect(agent_card.locator(".tb-av")).to_have_count(0)
@@ -142,7 +142,7 @@ class KreskaJourney(unittest.TestCase):
                     page.goto(f"/projects/{self.ids['project']}/tasks?view={mode}")
                     agent_row = page.locator(".ws-task" if mode == "list" else ".tb-card", has_text="Calibrate the probes")
                     relation = agent_row.locator(".agent-for")
-                    expect(relation).to_have_text("· Ada's agent")
+                    expect(relation).to_have_text("Ada's")
                     expect(agent_row.locator(".agent-tag")).to_have_count(0)
                     expect(agent_row.locator(".ws-av, .tb-av")).to_have_count(0)
                     human_row = page.locator(".ws-task" if mode == "list" else ".tb-card", has_text="Order the enclosures")
@@ -247,7 +247,7 @@ class KreskaJourney(unittest.TestCase):
         # The agent's own icon is its direct child; the "Agent" tag carries its own small Kreska.
         expect(row.locator(".ov-row__s .agent-id > .kreska")).to_have_count(1)
         expect(row.locator(".ov-row__s .agent-tag")).to_have_count(0)
-        expect(row.locator(".ov-row__s .agent-for")).to_have_text("· Ada's agent")
+        expect(row.locator(".ov-row__s .agent-for")).to_have_text("Ada's")
         shot(page, "339-overview-agent-owner")
 
     def test_06_a_revoked_agent_keeps_its_scoped_owner_on_the_overview(self) -> None:
@@ -266,7 +266,7 @@ class KreskaJourney(unittest.TestCase):
         row = overview.locator(".ov-row", has_text="Check the retained owner")
         expect(row.locator(".ov-row__s .agent-id > .kreska")).to_have_count(1)
         expect(row.locator(".ov-row__s .agent-tag")).to_have_count(0)
-        expect(row.locator(".ov-row__s .agent-for")).to_have_text("· Ada's agent")
+        expect(row.locator(".ov-row__s .agent-for")).to_have_text("Ada's")
         shot(page, "339-overview-retained-agent-owner")
 
 

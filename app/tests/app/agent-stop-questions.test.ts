@@ -140,7 +140,7 @@ test('an agent asks with ready answers: one message, one card, a question notifi
   // Exactly the person asked is notified, as a question, and nobody else because of the card.
   const inbox = async (who: Person) => (expectStatus(await who.browser.request('GET', '/api/v1/inbox'), 200) as { items: { reason: string; title: string; url: string | null; body: string }[] }).items;
   const item = await waitFor(async () => (await inbox(f.marek)).find((entry) => entry.url?.endsWith(asked.messageId)), 'Marek\'s question notification');
-  assert.deepEqual([item.reason, item.title, item.body], ['question', "Hubert Claude · Hubert's agent asked you in Heated bed", 'Should the offsets be per bed, or one value for all six?']);
+  assert.deepEqual([item.reason, item.title, item.body], ['question', "Hubert's Hubert Claude asked you in Heated bed", 'Should the offsets be per bed, or one value for all six?']);
   assert.equal((await inbox(f.ada)).filter((entry) => entry.url?.endsWith(asked.messageId)).length, 0);
 
   // Only the person asked may answer; a viewer cannot even see that it exists.
