@@ -585,11 +585,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         run = next(item for item in self.own_runs(jo) if item["prompt"] == question)
         self.assertEqual(run["status"], "completed")
         self.assertEqual([source["type"] for source in run["answer"]["sources"]], ["doc", "doc", "decision"])
-        # The section opens the version it was numbered in, at its heading.
+        # The section opens the version it was numbered in, at its heading. That version is the page's current one, and the current
+        # version's address opens the page itself (design guide, round 15 new P2-4), keeping the section.
         chips.nth(0).click()
-        jo.wait_for_url(re.compile(rf"/projects/{project}/docs/{page['id']}/versions/\d+#section-2$"))
-        heading = jo.locator("#section-2")
-        expect(heading).to_have_text("Install")
+        jo.wait_for_url(re.compile(rf"/projects/{project}/docs/{page['id']}#section-2$"))
+        heading = jo.locator(".cm-content .cm-line").filter(has_text=re.compile(r"^(## )?Install$"))
+        expect(heading).to_have_count(1)
         expect(heading).to_be_in_viewport()
         # A decision opens in Details (the thread, which is the same one panel, makes room for it); the answer is still the owner's to read.
         again = self.conversation("jo")

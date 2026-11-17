@@ -96,8 +96,9 @@ export function VersionPage() {
   const earlier = shown.version !== doc.version;
   const location = useLocation();
   // The current version is the page itself (round 15 new P2-4: Search's Wiki result opened "/versions/4", "You are reading a saved
-  // version", although version 4 was the page): it opens the page, keeping where it was followed from.
-  if (!earlier) return <Navigate to={base} replace state={location.state} />;
+  // version", although version 4 was the page): it opens the page, keeping where it was followed from and the section an answer cited
+  // (C-62, `#section-2`), at whose heading the page opens.
+  if (!earlier) return <Navigate to={{ pathname: base, hash: location.hash }} replace state={location.state} />;
   return (
     <ReadPage doc={doc} shown={shown} notice={(
       <p className="doc-notice doc-notice--version"><Icon name="undo" size={14} /><span>You are reading an earlier version. It stays as it was written.</span>

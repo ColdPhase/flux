@@ -520,6 +520,16 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
     });
   };
   useEffect(() => () => landing.current(), []);
+  // A section an answer cited (C-62) opens at its heading: the current version's address opens this page with its `#section-N` (round 15
+  // new P2-4), once the text has that heading; each address lands once, so the reader's own scrolling stays theirs.
+  const landed = useRef('');
+  const cited = /^#section-\d{1,3}$/.test(location.hash) ? location.hash.slice(1) : '';
+  useEffect(() => {
+    if (!cited || landed.current === `${location.key}${cited}` || !headings.some((item) => item.id === cited) || !view || !parent.current?.closest('.wiki-main')) return;
+    landed.current = `${location.key}${cited}`;
+    go(cited);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cited, location.key, headings, view]);
 
   // Someone renamed the page: its title follows the saved version, which the room names with each save (#950: no read).
   const savedVersion = shared?.head?.savedVersion ?? doc.version;
