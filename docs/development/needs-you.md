@@ -199,8 +199,8 @@ finished or let continue is counted, since Put back brings it back as it was (ab
 `until` (a time) or `untilTask` (the task it waits for); `done` the ones marked done or declined in the last 24 hours, newest first,
 with `at` the time it was done. A done mention, question or task is listed although its notification is read. **Bring back now** and
 **Put back** are `DELETE /api/v1/needs-you/:key`, the same Undo as above: the item is back in the queue at once (a done mention is
-unread again). `notifying` (#1243) counts the unread notifications among the person's
-newest 100 Inbox items that would notify them under their level; the tab title's "(N)", its favicon dot and the app
+unread again). `notifying` (#1243) counts, of the person's newest 100 unread Inbox items (however many read ones are
+newer, index `notifications_unread_idx`), those that would notify them under their level; the tab title's "(N)", its favicon dot and the app
 badge show it ([mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243)).
 
 ## The Tasks views

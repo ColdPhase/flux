@@ -230,12 +230,14 @@ export function notificationRows(db: DbExecutor) {
         return { ...record, ...(from ? { from } : {}), ...(task ? { given: task } : {}) };
       });
     },
-    /** Of the recipient's newest `limit` notifications in their Inbox, the unread ones: why each exists and its link (#1243 `notifying`). */
-    async unreadAmongNewest(userId: string, audience: SQL, limit: number) {
-      const rows = await db.select({ reason: n.reason, url: n.url, readAt: n.readAt }).from(n)
-        .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenNotice(n)}`))
+    /**
+     * The recipient's newest `limit` unread notifications in their Inbox, however many read ones are newer: why each exists and its link
+     * (#1243 `notifying`). Read from the partial index `notifications_unread_idx` (migration 0094), which holds only unread rows.
+     */
+    async unreadNewest(userId: string, audience: SQL, limit: number) {
+      return db.select({ reason: n.reason, url: n.url }).from(n)
+        .where(and(eq(n.userId, userId), sql`${n.inInbox} AND ${n.readAt} IS NULL`, audience, sql`NOT ${hiddenNotice(n)}`))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
-      return rows.filter((row) => !row.readAt).map((row) => ({ reason: row.reason, url: row.url }));
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,

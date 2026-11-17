@@ -221,7 +221,7 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   the favicon a dot (`/icons/icon-dot.svg`) while unread notifications wait that would
   notify you under your level (direct messages, mentions, questions, tasks, call
   invitations… at Only what needs me; every reason at Everything; none at Nothing),
-  counted among your newest 100 Inbox items (`notifying` on `GET /api/v1/needs-you`, read
+  counted among your newest 100 unread Inbox items (`notifying` on `GET /api/v1/needs-you`, read
   with the sidebar's count, so no new request). The installed app shows the same number
   with `navigator.setAppBadge` where the engine supports it. Reading the items clears it.
 - **Asking for push.** After the first direct message, mention or question to you

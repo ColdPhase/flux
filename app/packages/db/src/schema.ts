@@ -648,6 +648,8 @@ export const notifications = pgTable('notifications', {
   // Migration 0094 (sweep-34 C1): the rows that can be items of the Inbox's "Needs you" queue, read however many others are newer.
   index('notifications_needs_idx').on(table.userId, table.createdAt.desc(), table.id.desc())
     .where(sql`in_inbox AND reason IN ('mention', 'question', 'invitation', 'assigned')`),
+  // Migration 0094: the unread rows, for the tab's "(N)" (#1243 `notifying`), counted however many read ones are newer.
+  index('notifications_unread_idx').on(table.userId, table.createdAt.desc(), table.id.desc()).where(sql`in_inbox AND read_at IS NULL`),
 ]);
 // What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
 export const needsYouStates = pgTable('needs_you_states', {

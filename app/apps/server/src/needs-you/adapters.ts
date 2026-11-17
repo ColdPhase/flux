@@ -77,13 +77,13 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
   // The Inbox's rows say who they come from ("Question · Maja · Community garden sensors", #1424).
-  // Every notification that can be an item, however many ordinary ones are newer (sweep-34 C1), and for `notifying` the unread ones among the
-  // person's newest; the audience is read once for both.
+  // Every notification that can be an item, however many ordinary ones are newer (sweep-34 C1), and for `notifying` the person's newest
+  // unread ones, however many read ones are newer; the audience is read once for both.
   inbox: {
     async needs(userId, options) {
       const audience = await inboxAudience(db, userId);
       const rows = notificationRows(db);
-      return { items: await rows.listNeeds(userId, audience, options), unreadNewest: await rows.unreadAmongNewest(userId, audience, options.newest) };
+      return { items: await rows.listNeeds(userId, audience, options), unreadNewest: await rows.unreadNewest(userId, audience, options.newest) };
     },
   },
   level: async (userId) => (await preferenceRepository(notificationPreferenceRows(db)).get(userId)).level,

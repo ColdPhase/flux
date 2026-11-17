@@ -78,7 +78,8 @@ export interface NeedsYouInbox {
    * Of the recipient's notifications whose source they may still read, newest first and however many other notifications are newer
    * (sweep-34 C1): `items`, at most `limit` that can be items of the queue, with who each comes from and the task an `assigned` one gave
    * (mentions and invitations since `since` that are unread or whose ids are in `keep`, questions since `since` read or not, `assigned` ones
-   * unread or in `keep`, with the read ones that gave the same task later); `unreadNewest`, the unread ones among their newest `newest`.
+   * unread or in `keep`, with the read ones that gave the same task later); `unreadNewest`, their newest `newest` unread ones, however many
+   * read ones are newer.
    */
   needs(userId: string, options: { since: Date; keep: readonly string[]; limit: number; newest: number }): Promise<{
     items: NotificationRecord[]; unreadNewest: Pick<NotificationRecord, 'reason' | 'url'>[];
@@ -117,5 +118,5 @@ export interface NeedsYouPorts {
   decisionsDiscussed?(conversationIds: string[]): Promise<Map<string, { decisionId: string; title: string }>>;
   /** Of these calls, the ones still on with someone in them (F-041): a call's notice asks nothing once it is over. */
   runningCalls?(sessionIds: string[]): Promise<Set<string>>;
-  work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;
+  work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findWorks' | 'findDecision' | 'taskPlans'>;
 }
