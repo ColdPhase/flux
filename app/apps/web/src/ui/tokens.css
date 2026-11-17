@@ -28,6 +28,9 @@
   --act: #d2d2d6;
   /* The fill of a chosen message row: clearly apart from the page, from other people's bubbles and from --own */
   --pick: #dcdce0;
+  /* A person's face (the avatar circle): white in light; in dark one step above the raised surface, so a face stays a disc on the
+     sidebar, the page and a card alike (visual review 2026-11-17, core 5: dark faces almost matched the page). */
+  --face: var(--el);
   /* A segmented control (#1238): the selected option is a raised pill clearly apart from its track in both themes (the fill at least
      1.4:1, measured, and a 1 px edge), its label --t1 and an unselected label --seg-off. Roles over existing colours, no new colour. */
   --seg: var(--act); --seg-on: var(--el); --seg-off: var(--t2);
@@ -51,7 +54,8 @@
   --sh-1: 0 1px 2px rgba(0, 0, 0, .06);
   --sh-card: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -6px rgba(0, 0, 0, .12);
   --sh-pop: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 30px -10px rgba(0, 0, 0, .22);
-  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
+  /* A field's edge is the strong hairline (--line2): a white field on a white card was almost invisible (visual review 2026-11-17, core 24). */
+  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .06);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
   /* An inverted surface that is not a button. Nothing draws it now: own bubbles are --own, chosen chips flat --inv, and a toast is a raised
@@ -143,7 +147,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045; --face: #2c2c2c;
     --seg: var(--sub); --seg-on: var(--pick); --seg-off: var(--t3);
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
@@ -151,7 +155,7 @@
     --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
     --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
     --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
-    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .4);
     --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
@@ -162,7 +166,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045; --face: #2c2c2c;
   --seg: var(--sub); --seg-on: var(--pick); --seg-off: var(--t3);
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
@@ -170,7 +174,7 @@
   --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
   --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
   --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
-  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .4);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);

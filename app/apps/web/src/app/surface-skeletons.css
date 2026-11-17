@@ -27,4 +27,4 @@
 .jump-skeleton__input b { width: 44%; }
 .jump-skeleton b, .jump-skeleton i { display: block; border-radius: var(--r-pill); background: var(--sub); }
 .jump-skeleton b { height: 10px; }
-.jump-skeleton__opt i { flex: none; width: 15px; height: 15px; }
+.jump-skeleton__opt i { flex: none; width: 28px; height: 28px; border-radius: 8px; }

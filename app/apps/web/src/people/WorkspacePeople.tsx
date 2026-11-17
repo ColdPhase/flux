@@ -82,7 +82,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     const waiting = whenPageLive(() => {
       fetchRoster(workspaceId, controller.signal).then((next) => { setRoster(next); setFailed(''); }, (error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
-        setFailed(error instanceof ApiError && error.status === 404 ? 'You’re no longer in the company.' : 'The people here couldn’t be loaded. Try again.');
+        setFailed(error instanceof ApiError && error.status === 404 ? 'You’re no longer in the company.' : 'The people here couldn’t be loaded.');
       });
     });
     return () => { waiting(); controller.abort(); };
@@ -154,8 +154,9 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     return (
       <div className={`details people${page ? ' people--page' : ''}`}>
         {back}
-        <p className="details__eyebrow">{page ? 'Company' : 'Encrypted space'}</p>
-        <h3 className="details__title">People</h3>
+        {/* Settings › Company already says "Company" above: the page's own reading or its error stands under it, no second label (visual
+            review 2026-11-17, core 29). */}
+        {page ? null : <><p className="details__eyebrow">Encrypted space</p><h3 className="details__title">People</h3></>}
         {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<Button variant="link" size="sm" onClick={load}>Try again</Button></p>
           : <div className="people__loading"><Spinner label="Loading people" /></div>}
       </div>

@@ -15,6 +15,8 @@ time { font-family: inherit; font-variant-numeric: tabular-nums; }
 /* Code, keys and commands use Geist Mono, never the browser's generic monospace (WebKit drew the Agents commands in it). */
 code, kbd, samp, pre { font-family: var(--mono); }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
+/* Selected text is the chosen-row fill, never the browser's blue, the only colour on a monochrome screen (visual review 2026-11-17, core 27). */
+::selection { background: var(--pick); color: var(--t1); }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; font-weight: 600; }
 /* Weights are 400, 500 and 600 only (README §2): bold text is the semibold, never the browser's 700 (#1373). */
@@ -53,12 +55,15 @@ svg { flex: none; }
   [data-tip] { position: relative; }
   [data-tip]::after {
     content: attr(data-tip) / ""; position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); right: 0;
-    padding: 3px 8px; border-radius: var(--r-sm); background: var(--inv); color: var(--oninv);
+    padding: 3px 8px; border-radius: var(--r-sm); background: var(--el); color: var(--t1); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2);
     font: 500 var(--fs-xs)/1.5 var(--font); letter-spacing: 0; white-space: pre; pointer-events: none;
     opacity: 0; transform: translateY(-2px);
     transition: opacity var(--dur-1) var(--ease-in), transform var(--dur-1) var(--ease-in);
   }
   [data-tip-align="start"]::after { right: auto; left: 0; }
+  /* A tooltip is a raised card like a menu or a toast, never an inverted block (visual review 2026-11-17, core 34), and it never shows
+     while the control's own menu is open: it stood under the menu and poked out at its corner (core 2). */
+  [data-tip][aria-expanded="true"]::after { display: none; }
   [data-tip]:hover::after {
     opacity: 1; transform: none;
     transition: opacity var(--dur-in) var(--ease-out) var(--delay-tip), transform var(--dur-in) var(--ease-out) var(--delay-tip);
@@ -76,39 +81,45 @@ svg { flex: none; }
   background: transparent; font-size: var(--fs-base); font-weight: 500; line-height: 1.2; color: var(--t2);
   white-space: nowrap; text-decoration: none; transition: var(--tr);
 }
-.ui-btn:hover { background: var(--hov); color: var(--t1); }
 .ui-btn:disabled, .ui-btn[aria-disabled="true"] { cursor: default; }
 .ui-btn:disabled { color: var(--t3); background: transparent; }
 .ui-btn--primary { background: var(--inv); color: var(--oninv); }
-.ui-btn--primary:hover { background: var(--inv-hov); color: var(--oninv); }
 .ui-btn--primary:disabled { background: var(--sub); color: var(--t2); }
 .ui-btn--outline { padding: 0 11px; border: 1px solid var(--choice); color: var(--t1); }
 .ui-btn--outline[aria-pressed="true"], .ui-btn--outline[aria-checked="true"] { border-color: var(--t1); }
 /* A composer's Send: a soft fill, never the screen's inverted primary. */
 .ui-btn--soft { background: var(--own); color: var(--t1); }
-.ui-btn--soft:hover { background: var(--hov); }
 .ui-btn--quiet { color: var(--t3); }
 .ui-btn--link { padding: 0 6px; color: var(--t1); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
-.ui-btn--link:hover { background: transparent; text-decoration-thickness: 2px; }
 .ui-btn--danger { padding: 0 13px; border: 1px solid var(--t2); color: var(--t1); }
-.ui-btn--danger:hover { background: var(--hov); border-color: var(--t1); color: var(--t1); }
 .ui-btn--lg { min-height: var(--ctl-lg); padding: 0 18px; font-size: var(--fs-base); }
 /* Small actions in a row (Spokój rule 1): the one control height, 44px on a touch screen. */
 .ui-btn--sm { min-height: var(--ctl); padding: 0 12px; font-size: var(--fs-sm); }
 @media (pointer: coarse) { .ui-btn--sm { min-height: 44px; } }
 .ui-btn--block { width: 100%; }
 .ui-btn .ui-spin { width: 13px; height: 13px; }
+/* Hover fills only where a pointer hovers: after a tap, a touch screen keeps :hover on the button, and the primary stayed in its hover
+   grey, which read as disabled (visual review 2026-11-17, core 26). The order of the rules above is kept. */
+@media (hover: hover) {
+  .ui-btn:hover:where(:not(:disabled)) { background: var(--hov); color: var(--t1); }
+  .ui-btn--primary:hover:where(:not(:disabled)) { background: var(--inv-hov); color: var(--oninv); }
+  .ui-btn--soft:hover:where(:not(:disabled)) { background: var(--hov); }
+  .ui-btn--link:hover:where(:not(:disabled)) { background: transparent; text-decoration-thickness: 2px; }
+  .ui-btn--danger:hover:where(:not(:disabled)) { background: var(--hov); border-color: var(--t1); color: var(--t1); }
+}
 
 .ui-icon-btn {
   display: inline-grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none;
   border-radius: var(--r-pill); color: var(--t2); transition: var(--tr);
 }
-.ui-icon-btn:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .ui-icon-btn:hover { background: var(--hov); color: var(--t1); } }
 .ui-icon-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 
 /* Text links inside prose */
 .ui-link { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; border-radius: var(--r-tag); font-weight: 500; transition: var(--tr); }
 .ui-link:hover { text-decoration-thickness: 2px; }
+/* Its ring stands clear of the letters and their underline (visual review 2026-11-17, core 4: it touched "Forgot password?"). */
+.ui-link:focus-visible { outline-offset: 3px; border-radius: 4px; }
 
 /* ---------- Input ---------- */
 .ui-field { display: flex; flex-direction: column; gap: 6px; }
@@ -117,7 +128,8 @@ svg { flex: none; }
 .ui-field__top .ui-link, .ui-field__aside .ui-link { font-size: var(--fs-sm); }
 .ui-field--aside { position: relative; }
 .ui-field--aside .ui-field__top { padding-right: 140px; }
-.ui-field__aside { position: absolute; top: 0; right: 0; line-height: 1.3; }
+/* The aside link ("Forgot password?") has the label's size and line, so the two share one baseline (visual review 2026-11-17, core 24). */
+.ui-field__aside { position: absolute; top: 0; right: 0; font-size: var(--fs-sm); line-height: var(--lh); }
 .ui-input {
   width: 100%; min-height: var(--ctl-lg); padding: 0 14px; border: 0; border-radius: var(--r);
   background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.4;
@@ -129,9 +141,14 @@ svg { flex: none; }
 /* Every field's placeholder, also those without .ui-input (the new-conversation search, Propose a decision, the AI connection
    name): WebKit's own default is #a9a9a9, 2.4:1 on white (#763 sweep). */
 input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
-.ui-input:focus-visible, .ui-input:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
+/* A text field's ring is its edge: it lies over the field's hairline (offset -1 px), so focus never adds a second outline outside the first
+   or makes the field look wider (visual review 2026-11-17, core 3 and 24). */
+.ui-input:focus-visible, .ui-input:focus { outline: 2px solid var(--ring); outline-offset: -1px; }
 /* The error is said in words next to the field (shape, not colour); the field keeps a strong edge. */
 .ui-field--invalid .ui-input { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
+/* One outline at a time (visual review 2026-11-17, core 3): while the person types in an invalid field the focus ring is its only
+   frame, so focus and error never stack two outlines; the error line under it still says what is wrong. */
+.ui-field--invalid .ui-input:focus { box-shadow: var(--sh-field); }
 .ui-field__hint { font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .ui-field__error { display: flex; align-items: flex-start; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; }
 .ui-field__error svg { margin-top: 2px; }
@@ -154,7 +171,9 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
   content: ""; position: absolute; left: var(--tab-pad); right: var(--tab-pad); bottom: var(--tab-below, 0px); height: 2px; border-radius: var(--r-pill);
   background: var(--line2); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-in) var(--ease-out);
 }
-.ui-tabs__tab:hover { color: var(--t1); }
+/* A hovered tab is a step up from the others (--t2, the neutral mark), never the current tab's --t1 (visual review 2026-11-17, core 34). */
+.ui-tabs__tab:hover { color: var(--t2); }
+.ui-tabs__tab:is([aria-current="page"], [aria-selected="true"]):hover { color: var(--t1); }
 .ui-tabs__tab:hover:not([aria-current="page"], [aria-selected="true"])::after { opacity: 1; transform: none; }
 .ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 500; }
 /* Views that cannot be opened now (a locked space): every word `--t3`, nothing to hover or press. */
@@ -376,17 +395,26 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-toast__close:hover { background: var(--hov); color: var(--t1); }
 @media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } .ui-toast--also .ui-toast__action { padding: 0 10px; } }
 
-/* ---------- Empty and error states ---------- */
+/* ---------- Empty and error states ----------
+   One empty state (visual review 2026-11-17, core 9): centred in its place, Kreska (a small moment) or a 40 px icon tile, a title, one
+   line and the action, the same on every screen, theme and device. An error state is the same parts, at the start of its column. */
 .ui-empty, .ui-error { display: flex; flex-direction: column; align-items: flex-start; max-width: 440px; }
+.ui-empty { align-items: center; margin-inline: auto; text-align: center; }
 .ui-empty__icon, .ui-error__icon {
   display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 14px; border-radius: var(--r-sm);
   background: var(--el); color: var(--t2); box-shadow: var(--sh-card);
 }
 .ui-error__icon { color: var(--t1); }
-.ui-empty__title, .ui-error__title { font-size: var(--fs-lg); line-height: var(--lh-tight); letter-spacing: var(--tracking-title); }
-.ui-empty__body, .ui-error__body { margin-top: 6px; font-size: var(--fs-md); color: var(--t3); line-height: 1.6; }
+.ui-empty__title, .ui-error__title { font-size: var(--fs-lg); line-height: var(--lh-tight); letter-spacing: var(--tracking-title); overflow-wrap: anywhere; }
+.ui-empty__title { font-size: var(--fs-xl); }
+.ui-empty__title:focus { outline: none; }
+.ui-empty__body, .ui-error__body { margin-top: 6px; font-size: var(--fs-base); color: var(--t2); line-height: 1.5; }
 .ui-empty__body p + p, .ui-error__body p + p { margin-top: 8px; }
 .ui-empty__action, .ui-error__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.ui-empty__action { justify-content: center; }
+/* A text button that starts a row of actions under text starts where the text starts: its padding is taken back, so "Try again" lines up
+   with the words above it, as a filled button's edge does (visual review 2026-11-17, core 15). */
+:is(.ui-error__actions, .nyc__card--pane .nyc__actions) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--sm, .ui-btn--block) { margin-inline-start: -14px; }
 .ui-error__detail { margin-top: 16px; font: var(--fs-xs)/1.5 var(--mono); color: var(--t3); letter-spacing: 0; }
 
 /* ---------- Task state glyphs (StatusGlyph.tsx): shape, not colour ---------- */
@@ -479,18 +507,21 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 /* ---------- Avatar: people are grey circles with initials ---------- */
 .ui-avatar {
   display: grid; place-items: center; flex: none; border-radius: 50%;
-  background: var(--el); color: var(--t1); font-weight: 600; letter-spacing: 0;
-  box-shadow: inset 0 0 0 1px var(--line), var(--sh-1);
+  background: var(--face); color: var(--t1); font-weight: 600; letter-spacing: 0;
+  box-shadow: inset 0 0 0 1px var(--line2), var(--sh-1);
   /* Initials are one word: a row that breaks long names anywhere (the task panel's Owner) never splits "MW" into "M / W". */
   white-space: nowrap; overflow-wrap: normal; word-break: normal;
 }
 .ui-avatar--xs { width: 16px; height: 16px; font-size: var(--fs-face); }  /* the face under a message (#1231) */
 /* The initials of a 16 px face are --fs-face scaled to the circle (transform, so the type stays a token and "MW" stays inside it, #1373). */
 .ui-avatar__i { position: absolute; left: 50%; top: 50%; line-height: 1; white-space: nowrap; transform: translate(-50%, -50%) scale(.72); }
+/* Two initials in a 20 px face are scaled like the 16 px face's (.82 of --fs-face, about 9 px): at 11 px "MW" ran to the circle's
+   edge, and a row of faces read as one word (visual review 2026-11-17, core 5). */
 .ui-avatar--sm { width: 20px; height: 20px; font-size: var(--fs-face); }
+.ui-avatar--sm > .ui-avatar__i { transform: translate(-50%, -50%) scale(.82); }
 .ui-avatar--md { width: 26px; height: 26px; font-size: var(--fs-face); }
 .ui-avatar--lg { width: 32px; height: 32px; font-size: var(--fs-face-lg); }
-.ui-avatar--me { background: var(--el); color: var(--t1); }
+.ui-avatar--me { background: var(--face); color: var(--t1); }
 /* A person's photo (F-039, #1226) fills the same circle over the initials, which show while it loads or if it cannot; the circle's
    hairline ring stays on top so a photo keeps the avatar's edge. */
 .ui-avatar { position: relative; }

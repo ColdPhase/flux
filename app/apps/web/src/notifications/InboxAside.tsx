@@ -106,6 +106,8 @@ function AsideWindow({ which, queue }: { which: Which | null; queue: Queue }) {
   useEffect(() => { if (which) leaveUndo(); }, [which, leaveUndo]);
   return (
     <Overlay open={which !== null} onClose={close} placement={phone ? 'bottom' : 'center'} labelledBy="nyq-aside-title" className="nyq-aside-win">
+      {/* On the phone it is a sheet like every other, with the same grabber to pull it down (visual review 2026-11-17, core 19). */}
+      {which && phone ? <div className="ui-grabber" aria-hidden="true"><span /></div> : null}
       {which ? <AsideList key={which} which={which} queue={queue} onClose={close} /> : null}
     </Overlay>
   );

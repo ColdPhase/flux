@@ -246,11 +246,13 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
-            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}${calls.has(project.id) ? ', call on' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
+            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}${calls.has(project.id) ? ', call on' : ''}${needing.has(project.id) && !muted.has(`project:${project.id}`) ? ', needs you' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
               onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
               data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
               <ProjectTile name={project.name} icon={project.icon} size={28} />
               {calls.has(project.id) ? <span className="side__rail-live" aria-hidden="true"><Icon name="call" size={12} /></span> : null}
+              {/* The rail keeps the list's dot for what needs you on the tile's corner, as a DM's face has it (visual review 2026-11-17, core 12). */}
+              {needing.has(project.id) && !muted.has(`project:${project.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
           ))}
           {locked.map((space) => (

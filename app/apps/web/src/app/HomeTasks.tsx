@@ -92,7 +92,7 @@ export function HomeTasks() {
       : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">
-        <EmptyState icon="tasks" title="Nothing is waiting for you" action={action} />
+        <EmptyState icon="tasks" title="Nothing is waiting for you" action={action}><p>Tasks you own, in every space, show up here.</p></EmptyState>
       </div>,
     );
   }

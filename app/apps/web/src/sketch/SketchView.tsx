@@ -717,7 +717,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       <div className="sk-page">
         <div className="view-empty">
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This map isn’t available' : 'The map couldn’t be opened'}
-            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All maps</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
+            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All maps</Link> : <Button variant="secondary" icon="refresh" onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
             {connectionDraft !== null ? <label>Your unsaved connection label<textarea aria-label="Recoverable connection label" readOnly value={connectionDraft} /></label> : null}
             {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.lines ? capture.draft.lines.map((line) => line.text).join('\n') : capture.draft.text} /></label> : null}

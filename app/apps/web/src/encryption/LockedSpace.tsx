@@ -188,11 +188,18 @@ export function WaitingSpaces() {
   const locked = useLockedWorkspaces();
   if (!locked.length) return null;
   return (
-    <ul className="waiting-spaces" aria-label="Waiting to be unlocked" data-waiting-spaces="">
+    // Home's rows, in a card of their own (visual review 2026-11-17, core 14): the lock tile, the name, the state and the arrow, never a
+    // stray line between two cards.
+    <ul className="home__rows waiting-spaces" aria-label="Waiting to be unlocked" data-waiting-spaces="">
       {locked.map((space) => (
         <li key={space.id}>
-          <Link to={`/spaces/${space.id}`} data-locked-space={space.id}>
-            <Icon name="lock" size={13} /><span className="waiting-spaces__name">{space.name}</span><span className="waiting-spaces__state">{lockedLine(space)}</span>
+          <Link className="home__row" to={`/spaces/${space.id}`} data-locked-space={space.id}>
+            <span className="nyc__face nyc__face--icon"><Icon name="lock" size={16} /></span>
+            <span className="home__row-b">
+              <span className="home__row-t waiting-spaces__name">{space.name}</span>
+              <span className="home__row-k waiting-spaces__state">{lockedLine(space)}</span>
+            </span>
+            <Icon name="chevron-right" size={16} className="home__row-go" />
           </Link>
         </li>
       ))}
