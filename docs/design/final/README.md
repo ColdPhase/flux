@@ -1849,9 +1849,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   the field, the panel's bottom padding included, so no fade lies on it. **The phone's sheet opens at its top** (round 14 new P2-3, look-b B3,
   look-a A3: its half height opened on the newest lines, with no title, no Why and no state, and Marta saw only Accept): what the task or
   the decision is comes first, scrolled only as far as needed to show whole what it asks of the reader (a proposed decision's Accept row, a
-  blocked task's "Waiting for" card), never past its title. **A short panel opens the same way** (round 15 look-1 P2-2, look-3 F3): where
-  the title and what it asks take more than two fifths of the panel's room (200 % text on a computer), the newest line would leave the
-  title out of view, so it opens at its top too. **A blocked task's "Waiting for" card stands under its title**, as a decision's answer
+  blocked task's "Waiting for" card), never past its title. **A short panel opens the same way** (round 15 look-1 P2-2, look-3 F3): a panel
+  with less than 25 rem of scrolling room (200 % text on a computer) would leave the title out of view at the newest line, so it opens at
+  its top too. **A blocked task's "Waiting for" card stands under its title**, as a decision's answer
   stands under its reason, so the half sheet shows what the task is and what it waits for without scrolling the title under its header
   (round 15 look-1 P2-1, look-3 F2). A decision's reason starts a step (12 px) under the title's hairline, and its "Proposed" row keeps
   "· today" on the line of an agent's label (round 15 daily P3-8, ai). A task's "↓ N new" stands at the scroll's foot on a band of the panel's

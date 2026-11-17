@@ -4,23 +4,22 @@ import { useScrollEdges } from '../ui/scrollEdges';
 /** The panel's lower fade (work.css `.wd__scroll::after`), drawn only while there is more below. */
 const FADE = 20;
 
-/** The share of the panel's room its title and what it asks may take before the panel counts as short (as the pinned title's, F-026 §4). */
-const SHORT_SHARE = 0.4;
+/** The room under which a panel counts as short: 25 rem (400 px), so larger text (200 %, Text size) makes the same panel short sooner. */
+const SHORT_ROOM_REM = 25;
 
 /** The panel is the phone's sheet: a few lines of room, under the work it was opened over. */
 export const inPhoneSheet = (element: Element | null | undefined) => !!element?.closest('.ui-detent-sheet');
 
 /**
  * The panel opens at its top, what the object is first (round 14 new P2-3; round 15 look-1 P2-2, look-3 F3): on the phone's sheet, and
- * wherever its title and what it asks (`[data-panel-head]`) take more than two fifths of its room, as at 200 % text on a computer, where the
- * newest line would leave the title out of view. Otherwise it opens at the discussion's newest line.
+ * wherever its scrolling room is short (under 25 rem, as at 200 % text on a computer), where the newest line would leave the title out
+ * of view. Otherwise it opens at the discussion's newest line.
  */
 export function opensAtTop(element: Element | null | undefined) {
   const scroller = element?.closest<HTMLElement>('.wd__scroll');
   if (!scroller) return inPhoneSheet(element);
-  if (inPhoneSheet(scroller)) return true;
-  const head = [...scroller.querySelectorAll<HTMLElement>('[data-panel-head]')].reduce((sum, part) => sum + part.offsetHeight, 0);
-  return head > scroller.clientHeight * SHORT_SHARE;
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  return inPhoneSheet(scroller) || scroller.clientHeight < SHORT_ROOM_REM * rem;
 }
 
 /**

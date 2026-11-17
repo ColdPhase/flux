@@ -459,12 +459,12 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
       <div className="wd__scroll" ref={scrollRef}>
         {/* "#4 · Rain barrel monitor" above the title, as drawn (§7 Tasks): the task's number and the space it belongs to (#1364). */}
-        <p className="wd__ref" data-panel-head=""><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> ·</span><span className="ui-vh"> in</span>{' '}{context.project.name}</p>
+        <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> ·</span><span className="ui-vh"> in</span>{' '}{context.project.name}</p>
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
         {item.status === 'blocked' ? (
-          <section className="wd-blocker" aria-label="Blocker" data-panel-head="">
+          <section className="wd-blocker" aria-label="Blocker">
             {/* Status already says Blocked: the card is what it waits for, then Edit and Unblock (or Done) under the words (round 14 look-b P8).
                 It stands under the title, as a decision's answer stands under its reason, so a phone's half sheet shows what the task is and what
                 it waits for without scrolling the title away (round 15 look-1 P2-1, look-3 F2). */}
@@ -848,7 +848,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   return (
     <div className="details wd wd--decision" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd__scroll" ref={scrollRef}>
-      <div className="wd-decision-identity" ref={identityRef} data-panel-head="">
+      <div className="wd-decision-identity" ref={identityRef}>
         <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
@@ -862,7 +862,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       ) : null}
       <span ref={decideMark} hidden />
       {decision.status === 'proposed' ? (
-        <section className="wd-decide" aria-label="Your answer" ref={answerRef} data-panel-head="">
+        <section className="wd-decide" aria-label="Your answer" ref={answerRef}>
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
               <Button ref={acceptButton} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>

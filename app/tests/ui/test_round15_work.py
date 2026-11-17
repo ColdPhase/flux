@@ -141,12 +141,14 @@ class Round15Work(unittest.TestCase):
         self.api(ada, "POST", base, {"title": DUE_TASK, "owner": human(ADA), "dueOn": "2026-11-25"}, status=201)
         blocked = self.api(jonas, "POST", base, {"title": BLOCKED, "status": "blocked", "blocker": REASON, "waitingFor": human(ADA), "owner": human(JONAS)}, status=201)
         decision = self.api(jonas, "POST", f"/api/v1/projects/{pid}/decisions", {"title": DECISION, "rationale": WHY}, status=201)
+        long_task = self.api(ada, "POST", base, {"title": "Calibrate the probes in the raised beds", "status": "in_progress", "owner": human(ADA)}, status=201)
         for index, note in enumerate(NOTES):
             self.api(ada if index % 2 else jonas, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": note, "clientMessageId": str(uuid.uuid4())}, status=201)
+            self.api(ada if index % 2 else jonas, "POST", f"/api/v1/work/{long_task['id']}/discussion", {"body": note, "clientMessageId": str(uuid.uuid4())}, status=201)
         doc = self.api(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Sensor placement", "body": "One probe per raised bed.\nEach probe 10 cm deep.\n"}, status=201)
         source = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"clientMutationId": str(uuid.uuid4()), "title": SOURCE,
                                                                             "body": "Capacitive probe: 2.90 EUR\nDS18B20: 1.90 EUR\n"}, status=201)
-        type(self).ids = {"project": pid, "blocked": blocked["id"], "decision": decision["id"], "doc": doc["id"], "source": source["materialId"]}
+        type(self).ids = {"project": pid, "long": long_task["id"], "blocked": blocked["id"], "decision": decision["id"], "doc": doc["id"], "source": source["materialId"]}
 
     # ---------------------------------------------------------------- look-1 P2-1, look-3 F2
 
@@ -181,6 +183,12 @@ class Round15Work(unittest.TestCase):
         page.wait_for_timeout(300)
         newest = page.evaluate(PLACE, ["#details .wd__scroll", ".wd-discussion__list > li:last-child"])
         self.assertGreaterEqual(newest["bottom"], -1, f"the newest message is in view once the cursor is in the field: {newest}")
+        # A task's panel opens the same way.
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['long']}")
+        expect(panel.locator(".wd-act .wd-act__item--message")).to_have_count(len(NOTES))
+        page.wait_for_timeout(800)
+        title = page.evaluate(PLACE, ["#details .wd__scroll", ".details__title"])
+        self.assertGreaterEqual(title["top"], 0, f"the task's title is in view: {title}")
 
     # ---------------------------------------------------------------- look-3 F1
 
