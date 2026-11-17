@@ -34,7 +34,7 @@ const MAX_DECISIONS = 200;
 const MAX_ACCEPTERS = 6;
 /** Most notifications read for the queue's mentions, questions, invitations and tasks given to the person. */
 const MAX_NOTES = 400;
-/** `notifying` (#1243) counts the unread among the person's newest this many notifications. */
+/** `notifying` (#1243) counts at most this many unread notifications, the newest, however many read ones are newer. */
 const NOTIFYING_NEWEST = 100;
 const OVER = new Set(['done']);
 
@@ -113,6 +113,15 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (!works.has(id)) works.set(id, await ports.work.findWork(id));
       return works.get(id) ?? null;
     };
+    /** Reads the tasks a loop below will ask for in one statement, so a long queue is not one read per task (the route is polled). */
+    const prefetch = async (ids: readonly string[]) => {
+      const missing = [...new Set(ids)].filter((id) => !works.has(id));
+      if (!missing.length) return;
+      const found = await ports.work.findWorks(missing);
+      for (const id of missing) works.set(id, found.get(id) ?? null);
+    };
+    await prefetch(decisions.flatMap((decision) => links(decision.id)
+      .filter((link) => link.from.id === decision.id && link.role === 'affects' && link.to.type === 'work').slice(0, 4).map((link) => link.to.id)));
     for (const decision of decisions) {
       // #763 FT-8: your own proposal waits for someone else, never in your Inbox, also when nobody else here can accept it (personas-30:
       // the only person of a space found what they had just proposed there as something that needs them). It stays on its card.
@@ -148,9 +157,12 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const waitedFor = await ports.work.names(blocked.flatMap((task) => (task.waitingFor ? [task.waitingFor] : [])));
     // An item's time is when the task was blocked (C11), not its last edit: put back to Blocked by an Undo, it keeps its place in the list.
     const changedAt = blocked.length ? await ports.repository.statusChangedAt(blocked.map((task) => task.id)) : new Map<string, Date>();
+    // The task a blocked task waits for: the one it names, else its first unfinished prerequisite.
+    const waitingOf = (task: WorkRecord): { id: string } | undefined => (task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
+      : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status)));
+    await prefetch(blocked.flatMap((task) => { const waiting = waitingOf(task); return waiting ? [waiting.id] : []; }));
     for (const task of blocked) {
-      const waiting = task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
-        : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status));
+      const waiting = waitingOf(task);
       const waitingTask = waiting ? await work(waiting.id) : null;
       const waitingDecision = task.waitingOn?.kind === 'decision' ? await ports.work.findDecision(task.waitingOn.id) : null;
       // The person waited on hears it as "Ada is waiting for you"; the owner (or an agent owner's person) keeps the plain item.
@@ -193,6 +205,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     if (openAsked.length) for (const [id, name] of await ports.access.projectNames([...new Set(openAsked.map((question) => question.projectId))])) projectNames.set(id, name);
     const noteOfQuestion = new Map<string, string>();
     for (const note of inbox.items) { const question = note.reason === 'question' ? questionOf(note.url) : undefined; if (question && !noteOfQuestion.has(question.id)) noteOfQuestion.set(question.id, note.id); }
+    await prefetch(openAsked.flatMap((question) => (question.taskId ? [question.taskId] : [])));
     for (const question of openAsked) {
       if (ports.aiAllowed && !await ports.aiAllowed(question.projectId)) continue;
       const task = question.taskId ? await work(question.taskId) : null;
@@ -254,6 +267,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // A task someone else or an agent gave you (#1424 C), from the newest notification that gave it, while it is unread (opening the task
     // reads it) and the task is still yours, not started, not finished and not undone. A blocked one is its Blocked item.
     const givenSeen = new Set<string>();
+    await prefetch(inbox.items.flatMap((note) => (note.reason === 'assigned' && note.given && unread(note) ? [note.given] : [])));
     for (const note of inbox.items) {
       if (note.reason !== 'assigned' || !note.given || givenSeen.has(note.given)) continue;
       givenSeen.add(note.given);

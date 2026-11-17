@@ -5,7 +5,7 @@ import { ENCRYPTED_SPACES_AVAILABILITY_PATH, ENCRYPTED_WORKSPACES_PATH, companyE
   type CreateEncryptedWorkspaceResult, type EncryptedSpaceRef, type Page, type Project, type Workspace } from '@flux/contracts';
 import { db, pool } from './support/db.js';
 import { joinCompany } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { accessPorts, workRows } from '@flux/db';
 import { Browser, type ClientResponse } from './support/http.js';
 import { expectStatus, person, type Person } from './support/people.js';
 import { codeOf, unlock } from './support/encryption.js';
@@ -291,6 +291,18 @@ describe('an encrypted space of the company', () => {
     assert.ok((await ended(companyId)).some((row) => row.recipients.length === 1 && row.recipients[0] === `human:${gone.id}`), 'and the company\'s own, for the person who left it');
     assert.equal(await roleIn(space, kept.id), null);
     await pool.query("UPDATE workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2", [companyId, guested.id]);
+  });
+
+  test('taken out of an encrypted space alone, a person keeps their plain name there; who left the company is "(removed)" (#1424, 2026-11-17)', async () => {
+    const [outOfSpace, outOfCompany] = await Promise.all(['Spaces Out Of Space', 'Spaces Out Of Company'].map(person));
+    for (const who of [outOfSpace, outOfCompany]) await join(who, 'member');
+    const space = made(await create(ada, { name: 'Names after leaving', people: [outOfSpace.id, outOfCompany.id], recoveryCode: makeCode() })).workspace.id;
+    expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/members/${outOfSpace.id}`), 204);
+    expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${outOfCompany.id}`), 204);
+    const rows = workRows(db);
+    assert.deepEqual([...await rows.formerMembers([space], [outOfSpace.id, outOfCompany.id])], [`${space}:${outOfCompany.id}`]);
+    const { gone } = await rows.namesIn([{ kind: 'human', id: outOfSpace.id }, { kind: 'human', id: outOfCompany.id }], space);
+    assert.deepEqual([...gone], [`human:${outOfCompany.id}`], 'only who left the company is named "(removed)"');
   });
 
   test('a move into an encrypted space keeps no plain copy of its words in the company: the key is kept sealed in the space (#1116)', async () => {

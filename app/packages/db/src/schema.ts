@@ -516,7 +516,11 @@ export const workspaceRemovedPeople = pgTable('workspace_removed_people', {
 }, (table) => [primaryKey({ columns: [table.workspaceId, table.userId] })]);
 
 /** `workspace_removed_people.kept`: ids, roles and times only. */
-export interface RemovedPersonKept { spaces: { id: string; role: 'manager' | 'contributor' }[]; dms: { id: string; joinedAt: string }[] }
+export interface RemovedPersonKept {
+  /** `adminHeld`: a guest's space admin role held for when they are a member again (migration 0095), kept through removal and Restore. */
+  spaces: { id: string; role: 'manager' | 'contributor'; adminHeld?: true }[];
+  dms: { id: string; joinedAt: string }[];
+}
 
 /** F-035 (#763 PE-2): a one-time invite link to a workspace. Only the SHA-256 of the token is stored (migration 0137). */
 export const workspaceInvites = pgTable('workspace_invites', {
@@ -648,6 +652,8 @@ export const notifications = pgTable('notifications', {
   // Migration 0094 (sweep-34 C1): the rows that can be items of the Inbox's "Needs you" queue, read however many others are newer.
   index('notifications_needs_idx').on(table.userId, table.createdAt.desc(), table.id.desc())
     .where(sql`in_inbox AND reason IN ('mention', 'question', 'invitation', 'assigned')`),
+  // Migration 0094: the unread rows, for the tab's "(N)" (#1243 `notifying`), counted however many read ones are newer.
+  index('notifications_unread_idx').on(table.userId, table.createdAt.desc(), table.id.desc()).where(sql`in_inbox AND read_at IS NULL`),
 ]);
 // What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
 export const needsYouStates = pgTable('needs_you_states', {

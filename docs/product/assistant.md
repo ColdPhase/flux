@@ -103,6 +103,8 @@ own.
 - A guest has no agents and no AI. The server refuses a guest's API key, plan sign-in and new agent (`GUEST_NO_AI`), and a
   guest cannot sign in a local client or keep one, whatever address they open and whatever role another workspace (an encrypted
   space) gives them (#978). A guest is a person whose role in the company is guest (F-037: one company per Flux; [C-22](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  Someone who left the company or was removed, and is still signed in, is refused the same API key steps, which make the server reach a
+  provider (listing its models, saving or testing a key: `403 NOT_IN_COMPANY`).
   A member who is made a guest keeps their agents, keys, client connections, schedules and old `/ai` runs, but the server lists and
   finds none of them, and refuses every change of one (including a run's changes and Show everyone), until they are a member again
   (C-50). An old `/ai` request is not replayed to them either: the same request, in a space, a direct message or a chat and with

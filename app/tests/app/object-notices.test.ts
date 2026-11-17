@@ -122,7 +122,7 @@ test('a proposal reaches a watcher at once, and its proposer\'s Undo withdraws i
   await watcher.close();
 });
 
-test('only its proposer withdraws a proposal, and only while it is an unused proposal', async () => {
+test('only its proposer withdraws a proposal, and only while it is an unused proposal made in the last 10 minutes', async () => {
   const f = await scene();
   const withdraw = (decision: Decision, who = f.writer, version = decision.version) =>
     who.browser.request('POST', `/api/v1/decisions/${decision.id}/withdraw`, { body: {}, headers: { 'if-match': `"${version}"` } });
@@ -143,8 +143,12 @@ test('only its proposer withdraws a proposal, and only while it is an unused pro
   const other = expectStatus(await f.reader.browser.request('POST', `/api/v1/projects/${f.place.id}/work`, { body: { title: 'Buy the paint' } }), 201) as WorkItem;
   expectStatus(await f.reader.browser.request('POST', `/api/v1/projects/${f.place.id}/links`, { body: { from: { type: 'work', id: other.id }, to: { type: 'decision', id: linked.id } } }), 201);
   assert.equal(code(await withdraw(linked), 409), 'DECISION_IN_USE');
+  // Withdraw is the toast's Undo, bounded as Unaccept is: long after, a proposal stays (a change of direction is a new proposal).
+  const old = await f.propose({ title: 'Sand the edges' });
+  await pool.query("UPDATE project_decisions SET created_at = now() - interval '11 minutes' WHERE id = $1", [old.id]);
+  assert.equal(code(await withdraw(old), 409), 'DECISION_UNDO_ENDED');
   // Every refused one stays as it was.
-  assert.deepEqual((await f.notices()).items.map((card) => card.decisionId).sort(), [proposal.id, accepted.id, waited.id, linked.id].sort());
+  assert.deepEqual((await f.notices()).items.map((card) => card.decisionId).sort(), [proposal.id, accepted.id, waited.id, linked.id, old.id].sort());
   expectStatus(await withdraw(proposal), 204);
 });
 

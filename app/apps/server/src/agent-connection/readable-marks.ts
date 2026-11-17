@@ -9,11 +9,20 @@ import { personalRunRows, schema, type Database } from '@flux/db';
 // of the space is `#12` and a Wiki page of it `[[Title]]`, which every message, decision and preview renders; a decision of the space is its
 // title in quotes. A message, an object of another space (its readers may not read that one) and a mark that points at nothing leave only the
 // words around them, and a mark right after the same `#12` or `[[Title]]` is not said twice. One rule for every change tool, before the call is
-// prepared, stored or applied, so a change that waits for its owner's OK keeps the readable words too.
+// prepared, stored or applied, so a change that waits for its owner's OK keeps the readable words too. A mark written inside a web address
+// names nothing there: nothing from Flux may go into a web address (C-30, #1138), and the run's private-address check, which reads the words
+// as they are written (after this), finds only the text the run read, not a title this rewrite would put in.
 
 const MARK = new RegExp(String.raw`([ \t]?)${CITE_MARK_SOURCE}`, 'gu');
 /** How far back a mark looks for the same reference already written: one sentence. */
 const SAID_WITHIN = 160;
+/** Whether a mark at `at` is written inside a web address: the word it ends (back to the last space) holds `://` or a `www.` host. */
+function inAddress(text: string, at: number): boolean {
+  let start = at;
+  while (start > 0 && at - start < 4096 && !/\s/.test(text[start - 1]!)) start--;
+  const word = text.slice(start, at);
+  return word.includes('://') || /(?:^|[^a-z0-9-])www\./i.test(word);
+}
 
 function strings(value: unknown, depth = 0, found: string[] = []): string[] {
   if (depth > 12) return found;
@@ -53,6 +62,7 @@ export async function readableMarks<T>(db: Database, projectId: unknown, args: T
     }
   }
   const words = (text: string) => text.replace(MARK, (_whole, lead: string, kind: string, id: string, _section: string | undefined, at: number) => {
+    if (!lead && inAddress(text, at)) return '';
     const name = typeof projectId === 'string' ? named(objects.get(`${kind}:${id.toLowerCase()}`), projectId) : null;
     if (!name) return '';
     const before = text.slice(Math.max(0, at - SAID_WITHIN), at);

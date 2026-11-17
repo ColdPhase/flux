@@ -138,13 +138,14 @@ export function workspaceRepository(db: DbExecutor) {
     },
 
     /**
-     * Remembers someone who is leaving or being removed, for Restore (#1424 F): their role, their space grants and their direct messages,
-     * read from the membership that is still there. Call it before `deleteMember`, whose cascade takes the grants and DM places.
+     * Remembers someone who is leaving or being removed, for Restore (#1424 F): their role, their space grants (a guest's held space admin
+     * role marked `adminHeld`, migration 0095) and their direct messages, read from the membership that is still there. Call it before `deleteMember`, whose cascade takes the grants and DM places.
      */
     async recordRemoved(workspaceId: string, userId: string, removedBy: string) {
       await db.execute(sql`INSERT INTO workspace_removed_people (workspace_id, user_id, removed_by, removed_at, role, kept)
         SELECT m.workspace_id, m.user_id, ${removedBy}, now(), m.role, jsonb_build_object(
-          'spaces', coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.project_id, 'role', g.role) ORDER BY g.created_at, g.project_id)
+          'spaces', coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.project_id, 'role', g.role)
+              || CASE WHEN g.admin_held THEN jsonb_build_object('adminHeld', true) ELSE '{}'::jsonb END ORDER BY g.created_at, g.project_id)
             FROM project_grants g WHERE g.workspace_id = m.workspace_id AND g.user_id = m.user_id), '[]'::jsonb),
           'dms', coalesce((SELECT jsonb_agg(jsonb_build_object('id', p.dm_id, 'joinedAt', p.joined_at) ORDER BY p.joined_at, p.dm_id)
             FROM dm_participants p WHERE p.workspace_id = m.workspace_id AND p.user_id = m.user_id), '[]'::jsonb))
@@ -170,7 +171,7 @@ export function workspaceRepository(db: DbExecutor) {
 
     /**
      * Puts back what a removal kept (#1424 F), for a person who is a member again in this transaction: each kept space that still exists in
-     * this workspace gets its grant back, and each kept direct message its place (with the time they first joined it). Rows that vanished
+     * this workspace gets its grant back (a held space admin role still held, so becoming a member again gives it back), and each kept direct message its place (with the time they first joined it). Rows that vanished
      * meanwhile are skipped (held `FOR KEY SHARE` first, so a delete racing this waits or wins cleanly). Returns what was put back.
      */
     async restoreKept(workspaceId: string, userId: string, kept: schema.RemovedPersonKept, restoredBy: string) {
@@ -183,8 +184,9 @@ export function workspaceRepository(db: DbExecutor) {
         for (const space of kept.spaces) {
           if (!live.has(space.id)) continue;
           const role = space.role === 'manager' ? 'manager' : 'contributor';
-          const [row] = (await db.execute(sql`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by)
-            VALUES (gen_random_uuid(), ${workspaceId}::uuid, ${space.id}::uuid, ${userId}, ${role}, ${restoredBy})
+          const held = role === 'contributor' && space.adminHeld === true;
+          const [row] = (await db.execute(sql`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by, admin_held)
+            VALUES (gen_random_uuid(), ${workspaceId}::uuid, ${space.id}::uuid, ${userId}, ${role}, ${restoredBy}, ${held})
             ON CONFLICT DO NOTHING RETURNING id::text AS id`)).rows as { id: string }[];
           if (row) spaces.push({ projectId: space.id, grantId: row.id, role });
         }

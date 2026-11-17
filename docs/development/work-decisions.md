@@ -77,7 +77,9 @@ toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
 - **Who.** Only the person who proposed it (`403 DECISION_NOT_YOURS` for anyone else, the company's owner included; an agent's
   proposal goes back only through its run's Undo), with write access to the space now (`404` without it, as for a missing decision).
 - **When.** While it is still proposed and unchanged (`If-Match`: `428` without it, `409 VERSION_CONFLICT` when stale,
-  `409 DECISION_NOT_PROPOSED` once accepted) and while nothing else names it: a link to it
+  `409 DECISION_NOT_PROPOSED` once accepted), within 10 minutes of proposing it (`409 DECISION_UNDO_ENDED`, the same bound as
+  Unaccept's below: the toast's Undo, not a way to take a proposal back later; it deletes notifications and Inbox choices others made
+  on it) and while nothing else names it: a link to it
   (a task related to it, a Wiki page that mentions it), a task that waits for it or a decision that replaces it are `409 DECISION_IN_USE`,
   and it stays. So is a decision someone has written about ([its discussion](#a-decisions-discussion-1424)). An agent's proposal
   follows the same rule through its run's Undo: once someone wrote in its discussion, the Undo is refused with "Replies since. Open it"

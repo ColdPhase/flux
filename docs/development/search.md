@@ -159,7 +159,8 @@ Markdown, plain text, CSV/TSV (never the inside of images, audio or video, and n
 decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads the files.
 
 - **Rows.** Every file attached to a space's message gets, at publication, one row for its name (`doc_key` `file:<id>:0`, `version` 0,
-  an empty body, written by `search_put`), whatever its kind: "IMG_2041" finds IMG_2041.jpg. A file whose name `file_text_extractable`
+  an empty body, written by `search_put`), whatever its kind: "IMG_2041" finds IMG_2041.jpg. A video's poster (`poster_of`) is not a file of the
+  message and gets no row. A file whose name `file_text_extractable`
   accepts also gets a job, and the worker replaces the rest: one row for each part of about 4,000
   characters of the text (`file:<id>:<n>`, `version` n from 1, `page` the PDF page of the part: a part never crosses a page, so a page of more than
   4,000 characters is several parts and a file is at most about 150 rows). The audience is the message's

@@ -7,7 +7,7 @@ import { aiPriceListRepository, backgroundConnectionRepository, personalConnecti
 import { aiKeyFormatProblem, backgroundConnectionUseCases, heldPriceLog, openRouterPriceList, storeGuardedPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
 import type { ModelListRefresh } from './model-refresh.js';
 import type { SessionResolver } from '../identity/index.js';
-import { requireNotGuest } from '../access/guest-no-ai.js';
+import { requireCompanyPersonForAi } from '../access/guest-no-ai.js';
 import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
 import { onePerPerson } from './one-listing.js';
 
@@ -81,7 +81,7 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
       } } },
   }, async (request, reply) => {
     const { principal } = await sessions.requirePrincipal(request);
-    await requireNotGuest(db, principal.id);
+    await requireCompanyPersonForAi(db, principal.id);
     const connected = await connections.connect(principal, request.body);
     await afterConnect?.(principal.id);
     return reply.code(201).send(connected);
@@ -107,9 +107,9 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
       baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH },
       apiKey: { type: 'string', minLength: 8, maxLength: 512 } } } },
   }, async (request) => {
-    // A guest has no AI (AG-2): not even a look-up of a provider's models (#995).
+    // A guest has no AI (AG-2): not even a look-up of a provider's models (#995); nor has someone removed from the company.
     const { principal } = await sessions.requirePrincipal(request);
-    await requireNotGuest(db, principal.id);
+    await requireCompanyPersonForAi(db, principal.id);
     const { provider, baseUrl } = request.body;
     if (provider === 'openai_compatible') {
       const problem = baseUrlSyntaxProblem(baseUrl);
@@ -137,7 +137,7 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
   // Try again (#1218): the worker reads the key's models again; the answer says how fresh the key's list is now.
   app.post<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId/model-list', async (request) => {
     const { principal } = await sessions.requirePrincipal(request);
-    await requireNotGuest(db, principal.id);
+    await requireCompanyPersonForAi(db, principal.id);
     const connectionId = request.params.connectionId.toLowerCase();
     if (!/^[0-9a-f-]{36}$/.test(connectionId)) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
     if (refresh && !(await refresh.refreshNow(principal.id, connectionId))) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
@@ -149,7 +149,7 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
       model: { type: 'string', minLength: 1, maxLength: 200 }, inputMicrosPerMTok: microsPerMTok, outputMicrosPerMTok: microsPerMTok } } },
   }, async (request) => {
     const { principal } = await sessions.requirePrincipal(request);
-    await requireNotGuest(db, principal.id);
+    await requireCompanyPersonForAi(db, principal.id);
     return connections.setModelPrice(principal, request.params.connectionId.toLowerCase(), request.body);
   });
   app.delete<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId', async (request, reply) => {

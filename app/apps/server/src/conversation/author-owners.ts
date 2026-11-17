@@ -20,8 +20,8 @@ export async function projectAuthorOwners(db: Executor, projectId: string, works
   if (ids.length > 101) throw new Error('Agent author projection exceeds the bounded message window');
   const owners = new Map<string, AgentProjectOwner>();
   if (!ids.length) return owners;
-  // The same removal rule as `namesIn` and `formerMembers`: removed from this workspace or from the company an encrypted space belongs to.
-  const removed = sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+  // The same removal rule as `namesIn` and `formerMembers`: removed from the company (an encrypted space's own removals do not count).
+  const removed = sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
     WHERE w.id = ${workspaceId}::uuid AND r.user_id = "agents"."owner_user_id")`;
   const agents = await db.select({ id: schema.agents.id, ownerUserId: schema.agents.ownerUserId, memberId: schema.workspaceMembers.userId,
     ownerName: schema.authUsers.name, removed })

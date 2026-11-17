@@ -145,7 +145,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   workspaces: { name: 'shown to members while locked ("Garden club is waiting to be unlocked")', created_by: 'a user id' },
   workspace_members: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
   workspace_removed_people: { user_id: 'a user id', removed_by: 'a user id', role: 'an enum (the role they had)',
-    kept: 'the ids of the spaces and direct messages they were in, with an enum role and a time each (#1424 F), no content' },
+    kept: 'the ids of the spaces and direct messages they were in, with an enum role, a held-admin flag and a time each (#1424 F), no content' },
   project_ai_policies: { state: 'an enum', changed_by: 'a user id' },
   workspace_invites: { role: 'an enum', email: 'the invited address, as visible as a member\'s account address (people are metadata)',
     token_hash: 'a SHA-256 of the link token, no content', created_by: 'a user id', revoked_by: 'a user id', accepted_by: 'a user id' },

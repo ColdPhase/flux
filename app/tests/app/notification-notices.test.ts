@@ -124,4 +124,20 @@ describe('the tab count and the sound switches (#1243)', () => {
     assert.equal(await notifying(ada), 0);
     assert.equal(await notifying(jonas), 0, 'the sender has nothing');
   });
+
+  test('"(N)" still counts an unread one under more than 100 newer read ones, as the Inbox still lists it', async () => {
+    const ada = await person('deep-ada');
+    const jonas = await person('deep-jonas');
+    const ws = await workspace(ada, 'Deep counts');
+    await addMember(ada, ws.id, jonas, 'member');
+    const dm = expectStatus(await jonas.browser.request('POST', workspaceDmsPath(ws.id), { body: { participantIds: [ada.id] } }), 201) as { id: string };
+    await send(jonas, dm.id, 'Did the probes arrive?');
+    await generatorCaughtUp();
+    assert.equal(await notifying(ada), 1);
+    // 150 newer notifications of the same conversation, all read.
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason, ai_origin, created_at, read_at)
+      SELECT gen_random_uuid(), $1, $2, 'dm', $3, 'Jonas wrote', 'dm', false, now() + n * interval '1 second', now()
+      FROM generate_series(1, 150) AS n`, [ada.id, ws.id, dm.id]);
+    assert.equal(await notifying(ada), 1, 'the unread one counts however many read ones are newer');
+  });
 });

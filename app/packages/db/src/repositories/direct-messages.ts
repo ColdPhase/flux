@@ -83,7 +83,7 @@ async function removedIn(db: DbExecutor, workspaceIds: readonly string[], userId
   const people = [...new Set(userIds)];
   if (!spaces.length || !people.length) return new Set();
   const rows = (await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
-    JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
     WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { workspace_id: string; user_id: string }[];
   return new Set(rows.map((row) => `${row.workspace_id}:${row.user_id}`));
 }

@@ -219,6 +219,28 @@ describe('in the company', () => {
     assert.equal(held, 0, 'nothing is held once it is given back');
   });
 
+  test('a guest\'s held space admin role outlasts removal and Restore, and a role a space admin then sets replaces it (0095)', async () => {
+    const held = await person('Company Held Admin');
+    await join(held, 'member');
+    const kept = await newSpace(held, 'Held through removal');
+    const chosen = await newSpace(held, 'Held then chosen');
+    const patch = (role: string) => admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${held.id}`, { body: { role }, headers: { 'idempotency-key': randomUUID() } });
+    const grants = async () => Object.fromEntries((await pool.query<{ project_id: string; role: string; admin_held: boolean }>(
+      'SELECT project_id, role, admin_held FROM project_grants WHERE project_id = ANY($1::uuid[]) AND user_id = $2', [[kept.id, chosen.id], held.id])).rows
+      .map((row) => [row.project_id, `${row.role}${row.admin_held ? ' (held)' : ''}`]));
+    expectStatus(await patch('guest'), 200);
+    assert.deepEqual(await grants(), { [kept.id]: 'contributor (held)', [chosen.id]: 'contributor (held)' });
+    // A space admin (the company's admin reaches every space) makes them a plain member of one space on purpose: nothing is held there now.
+    expectStatus(await setGrant(admin, chosen.id, held, 'contributor'), 201);
+    assert.deepEqual(await grants(), { [kept.id]: 'contributor (held)', [chosen.id]: 'contributor' });
+    expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${held.id}`), 204);
+    assert.deepEqual(await grants(), {});
+    expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${held.id}/restore`), 201);
+    assert.deepEqual(await grants(), { [kept.id]: 'contributor (held)', [chosen.id]: 'contributor' }, 'Restore brings back the held role as held');
+    expectStatus(await patch('member'), 200);
+    assert.deepEqual(await grants(), { [kept.id]: 'manager', [chosen.id]: 'contributor' }, 'a member again: the held one given back, the chosen one kept');
+  });
+
   test('a company admin reaches every space but belongs only to the ones they were added to', async () => {
     const space = await newSpace(member, 'Not the admin’s');
     const listed = await listProjects({ kind: 'human', id: admin.id }, companyId, { limit: 100 }, db, accessPorts);

@@ -7,7 +7,7 @@ import { stopRunBy } from '@flux/core';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { assistantScene, human, text, type AssistantScene } from './support/assistant-scene.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
 import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
@@ -250,5 +250,16 @@ describe('the report of a run on a task (#919)', () => {
     pi.gateway.script([{ text: 'Hi' }]);
     assert.equal(await scene.processor!.process(asked.run.id), 'completed', JSON.stringify(pi.lastPi()));
     assert.equal((await chat()).length, before);
+  });
+
+  test('a run names its task only while its owner can read the task\'s space, as its report does (#919)', async () => {
+    const { task, run } = await started('Label the spare probes');
+    assert.deepEqual((await scene.runs.get(human(scene.owner), run.id)).task, { id: task.id, number: task.number, title: 'Label the spare probes' });
+    const back = await loseSpace(scene.place.id, scene.owner.id);
+    try {
+      assert.equal((await scene.runs.get(human(scene.owner), run.id)).task, undefined, 'no task number or title from a space they cannot read');
+    } finally { await back(); }
+    assert.equal((await scene.runs.get(human(scene.owner), run.id)).task?.title, 'Label the spare probes');
+    await scene.runs.stop(human(scene.owner), run.id);
   });
 });
