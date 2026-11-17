@@ -39,8 +39,9 @@
 .ws-list > li + li { border-top: 1px solid var(--line); }
 .ws-item { display: flex; align-items: center; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 10px 8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 @media (hover: hover) { .ws-item:hover { background: var(--hov); } }
-/* The task open in the panel, as its Board card (round 15 look-3 e). */
-.ws-task .ws-item[aria-current="true"] { background: var(--hov); }
+/* The task open in the panel, as its Board card (round 15 look-3 e): the whole row, its state glyph too (round 15 confirm S6). The row's
+   foreground reaches the 8 px left of the row that its clip leaves for the glyph's circle. */
+.ws-task__fg:has(> .ws-item[aria-current="true"]) { margin-left: -8px; padding-left: 8px; border-radius: var(--r); background: var(--hov); }
 .ws-item__st { display: grid; place-items: center; width: 16px; flex: none; color: var(--t3); }
 .ws-item__st.ws-need { color: var(--t1); }
 .ws-item__st.ws-neg { color: var(--t2); }
@@ -84,6 +85,7 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-tasks .ws-list { --task-bg: var(--el); overflow: hidden; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
   .ws-task { min-height: 62px; }
   .ws-task__fg { min-height: 62px; padding-left: 4px; }
+  .ws-task__fg:has(> .ws-item[aria-current="true"]) { margin-left: 0; padding-left: 4px; border-radius: 0; }
   .ws-tasks .ws-pages:not(:has(.ws-pages__actions button:not(:disabled))) { display: none; }
   .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
   .ws-task .ws-item__t { font-size: var(--fs-base); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -329,7 +331,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd__scroll[data-scroll-down]::after { opacity: 1; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 /* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
-.wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }
+/* Its bottom offset is the scroll's 20 px bottom padding, which a sticky box otherwise keeps clear: the band sits flush on the panel's edge, with
+   nothing of the next message under it (round 15 confirm S1). */
+.wd-newbelow { position: sticky; bottom: -20px; z-index: 2; height: 0; }
 /* In the panel the line stands at the scroll's foot, never under the field (a feed's own line took its room in the flow in train 37,
    which put the panel's pill half under the field, where it could not be clicked), on a band of the panel's own surface that fades in
    above it: what scrolls under it passes under the band, so the pill never lies over a card's words (round 15 ai P3: "2 new" over

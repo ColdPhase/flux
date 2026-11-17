@@ -659,6 +659,29 @@ class FilesReferencesPhotos(unittest.TestCase):
                     self.assertGreaterEqual(bubble["width"], grid["width"] - 1, "the caption bubble is as wide as the photo")
                     self.assertGreaterEqual(card["width"], grid["width"] - 1, "the task card is as wide as the photo")
 
+    def test_photo_file_and_words_caption_is_the_photos_width(self) -> None:
+        """Round 15 confirm S5: a photo, a file and words made the caption bubble 373 px wide under a 340 px photo; it is the photo's width,
+        as a photo with words alone is."""
+        request = self.pw.request.new_context(base_url=ORIGIN, storage_state=self.states["jonas"])
+        self.addCleanup(request.dispose)
+        pid = self.ids["project"]
+        attached = []
+        for name, data in (("bakery-shelf.png", BEDS), ("flour-order-list.pdf", PDF)):
+            response = request.post(f"/api/v1/projects/{pid}/files?uploadId={uuid.uuid4()}&name={name}", data=data,
+                                    headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
+            self.assertEqual(response.status, 201, response.text())
+            attached.append(response.json()["id"])
+        sent = request.post(f"/api/v1/projects/{pid}/conversations", headers={"origin": ORIGIN},
+                            data={"body": "The new shelf and the order list for the bakery corner.", "attachmentIds": attached, "clientMessageId": str(uuid.uuid4())})
+        self.assertEqual(sent.status, 201, sent.text())
+        row = self.page("jonas").locator(f"#message-{sent.json()['messages'][0]['id']}")
+        row.scroll_into_view_if_needed()
+        expect(row.locator(":scope > .message-bubble .message-files")).to_be_visible()
+        grid = row.locator(":scope > .photo-grid")
+        grid.evaluate("media => Promise.all([...media.querySelectorAll('img')].map(image => image.complete ? undefined : image.decode().catch(() => undefined)))")
+        widths = row.evaluate("e => [e.querySelector(':scope > .photo-grid'), e.querySelector(':scope > .message-bubble')].map(el => el.getBoundingClientRect().width)")
+        self.assertAlmostEqual(widths[1], widths[0], delta=1, msg=f"the caption with its file is the photo's width: {widths}")
+
     def test_spokoj_own_file_link_and_thread_root_contrast(self) -> None:
         for dark in (False, True):
             for phone in (False, True):

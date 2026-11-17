@@ -2,9 +2,10 @@ import { Button } from '../ui';
 import { WorkPagination } from './WorkPagination';
 import type { MessageWorkRead } from './useMessageWork';
 
-export function MessageWorkPages({ read }: { read: MessageWorkRead }) {
+/** `typed`: a reply is written in the field, so the line says it is kept; with none it says nothing of one (round 15 confirm S4). */
+export function MessageWorkPages({ read, typed }: { read: MessageWorkRead; typed: boolean }) {
   if (read.state.phase === 'idle') return null;
-  if (read.state.phase === 'unavailable') return <div className="ws-message-pages" role="alert">Linked work could not be loaded. Your reply is kept. <Button variant="link" size="sm" onClick={read.refreshObjects}>Refresh linked work</Button></div>;
+  if (read.state.phase === 'unavailable') return <div className="ws-message-pages" role="alert">Linked work could not be loaded.{typed ? ' Your reply is kept.' : ''} <Button variant="link" size="sm" onClick={read.refreshObjects}>Refresh linked work</Button></div>;
   const page = read.page;
   // Before the first page there is nothing to page through: a placeholder bar would only appear
   // and vanish under the feed. While moving between pages the controls stay (busy).

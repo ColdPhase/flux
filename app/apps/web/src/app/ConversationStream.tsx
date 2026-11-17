@@ -830,7 +830,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     {/* Static and announced once per change; it takes no layout space and moves nobody. */}
     <NewBelow count={newBelow.count} onClick={toEnd} />
     </div>
-    <MessageWorkPages read={messageWork} />
+    <MessageWorkPages read={messageWork} typed={!!composer.draft.body.trim() || composer.draft.files.length > 0} />
   </ShownObjects>);
 }
 

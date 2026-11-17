@@ -145,7 +145,8 @@ class NotAvailable(unittest.TestCase):
         page.goto(f"/materials/{self.state['material']}")
         article = page.locator("article.material-view")
         expect(article).to_be_visible()
-        expect(page.get_by_role("heading", level=1)).to_have_text("Wiki")
+        # Named by its space, as the space's other Wiki pages are (round 15 look-3 F5).
+        expect(page.get_by_role("heading", level=1)).to_have_text("Orchard plans")
         expect(page.locator(".top__crumb")).to_have_count(0)
         sizes = article.evaluate("""(root) => Object.fromEntries([['title', 'h2'], ['meta', '.material-view__meta'], ['body', '.material-view__body']].map(([key, sel]) => [key, getComputedStyle(root.querySelector(sel)).fontSize]))""")
         tokens = page.evaluate("""() => Object.fromEntries(['--fs-xl', '--fs-sm', '--fs-base'].map((name) => {
