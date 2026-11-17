@@ -249,7 +249,7 @@ class RoundFourteenTalk(unittest.TestCase):
         replies.click()
         thread = page.locator(".dm-thread")
         # One line between the message and its replies, "3 replies · Today", and no empty rule above a day line.
-        expect(thread.locator(".thread__hint")).to_have_text("3 replies · Today")
+        expect(thread.locator(".thread__hint:not([role=status])")).to_have_text("3 replies · Today")
         expect(thread.locator(".thread__list .message-day")).to_have_count(0)
         # The composer's ring is its own edge, never a second outline with a gap round it.
         field = page.locator(".dm__composer textarea")

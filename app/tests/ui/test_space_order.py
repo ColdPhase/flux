@@ -666,7 +666,9 @@ class SpaceOrder(unittest.TestCase):
         expect(row.locator("a")).to_have_attribute("aria-label", "Barrel, new activity, needs you")
         more = page.get_by_role("button", name="More for Barrel", exact=True)
         expect(more).to_be_visible()
-        self.assert_more_is_a_touch_target(more, [row.locator(".proj-index__dot").bounding_box(), row.locator(".set-row__go").bounding_box()])
+        self.assert_more_is_a_touch_target(more, [row.locator(".proj-index__dot").bounding_box()])
+        # The row is the way in: a dot and its ⋯ at its end, no chevron between them (round 14).
+        expect(row.locator(".set-row__go")).to_be_hidden()
         for name in ("Release check", "Tool shed"):
             self.assert_more_is_a_touch_target(page.get_by_role("button", name=f"More for {name}", exact=True), [])
         more.tap()

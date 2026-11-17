@@ -34,10 +34,12 @@
 .msg-acts__b:focus-visible, .msg-menu__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 /* The tooltip of a small control opens above it, centred on its button (visual review 2026-11-17: it stood 40 px to the left). */
 .msg-acts [data-tip]::after { top: auto; bottom: calc(100% + 6px); left: 50%; right: auto; translate: -50% 0; }
-/* Only a pill's outer end can stand at the pane's edge, so only there does a tooltip end with its button instead of centring on it: the
-   last button beside someone else's message, the first beside one's own (round 14: "Reply in thread (R)" started at the pill's edge, 45 px
-   off its button). A narrow thread's pill sits at the pane's right edge, so all its tooltips end with their button. */
-.is-mine > .msg-acts > [data-tip]:first-child::after, .is-mine .dm-msg__main > .msg-acts > [data-tip]:first-child::after { left: 0; right: auto; translate: none; }
+/* The pill's end buttons can stand at the pane's edge: their tooltips start or end with the pill, never past the pane; a narrow thread's
+   pill sits at the pane's right edge, so all its tooltips end with their button. Beside someone else's message in a conversation's own
+   stream the pill's first button faces the bubble, so its tooltip is centred on it like the others (round 14: "Reply in thread (R)"
+   started at the pill's edge, 45 px off its button). */
+.msg-acts > [data-tip]:first-child::after { left: 0; right: auto; translate: none; }
+:is(.project-convo__feed .project-convo__message, .dm__feed .dm-msg):not(.is-mine) .msg-acts > [data-tip]:first-child:not(:last-child)::after { left: 50%; right: auto; translate: -50% 0; }
 .msg-acts > [data-tip]:last-child::after, .thread .msg-acts > [data-tip]::after { left: auto; right: 0; translate: none; }
 
 /* The computer's menu: one list under its anchor. (A phone's long press opens a bottom sheet instead: MessageSheet, message-sheet.css.) */
