@@ -24,6 +24,20 @@ from test_work_pagination import api
 PASSWORD = "an answer reaches the one who asked"
 SPACE = "Corner shop"
 BOLD = re.compile(r"\bis-unread\b")
+# The page's sockets, so a test can drop them; while `__refuse` is set a new one asks for an address the server does not serve and never opens.
+SOCKETS = """(() => {
+  const Native = window.WebSocket;
+  window.__sockets = [];
+  window.__refuse = false;
+  window.WebSocket = class extends Native {
+    constructor(url, protocols) {
+      const address = new URL(url);
+      if (window.__refuse) address.pathname = '/api/v1/__refused__';
+      super(address, protocols);
+      window.__sockets.push(this);
+    }
+  };
+})();"""
 
 
 class AnswersAndUnreadMessages(unittest.TestCase):
@@ -64,13 +78,15 @@ class AnswersAndUnreadMessages(unittest.TestCase):
         cls.pw.stop()
 
     # ------------------------------------------------------------------ helpers
-    def open(self, who: str, url: str = "/", *, phone: bool = False) -> Page:
+    def open(self, who: str, url: str = "/", *, phone: bool = False, script: str | None = None) -> Page:
         options: dict = {"base_url": ORIGIN, "storage_state": self.states[who], "locale": "en-GB", "service_workers": "block",
                          "viewport": {"width": 390, "height": 844} if phone else {"width": 1440, "height": 900}}
         if phone:
             options.update(is_mobile=True, has_touch=True)
         context = self.browser.new_context(**options)
         self.addCleanup(context.close)
+        if script:
+            context.add_init_script(script)
         page = context.new_page()
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -142,6 +158,30 @@ class AnswersAndUnreadMessages(unittest.TestCase):
         toast.get_by_role("button", name="Undo").click()
         expect(self.sidebar_dm(computer)).to_have_class(BOLD)
         self.until(self.unread, 1)
+
+    def test_1b_a_reconnect_that_replays_nothing_shows_what_came_in_the_conversation_just_left(self):
+        # Pre-review P3: the conversation just left stays read until a message arrives in it, and a reconnect that cannot replay (its cursor is
+        # refused) brings no message event, so it stayed read although one had come: the list read after the reconnect is the person's now.
+        self.say("Is the new shelf level?")
+        marta = self.open("marta", script=SOCKETS)
+        row = self.sidebar_dm(marta)
+        self.say("It is on the wall now.")
+        expect(row).to_have_class(BOLD)
+        row.click()
+        expect(marta).to_have_url(re.compile(f"/dm/{self.dm}"))
+        expect(marta.get_by_text("It is on the wall now.")).to_be_visible()
+        self.until(self.unread, 0)
+        marta.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
+        expect(marta).to_have_url(re.compile(r"/$"))
+        expect(row).not_to_have_class(BOLD)
+        marta.wait_for_timeout(1500)
+        # Her connection drops and the server refuses to resume it; a message comes in while it is down, and nothing replays it.
+        marta.evaluate("() => { window.__refuse = true; window.__sockets.forEach((socket) => socket.close()); }")
+        self.say("Can you put the prices on it?")
+        marta.wait_for_timeout(2000)
+        expect(row).not_to_have_class(BOLD)
+        marta.evaluate("() => { window.__refuse = false; window.dispatchEvent(new Event('online')); }")
+        expect(row).to_have_class(BOLD)
 
     # ------------------------------------------------------------------ decision 1
     def test_2_an_answer_to_your_question_lands_in_the_askers_inbox(self):
