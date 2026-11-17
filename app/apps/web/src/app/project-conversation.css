@@ -12,7 +12,7 @@
 /* One reading column (direction C): conversations live in the sidebar, sources in the composer. */
 .project-convo__in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 14px 24px 24px; }
 .project-convo__head { padding: 2px 0 6px; }
-.project-convo__head h2, .project-setup h2 { font-size: var(--fs-xl); letter-spacing: -.015em; }
+.project-convo__head h2, .project-setup h2 { font-size: var(--fs-xl); letter-spacing: var(--tracking-title); }
 .project-convo__head h2 { font-size: var(--fs-lg); line-height: 1.35; overflow-wrap: anywhere; }
 .project-convo__head h2 + p, .project-setup > p { color: var(--t3); font-size: var(--fs-sm); margin-top: 2px; }
 .project-convo__messages { min-width: 0; }
@@ -128,7 +128,7 @@ button.project-convo__contribution { cursor: pointer; }
 .project-new { max-width: 720px; padding-top: 40px; }
 .project-new__card { display: flex; flex-direction: column; gap: 18px; padding: 22px; border-radius: 22px; background: var(--el); box-shadow: var(--sh-pop); }
 .project-new__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.project-new__head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.02em; }
+.project-new__head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); }
 .project-new__head span { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
 .project-new__space { font-size: var(--fs-sm); color: var(--t3); margin: -8px 0 0; }
 /* "In … ▾" (#763 PE-3): the platform's picker over the quiet line, so the line stays where it was. */

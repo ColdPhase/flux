@@ -84,6 +84,43 @@ class TypeUsesTheRamp(unittest.TestCase):
         self.assertIn("var(--fs-title)", sizes[".top__title h1"])
 
 
+class OneTrackingRule(unittest.TestCase):
+    """Letter spacing is one rule set by tokens (README §2, founder direction, Hubert 2026-11-17, #1424): text at --fs-lg and below
+    is 0 (bold Inbox titles at -.01em ran together), and only display sizes, --fs-xl and up, take --tracking-title."""
+
+    DISPLAY = ("--fs-xl", "--fs-2xl", "--fs-page", "--fs-doc-title")
+    RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+
+    def sheets(self):
+        for path in sorted(WEB.rglob("*.css")):
+            if path.name != "tokens.css":
+                yield str(path.relative_to(WEB)), without_comments(path.read_text(encoding="utf-8"))
+        offline = WEB.parent / "public" / "offline.html"
+        yield "public/offline.html", without_comments(offline.read_text(encoding="utf-8"))
+
+    def test_the_tokens_are_zero_for_text_and_tight_only_for_titles(self) -> None:
+        css = without_comments((UI / "tokens.css").read_text(encoding="utf-8"))
+        self.assertRegex(css, r"--tracking:\s*0;")
+        self.assertRegex(css, r"--tracking-title:\s*-\.02em;")
+
+    def test_every_letter_spacing_is_a_tracking_token(self) -> None:
+        found = [f"{name}: {value.strip()}" for name, css in self.sheets()
+                 for value in re.findall(r"letter-spacing:\s*([^;}]+)", css)
+                 if value.strip() != "inherit" and not re.fullmatch(r"var\(--tracking(-title|-wordmark|-code)?\)", value.strip())]
+        self.assertEqual(found, [], "a component never sets its own letter spacing; use --tracking or --tracking-title")
+
+    def test_title_tracking_only_on_display_sizes(self) -> None:
+        found = []
+        for name, css in self.sheets():
+            for selector, body in self.RULE.findall(css):
+                if "var(--tracking-title)" in body and not any(f"var({size})" in body for size in self.DISPLAY):
+                    found.append(f"{name}: {selector.strip()[-80:]}")
+        self.assertEqual(found, [], "negative tracking only where the same rule sets --fs-xl or larger")
+
+    def test_no_word_spacing(self) -> None:
+        self.assertEqual([name for name, css in self.sheets() if "word-spacing" in css], [])
+
+
 class QuietButtons(unittest.TestCase):
     """Direction C "quiet, one accent per screen" (founder, 2026-10-31, #763; docs/design/final/README.md §2):
     buttons are flat, with radius 10 and no gradient or drop shadow."""

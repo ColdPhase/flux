@@ -29,9 +29,9 @@
   .sset-row--field > :is(.ui-select, .ui-btn) { margin-left: 36px; }
 }
 .sset-head { margin-bottom: 16px; }
-.sset-head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
+.sset-head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); line-height: 1.25; color: var(--t1); }
 .sset-head p { margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 600px; }
-.sset-sec { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
+.sset-sec { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); }
 .sset-sub { margin: 22px 2px 4px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 .sset-note { margin: 10px 2px 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .sset-note--sub { margin: 0 2px 10px; }
@@ -145,9 +145,8 @@
 .sset-keys__or { margin-right: 4px; font-size: var(--fs-xs); color: var(--t3); }
 @media (max-width: 640px) {
   .pane-in.sset-in { padding: 6px 16px 32px; }
-  .sset-head h2 { font-size: var(--fs-xl); letter-spacing: -.02em; }
   .sset-head p { font-size: var(--fs-base); }
-  .sset-sec { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); letter-spacing: 0; }
+  .sset-sec { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); }
   .sset-in > .sset-sec:first-child { margin-top: 6px; }
   .sset-row { min-height: 56px; padding: 10px 16px; }
   .sset-row__t, .sset-row .pwa-steps { font-size: var(--fs-lg); font-weight: 400; }

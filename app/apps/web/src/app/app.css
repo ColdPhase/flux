@@ -5,7 +5,7 @@
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--t1); }
-.brand__name { font-size: var(--fs-logo); font-weight: 600; letter-spacing: -.04em; line-height: 1; }
+.brand__name { font-size: var(--fs-logo); font-weight: 600; letter-spacing: var(--tracking-wordmark); line-height: 1; }
 
 /* ---------- Sign-in and recovery ---------- */
 .auth { min-height: calc(100% - var(--pwa-update-h, 0px)); display: flex; flex-direction: column; background: var(--side); }
@@ -17,7 +17,7 @@
 .auth__head { display: flex; flex-direction: column; gap: 6px; }
 .auth__head > * { margin: 0; }
 .auth__company { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.auth__title { font-size: var(--fs-2xl); line-height: 1.2; font-weight: 600; letter-spacing: -1px; }
+.auth__title { font-size: var(--fs-2xl); line-height: 1.2; font-weight: 600; letter-spacing: var(--tracking-title); }
 .auth__lead { font-size: var(--fs-base); color: var(--t2); line-height: var(--lh); }
 .auth__card, .auth__form { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .auth__card .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; }
@@ -77,7 +77,7 @@ body:has(.app) { background: var(--side); }
 .side__brand { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 0 0 0 8px; }
 .side__logo { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; color: var(--t1); flex: 1; min-width: 0; }
 .side__glyph { display: grid; place-items: center; color: var(--t1); }
-.side__word { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.04em; line-height: 1; }
+.side__word { font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-wordmark); line-height: 1; }
 .side__toggle { color: var(--t2); }
 .side__actions { display: flex; gap: 6px; margin: 6px 0 10px; }
 .side__new, .side__search {
@@ -338,7 +338,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 /* ---------- Header and views: one block at the top of the panel ---------- */
 .top { display: flex; align-items: center; gap: 8px; min-height: var(--header-h); flex: none; padding: 14px var(--space-page) 6px; }
 .top__title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
-.top__title h1 { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top__title h1 { font-size: var(--fs-title); font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* An agent's chat (#1419): its Kreska before its name, centred on the title line. */
 .top__title > .kreska { flex: none; align-self: center; }
 /* A count beside a place's title: a quiet number, never a pill (README §2, §7 Inbox). */
@@ -367,7 +367,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 /* From 1001 px, where the details panel docks, the people and Call move into More under a 48.5 rem (776 px) header, so the name keeps its slot (#873). */
 @media (min-width: 1001px) { @container main (max-width: 48.5rem) { .top--project.top--row { --name-rest: 28.75rem; } } }
 .top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 20%); }
-.top--row .top__title h1 { letter-spacing: -0.2px; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
 .top--row .top__right > .top__actions:empty { display: none; }
 /* The views never shrink (a squeezed track cut "Agents" at 1024 px with "+ Task" beside it, #763 sweep), and a space's name slot is set by the width alone (above). */
@@ -450,7 +449,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .view-empty { padding: 36px 0 32px; }
 /* Home's Tasks (#190 HOME-2): your unfinished work grouped by project, in calm rows. */
 .home-tasks { padding: 24px 0 32px; }
-.home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); letter-spacing: -.01em; }
+.home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); }
 .home-tasks__note { margin: 4px 0 8px; color: var(--t1); font-size: var(--fs-sm); }
 .home-tasks__place { margin-top: 16px; }
 .home-tasks__name { margin: 0 0 2px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
@@ -529,7 +528,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 
 /* ---------- Details panel ---------- */
 .details__eyebrow { font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-.details__title { margin: 6px 0 10px; font-size: var(--fs-xl); line-height: 1.35; letter-spacing: -0.015em; }
+.details__title { margin: 6px 0 10px; font-size: var(--fs-xl); line-height: 1.35; letter-spacing: var(--tracking-title); }
 .details__lead { font-size: var(--fs-md); color: var(--t2); line-height: 1.6; }
 .details__sec { margin-top: 28px; }
 .details__sec h4 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
@@ -627,10 +626,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .phead__logo { display: inline-flex; flex: none; }
 .phead__title { flex: 1; min-width: 0; }
-.phead__title h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
+.phead__title h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; line-height: 1.25; }
 /* The narrowest phones keep the view's name whole; the people are in Details. */
 @media (max-width: 340px) { .phead__people { display: none; } }
-.phead__word { font-size: var(--fs-logo); font-weight: 600; letter-spacing: -.04em; }
+.phead__word { font-size: var(--fs-logo); font-weight: 600; letter-spacing: var(--tracking-wordmark); }
 .phead--agent .phead__sub { color: var(--t3); }
 .phead__sub { margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__meta-slot:empty { display: none; }
@@ -692,7 +691,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__avatar .ui-avatar { box-shadow: none; }
 /* The live mark on More sits on the page, not on a filled button (More has no fill now). */
 .phead .phead__right .top__live-cue { background: var(--bg); }
-.phead--large .phead__title h1 { font-size: var(--fs-xl); letter-spacing: -.02em; line-height: 1.2; }
+.phead--large .phead__title h1 { font-size: var(--fs-xl); letter-spacing: var(--tracking-title); line-height: 1.2; }
 .phead--large { min-height: 56px; align-items: center; }
 .phead--large .phead__sub { margin-top: 0; }
 

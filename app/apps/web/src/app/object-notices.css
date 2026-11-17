@@ -5,7 +5,7 @@
 .convo-object time { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .convo-object + :is(.convo-object, .convo-notice) , .convo-notice + .convo-object { margin-top: 14px; }
 /* The state is a word, never a colour alone: the proposed one is the quiet "needs a person" mark, the rest recede. */
-.convo-object__state { flex: none; font-size: var(--fs-xs); color: var(--t3); letter-spacing: .01em; }
+.convo-object__state { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .convo-object__state[data-state="proposed"] { color: var(--t1); font-weight: 600; }
 .convo-object__card > svg { flex: none; color: var(--t2); }
 @media (max-width: 680px) {

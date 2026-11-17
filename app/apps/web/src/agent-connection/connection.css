@@ -1,5 +1,5 @@
 .connection { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
-.connection__head h1 { margin-top: 9px; font-size: var(--fs-2xl); line-height: 1.25; letter-spacing: -.02em; }
+.connection__head h1 { margin-top: 9px; font-size: var(--fs-2xl); line-height: 1.25; letter-spacing: var(--tracking-title); }
 .connection__head p { margin-top: 9px; color: var(--t3); font-size: var(--fs-base); line-height: 1.55; }
 .connection__head p strong { color: var(--t1); font-weight: 600; }
 .connection__eyebrow { display: inline-flex; align-items: center; gap: 7px; color: var(--t1); font-size: var(--fs-sm); font-weight: 600; }

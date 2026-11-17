@@ -221,7 +221,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   // The title of a row selects it (a row of the list), of a card in one column opens it, and in the open column it is only the heading.
   const Title = pane ? 'h2' : 'h3';
   const titleOf = pane ? item.title
-    : <button type="button" className="nyc__open" onClick={() => (list ? onSelect?.() : handlers.open(item))} aria-haspopup={!list && (item.kind === 'blocked' || item.kind === 'task') ? 'dialog' : undefined}>{item.title}</button>;
+    : <button type="button" className="nyc__open" onClick={() => (list ? onSelect?.() : handlers.open(item))} aria-haspopup={!list && (item.kind === 'blocked' || item.kind === 'task') ? 'dialog' : undefined}><span className="nyc__open-t">{item.title}</span></button>;
   const body = (
     <div className={`nyc__card${pane ? ' nyc__card--pane' : ''}`} onClick={row && onSelect ? (event) => { if (!(event.target as HTMLElement).closest('button, a')) onSelect(); } : undefined}>
       <Face item={item} />

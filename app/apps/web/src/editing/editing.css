@@ -9,9 +9,9 @@
 /* A readable measure, as the reader keeps it (at most 90 characters a line in Chromium and WebKit); code and tables take the column. */
 .wiki-editor .cm-editor .cm-line:not(.cm-md-pre):not(.cm-md-table) { max-width: 62ch; }
 .wiki-editor .cm-editor .cm-placeholder { color: var(--t3); }
-.wiki-editor .cm-editor .cm-md-h { color: var(--t1); font-weight: 600; letter-spacing: -0.025em; line-height: 1.5; }
-.wiki-editor .cm-editor .cm-md-h1 { padding-top: 10px; font-size: var(--fs-2xl); line-height: 1.35; }
-.wiki-editor .cm-editor .cm-md-h2 { padding-top: 10px; font-size: var(--fs-xl); letter-spacing: -0.02em; }
+.wiki-editor .cm-editor .cm-md-h { color: var(--t1); font-weight: 600; line-height: 1.5; }
+.wiki-editor .cm-editor .cm-md-h1 { padding-top: 10px; font-size: var(--fs-2xl); line-height: 1.35; letter-spacing: var(--tracking-title); }
+.wiki-editor .cm-editor .cm-md-h2 { padding-top: 10px; font-size: var(--fs-xl); letter-spacing: var(--tracking-title); }
 .wiki-editor .cm-editor .cm-md-h3 { padding-top: 6px; font-size: var(--fs-lg); }
 .wiki-editor .cm-editor .cm-md-h4 { font-size: var(--fs-base); }
 .wiki-editor .cm-editor .cm-md-setext { color: var(--t3); }

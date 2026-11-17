@@ -141,7 +141,7 @@
 .sk-task__b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sk-task__t { font-size: var(--fs-md); font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
 .sk-task__m { font-size: var(--fs-sm); color: var(--t3); line-height: 1.45; overflow-wrap: anywhere; }
-.sk-task__id { font-family: var(--mono); font-size: var(--fs-xs); letter-spacing: .02em; color: var(--t2); }
+.sk-task__id { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t2); }
 .sk-tasks__note { padding: 6px 16px 14px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
 
 /* P12: the dot on a thought's edge. Drag it onto another thought to connect, or release on empty space for a

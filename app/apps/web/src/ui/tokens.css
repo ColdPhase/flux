@@ -93,8 +93,12 @@
   --fs-input-touch: 16px; /* fields on touch: 16 px exactly, so iOS does not zoom on focus (px on purpose) */
   --lh: 1.43;           /* 14/20 */
   --lh-tight: 1.3;
-  --tracking: 0;
-  --tracking-title: -.02em;
+  /* Letter spacing, one rule (README §2, founder direction 2026-11-17, #1424): text at --fs-lg and below is 0, display sizes
+     (--fs-xl and up) are -.02em. A component never sets its own value. Two marks that are not text keep their own. */
+  --tracking: 0;              /* every text at --fs-lg (16) and below, regular or bold */
+  --tracking-title: -.02em;   /* titles at --fs-xl (20) and up */
+  --tracking-wordmark: -.04em; /* the "flux" wordmark */
+  --tracking-code: .06em;     /* a code read one character at a time (device code, recovery key) */
 
   /* Space (4px grid) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px;

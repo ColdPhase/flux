@@ -1,6 +1,6 @@
 .background-settings { max-width: calc(680px + 48px); padding-bottom: 28px; }
 .background-settings__head { padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
-.background-settings__head h2 { font-size: var(--fs-xl); letter-spacing: -.015em; }
+.background-settings__head h2 { font-size: var(--fs-xl); letter-spacing: var(--tracking-title); }
 .background-settings__head p { margin-top: 4px; font-size: var(--fs-md); line-height: 1.5; color: var(--t2); }
 .background-settings__history-shortcut { margin-top: 8px; }
 .background-settings__note { margin: 12px 0 4px; padding-left: 12px; border-left: 2px solid var(--line2); font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }

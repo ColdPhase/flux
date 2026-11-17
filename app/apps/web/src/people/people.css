@@ -114,7 +114,7 @@
 
 /* The company's page in Settings' own language (#872, SettingsCompany): a title for each block, its list in a card, the role as "Admin ▾". */
 .people--page .details__sec { margin-top: 0; }
-.people--page .details__sec > h4, .people--page .access__head h4 { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
+.people--page .details__sec > h4, .people--page .access__head h4 { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); }
 .people--page .access__head { align-items: baseline; margin-bottom: 0; }
 .people--page .access__invite.ui-btn { margin-right: 0; }
 /* A count is a quiet mono number after its title, "People 6", as in Space settings and "Inbox 5" (personas-27). */

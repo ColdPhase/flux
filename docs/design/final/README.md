@@ -246,6 +246,20 @@ labels. A time is Geist with tabular figures, as the line under a message alread
 - Section: 16–17 / 600.
 - Body: 14 / 20 on the computer, 15–16 on the phone.
 - Meta: 12, and at least 12.5 on the phone.
+- **Letter spacing is one rule, set by tokens** (founder direction, Hubert 2026-11-17, #1424: in the Inbox list the bold titles ran
+  together, "…" touched the "y" of "Saturday" and the space in "probe closer" almost vanished). Text at `--fs-lg` (16) and below,
+  regular or bold, is `--tracking`: 0. Only display sizes, `--fs-xl` (20) and up (a title inside a page or panel, the greeting, sign
+  in), take `--tracking-title`, -.02em. A component never sets its own value, and no text gets a `word-spacing`. The two marks
+  that are not text keep their own token: the "flux" wordmark (`--tracking-wordmark`, -.04em) and a code read one character
+  at a time, such as the device code (`--tracking-code`, .06em). Source, read 2026-11-17: Vercel's own Geist type scale
+  (vercel.com/geist/typography, its stylesheet) gives every Copy, Label and Button style, 12 to 24 px, no letter spacing,
+  and tightens only its Heading styles. Geist is already tight at text sizes, so Flux tightens only what is set as a heading
+  at 20 px and above.
+  - A row's title in a list (the Inbox list, the phone Inbox's cards, Home's rows) is 500 at `--fs-base`, as the Inbox aside's
+    rows and the notices already were; 600 stays for headings, names, unread spaces and the open item's title. At 600 and
+    14 px the words of a two-line title closed up and the "…" met the last letter.
+  - A title cut to lines or to one line with "…" is cut on a span inside its button, never on the button: WebKit lays a button
+    out as its own box and ignores the cut there (Safari showed every line of an Inbox row's title, with no "…").
 - Every device follows the system's text size: the type tokens are rem, so the root size the browser or the phone sets scales every size, and Settings has no text-size control ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 17, founder decision, Hubert, 2026-11-13).
 - **A menu always fits the window, at any text size** (v0.2.1 personas round: at 200 % text the task panel's Status menu showed To do and
   Doing only, cut under the panel's composer). A menu or list opens under its control, or over it when there is no room below, never

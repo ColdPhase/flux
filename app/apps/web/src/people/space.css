@@ -43,7 +43,7 @@
 .newspace--pinned .newspace__foot { flex: none; padding: 12px 24px 18px; border-top: 1px solid var(--line); }
 .newspace__why { align-self: center; margin: 0 auto 0 0; font-size: var(--fs-sm); color: var(--t2); }
 .newspace__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.newspace__head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; color: var(--t1); }
+.newspace__head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); color: var(--t1); }
 .newspace__x { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-btn); background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
 .newspace__x:hover { background: var(--hov); color: var(--t1); }
 .newspace__x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
@@ -118,7 +118,7 @@
 
 /* The delete confirmation. */
 .delspace { display: grid; gap: 14px; padding: 22px 24px; width: 100%; }
-.delspace h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; color: var(--t1); overflow-wrap: anywhere; }
+.delspace h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); color: var(--t1); overflow-wrap: anywhere; }
 .delspace p { margin: 0; font-size: var(--fs-base); line-height: 1.5; color: var(--t2); }
 .delspace p b { font-weight: 600; color: var(--t1); }
 .delspace .newspace__foot .ui-btn { min-height: 36px; }

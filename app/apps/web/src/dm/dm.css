@@ -7,7 +7,7 @@
 .dm__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
 .dm__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
 .dm__who { flex: 1; min-width: 0; }
-.dm__who h2 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.dm__who h2 { font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
 .dm__who p { margin-top: 2px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .dm__who p svg { display: inline; vertical-align: -1px; }
 .dm__older { display: flex; justify-content: center; padding: 12px 0 0; }
@@ -160,7 +160,7 @@
 .ui-overlay--center .dm-copy { top: 14vh; width: min(520px, calc(100% - 32px)); max-height: 76vh; overflow: auto; }
 .ui-overlay--bottom .dm-copy { inset: auto 0 0 0; max-height: 92dvh; overflow: auto; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding-bottom: env(safe-area-inset-bottom); }
 .dm-copy__in { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
-.dm-copy__in h2 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; }
+.dm-copy__in h2 { font-size: var(--fs-lg); font-weight: 600; }
 .dm-copy__quote { margin: 0; padding: 10px 12px; max-height: 32vh; overflow: auto; border-radius: var(--r); background: var(--sub); color: var(--t1);
   font-size: var(--fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm-copy__row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; font-size: var(--fs-md); }

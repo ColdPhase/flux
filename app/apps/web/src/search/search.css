@@ -12,7 +12,7 @@
 .sr__ic--project { color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
 /* An agent's message is its Kreska, the face it has everywhere, in its colour (#1528): the face is the tile. */
 .sr__ic--agent, .jump__opt.sr.is-active .sr__ic--agent { background: none; }
-.sr__ic--person { position: relative; border-radius: 50%; font-size: var(--fs-face); font-weight: 600; letter-spacing: .02em; }
+.sr__ic--person { position: relative; border-radius: 50%; font-size: var(--fs-face); font-weight: 600; }
 .sr__main { display: flex; flex: 1; flex-direction: column; justify-content: center; min-width: 0; }
 .sr__title { font-size: var(--fs-base); font-weight: 500; line-height: var(--lh-tight); color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr__title--text { font-weight: 400; }
@@ -68,7 +68,7 @@
 }
 
 /* The phone's Search: a title, the field, and a calm empty state. */
-.jump__title { margin: 0; padding: calc(12px + env(safe-area-inset-top)) 20px 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.02em; }
+.jump__title { margin: 0; padding: calc(12px + env(safe-area-inset-top)) 20px 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); }
 .jump__none { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 24px; text-align: center; }
 .jump__none h3 { margin: 6px 0 0; font-size: var(--fs-xl); font-weight: 600; overflow-wrap: anywhere; }
 .jump__none p { margin: 0; font-size: var(--fs-base); line-height: 1.5; color: var(--t2); }

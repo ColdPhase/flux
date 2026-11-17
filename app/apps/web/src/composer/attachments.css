@@ -9,7 +9,7 @@
 .file-icon--video .file-icon__glyph path { fill: var(--t1); }
 .file-icon__band { fill: var(--t1); }
 /* The label's size is in the icon's own SVG units (fontSize on the <text>), so it scales with the icon. */
-.file-icon__label { font-family: var(--mono); font-weight: 600; letter-spacing: .02em; fill: var(--t1); }
+.file-icon__label { font-family: var(--mono); font-weight: 600; fill: var(--t1); }
 .file-icon__label.is-band { fill: var(--el); }
 
 /* A file row: icon, name, "type · size" and Download, on the quiet fill inside the bubble. */
