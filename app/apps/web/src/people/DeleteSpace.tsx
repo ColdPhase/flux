@@ -16,6 +16,8 @@ export function DeleteSpaceDialog({ space, onClose, onDeleted }: { space: Deleta
   const phone = useMediaQuery(MEDIA.phone);
   return (
     <Overlay open={space !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Delete space" className="delspace-win">
+      {/* On the phone it is a sheet like every other, with the same grabber to pull it down (round 14, as the For later and decision sheets). */}
+      {space && phone ? <div className="ui-grabber" aria-hidden="true"><span /></div> : null}
       {space ? <DeleteSpace key={space.id} space={space} onClose={onClose} onDeleted={onDeleted} /> : null}
     </Overlay>
   );
@@ -40,7 +42,11 @@ function DeleteSpace({ space, onClose, onDeleted }: { space: DeletableSpace; onC
   }
   return (
     <div className="delspace" role="alertdialog" aria-labelledby="delspace-title" aria-describedby="delspace-text">
-      <h2 id="delspace-title">Delete {space.name}?</h2>
+      {/* The head of every window that asks: its title and × (as New space), so it closes the way the others do (round 14). */}
+      <div className="newspace__head">
+        <h2 id="delspace-title">Delete {space.name}?</h2>
+        <button type="button" className="newspace__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
+      </div>
       <p id="delspace-text"><b>{space.name}</b> and everything in it will be erased: its conversations, tasks, Wiki pages and maps, and who was in it. Nobody can bring it back.{space.encrypted ? ' Its key goes with it.' : ''}</p>
       {problem ? <p role="alert" className="newspace__error"><Icon name="alert" size={14} />{problem}</p> : null}
       <div className="newspace__foot">

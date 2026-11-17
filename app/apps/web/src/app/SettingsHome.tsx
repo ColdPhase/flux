@@ -14,6 +14,7 @@ import { ConnectAi } from '../ai/ConnectAi';
 import { ClientRows } from '../agent-connection/ClientRows';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import { AccountEditing, LastActiveSwitch } from './AccountEditing';
+import { NoLongerIn } from './NotAvailable';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
@@ -39,23 +40,34 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
 /** A guest has no agents and no AI (F-036 AG-2), so Settings shows them no AI section. */
 const isGuest = (workspace: { role?: string | null } | null | undefined) => workspace?.role === 'guest';
 
+/**
+ * The company someone is no longer in (they left or were removed, and have none now), or null. Their Settings offer no AI and no Notifications:
+ * there is nothing of the company to connect AI to or to hear about (round 14: both still offered their choices). Company says where they stand.
+ */
+const goneFrom = ({ workspace, removedFrom }: { workspace: unknown; removedFrom: string | null }) => (!workspace && removedFrom ? removedFrom : null);
+const COMPANY_ONLY = /^\/settings\/(notifications|agents|assistant|background-compute|ai-connections)(\/|$)/;
+
 /** The section list beside every Settings page on the computer; the phone leads from the Settings page instead. */
 export function SettingsLayout() {
   const { pathname } = useLocation();
-  const { workspace } = useShellData();
+  const shell = useShellData();
+  const { workspace } = shell;
+  const gone = goneFrom(shell);
   const phone = useMediaQuery(MEDIA.phone);
+  const offered = SECTIONS.filter((section) => !(section.to === '/settings/agents' && (isGuest(workspace) || gone)) && !(section.to === '/settings/notifications' && gone));
   return (
     <div className="sset">
       {phone ? null : (
         <nav className="sset__nav" aria-label="Settings sections">
-          {SECTIONS.filter((section) => section.to !== '/settings/agents' || !isGuest(workspace)).map((section) => (
+          {offered.map((section) => (
             <Link key={section.to} to={section.to} className="sset__link" aria-current={section.match.test(pathname) ? 'page' : undefined}>
               {section.label}
             </Link>
           ))}
         </nav>
       )}
-      <div className="sset__page"><Outlet /></div>
+      {/* Someone no longer in the company reaching AI or Notifications by their address is told what Home tells them (round 14). */}
+      <div className="sset__page">{gone && COMPANY_ONLY.test(pathname) ? <NoLongerIn company={gone} /> : <Outlet />}</div>
     </div>
   );
 }
@@ -211,7 +223,9 @@ export function SettingsAppearance() {
  * only with a keyboard, so not here). Sign out is in Account alone, where the design draws it (README §4, §7).
  */
 function PhoneSettings() {
-  const { me, workspace, agents } = useShellData();
+  const shell = useShellData();
+  const { me, workspace, agents } = shell;
+  const gone = goneFrom(shell);
   const theme = useTheme();
   // What the person hears about, said as it is now: quiet hours are named only while they are on (#1424). Until it is read the line keeps its height.
   const [heard, setHeard] = useState<string | null>(null);
@@ -231,9 +245,10 @@ function PhoneSettings() {
         </Link>
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
-          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail={heard ?? '\u00a0'} />
-          {isGuest(workspace) ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
-          <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
+          {gone ? null : <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail={heard ?? '\u00a0'} />}
+          {isGuest(workspace) || gone ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
+          <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company"
+            detail={workspace ? `${workspace.name} · its people and their roles` : gone ? `No longer in ${gone}` : 'Its people and their roles'} />
         </ul>
       </div>
     </div>
@@ -276,13 +291,17 @@ export function SettingsAgents() {
  * AI is switched per space.
  */
 export function SettingsCompany() {
-  const { workspace } = useShellData();
+  const shell = useShellData();
+  const { workspace } = shell;
+  const gone = goneFrom(shell);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
         <PageHead title="Company" />
+        {/* Someone removed (or who left) reads what Home says, not that they were never in one (round 14). */}
         {workspace ? <WorkspacePeople key={workspace.id} workspaceId={workspace.id} page onBack={() => undefined} />
-          : <p className="sset-note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
+          : <p className="sset-note" data-no-longer-in={gone ? '' : undefined}>{gone ? `You’re no longer in ${gone}. Ask an owner or admin of the company for an invite link to come back.`
+            : 'You’re not in a company on this Flux yet. Ask an admin for an invite link.'}</p>}
       </div>
     </div>
   );

@@ -550,9 +550,13 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
   width smoothly, and the content beside it adapts during the fold. This is the one named exception
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
-  On a short window (under 480 px, a phone on its side or 200 % zoom) the places and the lists scroll as one band under Search (#727);
+  **Home, Inbox, My tasks and My map stay pinned under Search** while the window has room for them and a few tiles (round 14, 200 % zoom
+  on a 900 px screen, 450 px: the band scrolled the open space into view and took Home off the top); then only the spaces and messages
+  scroll, and they open with the current place in view, a locked space's tile too (it is the current place on its project's address). Only
+  a window under 420 px (a phone on its side) scrolls the places and the lists as one band under Search (#727);
   **nothing in it is ever half out of view under Search** (personas-36): the band scrolls a whole place or tile at a time and rests with a
   whole one at its top, which is not faded; a hairline at its top says there is more above, and its lower edge fades as any list's does.
+  Without New (an account in no company) Search is the row's one button and says "Search", never a lone square (round 14).
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
@@ -2039,7 +2043,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
     ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
     "Only for", "Add someone" and the second role picker go. **Links waiting to be used are always listed** (#1424, persona B-5), under
-    the people as "Waiting to be used · N", each with Copy and Revoke, whether or not Invite is open. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
+    the people as "Waiting to be used · N", each with **Copy link** and **Revoke**, whether or not Invite is open (the same list, words and
+    insets as Space settings', round 14: one said "Copy", the other "Copy link"; Revoke's ask opens with the focus on Keep it, as Remove's on Keep). **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
     the hint "It works once…", not in a card of its own above a row that says the same; the row's Copy is the only Copy, and where the
     browser refuses to copy, the link is shown in the row it belongs to. The form ends with **Create invite link** and **Close**
     (`secondary`), as Invite toggles it (persona round, 2026-11-15, #1424); closing it takes the new link's sentence with it, and a link
@@ -2109,6 +2114,25 @@ under them read as one set:
 - **The current place** in the sidebar is the raised white pill in both themes, the profile row in Settings included.
 - **Appearance's tiles** have a 1 px `--line2` edge, the chosen one a 2 px `--t2` frame, and in dark the Light tile is dimmed.
 - **An unlock refusal** is said right under the field, as a field's error.
+- **Round 14** (persona round and second fresh-eyes review, 2026-11-17; "anything that looks ugly counts"):
+  - **A row that asks** keeps the role where it was: on Settings › Company, while Remove asks (Remove / Keep), Reset link steps aside and
+    the two answers take the actions' column alone. What Remove ends is said **under that person's row, starting under the name**, on
+    Settings › Company and in Space settings alike (it stood under the face, and in Space settings at the card's foot).
+  - **One role column**: a role that cannot be changed ("Owner", "Admin", "Guest") ends where a role menu's word ends, so every word
+    ends on one line and only the menus' chevrons stand after it.
+  - **Add people and Invite are one control**: the quiet "+ Add people" of Space settings is the "+ Invite" of the company, 14 px.
+  - **The company's invite form is a card of its own**, 16 px above the people's card; a form drawn as a card has no hairline between
+    its parts. Add people open in Space settings is one card: its search field is the only frame inside it.
+  - **A text button that starts a line takes its padding back** in Settings too, by the same one rule in `ui.css`: More under the invite
+    field, Close under Someone new?, Leave space and Sign out all other devices start where the field or card above them starts.
+  - **A person's second line** keeps "· Active …" together: a line never ends on the dot (the narrow People and encryption panel).
+  - **People and encryption** has one title, the panel's header: no "‹ Back" that only closed it, no second "People" under it.
+  - **Delete space** opens as every window that asks: its title with × in its head, and on the phone the sheet's grabber.
+  - **Company › Spaces** lists every space of the company: an encrypted space the admin is in is a row that opens it, with its lock.
+  - **Settings › AI's sections** have Settings' one heading, with their line under it, not beside it.
+  - **Someone no longer in the company** (left or removed) reads it in Settings too: Company says "You’re no longer in Riverside Bakery.
+    Ask an owner or admin of the company for an invite link to come back."; AI and Notifications are not offered (there is nothing to
+    connect AI to or to hear about), and their addresses say what Home says.
 
 #### Hide previews
 
@@ -2344,7 +2368,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   **`/ai` without an assistant opens Connect AI** (persona round, 2026-11-15, on the founder's "the same name does the same thing",
   [#1424](https://github.com/ColdPhase/flux/issues/1424)). Choosing `/ai` in the `/` menu (in a space, a thread, a task or a direct
   message) while the person has connected no AI opens the one **Connect AI** window in place, the same window as Settings › AI and
-  Home's Connect AI; the ask bar keeps "Not set up yet. **Connect your AI**" (short, so it shares the chip's row on a phone, round 14), which opens the same window. There is no
+  Home's Connect AI; the ask bar keeps "Your assistant · Not set up yet. **Connect your AI**" on one line also on a 390 px phone (round 14:
+  the longer "You haven't set up your assistant." left "Connect your AI" alone on a second line), which opens the same window. There is no
   side panel of its own (the MCP explainer panel is gone). `/ai` is listed whenever it can do something, to ask or to connect: a server that
   runs no AI (Settings › AI's "AI is off on this server") does not offer it, and typed anyway the bar says "AI is off on this server." with nothing
   to press. A guest is never offered it; typed, it says who can change that: "Guests don't have AI. An admin can make you a member."
@@ -2500,14 +2525,16 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
     makes the company's invite link (Member, 7 days, locked to that address) that also adds the person to this space when they
     join; the link is copied at once, under one sentence, "Invite link created and copied. It works once, for 7 days: paste it into your
     message to them." (#1424, persona B-4), and the cursor is back in the Email field for the next address (also when the field is empty
-    or wrong, with what to fix). **Every live link of the space is listed under its people, "Invited with a link · N"** (personas-36),
+    or wrong, with what to fix). **Every live link of the space is listed under its people, "Waiting to be used · N"** (personas-36; round 14: the
+    company's list and this one are one list, the same heading, row inset and buttons),
     read from the server, so the links made in New space are there too and none goes when Add people folds or the page is reloaded: each
     row the address, "Member · until 23 Nov · by Ada Kowalska (you)", **Copy link** and **Revoke** (asked once in place, as in Settings ›
     Company); the link just made shows once in its row in a read-only field. A link used, revoked or expired leaves the list. The panel shows no dead control: **Add n people**
     and Cancel while someone is ticked, otherwise one **Close**. An address that already has an account in the company is
     simply ticked in the list instead. The inviter gets "<name> joined <company>" naming the space when they join. A space admin
     who is not a company admin has no such row. About 6 clicks instead of 13.
-  - The AI switch. A guest, who has no AI, has no AI row (#1424).
+  - The AI switch, under the section's "AI": its row says **Let AI agents help in this space**, not "AI" a second time (round 14). A guest,
+    who has no AI, has no AI row (#1424).
   - **GitHub**, for the space's admins: one row, **GitHub repositories**, that leads to the GitHub page (where repositories are connected and
     managed), which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
     settings, so the panel is gone and GitHub is a setting of the space like the others (founder decision, Hubert, 2026-11-13,

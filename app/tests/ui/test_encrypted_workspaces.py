@@ -214,12 +214,13 @@ class Base(unittest.TestCase):
             page.goto(f"/projects/{self.world.a_project}/settings")
             expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
         page.locator("[data-encrypted-keys]").click()
+        # One title (round 14): the panel's header says "People and encryption"; its people's heading names the space.
         try:
-            expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+            expect(page.locator("#details").get_by_role("heading", name="People and encryption", exact=True)).to_be_visible()
         except AssertionError:
             print("DEBUG open_people:", page.url, page.locator("body").inner_text()[:1500].replace("\n", " | "))
             raise
-        expect(page.locator(".details__eyebrow", has_text=space)).to_be_visible()
+        expect(page.locator("#people-here")).to_contain_text(space)
         # The panel slides in (#593): positions are measured only once it has stopped.
         settled(page)
 
