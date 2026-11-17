@@ -610,7 +610,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const record = () => {
       frame = 0;
       const userMoved = performance.now() - personAt < 500;
-      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || performance.now() <= settleUntil)) return;
+      // A feed that got shorter since the observer last saw it (the composer grew) is not the reader moving away from the end: the observer
+      // keeps the end first (round 15: a scroll measured between the two left the newest message under the staged files).
+      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || feed.clientHeight !== feedHeight || performance.now() <= settleUntil)) return;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
       if (userMoved) {
