@@ -333,7 +333,9 @@ class MessageFormatting(unittest.TestCase):
         page.go_back()
         wiki = page.locator(".message-body", has_text="Wiring first").first.locator(".ref-chip[data-ref=wiki]")
         expect(wiki).to_have_text("Probe wiring")
-        # The feed may draw its rows again as its reads settle after Back: the press finds the chip as it is then (focus, then Enter, in one step).
+        # Back on the conversation, the cursor goes to its composer once the feed settles (F-026 §4); with more messages above that lands later,
+        # and could take the focus between the test's focus and its Enter. Wait for it, then press on the chip.
+        expect(page.locator("#project-composer")).to_be_focused()
         wiki.press("Enter")
         page.wait_for_url(re.compile(rf"/projects/{project}/docs/{doc.json()['id']}$"))
 
