@@ -2062,8 +2062,8 @@ under them read as one set:
   - **Add people and Invite are one control**: the quiet "+ Add people" of Space settings is the "+ Invite" of the company, 14 px.
   - **The company's invite form is a card of its own**, 16 px above the people's card; a form drawn as a card has no hairline between
     its parts. Add people open in Space settings is one card: its search field is the only frame inside it.
-  - **A text button that starts a line takes its padding back** in Settings too: More under the invite field, Close under Someone new?,
-    Leave space and Sign out all other devices start where the field or card above them starts.
+  - **A text button that starts a line takes its padding back** in Settings too, by the same one rule in `ui.css`: More under the invite
+    field, Close under Someone new?, Leave space and Sign out all other devices start where the field or card above them starts.
   - **A person's second line** keeps "· Active …" together: a line never ends on the dot (the narrow People and encryption panel).
   - **People and encryption** has one title, the panel's header: no "‹ Back" that only closed it, no second "People" under it.
   - **Delete space** opens as every window that asks: its title with × in its head, and on the phone the sheet's grabber.

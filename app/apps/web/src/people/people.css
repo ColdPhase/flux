@@ -41,7 +41,8 @@
 .people__add, .sset-card.people__add { display: grid; gap: 14px; }
 /* #1438: the invite form keeps the role and the expiry under a quiet More. */
 .people__add > .people__more { justify-self: start; }
-/* Its More starts where the field above it starts: a text button that starts a line under text takes its padding back (round 14: 12 px in). */
+/* Its More starts where the field above it starts, as ui.css's one rule for a text button that starts a line (round 14: 12 px in); it is
+   not its row's first child (the field is), so it is named here. */
 .people__add > .people__more.ui-btn { margin-inline-start: -12px; }
 /* The company's invite form is a card of its own between People's heading and the people's card, 16 px above it (round 14 P2: Create invite link
    and Close touched the card under them). */

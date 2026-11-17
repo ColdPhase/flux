@@ -266,7 +266,7 @@ function Sessions() {
             ))}
           </ul>
         )}
-      {others > 1 ? <div className="details__actions sset-gap"><Button variant="secondary" className="sset-hang" busy={busy === 'others'} onClick={() => void end('others')}>Sign out all other devices</Button></div> : null}
+      {others > 1 ? <div className="details__actions sset-gap sset-lead"><Button variant="secondary" busy={busy === 'others'} onClick={() => void end('others')}>Sign out all other devices</Button></div> : null}
       <p className="sset-acct__done" role="status">{status}</p>
     </section>
   );

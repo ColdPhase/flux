@@ -128,8 +128,6 @@
 .spset__add .pick:has(> .pick__list) > .pick__list { padding: 0; overflow-x: visible; }
 .spset__add .pick__filter { margin: 0 0 4px; }
 .spset__add .newspace__foot { justify-content: flex-start; }
-/* A lone Close starts where the fields above it start (round 14: 14 px right of them): a text button that starts a line takes its padding back. */
-.spset__add .newspace__foot > .ui-btn--secondary:only-child { margin-inline-start: -14px; }
 /* #1438: "Someone new?" under the company's people: an email and Invite on one row; its link and status under them. */
 .spset__new { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .spset__newform { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
@@ -140,8 +138,6 @@
 .spset__status:empty { display: none; }
 .spset__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .spset__actions .ui-btn { min-height: 32px; }
-/* Leave space starts where the cards above it start: a text button that starts a line takes its padding back (round 14, as Close above). */
-.spset__actions > .ui-btn--secondary:first-child { margin-inline-start: -14px; }
 /* Delete is destructive, and keeps a clear style: a 1 px outline, never the inverted fill (Prostota, quiet buttons). */
 .ui-btn--danger.spset__delete { color: var(--t1); }
 
