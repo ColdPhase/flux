@@ -168,7 +168,7 @@ class PageLeaving(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         # The company's people have one place, Settings › Company (F-037, #874); Home has no Details for an unencrypted company (#865).
         page.goto("/settings/company")
-        alert = page.get_by_role("alert").filter(has_text="The people here couldn’t be loaded. Try again.")
+        alert = page.get_by_role("alert").filter(has_text="The people here couldn’t be loaded.")  # one "Try again", founder direction 2026-11-17 visual review
         expect(alert).to_be_visible()
         self.assertEqual(failures["left"], 0, "the read really failed")
         alert.get_by_role("button", name="Try again").click()

@@ -100,7 +100,7 @@ class SmallMomentsJourney(unittest.TestCase):
                     face = page.locator(".nyq__clear .kreska")
                     expect(face).to_have_attribute("data-expression", "done")
                     box = face.bounding_box()
-                    self.assertEqual((round(box["width"]), round(box["height"])), (96, 96))
+                    self.assertEqual((round(box["width"]), round(box["height"])), (80, 80))  # one empty state, founder direction 2026-11-17 visual review
                     # It never covers the words and sits above them.
                     title = page.get_by_role("heading", name="Nothing needs you right now").bounding_box()
                     self.assertLess(box["y"] + box["height"], title["y"])
