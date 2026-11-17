@@ -87,6 +87,8 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
         <span className="wd-agent__text">{state.budget && state.resumesAt
           // The key's budget (train 37 rows 36-37): when it starts again, and for its owner where the budget is raised.
           ? `${state.text}. It starts again at ${clock(state.resumesAt)}${state.agent.owner.id === me.user.id ? ', or raise the budget in Settings › AI' : ''}.`
+          // Stopped part way by what was left of the key's budget (round 15 ai P2-1): its owner is told where to raise it.
+          : state.budget ? `${state.text}${state.agent.owner.id === me.user.id ? '. Raise the budget in Settings › AI, then Try again.' : '.'}`
           : `${state.text}${state.resumesAt ? `, resumes at ${clock(state.resumesAt)}` : ''}`}</span>
         <span className="wd-agent__actions">
           {state.canStop ? <Button variant="secondary" size="sm" busy={busy === 'stop'} onClick={() => void act('stop', () => stopTaskAgent(item.id))}>Stop</Button> : null}

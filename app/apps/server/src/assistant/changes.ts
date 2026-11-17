@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import {
-  ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
+  ASSISTANT_CHANGE_SKIPPED_EVENT, ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
   conversationAssistantChangesPath, projectAssistantChangesPath, WORK_LIMITS, type AssistantChange, type MessageFile, type AssistantChangeDecision, type AssistantObjectType, type AssistantRunUndone,
 } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
-import { assistantChangeRows, changeGroup, isCompanyGuest, schema, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { assistantChangeRows, assistantRemovalRows, changeGroup, eventRepository, isCompanyGuest, schema, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
-  type Principal } from '@flux/core';
+  principalKey, type Principal } from '@flux/core';
 import { CHANGED_SINCE, REMOVAL_OPERATIONS, requireAiOn, undoChange } from './undo.js';
 import type { SessionResolver } from '../identity/index.js';
 import { expectedVersion } from '../http/commands.js';
@@ -215,6 +215,18 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     }
     return told;
   }
+  /**
+   * The made decisions and messages of the assistant's that people's use keeps for good (a discussion, a decision, a reply): their Undo is not
+   * offered, here or in the message's Undo (round 15 ai P2-4). A line in a task's thread is its owner's to delete whatever follows (TA-3).
+   */
+  async function keptByUse(list: readonly AssistantChangeRow[]): Promise<Set<string>> {
+    const kept = new Set<string>();
+    for (const row of list) {
+      if ((row.state !== 'applied' && row.state !== 'applied_after_wait') || !row.objectId || !REMOVAL_OPERATIONS.has(row.operation) || isThreadLine(row)) continue;
+      if (await assistantRemovalRows(db as DbExecutor).keptByUse(row.operation, row.objectId)) kept.add(row.id);
+    }
+    return kept;
+  }
   /** `hideState`: a space the viewer can no longer read does not tell them where a hand-off's unit stands now (#1003). */
   async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true, hideState: (row: AssistantChangeRow) => boolean = () => false): Promise<AssistantChange[]> {
     const told = await everyoneTold(list);
@@ -222,6 +234,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     const states = await rows().runStates([...new Set(list.flatMap((row) => row.runId ? [row.runId] : []))]);
     // A hand-off says where the unit stands now, in the owner's words for the agent: "Codex hasn't started it yet".
     const units = await rows().unitStates(list.flatMap((row) => { const plan = undoOf(row)?.plan; return plan?.kind === 'handoff' ? [plan.unitId] : []; }));
+    const kept = await keptByUse(list);
     return list.map((row) => {
       const args = (row.preparedCommand?.args ?? {}) as { changes?: Record<string, unknown> };
       const words = assistantChangeWords(row.operation, assistantWorkChangeArgs(args.changes ?? {}));
@@ -237,7 +250,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         done: assistantDoneWords({ operation: row.operation, objectType: row.objectType, objectTitle: row.objectTitle, status: statusOf(row), phrase }),
         runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: tells.length ? null : undoOf(row)?.before ?? null, after: tells.length ? toldWords(row) : undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
-        undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
+        undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row) && !kept.has(row.id),
         ...pictureOf(row),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,
         version: row.version, createdAt: row.createdAt.toISOString() };
@@ -355,7 +368,13 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       if (!locked) throw missing();
       if (expected !== undefined && expected !== locked.version) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
       if (locked.state !== 'waiting') return locked;
-      return r.update(row.id, { state: 'skipped', waitReason: null, decidedBy: userId, decidedAt: clock() });
+      const skipped = await r.update(row.id, { state: 'skipped', waitReason: null, decidedBy: userId, decidedAt: clock() });
+      // The owner's other screens hear it at once (round 15 ai P2-2): Approve changes the task and is heard through it, but a Skip changes only
+      // this row, so a task panel open on the computer kept "Waiting for your OK" with Approve and Skip. The event goes to the owner alone, who
+      // alone sees what waits, with ids only.
+      await eventRepository(tx as DbExecutor).insert({ id: randomUUID(), kind: ASSISTANT_CHANGE_SKIPPED_EVENT, objectId: row.projectId,
+        actorId: principalKey(principal), data: { changeId: row.id }, workspaceId: row.workspaceId }, [principalKey({ kind: 'human', id: row.ownerUserId })]);
+      return skipped;
     });
     return { change: await viewOne(updated), message: null };
   }
@@ -474,6 +493,9 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         && (row.operation !== 'work.create' || row.ownerUserId === who) && (!REMOVAL_OPERATIONS.has(row.operation) || row.ownerUserId === who)
         // A line the run put in a task's thread is taken back at the line (#923), not with the run's other changes.
         && !isThreadLine(row)).reverse();
+      // What people's use keeps (a discussed proposal, a message with replies) is not part of an Undo any more, as it is not offered (P2-4).
+      const kept = await keptByUse(list);
+      for (let index = list.length - 1; index >= 0; index--) if (kept.has(list[index]!.id)) list.splice(index, 1);
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       // The tasks whose Done, marked by the agent itself, this Undo took back.
       const undidDone = new Set<string>();

@@ -534,15 +534,18 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .flux-logo__tile { fill: var(--inv); }
 .flux-logo__face { color: var(--oninv); }
 
-/* An agent: Kreska and its one label, "Planner · Ada's agent", on one line (AgentIdentity.tsx, #1364). */
-.agent-id { display: inline-flex; align-items: center; gap: 4px 6px; max-width: 100%; min-width: 0; font-family: var(--font); }
+/* An agent: Kreska and its one label, "Ada's Planner", on one line (AgentIdentity.tsx, #1364; round 15 ai P2-5). */
+/* The label sets the line's baseline and Kreska and the tag stand centred on it, so words after it in the same line ("· today") sit on the
+   label's baseline, not on the icon's foot (round 15 ai P3, J04). */
+.agent-id { display: inline-flex; align-items: baseline; gap: 4px 6px; max-width: 100%; min-width: 0; font-family: var(--font); }
+.agent-id > :not(.agent-id__label) { align-self: center; }
 .agent-id__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-id__name { font-weight: 600; color: var(--t1); }
 .agent-tag {
   display: inline-flex; align-items: center; gap: 3px; flex: none; height: 18px; padding: 0 7px 0 4px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-1), inset 0 0 0 1px var(--line); font-size: var(--fs-glyph); font-weight: 600; color: var(--t1);
 }
-.agent-for { color: var(--t2); font-weight: 400; }
+.agent-for { color: inherit; font-weight: inherit; }
 @media (max-width: 680px) { .agent-tag { min-height: 20px; height: auto; font-size: var(--fs-xs); } }
 
 /* ---------- Avatar: people are grey circles with initials ---------- */

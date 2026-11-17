@@ -128,6 +128,10 @@
 .agc__sched-offer { cursor: default; padding-block: 6px; }
 .agc__sched-offer:hover { background: var(--el); }
 .agc__sched-panel { margin-top: 8px; max-height: 45vh; overflow-y: auto; overscroll-behavior: contain; }
+/* The open list ends the header at a --line hairline, as the phone's header meets a scrolled page, so the history under it reads as scrolled
+   under the header and never as a day line the list lies on (round 15 ai P3). */
+.agc__top:has(.agc__sched-panel) { border-bottom: 1px solid var(--line); }
+.agc__top:has(.agc__sched-panel) .agc__sched { margin-bottom: 10px; }
 .agc__sched-panel .agp__memory { margin: 0; }
 /* What a prepared schedule will do, with Turn on and Change (mockup: the card under the agent's reply) */
 .agc__ready { display: flex; flex-direction: column; gap: 6px; max-width: 100%; margin-top: 8px; padding: 12px 14px; border-radius: 14px; background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }

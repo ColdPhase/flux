@@ -246,6 +246,11 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     assert.deepEqual(resultOf(run({ endReason: 'sign_in_again', provider: 'openai' }), 'UTC', at), { state: 'failed', line: 'Sign in to ChatGPT again' });
     assert.deepEqual(resultOf(run({ status: 'completed', answerBody: 'Nothing to report' }), 'UTC', at), { state: 'done', line: 'Done: nothing to report' });
     assert.deepEqual(resultOf(run({ status: 'completed', answerBody: 'Three tasks are due.\nTwo are mine.' }), 'UTC', at), { state: 'done', line: 'Done: Three tasks are due.' });
+    // Round 15 ai P3: a long first line is its first sentence, or whole words with "…", never cut mid-sentence ("…created today between").
+    assert.deepEqual(resultOf(run({ status: 'completed', answerBody: 'Since the previous working day, all 13 tasks in Spring fair 2027 are new or changed. They were all created today between 14:25 and 14:40 by Ola.' }), 'UTC', at),
+      { state: 'done', line: 'Done: Since the previous working day, all 13 tasks in Spring fair 2027 are new or changed.' });
+    const long = resultOf(run({ status: 'completed', answerBody: `${'Every open task in the fair space is listed here with its owner and its due day '.repeat(3)}end` }), 'UTC', at).line;
+    assert.ok(long.endsWith('…') && !/\s…$/.test(long) && long.length <= 'Done: '.length + 120, long);
     assert.deepEqual(resultOf(run({ status: 'stopped' }), 'UTC', at), { state: 'skipped', line: 'Stopped' });
   });
 

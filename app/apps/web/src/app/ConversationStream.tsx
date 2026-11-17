@@ -854,7 +854,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
     message.focus({ preventScroll: true });
   };
   const reverted = notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted';
-  const task = <TaskObjectRow workId={notice.workId} number={notice.workNumber} title={title} row={current} reverted={reverted} onOpen={() => onOpenTask(notice.workId)} />;
+  const task = <TaskObjectRow workId={notice.workId} number={notice.workNumber} title={title} row={current} reverted={reverted} onOpen={() => onOpenTask(notice.workId)} owners={owners} />;
   return (
     <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />

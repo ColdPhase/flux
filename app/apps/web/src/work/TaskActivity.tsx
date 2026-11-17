@@ -373,7 +373,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                 <div className="wd-act__body">
                   <p className="wd-act__who">
                     {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} hue={shown.colour} /><span className="ui-vh">, shown by {name}</span></>
-                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} /> : <b>{youLabel(name, mine)}</b>}
+                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} tag /> : <b>{youLabel(name, mine)}</b>}
                     {message.via && !shown ? <span className="project-convo__via">via {message.via}</span> : null}
                     <time dateTime={message.createdAt} title={when(message.createdAt)}>{stamp(message.createdAt)}</time>
                     {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}

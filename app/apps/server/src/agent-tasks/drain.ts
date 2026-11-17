@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, personalRunWebReadRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { plainPreviewText } from '@flux/contracts';
-import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, withoutCitationMarks, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takenWords, takeAsk, taskRunClientId, endedSourcesLine,
+import { agentLabel, BUDGET_SHORT_SAID, answerLines, askableLines, createPersonalRunUseCases, DomainError, withoutCitationMarks, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takenWords, takeAsk, taskRunClientId, endedSourcesLine,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
@@ -343,9 +343,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     }
     if (ended === 'stopped') {
       if (!holds) return;
-      const by = run.stopRequestedBy ? await rows.personName(run.stopRequestedBy) : null;
       // With AI off the agent cannot write here any more: the state line tells its owner (C-17), and the task goes back.
-      if (run.endReason !== 'ai_off') await say(tx, work, run.agentId, `Stopped${by ? ` by ${by}` : ''}.`, `stopped:${run.id}`);
+      // Who stopped it is said by the task's history line under it, "Marek Zieliński (you) stopped Assistant" for each reader, and by the state line:
+      // the agent's own line, the same words for everyone, does not name them a third time without the reader's "(you)" (round 15 ai P3).
+      if (run.endReason !== 'ai_off') await say(tx, work, run.agentId, 'Stopped.', `stopped:${run.id}`);
       // A stop, not a finish: the task's history says who stopped it and that it is back with its owner (v0.2.1 release gate, M21).
       await giveBack(tx, work, run.ownerUserId, run.stopRequestedBy ?? run.ownerUserId, undefined, run.stopRequestedBy ? 'agent_stopped' : 'agent_rule');
       return;
@@ -358,8 +359,9 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       await giveBack(tx, work, run.ownerUserId, run.ownerUserId, undefined, 'agent_unable');
       return;
     }
-    // A run that failed keeps the task with the agent: its owner chooses Try again or Take it back.
-    await say(tx, work, run.agentId, 'I couldn\'t finish this.', `failed:${run.id}`);
+    // A run that failed keeps the task with the agent: its owner chooses Try again or Take it back. One the key's budget stopped part way says so
+    // (round 15 ai P2-1): the budget is what to raise, not a failure to puzzle over.
+    await say(tx, work, run.agentId, run.endReason === 'budget' ? BUDGET_SHORT_SAID : 'I couldn\'t finish this.', `failed:${run.id}`);
   }
 
   /**

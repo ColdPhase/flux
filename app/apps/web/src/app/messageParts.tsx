@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ownerInLabel, type AgentColour, type ConversationMessage } from '@flux/contracts';
+import { agentNamed, ownerInLabel, type AgentColour, type ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles } from '../composer/Outbox';
@@ -116,7 +116,8 @@ export { AuthorFace } from '../ui';
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
 export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
-  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} hue={message.author.colour} />;
+  // A message's name line carries the "Agent" tag, as an answer shown to everyone does (#1232): the same name and the same look (round 15 ai P2-5).
+  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} hue={message.author.colour} tag />;
 }
 
 /**
@@ -193,7 +194,8 @@ export function shownLabel(shown: { agent: string }, asker: string): { label: st
   // The asker as an agent's label names its owner (C-56, #1424): their first name, or the whole marked name of someone removed, "Marek Zieliński
   // (removed)'s Assistant" (train 37 rows 32-33).
   const first = ownerInLabel(asker);
-  return { label: `${first}'s ${shown.agent}`, spoken: `${first}'s ${shown.agent}, shown by ${first}` };
+  // The agent's own one label (`agentNamed`): the same name its own messages have, so one agent has one name (round 15 ai P2-5).
+  return { label: agentNamed(shown.agent, asker), spoken: `${agentNamed(shown.agent, asker)}, shown by ${first}` };
 }
 
 /** The name line of a shown answer: its label and the "Agent" tag, with "shown by" for a screen reader. */

@@ -85,7 +85,10 @@ own.
   - its **Ask me first** switch (AG-3).
 - All of a person's agents share the person's connections and rights. Mixed agents are normal:
   Planner on a Claude plan, Reviewer on a ChatGPT plan.
-- An agent has one label everywhere, for example "Planner · Ada's agent".
+- An agent has one label everywhere, for example "Ada's Planner": its owner's first name and its own name, the very name an answer Ada
+  posted with Show everyone has (#1232), so one agent never has two names on one screen (v0.2.1 release gate round 15, ai P2-5, which
+  replaced "Planner · Ada's agent"). What agents read keeps C-56's form, "Planner (Ada's agent)", so to them a shown answer, "Ada's
+  Planner", stays the person's message.
 - Agents are listed in Settings › AI and in Messages. They are not members of a space and have
   no space roles. In a space they appear as task owners, in task discussions, and as a small
   face in the space header while they work.
@@ -204,6 +207,12 @@ was deleted, or a task it says it affects does not exist), it applies nothing an
   An item changed since says "Changed since · Open" and does nothing. The line then reads
   "Undone by Ada".
 - The owner, or anyone who may edit the object, may Undo.
+- What people's use keeps for good is not offered for Undo and is not part of a message's Undo: a decision the agent proposed once someone
+  wrote about it or decided it, and a message once someone replied after it. Where an Undo meets such a use as it happens, its words
+  ("Replies since. Open it") open the decision, the task, the page or the message (v0.2.1 release gate round 15, ai P2-4).
+- A `/ai` answer whose asker undid everything it made stays theirs: it no longer offers Show everyone (round 15 ai P3).
+- Approve and Skip reach the owner's other screens at once: a Skip is a live event to the owner alone, so a task panel open on the
+  computer drops the card the phone skipped (round 15 ai P2-2).
 - A local client's change carries the same line where it was made: on its message, and on the task,
   Wiki page or map it changed, "Ada · via Claude Code" (LC-2, #868).
 
@@ -304,7 +313,10 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   your OK, paused by the provider's limit (with when it resumes), failed (with Try again or Take
   it back), stopped (by whom), done, or handed back. A run that waits for its owner's API key's next day says so wherever it shows: "Waiting: today's AI
   budget is used up. It starts again at 0:00, or raise the budget in Settings › AI." on the line and the working card, and the
-  agent's first words in the task are that it waits, never "I'm on it" (train 37 row 36).
+  agent's first words in the task are that it waits, never "I'm on it" (train 37 row 36). A run the key's budget stops part way,
+  because what was left could not hold its next request (the model gateway holds a request's most before it is sent), says so too, never
+  "Couldn't finish": "Stopped: not enough of today's AI budget was left", with "Raise the budget in Settings › AI, then Try again" for its
+  owner, and the agent says "I stopped: not enough of today's AI budget was left for my next step." in the task (round 15 ai P2-1).
 - **Finishing** follows the agent's Ask me first switch: off, it marks the task Done and tells
   the owner, with Undo; on, it hands the task back, "Ready for you to check". **One exception:** a task that is Blocked when
   the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
@@ -314,7 +326,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.
   Its next call is refused, and the changes it made stay, with Undo. The owner is told who
   stopped it: the state line reads "Stopped by Maja" and the agent's private conversation gets
-  the same line, not an Inbox item (AG-7). Stopping gives the admin no other power over the
+  the same line, not an Inbox item (AG-7). In the task the agent says only "Stopped.": the task's history line under it names who
+  stopped it in each reader's words, "Maja Nowak (you) stopped Planner" (round 15 ai P3). Stopping gives the admin no other power over the
   agent: only the owner prompts or configures it (AG-2).
 - **Changing the Owner is a Stop.** A person who changes a task's Owner away from an agent
   (taking it back, or giving it to someone else) also ends what a local client had claimed on
@@ -451,7 +464,9 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
 - The owner makes a schedule by telling an agent in its private conversation, for example
   "Every weekday at 9 summarise new tasks for me". The agent answers in plain words with what it
   prepared and the owner confirms it there with one tap. Its answer, the schedule's name and its instruction are in the language the owner
-  asked in, the same rule as `/ai`, never one guessed from a name or a time zone, and every run of it reports in that language; the card
+  asked in, the same rule as `/ai`, never one guessed from a name or a time zone, and every run of it reports in that language. Flux
+  holds it to that: when the name and instruction the agent prepared are plainly in another language than the owner's message, the
+  schedule takes the owner's own words as its instruction and its first words as its name (round 15 ai P2-6); the card
   shows the instruction in plain words, without tool names or the run's cite marks (v0.2.1 real-model gate, train 37 rows 16, 25-26). A
   schedule's result in the chat drops the bare `[1]` numbers of sources it cannot list, as a report does (AG-7). Nothing else makes a schedule: not `/ai`
   in a space, and not a run of a schedule.

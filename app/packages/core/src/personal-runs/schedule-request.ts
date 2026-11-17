@@ -4,6 +4,7 @@ import { takeScheduleBlocks, type ScheduleRequest } from '../assistant/schedule-
 import type { AnswerCleaner } from './answer-addresses.js';
 import type { PersonalRunPorts, RunRecord } from './ports.js';
 import { writtenAddresses } from './web-addresses.js';
+import { inOwnersLanguage } from './schedule-language.js';
 
 /**
  * A run's answer as it will be committed, worked out before the commit's transaction (#1156): that transaction holds the space's task lock,
@@ -36,11 +37,12 @@ export async function preparedAnswer(answer: string, cleaner: AnswerCleaner, cit
  * schedule that stays off until their tap. Any other run's block (`/ai` in a place, a schedule's run) is removed and does nothing (AST-7.5).
  * Inside the commit's transaction, on the prepared answer.
  */
-export async function answerWithSchedule(ports: PersonalRunPorts, run: Pick<RunRecord, 'id' | 'kind' | 'ownerUserId' | 'projectId' | 'dmId' | 'agentId'>,
+export async function answerWithSchedule(ports: PersonalRunPorts, run: Pick<RunRecord, 'id' | 'kind' | 'ownerUserId' | 'projectId' | 'dmId' | 'agentId' | 'prompt'>,
   answer: Pick<PreparedAnswer, 'text' | 'schedule'>): Promise<string> {
   // Only what the owner says to their agent in its private chat prepares a schedule (AG-9): not `/ai` in a space, not a run of a schedule.
   if (run.kind !== 'ask' || !answer.schedule || !ports.schedules || run.projectId !== null || run.dmId !== null) return answer.text;
-  const prepared = await ports.schedules.prepare(run.ownerUserId, run.agentId, run.id, answer.schedule);
+  // Its name and instruction in the language the owner asked in, held by Flux and not only asked of the model (round 15 ai P2-6).
+  const prepared = await ports.schedules.prepare(run.ownerUserId, run.agentId, run.id, inOwnersLanguage(answer.schedule, run.prompt));
   if (!prepared.ok) return `${answer.text}\n\nI couldn't prepare that schedule: ${prepared.message}`.trim();
   return answer.text || `Ready: ${prepared.title}, ${prepared.words}. It stays off until you turn it on.`;
 }

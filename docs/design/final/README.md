@@ -42,7 +42,9 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
    word. The only colours are user content (photos) and each agent's own colour on its Kreska.
 5. **Agents are recognisable, never mistaken for people.** People are grey circles with initials,
    or with the photo they chose (F-039). Agents are Kreska and carry one label everywhere:
-   "Planner · Ada's agent", and never have a photo.
+   "Ada's Planner" (the owner's first name and the agent's own name, the name an answer Ada showed everyone has too, #1232), and never
+   have a photo. One agent never has two names on one screen (v0.2.1 release gate round 15, ai P2-5, which replaced "Planner · Ada's
+   agent").
 6. **Undo instead of confirmations.** Quick actions apply at once and offer Undo. Deleting and
    other people's things always wait for an OK.
 7. **One plain word per thing, and controls stay put.** Space, Task, Thought, Map, Decision, Page:
@@ -518,7 +520,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - moment 7, "No match in this project" with its "Search all projects" button (one search covers
   everything you can see, S16; no results show the Looking face);
 - "project" as a word for a place (it is a Space), and agent labels such as "Claude Code for Ada"
-  (an agent carries one label, "Planner · Ada's agent").
+  (an agent carries one label, "Ada's Planner").
 
 ## 4. Structure and navigation
 
@@ -822,7 +824,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Discuss writes in the decision's one discussion, a thread on its card that its panel also shows (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)). Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Planner · Ada's agent is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); accepting it changes that card in place, with who accepted it and when on the card, and adds no line (founder decision D, #1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Ada's Planner is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); accepting it changes that card in place, with who accepted it and when on the card, and adds no line (founder decision D, #1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |
@@ -853,8 +855,8 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 - **Someone who left the company or was removed** is "Stefan Kowal (removed)" in every one of those places, and in Search and in what
   agents read (founder decision, Hubert, 2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a message, a thread, a
   decision's discussion, a task, its history, a Wiki version, a notice in the conversation, a Search result, a direct message (its row in
-  Messages, its header, its messages and threads) and the Inbox line that says who an item is from. Their agents are "Planner · Stefan
-  Kowal (removed)'s agent" (to agents, "Planner (Stefan Kowal (removed)'s agent)"). "Former member" is never used for them; Restore takes
+  Messages, its header, its messages and threads) and the Inbox line that says who an item is from. Their agents are "Stefan Kowal
+  (removed)'s Planner" (to agents, "Planner (Stefan Kowal (removed)'s agent)"). "Former member" is never used for them; Restore takes
   the mark off. Their name is shown only where it is already in a space's or a conversation's history, to the people who read it; someone
   who was never in the company or the space is never named. "Former member" stays only for someone who left a space and is still in the
   company, where the reader cannot be told their name: a guest's view of the space and an agent's read of it ("Former member", and "Planner
@@ -864,8 +866,8 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   (you)" among People (personas-37).
 - First names stay only in the short summaries drawn with them: a notice's preview ("Maja: I moved…"), "Seen by Maurycy", a finished
   call's list of who was in it, Home's "since you were away" lines ("Ari and Kai replied in …", [return view](../../development/return-view.md))
-  and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant"; an owner who left the company or was removed keeps the whole
-  marked name, "Planner · Stefan Kowal (removed)'s agent").
+  and an agent's one label ("Ada's Planner", "Hubert's Assistant"; an owner who left the company or was removed keeps the whole
+  marked name, "Stefan Kowal (removed)'s Planner").
 
 **Connection labels on the map (#481, 2026-10-11)**
 
@@ -1147,7 +1149,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
 
 - The date, "Good morning, Ada", then two cards. **Waiting for you** (the count, and "Open Inbox"
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
-  without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you". A blocked task's row keeps
+  without Accept; an agent run is one row, "Ada's Planner · 3 things wait for you". A blocked task's row keeps
   what it waits for under its title, as the Inbox does ("Waiting for Basia Wrona · the new seals", persona round 6).
 - **Continue where you left off** holds what you last worked on, such as a task with its state
   ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what waits in your Inbox
@@ -1272,7 +1274,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
   "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while
   someone is in the call and you are not. It leaves when you join (from here, from the notice, from the space's Join or from the
   call line) and when the call ends.
-- **One item per agent run:** "Planner · Ada's agent · Rain barrel monitor", "3 things wait for
+- **One item per agent run:** "Ada's Planner · Rain barrel monitor", "3 things wait for
   you", what they are (Delete the page “Old notes” · a task for Jonas · a task for Maja), then
   Approve all and Open. The phone lists the three things and the line "Deleting and other
   people's things always wait for your OK." The same requests also show in the task's discussion.
@@ -1816,7 +1818,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   are only Previous and Next when there is another page ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
-  tag ("Planner · Ada's agent") or "No owner". **"No owner" is the one word for a task nobody owns** (v0.2.1 personas round): Create's
+  tag ("Ada's Planner") or "No owner". **"No owner" is the one word for a task nobody owns** (v0.2.1 personas round): Create's
   Owner, the Board's card, the List row (the same "No owner" inside its line), the conversation's card and the task panel's Owner row and menu
   all say it; the control's label stays "Owner", and nothing says "Assign" or "Nobody yet". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
   whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
@@ -1827,9 +1829,12 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   to Doing by itself.
 - **My tasks** lists a task as every other list does (personas-33): its state glyph with its word, then its number and title
   ("Doing · #8 Order two frost sensors"), and a blocked task's line under it.
-- **An agent's label** is one line, "Planner · Ada's agent", on a card, in a List row, in the panel's
-  Owner row and in its discussion (#1364). The word "agent" is in the label, so it has no separate "Agent"
-  tag and no "for <owner>"; only while the owner is not known does the name carry the "Agent" tag.
+- **An agent's label** is one line, "Ada's Planner", on a card, in a List row, in the panel's
+  Owner row and in its discussion (#1364), and on a conversation's task card, never the bare "Planner" (round 15 ai P3). Kreska beside it
+  says it is an agent, so a row, a card and a sentence ("Ada's Planner proposed a decision") carry no "Agent" tag; a message's name line
+  does, as an answer shown to everyone does (#1232), so an agent's own message and a shown answer look the same (round 15 ai P2-5). Only
+  while the owner is not known does the bare name carry the tag everywhere. The label sets its line's baseline: words after it in the same
+  line ("Proposed · Ada's Planner · today") sit on it, not on Kreska's foot (round 15 ai P3).
 - **The task panel**: "#4 · Rain barrel monitor", the title, then Status, Owner (people, then
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
   done"), the one discussion and "Write about this task…". **Every discussion lists oldest first**, the newest at the bottom just
@@ -2335,12 +2340,16 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     bold in Messages until read, as every unread conversation (#1424 decision 10).
   - Schedules are listed in the conversation's header and confirmed in the agent's reply, with
     Turned on and Change. This is the only place they are listed and changed (founder decision,
-    Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9).
+    Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9). The open list ends the header at a `--line`
+    hairline, so the history scrolls under the header and no day line seems to lie under the list; a row's last run is its first
+    sentence, or whole words ending in "…", never cut mid-sentence (round 15 ai P3).
   - **The morning summary is offered once, by Assistant.** While Assistant (the agent that answers
     `/ai`) has no schedule, its chat shows, in the place of the schedule line, one row: the `clock`
     icon, "Morning summary · Every weekday at 9:00" and an outline Turn on. Turned on, it is an ordinary
     schedule in that line. No other agent offers it, and no page does.
-- **In a task** the agent writes in the one discussion, under its label.
+- **In a task** the agent writes in the one discussion, under its label. "In this task" names the people, then whose agents are there:
+  "Basia and Ola, with Ola's agent", or "with their agents" when several people have one, never "Basia and Ola and their agent"
+  (round 15 ai P3).
   - An agent may ask another person's agent, and both owners must be in the task.
   - A message that changed something ends with its change line and Undo; after Undo the line is
     struck through and ends "Undone by Ada".

@@ -129,16 +129,16 @@ test('"Stan Kowal (removed)" in the readers that still named him plainly: an age
   // The space's call lines as its conversation reads them (the route is the live server's; no media is needed for an ended call).
   const removedInCall = async () => ((await listCallLines(db, { participants: async () => [] }, { kind: 'human', id: lead.id }, place.id, null)).items
     .find((item) => item.id === call) as { removed?: Record<string, string> } | undefined)?.removed;
-  assert.equal(await label(), 'Planner · Stan\'s agent');
+  assert.equal(await label(), 'Stan\'s Planner');
   assert.deepEqual([await proposer(), await accepter(), await removedInCall()], ['Stan Kowal', 'Stan Kowal', undefined]);
   // Out of the space only: his name is not told to the guest, who no longer shares the space with him (the space's rule, `projectAuthorOwners`).
   await removeFromSpace(lead, place.id, stan);
-  assert.equal(await label(), 'Planner · a former member\'s agent');
+  assert.equal(await label(), 'a former member\'s Planner');
   await grant(lead, place.id, stan, 'contributor');
   // Out of the company: "Stan Kowal (removed)" in every one of these readers (founder decision, Hubert, 2026-11-17, #1424).
   await removeMember(lead, ws.id, stan);
-  assert.equal(await label(), 'Planner · Stan Kowal (removed)\'s agent', 'Search');
-  assert.equal((await returnRows(db).names([`agent:${agent}`])).get(`agent:${agent}`), 'Planner · Stan Kowal (removed)\'s agent', 'Home\'s lines');
+  assert.equal(await label(), 'Stan Kowal (removed)\'s Planner', 'Search');
+  assert.equal((await returnRows(db).names([`agent:${agent}`])).get(`agent:${agent}`), 'Stan Kowal (removed)\'s Planner', 'Home\'s lines');
   assert.equal(((await notificationFactRows(db).projectMessage(line)) as { authorOwnerRemoved?: boolean } | null)?.authorOwnerRemoved, true, 'a notice\'s label');
   assert.deepEqual([await proposer(), await accepter()], ['Stan Kowal (removed)', 'Stan Kowal (removed)'], 'a decision\'s proposer and accepter in its rows');
   assert.deepEqual(await removedInCall(), { [stan.id]: 'Stan Kowal (removed)' }, 'the call\'s line, which the space\'s people no longer list');

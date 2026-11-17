@@ -235,7 +235,7 @@ class TasksReviewJourney(unittest.TestCase):
             meta = row.locator(".ws-item__s")
             expect(meta.locator(".agent-id"), f"{label}: {title} shows the agent's one label").to_have_count(1)
             expect(meta.locator(".agent-tag"), f"{label}: {title} has no separate tag").to_have_count(0)
-            expect(meta, f"{label}: {title} names the owner").to_contain_text("· Ada's agent")
+            expect(meta, f"{label}: {title} names the owner").to_contain_text("Ada's ")
             expect(meta, f"{label}: {title} names the agent").to_contain_text("Alex")
             word = meta.locator('.ws-task__word')
             expect(word).to_contain_text({'agent_open': 'To do', 'agent_doing': 'Doing', 'agent_blocked': 'Blocked'}[key])

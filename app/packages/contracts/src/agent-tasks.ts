@@ -21,7 +21,10 @@ export interface TaskAgentState {
   text: string;
   /** With `paused_by_limit`. */
   resumesAt: string | null;
-  /** With `paused_by_limit`: it waits for the API key's next day, not a plan's limit, so the line says where the budget is raised (train 37 row 36). */
+  /**
+   * With `paused_by_limit`: it waits for the API key's next day, not a plan's limit, so the line says where the budget is raised (train 37 row 36).
+   * With `failed`: the key's budget had too little left for the run's next request, so it stopped there (v0.2.1 round 15 ai P2-1).
+   */
   budget?: true;
   stoppedBy: { id: string; name: string } | null;
   /** Whether this reader may press Stop, Try again, or Take it back (the owner's own Owner field does the last). */

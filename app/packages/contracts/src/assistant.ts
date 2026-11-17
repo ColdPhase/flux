@@ -65,6 +65,9 @@ export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' 
  * that waits for them, a decision or result about their task, #1089). Nothing else waits, and nothing waiting expires.
  */
 export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'tells';
+/** Its owner skipped (or kept) a waiting change (round 15 ai P2-2): to the owner alone, ids only, so their other screens drop the card at once. */
+export const ASSISTANT_CHANGE_SKIPPED_EVENT = 'project.assistant_change_skipped.v1';
+
 export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision' | 'picture' | 'file';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
