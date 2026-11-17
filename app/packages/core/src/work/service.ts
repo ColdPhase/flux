@@ -287,8 +287,11 @@ export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, p
   return resumed;
 }
 
-/** How long after an acceptance its Undo can take it back (#1424 round 8): the toast's 10 s, paused while pointed at or focused. */
-export const ACCEPT_UNDO_MS = 10 * 60 * 1000;
+/**
+ * How long after an acceptance, or a proposal, its Undo can take it back (#1424 round 8 and L): the toast's 10 s, paused while pointed at
+ * or focused. An Undo is not a way to change direction later.
+ */
+export const DECISION_UNDO_MS = 10 * 60 * 1000;
 
 function linkRows(scope: { workspaceId: string; projectId: string }, from: NewObjectLink['from'], role: NewObjectLink['role'], targets: ObjectRef[], by: ActorRef): NewObjectLink[] {
   return targets.map((to) => ({ id: randomUUID(), ...scope, role, from, to, createdBy: by }));
@@ -852,7 +855,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     /**
      * The accepter's Undo takes an acceptance back (founder decision, Hubert, 2026-11-15, round 8, #1424): Accept works at once with a 10 s
      * Undo. Only the person who accepted it, with write access now, while it is accepted and unchanged (`If-Match`), within
-     * {@link ACCEPT_UNDO_MS} of the acceptance and while nothing rests on it: a task it resumed changed since, or a newer proposal names it
+     * {@link DECISION_UNDO_MS} of the acceptance and while nothing rests on it: a task it resumed changed since, or a newer proposal names it
      * as the decision it replaces (`DECISION_IN_USE`). The decision is proposed again, a decision it replaced is accepted again, and the tasks
      * it resumed wait for it again as they were (the reason from their last move into Blocked), without their "can continue" line and
      * notification. Under the project's graph lock and the decision rows in id order, as Accept takes them.
@@ -878,7 +881,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (!current) throw notFound('decision');
         if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
         if (current.status !== 'accepted' || current.decidedBy !== by.id || !current.decidedAt) throw new ConflictError('This decision is not accepted now', 'DECISION_NOT_ACCEPTED');
-        if (Date.now() - current.decidedAt.getTime() > ACCEPT_UNDO_MS) throw new ConflictError('It was accepted too long ago to undo; propose a new decision to change direction', 'DECISION_UNDO_ENDED');
+        if (Date.now() - current.decidedAt.getTime() > DECISION_UNDO_MS) throw new ConflictError('It was accepted too long ago to undo; propose a new decision to change direction', 'DECISION_UNDO_ENDED');
         const inUse = () => new ConflictError('Something rests on this acceptance now, so it stays accepted', 'DECISION_IN_USE');
         if (await ports.work.namedAsReplaced(id)) throw inUse();
         const earlier = current.supersedesId ? decisionRows.get(current.supersedesId) : undefined;
@@ -913,7 +916,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
 
     /**
      * Its proposer withdraws a proposal with Undo (#1424 L): a proposal reaches everyone at once, so Undo takes it back for everyone.
-     * Only the person who proposed it, while it is still proposed, unchanged (`If-Match`) and nothing else names it; an agent's
+     * Only the person who proposed it, within {@link DECISION_UNDO_MS} of proposing it, while it is still proposed, unchanged (`If-Match`)
+     * and nothing else names it; an agent's
      * proposal goes back only through its run's Undo. The decision, its own links, its notifications and the Inbox choices made on
      * it are gone, and one `project.decision_withdrawn.v1` tells the readers to refetch. Under the project's graph lock, as Accept
      * takes it, so a withdrawal and an acceptance serialize: the later one finds the decision decided (409) or gone (404).
@@ -932,6 +936,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (!current) throw notFound('decision');
         if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
         if (current.status !== 'proposed') throw new ConflictError('This decision is no longer a proposal', 'DECISION_NOT_PROPOSED');
+        if (Date.now() - current.createdAt.getTime() > DECISION_UNDO_MS) throw new ConflictError('It was proposed too long ago to take back; propose a new decision to change direction', 'DECISION_UNDO_ENDED');
         if (await ports.work.withdrawDecision(id) === 'used') throw new ConflictError('Something else names this decision now, so it stays', 'DECISION_IN_USE');
         await ports.events.record(principal, workspaceId, 'project.decision_withdrawn.v1', projectId, { decisionId: id });
       });
