@@ -233,7 +233,8 @@ looks ugly"):
 - **A direct message's start** names nobody again: the header says who is in it, the start says "Only the people in it can read this
   conversation. It stays outside every space." Its faces stand side by side, 4 px apart, never overlapped into one word.
 - **An empty state's lines are balanced** (`text-wrap: balance`), so two words never stand alone under three long lines.
-- **⋯ menus** (a space row's, the Spaces heading's, a header's) have the message menu's rows: 14 px words, 40 px rows, the icon first in `--t2`.
+- **⋯ menus** have the message menu's rows: 14 px words and 40 px rows; a space row's (Move up, Move down) and the Spaces heading's (Mark all
+  as read) lead with their icon in `--t2`.
 
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.

@@ -950,19 +950,19 @@ function AppLayoutContent() {
   // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
   // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
   const offersBulkRead = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects';
-  const bulkRead: MoreItem[] = offersBulkRead ? [{ label: 'Mark all as read', icon: 'check' as const, run: markAllRead }] : [];
+  const bulkRead: MoreItem[] = offersBulkRead ? [{ label: 'Mark all as read', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
     ...bulkRead,
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row. The people go first,
     // where the name would otherwise be cut under its 220 px slot (#1375).
-    ...(project?.people ? [{ label: 'People', icon: 'people' as const, run: openAudience, narrow: 'people' as const }] : []),
+    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: 'people' as const }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
-    ...(activeProject && projectId ? [{ label: 'Settings', icon: 'gear' as const, run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
-    ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, icon: 'quiet' as const, run: placeMute.run }] : []),
+    ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
+    ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
     // An agent's chat keeps its Settings in ⋯ on the computer as on the phone (#1419 item 14): the header names it once.
-    ...(activeAgent ? [{ label: 'Settings', icon: 'gear' as const, run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
+    ...(activeAgent ? [{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
     // Only a direct message has a panel of its own; a space's people, AI and GitHub are in its settings (#1419).
-    ...(activeDm ? [{ label: 'People and privacy', icon: 'lock' as const, run: () => shell.openDetails('place') }] : []),
+    ...(activeDm ? [{ label: 'People and privacy', run: () => shell.openDetails('place') }] : []),
     // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
   // The same conditions as the rows above: My tasks, My map, an agent's chat and Settings have none, and then no ⋯ is shown (#1424).
@@ -1009,16 +1009,16 @@ function AppLayoutContent() {
   // The phone's More holds the space's Search and Call (Join, while a call is live, which the header also shows from 360 px wide), its Settings
   // and Mute: a space has no panel of its own (#873, #1239, #1419).
   const phoneMoreItems: MoreItem[] = projectId ? [
-    { label: 'Search', icon: 'search', run: shell.openSearch },
+    { label: 'Search', run: shell.openSearch },
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
-    { label: 'Settings', icon: 'gear', run: () => void navigate(`/projects/${projectId}/settings`) },
-    ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, icon: 'quiet' as const, run: spaceMute.run }] : []),
+    { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
+    ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
   ] : [];
   // A direct message's More holds what a space's does that applies to it: Search first, Mute and People and privacy (#1374). It has no calls (#1419).
   const phoneDmItems: MoreItem[] = activeDm ? [
-    { label: 'Search', icon: 'search', run: shell.openSearch },
-    ...(dmMute ? [{ label: dmMute.label, hint: dmMute.hint, icon: 'quiet' as const, run: dmMute.run }] : []),
-    { label: 'People and privacy', icon: 'lock', run: () => shell.openDetails('place') },
+    { label: 'Search', run: shell.openSearch },
+    ...(dmMute ? [{ label: dmMute.label, hint: dmMute.hint, run: dmMute.run }] : []),
+    { label: 'People and privacy', run: () => shell.openDetails('place') },
   ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
@@ -1072,7 +1072,7 @@ function AppLayoutContent() {
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
-        {activeAgent ? <MoreMenu items={[{ label: 'Settings', icon: 'gear', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
+        {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
         {!backOnly && !activeProject && !activeDm && !activeAgent && !lockedHere && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
