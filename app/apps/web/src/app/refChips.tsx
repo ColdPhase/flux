@@ -3,6 +3,7 @@ import { useParams } from 'react-router';
 import { searchTargetPath } from '@flux/contracts';
 import { useFollow } from '../place/origin';
 import { useToast } from '../ui';
+import { useShellActions } from './shellContext';
 
 // `#12` and `[[Wiki page]]` in a message open what they name (v0.2.1 real-model gate, train 37 row 9), as a thought's chip and a link do. The
 // message keeps only the number or the title, so the chip finds it when it is pressed, with the reader's own search: in the space the message is
@@ -11,15 +12,17 @@ import { useToast } from '../ui';
 
 const text = (parts: { text: string }[]) => parts.map((part) => part.text).join('').trim();
 
-/** Where a task number or a page title leads, for this reader, or null when nothing they can open has it. */
-async function find(kind: 'task' | 'wiki', value: string, projectId: string | undefined): Promise<string | null> {
+/** Where a task number or a page title leads, for this reader, or null when nothing they can open has it. A task of the space being read is
+ *  its target, so it opens in the panel beside the conversation, as its card does (round 15: the chip left for the Tasks board). */
+async function find(kind: 'task' | 'wiki', value: string, projectId: string | undefined): Promise<string | { taskId: string } | null> {
   const { searchFlux } = await import('../search/api');
   const place = projectId ? `project:${projectId}` : null;
   if (kind === 'task') {
     const number = Number(value);
     const found = await searchFlux({ q: `#${number}`, place, type: 'work', limit: 10 });
     const item = found.items.find((result) => result.task?.number === number);
-    return item ? searchTargetPath(item.target) : null;
+    if (!item) return null;
+    return item.target.type === 'work' && item.target.projectId === projectId ? { taskId: item.target.id } : searchTargetPath(item.target);
   }
   const found = await searchFlux({ q: value, place, type: 'doc', limit: 10 });
   const wanted = value.trim().toLowerCase();
@@ -32,6 +35,7 @@ async function find(kind: 'task' | 'wiki', value: string, projectId: string | un
 export function RefChipOpen({ kind, value, className, children }: { kind: 'task' | 'wiki'; value: string; className: string; children: ReactNode }) {
   const { projectId } = useParams();
   const follow = useFollow();
+  const { openDetails } = useShellActions();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const label = kind === 'task' ? `Open task #${value}` : `Open the Wiki page ${value}`;
@@ -42,7 +46,8 @@ export function RefChipOpen({ kind, value, className, children }: { kind: 'task'
     setBusy(true);
     try {
       const to = await find(kind, value, projectId);
-      if (to) void follow(to);
+      if (to && typeof to === 'object') openDetails({ kind: 'work', id: to.taskId });
+      else if (to) void follow(to);
       else toast({ message: kind === 'task' ? `#${value} isn’t there, or you can’t open it.` : `The page ${value} isn’t there, or you can’t open it.` });
     } catch {
       toast({ message: 'Couldn’t open it. Try again.', tone: 'danger' });

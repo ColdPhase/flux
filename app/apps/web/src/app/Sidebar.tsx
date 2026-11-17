@@ -141,8 +141,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   // The row's own ⋯ keeps the focus, wherever the row went.
   const moveBy = (id: string, step: -1 | 1) => move(() => { moves.moveTo(id, projects.findIndex((project) => project.id === id) + step); }, `[data-space-id="${CSS.escape(id)}"] .side__more`);
   const moveItems = (id: string, at: number): MoreItem[] => [
-    ...(at > moves.fixed ? [{ label: 'Move up', run: () => moveBy(id, -1) }] : []),
-    ...(at < projects.length - 1 ? [{ label: 'Move down', run: () => moveBy(id, 1) }] : []),
+    ...(at > moves.fixed ? [{ label: 'Move up', icon: 'chevron-up' as const, run: () => moveBy(id, -1) }] : []),
+    ...(at < projects.length - 1 ? [{ label: 'Move down', icon: 'chevron-down' as const, run: () => moveBy(id, 1) }] : []),
   ];
   const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   // The collapsed rail (a tablet's sidebar, or `[` on a computer) has the same highlight over its project tiles; only one
@@ -312,7 +312,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
             <h2 className="side__h" id="side-projects">Spaces</h2>
             <span className="side__head-end">
               {/* One action for everything unread (#1250), in the heading's ⋯ and in the Inbox's. */}
-              {projects.length ? <MoreMenu label="More for Spaces" size={14} className="side__add side__more-head" items={[{ label: 'Mark all as read', run: markAll }]} /> : null}
+              {projects.length ? <MoreMenu label="More for Spaces" size={14} className="side__add side__more-head" items={[{ label: 'Mark all as read', icon: 'check', run: markAll }]} /> : null}
             </span>
           </div>
           {projects.length || locked.length ? (

@@ -240,7 +240,7 @@ export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?
   );
 }
 
-/** A single photo's name and size, read after its caption (F-026 §6: caption first, then the meta line). */
+/** A single photo's name and size, right under the photo it names (round 15). */
 export function PhotoMeta({ photos }: { photos: MessageFile[] }) {
   const only = photos.length === 1 ? photos[0] : undefined;
   return only ? <p className="photo-meta">{only.name} · {fileSize(only.size)}</p> : null;
@@ -341,14 +341,17 @@ export function MessageFiles({ files, context }: { files?: MessageFile[]; contex
   const others = files.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
+    <PhotoMeta photos={photos} />
     {others.length ? <ol className="message-files" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.id}>
       {fileKind(file.name) === 'audio' ? <VoiceNote file={file} /> : <FileRow file={file} />}
     </li>)}</ol> : null}
-    <PhotoMeta photos={photos} />
   </>;
 }
 
-/** The media comes first; its caption, file rows and native references share one message bubble, then a single photo's meta. */
+/**
+ * The media comes first, a single photo's name and size right under it (round 15: under the bubble it stood 110 px from the photo and read as
+ * the name of the file row above it); then its caption, file rows and native references share one message bubble.
+ */
 /** The one visible bubble shell for stored and queued messages on every conversation surface. */
 export function MessageBubble({ children }: { children: ReactNode }) {
   return <div className="message-bubble">{children}</div>;
@@ -359,8 +362,8 @@ export function MessageContent({ files, context, body, references, children }: {
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
-    <MessageBubble>{body}<MessageFiles files={others} />{children}<MessageReferences references={references} /></MessageBubble>
     <PhotoMeta photos={photos} />
+    <MessageBubble>{body}<MessageFiles files={others} />{children}<MessageReferences references={references} /></MessageBubble>
   </>;
 }
 

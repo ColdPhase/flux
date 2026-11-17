@@ -333,14 +333,17 @@ class FilesReferencesPhotos(unittest.TestCase):
         else:
             self.assertLess(abs(grid_box["x"] - bubble_box["x"]), 1, "the photo and its caption share one left edge")
 
-    def assert_meta_below_caption(self, scope) -> None:
-        """A single photo's name and size come after its caption, not between the photo and the caption (F-026 §6)."""
+    def assert_meta_under_photo(self, scope) -> None:
+        """A single photo's name and size stand right under the photo, before its caption (round 15: under the caption it read as another file's)."""
         meta = scope.locator(":scope > .photo-meta")
         bubble = scope.locator(":scope > .message-bubble")
+        grid = scope.locator(":scope > .photo-grid")
         expect(meta).to_have_count(1)
         expect(bubble).to_be_visible()
-        meta_box, bubble_box = meta.bounding_box(), bubble.bounding_box()
-        self.assertGreaterEqual(meta_box["y"], bubble_box["y"] + bubble_box["height"] - 0.001, "the name and size follow the caption")
+        meta_box, bubble_box, grid_box = meta.bounding_box(), bubble.bounding_box(), grid.bounding_box()
+        self.assertGreaterEqual(meta_box["y"], grid_box["y"] + grid_box["height"] - 0.001, "the name and size follow the photo")
+        self.assertLessEqual(meta_box["y"] - (grid_box["y"] + grid_box["height"]), 8, "right under the photo")
+        self.assertLessEqual(meta_box["y"] + meta_box["height"], bubble_box["y"] + 0.001, "and before the caption")
 
     def assert_inside_bubble(self, scope, child) -> None:
         expect(scope.locator(":scope > .message-bubble")).to_be_visible()
@@ -545,7 +548,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 details = page.get_by_role("region", name="Discussion")
                 root = details.locator(f'[data-message-id="{self.ids["task-root"]}"] .wd-act__bubble')
                 self.assert_caption_below(root)
-                self.assert_meta_below_caption(root)
+                self.assert_meta_under_photo(root)
                 expect(root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
                 expect(root.get_by_role("list", name="Link preview")).to_be_visible()
                 self.assertEqual(root.locator("a a").count(), 0, "a link in the discussion card is not nested in the card's own link")

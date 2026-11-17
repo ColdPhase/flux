@@ -43,7 +43,7 @@ a.file-row__act:hover { background: var(--hov); color: var(--t1); }
 .is-mine > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 @media (max-width: 760px) { .message-bubble { padding: 11px 14px; } }
 /* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
-.wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
+.wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid ~ .message-bubble),
 .details__sec > .message-bubble { padding: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; }
 
 .is-mine > .message-bubble .file-row, .is-mine > .message-bubble .link-preview { background: var(--sub); color: var(--t1); }
@@ -76,10 +76,15 @@ span.photo-grid__open { cursor: default; }
 .photo-grid--1 .photo-grid__tile[data-photo-state="ready"] { aspect-ratio: auto; }
 .photo-grid--1 .photo-grid__tile[data-photo-state="ready"] img { height: auto; max-height: 420px; object-fit: contain; }
 .photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: var(--fs-xl); font-weight: 600; color: #fff; }
-.photo-grid:has(.photo-grid__file) + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-bubble + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-files + .photo-meta { display: none; }
+.photo-grid:has(.photo-grid__file) + .photo-meta { display: none; }
 /* A fixed 340 px (at most the column): a percentage here let the picture's own size widen the message, and its toolbar stood 70 px off the photo. */
 .project-convo__message > .photo-grid { width: 340px; max-width: 100%; }
-.photo-meta { margin: 6px 2px 0; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+/* A single photo's name and size stand right under the photo, before its caption (round 15), as wide as the photo. */
+.photo-meta { margin: 4px 2px 2px; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.project-convo__message > .photo-meta { width: 336px; max-width: calc(100% - 4px); }
+.is-mine > .photo-meta { text-align: right; }
+/* A photo's caption is as wide as the photo at most (round 15 look-2 P3-10: a 406 px caption under a 340 px photo looked disjointed). */
+.project-convo__message > .photo-grid ~ .message-bubble { max-width: min(100%, 340px); }
 .photo-grid__tile.is-unavailable { display: grid; place-items: center; padding: 12px; color: var(--t3); font-size: var(--fs-xs); text-align: center; }
 /* Sending, offline and failure show on the photo itself. */
 .photo-grid__state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: rgba(0, 0, 0, .28); color: #fff; font-size: var(--fs-xs); font-weight: 500; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
@@ -190,13 +195,21 @@ span.photo-grid__open { cursor: default; }
 @media (hover: none), (max-width: 680px) {
   .composer-files .composer-thumb__x { top: -17px; right: -17px; width: 44px; height: 44px; min-width: 44px; }
 }
+/* On a phone the tiles stand one under the other: they share one width, so their × stand in one column, never 4 px apart (round 15 new P3-a). */
+@media (max-width: 680px) {
+  .composer-files .composer-files__list li.composer-thumb { width: min(360px, 100%); }
+}
 
 /* Dropping files onto the conversation. */
 .is-dropping { outline: 2px dashed var(--t2); outline-offset: -6px; border-radius: var(--r-lg); }
 
 /* Inline references in text: chips on the text baseline. */
 /* No margin: punctuation after a chip sits against it ("#6, …", "(#15)"; train 37 row 10). */
-.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 6px; margin: 0; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
+/* The pill has the code span's hairline (--line), so its padding reads as the pill and never as a space before "." or after "(" (round 15). */
+.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 6px; margin: 0; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
+/* A chip or a code span and the punctuation that touches it never part at a line's edge (MessageText `glue`). */
+.msg-glue { white-space: nowrap; }
+.msg-glue > .msg-code { white-space: pre-wrap; }
 .ref-chip svg { align-self: center; flex: none; }
 /* A map thought's own address (#1376): a chip that opens the map with the thought selected; one the reader may not read says so. */
 a.ref-chip--thought { text-decoration: none; cursor: pointer; }
@@ -211,8 +224,6 @@ button.ref-chip--open[aria-busy] { cursor: progress; }
 .ref-chip__face { position: relative; align-self: center; flex: none; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-face); font-weight: 600; }
 /* As the 16 px Avatar: the initials are --fs-face (px, #1370) scaled to the circle, so "AK" never runs wider than the face (#1373). */
 .ref-chip__face::before { content: attr(data-initials); position: absolute; left: 50%; top: 50%; line-height: 1; white-space: nowrap; transform: translate(-50%, -50%) scale(.72); }
-.is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
-.is-mine > .message-bubble .ref-chip__face { background: rgba(255, 255, 255, .2); }
 .msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 
 /* A link shows its preview: the site, the domain and a title. */
@@ -268,12 +279,14 @@ button.ref-chip--open[aria-busy] { cursor: progress; }
 .message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card, .photo-grid) { width: 100%; }
 .message-bubble .photo-grid { margin: 0; max-width: 100%; }
 /* Photo captions with references keep the media width after the generic minimum-width rule (§6/#482). */
-.photo-grid + .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
+.photo-grid ~ .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
 /* So do captions whose task card stands under the message in a thread (#1424, work.css .msg-tasks). */
-:is(.project-convo__message, .thread__root):has(> .msg-tasks) > .photo-grid + .message-bubble { width: min(100%, 340px); }
-.is-mine > .message-bubble .ref-chip, .is-mine > .message-bubble .wiki-card { background: var(--sub); color: var(--t1); }
-.is-mine > .message-bubble .ref-chip__face, .is-mine > .message-bubble .wiki-card__glyph { background: var(--el); color: var(--t1); }
-.is-mine > .message-bubble .wiki-card:hover { background: var(--hov); }
+:is(.project-convo__message, .thread__root):has(> .msg-tasks) > .photo-grid ~ .message-bubble { width: min(100%, 340px); }
+/* On your own bubble (--own, a step from --sub) a chip and a page card are --el, so the pill shows in both themes and its padding never reads
+   as stray spaces round its words ("( ≔ #2 )", round 15); the face inside is --sub. */
+.is-mine > .message-bubble .ref-chip, .is-mine > .message-bubble .wiki-card { background: var(--el); color: var(--t1); }
+.is-mine > .message-bubble .ref-chip__face, .is-mine > .message-bubble .wiki-card__glyph { background: var(--sub); color: var(--t1); }
+.is-mine > .message-bubble :is(a.ref-chip--thought, button.ref-chip--open, .wiki-card):hover { background: var(--hov); }
 .thread__root > .message-bubble { padding: 9px 13px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
 .thread__root.is-mine > .message-bubble { background: var(--own); box-shadow: none; }
 

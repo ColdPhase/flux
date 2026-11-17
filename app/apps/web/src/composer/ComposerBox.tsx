@@ -32,6 +32,8 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
   const toast = useToast();
   const own = useRef<HTMLTextAreaElement>(null);
   const pressed = useRef(false);
+  /** Whether the field had the focus when Send was pressed. */
+  const writing = useRef(false);
   useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
   const hint = useFittingHint(own, typeof placeholder === 'string' ? [placeholder] : placeholder);
   // A toast stands above the highest composer on the screen, never on its hint (#1424).
@@ -72,7 +74,12 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
           requestAnimationFrame(toEnd);
         }}
         onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
-      <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>
+      {/* Send keeps the field focused (round 15 daily P2-4): the press never takes the focus from the field, and the field takes it back after
+          the send, so a phone's keyboard stays up for the next message, as in every messenger. */}
+      <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled}
+        onPointerDown={() => { writing.current = document.activeElement === own.current; }}
+        onMouseDown={(event) => { if (document.activeElement === own.current) event.preventDefault(); }}
+        onClick={() => { const back = writing.current; writing.current = false; onSend(); if (back && own.current && !own.current.disabled) own.current.focus({ preventScroll: true }); }}><Icon name="send" /></button>
       {menu}
     </div>
   );

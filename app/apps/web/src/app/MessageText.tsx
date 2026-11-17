@@ -1,4 +1,4 @@
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, isValidElement, useMemo, type ReactNode } from 'react';
 import { useInRouterContext } from 'react-router';
 import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, type MessageInline, type ProjectPerson } from '@flux/contracts';
 import { Icon, Kreska, initials } from '../ui';
@@ -36,8 +36,35 @@ const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 function tokens(names: string[], cites = false): RegExp {
   const known = names.length ? String.raw`|(?<klead>^|[\s(])(?<known>@(?:${names.map(escapeRe).join('|')}))(?![\p{L}\p{N}])` : '';
   const cite = cites ? String.raw`|\[(?<cite>\d{1,3})\]` : '';
-  return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*(?:(?<=['’]s) assistant\b)?)|(?<tlead>^|[\s(])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]${cite}`, 'gu');
+  return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*(?:(?<=['’]s) assistant\b)?)|(?<tlead>^|[\s(\-\u2013\u2014/,])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]${cite}`, 'gu');
 }
+
+/** What may not stand alone at a line's edge next to a chip or a code span: the punctuation after it, and an opening bracket before it. */
+const TRAILING = /^[.,;:!?)\]}…”’"']+/u;
+const OPENING = /[([{“‘"']$/u;
+/**
+ * A chip or a code span keeps the punctuation it touches on its line (round 15: "Volunteer rota" with ";" alone at the next line's start, and
+ * "(" left at the end of a line before "#2"): the pair is one unbreakable run, while the words inside a long code span still wrap.
+ */
+function glue(parts: ReactNode[], keyPrefix: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (!isValidElement(part) || !gluable.has(part)) { out.push(part); continue; }
+    const before = out[out.length - 1];
+    const lead = typeof before === 'string' ? OPENING.exec(before)?.[0] ?? '' : '';
+    const next = parts[index + 1];
+    const tail = typeof next === 'string' ? TRAILING.exec(next)?.[0] ?? '' : '';
+    if (!lead && !tail) { out.push(part); continue; }
+    if (lead) out[out.length - 1] = (before as string).slice(0, -lead.length);
+    out.push(<span key={`${keyPrefix}g${index}`} className="msg-glue">{lead}{part}{tail}</span>);
+    if (tail) { parts[index + 1] = (next as string).slice(tail.length); }
+  }
+  return out.filter((part) => part !== '');
+}
+/** The elements `glue` keeps together with their punctuation: the chips and the code spans of a text. */
+const gluable = new WeakSet<object>();
+const mark = <T extends object>(element: T): T => { gluable.add(element); return element; };
 
 /**
  * The body as formatted text with inline chips and links. `linked={false}` keeps a web address as plain text, for a surface that is
@@ -61,23 +88,23 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       if (start > last) parts.push(text.slice(last, start));
       const thought = groups.url ? thoughtLink(groups.url) : null;
       // A map thought's own address (its Copy link) is the thought's chip, not a bare address (#1376).
-      if (thought) parts.push(<ThoughtChip key={`${keyPrefix}${key++}`} link={thought} linked={linked} />);
+      if (thought) parts.push(mark(<ThoughtChip key={`${keyPrefix}${key++}`} link={thought} linked={linked} />));
       else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{breakable(groups.url)}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
       else if (groups.known || groups.mention) {
         const name = (groups.known ?? groups.mention!).slice(1);
         const named = names.find((person) => person.name === name);
         const agent = named?.kind === 'agent' || /['’]s assistant$/.test(name);
-        parts.push(<span key={`${keyPrefix}${key++}`} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
+        parts.push(mark(<span key={`${keyPrefix}${key++}`} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
           {agent ? <Kreska size={12} className="ref-chip__k" {...(named?.colour ? { hue: named.colour } : {})} /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
-          <span className="ui-vh">@</span>{name}</span>);
+          <span className="ui-vh">@</span>{name}</span>));
       }
       // A task's and a page's chip opens what it names (train 37 row 9), except on a surface that is itself a link or outside the app's pages.
-      else if (groups.task) parts.push(opens
+      else if (groups.task) parts.push(mark(opens
         ? <RefChipOpen key={`${keyPrefix}${key++}`} kind="task" value={groups.task} className="ref-chip ref-chip--task"><Icon name="tasks" size={12} />#{groups.task}</RefChipOpen>
-        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);
-      else if (groups.wiki) parts.push(opens
+        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>));
+      else if (groups.wiki) parts.push(mark(opens
         ? <RefChipOpen key={`${keyPrefix}${key++}`} kind="wiki" value={groups.wiki} className="ref-chip ref-chip--wiki"><Icon name="doc" size={12} />{groups.wiki}</RefChipOpen>
-        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>);
+        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>));
       else if (groups.cite) {
         const source = cite?.(Number(groups.cite)) ?? null;
         parts.push(source === null ? match[0] : <Fragment key={`${keyPrefix}${key++}`}>{source}</Fragment>);
@@ -90,15 +117,15 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
     return parts;
   };
   /** Text with its marks: bold, italic and code, the references inside them kept (code is the exception: it is only text). */
-  const inline = (nodes: MessageInline[], keyPrefix: string): ReactNode[] => nodes.flatMap<ReactNode>((node, index): ReactNode[] => {
+  const inline = (nodes: MessageInline[], keyPrefix: string): ReactNode[] => glue(nodes.flatMap<ReactNode>((node, index): ReactNode[] => {
     const key = `${keyPrefix}${index}`;
     switch (node.kind) {
       case 'text': return chips(node.text, `${key}-`);
       case 'bold': return [<strong key={key} className="msg-strong">{inline(node.children, `${key}-`)}</strong>];
       case 'italic': return [<em key={key} className="msg-em">{inline(node.children, `${key}-`)}</em>];
-      case 'code': return [<code key={key} className="msg-code">{node.text}</code>];
+      case 'code': return [mark(<code key={key} className="msg-code">{node.text}</code>)];
     }
-  });
+  }), keyPrefix);
   return <>{blocks.map((block, index) => {
     switch (block.kind) {
       case 'text': return <Fragment key={`p${index}`}>{inline(block.inline, `p${index}-`)}</Fragment>;

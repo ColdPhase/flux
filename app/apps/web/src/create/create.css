@@ -30,11 +30,14 @@
 /* A row of the Space and Owner lists: the space's tile or the person's face before the name (portalled into the select's list). */
 .create__opt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .create__opt > .create__tile { width: 20px; height: 20px; }
+.create__noface { flex: none; display: grid; place-items: center; width: 20px; height: 20px; color: var(--t2); }
 .create__place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .create__place .ui-select, .create__chip .ui-select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; opacity: 0; cursor: pointer; font-size: var(--fs-input-touch); }
 
 /* The carried text's field: a task's title, a decision, a project's name (one line); a thought or a message (several). */
 .create__title, .create__name { width: 100%; border: 0; background: none; padding: 4px 0; font: inherit; font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); line-height: 1.25; color: var(--t1); outline: none; }
+/* A title is a textarea that grows with its words (round 15): it wraps instead of scrolling sideways, on the computer and the phone. */
+textarea:is(.create__title, .create__name) { display: block; resize: none; overflow: hidden auto; max-height: 30vh; overflow-wrap: anywhere; }
 .create__title::placeholder, .create__name::placeholder, .create__details::placeholder { color: var(--t3); font-weight: 400; }
 .create__text { width: 100%; border: 0; background: none; resize: none; padding: 4px 0; font: inherit; font-size: var(--fs-lg); line-height: 1.45; color: var(--t1); outline: none; min-height: 76px; max-height: 40vh; field-sizing: content; }
 .create__text::placeholder { color: var(--t3); }
@@ -64,8 +67,8 @@
 .create__links { display: contents; }
 
 .create__picker { display: flex; flex-direction: column; gap: 6px; scroll-margin-bottom: 12px; }
-/* While "From a message or thought" searches, the window has room for its results above the footer (visual review 2026-11-17). */
-.ui-overlay--center .create:has(.create__picker) { height: min(560px, 78vh); }
+/* While "From a message or thought" searches (once a word is typed, round 15), the window has room for its results above the footer (visual review 2026-11-17). */
+.ui-overlay--center .create:has(.create__picker--searching) { height: min(560px, 78vh); }
 .create__results { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
 .create__results button { display: flex; align-items: baseline; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; border-radius: var(--r-sm); text-align: left; font-size: var(--fs-base); }
 .create__results button:hover, .create__results button:focus-visible { background: var(--hov); }

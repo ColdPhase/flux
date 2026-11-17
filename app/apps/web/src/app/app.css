@@ -425,9 +425,10 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 /* Taller than the room on its side, the menu scrolls (useFitInWindow); its rows keep their own height. */
 .top__more-menu > * { flex-shrink: 0; }
 .top__more-menu { overscroll-behavior: contain; }
+/* One look for a menu's rows (round 15 look-2 P3-6): the message menu's 14 px words, 40 px rows and the icon first, in --t2. */
 .top__more-menu .newmenu__item {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
-  color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 0 12px; border-radius: 10px;
+  color: var(--t1); font: inherit; font-size: var(--fs-base); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
 }
 /* A row with a hint (Mute, #1249): the label and one small muted line under it, wrapping inside the menu's width. */
 .top__more-menu .newmenu__item:has(.top__more-text) { align-items: flex-start; padding-block: 6px; }
@@ -441,6 +442,7 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
    show them at every width. The narrow container rule below still shows them (higher specificity). */
 .top__more-menu .top__more-narrow { display: none; }
 .top__more-menu .newmenu__item:hover { background: var(--hov); }
+.top__more-menu .newmenu__item > svg { flex: none; color: var(--t2); }
 .top__more-menu .newmenu__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .top__more-menu .newmenu__item kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;

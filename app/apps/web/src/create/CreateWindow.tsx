@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode, type Ref, type TextareaHTMLAttributes } from 'react';
 import { youLabel } from '../docs/format';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
@@ -153,6 +153,36 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
 }
 
 /**
+ * The title of a task or a decision: one field whose words wrap onto the next line instead of running out of sight (round 15 look-2 P2-6:
+ * on a phone a title made from a long message showed only its middle). It is a textarea that grows with its words; Enter does what Enter in
+ * a one-line field does (the form's own button), Shift+Enter is not a new line either, since a title has none.
+ */
+function TitleField({ fieldRef, className, value, onChange, ...rest }: { fieldRef: Ref<HTMLTextAreaElement>; className: string; value: string; onChange: (value: string) => void }
+  & Pick<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id' | 'aria-label' | 'aria-describedby' | 'maxLength' | 'disabled' | 'placeholder'>) {
+  const own = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
+  // Its height follows its words, measured again whenever they or the window's width change.
+  useLayoutEffect(() => {
+    const field = own.current;
+    if (!field) return undefined;
+    const fit = () => { field.style.height = 'auto'; field.style.height = `${field.scrollHeight}px`; };
+    fit();
+    const observer = new ResizeObserver(() => fit());
+    observer.observe(field.parentElement ?? field);
+    return () => observer.disconnect();
+  }, [value]);
+  return <textarea ref={own} rows={1} className={className} value={value} {...rest}
+    onChange={(event) => onChange(event.target.value.replace(/\r?\n/g, ' '))}
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey) return;
+      event.preventDefault();
+      const form = event.currentTarget.form;
+      const go = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+      if (go) { if (!go.disabled) go.click(); } else form?.requestSubmit();
+    }} />;
+}
+
+/**
  * One tab's panel: where it goes (the same row in every tab), its text and properties, and its foot. ⌘↵ / Ctrl+↵ makes
  * it from anywhere in the panel. A panel stays mounted while another tab shows, so its own fields wait for the person.
  */
@@ -259,7 +289,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const revalidator = useRevalidator();
   const created = useCreatedToast(() => revalidator.revalidate());
   const noteId = useId();
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   // A task made from a message, thoughts or a typed title starts from that; a blank one keeps its private draft.
   const draft = useDraft(me.user.id, `project-work:${projectId || 'none'}`);
   // An uncertain response can be retried after a reload with the same key.
@@ -271,10 +301,11 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
   const [saved] = useState(() => savedForm(unresolvedOf(readDraft(me.user.id, pendingContext)), prefilled ? (request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
   const [outcome, setOutcome] = useState(saved?.outcome ?? '');
-  // A task from your own message or your own `/task` words starts as yours (#1424 M); any other starts with no owner.
-  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? (prefilled && request.ownerMe ? `human:${me.user.id}` : '') });
-  // An owner belongs to one project's people: another project starts with none.
-  const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
+  // A task from your own message, your own `/task` words or My tasks starts as yours (#1424 M, round 15); any other starts with no owner.
+  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? (request.ownerMe ? `human:${me.user.id}` : '') });
+  // An owner belongs to one project's people: another project starts with none, or with you when the task starts as yours (you are in every
+  // space the picker offers).
+  const owner = ownerPick.projectId === projectId ? ownerPick.value : request.ownerMe ? `human:${me.user.id}` : '';
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
   // Sources belong to the project they were picked in: another project (from any tab's picker) starts with none, rather
   // than failing on submit.
@@ -381,14 +412,15 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       <Go label="Create task" busy={busy} ready={ready} phone={phone} />
     </>}>
       <label className="ui-vh" htmlFor={ids.field}>Title</label>
-      <input ref={titleRef} id={ids.field} className="create__title" value={flat(title)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
+      <TitleField fieldRef={titleRef} id={ids.field} className="create__title" value={flat(title)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
         aria-describedby={!prefilled && (draft.text || draft.storage === 'visit') ? noteId : undefined}
-        onChange={(event) => setTitle(event.target.value)} />
+        onChange={setTitle} />
       <textarea className="create__details" aria-label="Details" rows={2} value={outcome} maxLength={WORK_LIMITS.outcome} disabled={busy}
         placeholder="Add details…" onChange={(event) => setOutcome(event.target.value)} />
       <div className="create__props">
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
-          <Option value="">No owner</Option>
+          {/* "No owner" has the person glyph in the face's place, as the task card's (round 15 look-2 P3-7): its word starts where the names do. */}
+          <Option value=""><span className="create__opt"><span className="create__noface" aria-hidden="true"><Icon name="person" size={16} /></span>No owner</span></Option>
           {/* A face on every row, as in the mention and New message lists (visual review 2026-11-17). */}
           <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}><span className="create__opt"><Avatar name={p.name} id={p.id} size="sm" />{p.label}</span></Option>)}</OptionGroup>
           {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}><span className="create__opt"><Kreska size={20} hue={a.colour} />{a.label}</span></Option>)}</OptionGroup> : null}
@@ -526,7 +558,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const busy = false;
   const inFlight = useRef(false);
   const [error, setError] = useState('');
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const whyRef = useRef<HTMLTextAreaElement>(null);
   const project = projects.find((item) => item.id === projectId);
   // Whether anyone else is in the space (persona round 8): the footer says the true thing, also to its only member.
@@ -622,8 +654,8 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
       foot={<><p className="create__note">{!project ? 'A decision belongs to a space' : onlyMe ? 'Only you are in this space: it stays on its card until you accept it' : 'Everyone else in the space sees it in their Inbox'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
-        <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
-          onChange={(event) => { carried.set(event.target.value); setError(''); }} />
+        <TitleField fieldRef={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
+          onChange={(value) => { carried.set(value); setError(''); }} />
         {source ? <blockquote className="create__source"><span>From the message</span>{source.label}</blockquote> : null}
         <textarea ref={whyRef} className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why (optional)"
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
@@ -695,7 +727,9 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => { box.current?.scrollIntoView({ block: 'nearest' }); }, [state, items.length]);
   return (
-    <div ref={box} className="create__picker">
+    // The window grows for results only once something is typed: an empty search keeps its height, with one line that says what to type
+    // (round 15 look-2 P2-5: 170 px of empty window under the field).
+    <div ref={box} className={`create__picker${text ? ' create__picker--searching' : ''}`}>
       <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
@@ -708,6 +742,7 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
           <li key={`${item.ref.type}:${item.ref.id}`}><button type="button" className="create__result" onClick={() => onPick(item.ref, item.label)}><small>{item.kind}</small><span>{item.label}</span></button></li>
         )) : null}
       </ul>
+      {!text ? <p className="create__note">Type a few words of the message or the thought.</p> : null}
       {text && state === 'ready' && !items.length ? <p className="create__note" role="status">No message or thought matches.</p> : null}
       {state === 'failed' ? <p className="create__error" role="alert">Search is unavailable right now.</p> : null}
     </div>
