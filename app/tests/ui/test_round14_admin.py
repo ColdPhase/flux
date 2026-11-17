@@ -66,8 +66,8 @@ class Round14Admin(unittest.TestCase):
         return page
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | tuple[int, ...] = 200) -> dict | list:
-        response = page.request.fetch(f"{ORIGIN}{path}", method=method, data=json.dumps(body) if body is not None else None,
-                                      headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())})
+        headers = {"origin": ORIGIN, "idempotency-key": str(uuid.uuid4()), **({"content-type": "application/json"} if body is not None else {})}
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, data=json.dumps(body) if body is not None else None, headers=headers)
         self.assertIn(response.status, status if isinstance(status, tuple) else (status,), response.text())
         return json.loads(response.text()) if response.text() else {}
 
