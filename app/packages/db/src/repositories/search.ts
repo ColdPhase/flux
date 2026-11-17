@@ -221,7 +221,11 @@ const BM25_B = 0.1;
 const MATCH_WORDS = 12;
 const TYPO_MIN_LETTERS = 4;
 const TYPO_MAX_WORDS = 6;
-/** A position carries `rank / (rank + SQUASH)`, in (0, 1), so that an encrypted space's rows (ranked 0 to 1.5 in memory) merge with them. The order is the same. */
+/**
+ * A position carries `(words + rank / (rank + SQUASH)) / (counted + 1)`, in (0, 1), so that an encrypted space's rows (ranked the same way in
+ * memory) merge with them: `words` is how many of the query's counted words the hit holds, so one that holds all of them ranks above one that
+ * holds fewer, whatever its kind, and BM25 orders the hits that hold as many (personas-37).
+ */
 const SQUASH = 10;
 
 /** The word a person is still typing: the last word of the prefix query (`lamp & sens:*`), folded, when it has two letters or more. */
@@ -440,7 +444,13 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   const typing = typingWord(plan);
   const content = words.filter((entry) => !isSearchStopWord(entry.word.word));
   const cut = !!plan.cutWeak && content.length > 0 && content.length < words.length;
-  const contentHit = sql.join(content.map((entry) => foldSearchWord(entry.word.word) === typing ? sql`${tf(entry)} > 0 OR c.prefixed` : sql`${tf(entry)} > 0`), sql` OR `);
+  const holds = (entry: (typeof words)[number]) => foldSearchWord(entry.word.word) === typing ? sql`(${tf(entry)} > 0 OR c.prefixed)` : sql`${tf(entry)} > 0`;
+  const contentHit = sql.join(content.map(holds), sql` OR `);
+  // A hit that holds all the words ranks above one that holds fewer, whatever its kind (personas-37: "Antenna log 30" listed a decision
+  // that holds only "30", in its title, above the message that holds all three). The words counted are those that are not little words
+  // (all of them when every word is little); the word being typed counts as held as its prefix. BM25 orders the hits that hold as many.
+  const counted = content.length ? content : words;
+  const held = sql.join(counted.map((entry) => sql`CASE WHEN ${holds(entry)} THEN 1 ELSE 0 END`), sql` + `);
   // A typo is a way to find what a word did not (v0.2.1 personas round: "price list" listed "Kasia Lis", one edit from "list", beside
   // the price list itself). A hit found only by a typo in its title is shown only when no visible hit holds one of the words whole.
   const first = chunks[0]!;
@@ -452,7 +462,7 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
     ? hybridMatched({ vector, visible: sql`NOT sd.sealed AND ${AUDIENCE_ANY} AND ${keep}`, number: plan.number })
     : sql`matched AS (
       SELECT r.id, r.kind, r.object_id, r.version, r.at,
-        round((r.rank / (r.rank + ${num(SQUASH)}))::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
+        round(((r.held + r.rank / (r.rank + ${num(SQUASH)})) / ${num(counted.length + 1)})::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
         row_number() OVER (PARTITION BY r.kind, r.object_id ORDER BY r.version DESC NULLS LAST) AS newest
       FROM ranked r
     ),`;
@@ -468,17 +478,17 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
       count(*) FILTER (WHERE ${any}) AS whole FROM cand c),
     scored AS (
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
-        CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
+        CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank, (${held})::float8 AS held
       FROM cand c CROSS JOIN stats st
       -- A hit holds a whole word, the word being typed or a typo; a task whose number line alone matched holds none of them and is not shown.
       WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0) AND (${any} OR c.prefixed OR c.typoed OR c.numbered)
         ${cut ? sql`AND (NOT (${any}) OR c.numbered OR ${contentHit})` : sql``}),
     -- A file is several rows, one for each part of its text (C-63): it counts once, by its best part, before the hybrid's lists take their first 50.
     ranked AS (
-      SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank FROM scored s WHERE s.kind <> 'file'
+      SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank, s.held FROM scored s WHERE s.kind <> 'file'
       UNION ALL
-      (SELECT DISTINCT ON (f.object_id) f.id, f.kind, f.object_id, f.version, f.at, f.numbered, f.rank FROM scored f WHERE f.kind = 'file'
-        ORDER BY f.object_id, f.rank DESC, f.version, f.id)),
+      (SELECT DISTINCT ON (f.object_id) f.id, f.kind, f.object_id, f.version, f.at, f.numbered, f.rank, f.held FROM scored f WHERE f.kind = 'file'
+        ORDER BY f.object_id, f.held DESC, f.rank DESC, f.version, f.id)),
     ${matched}`;
 }
 

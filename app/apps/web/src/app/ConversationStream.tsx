@@ -2,7 +2,7 @@ import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, use
 import { FORMER_MEMBER, youLabel } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { agentWords } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, useArrivals, useClearOfToast } from '../ui';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, REVEAL_EVENT, useArrivals, useClearOfToast } from '../ui';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, ShownObjects, shownObjects, TaskObjectRow, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
@@ -663,6 +663,20 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       }
       settleFrame = requestAnimationFrame(holdPin);
     };
+    // A card a closing panel gave the focus to (a new task's, Esc after Create) is where the person is now: it comes into view, and the place
+    // kept while the panel leaves is that card's, not the one read before, which would scroll it out of view again (personas-37).
+    const reveal = (event: Event) => {
+      const target = event.target as HTMLElement;
+      const item = target.closest<HTMLElement>('.project-convo__message, .convo-notice, .convo-object, .convo-fold');
+      if (!feed.contains(target)) return;
+      target.scrollIntoView({ block: 'nearest' });
+      person();
+      stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+      const place = item?.id ? { id: item.id, offset: item.getBoundingClientRect().top - feed.getBoundingClientRect().top } : null;
+      anchorRef.current = place;
+      pinRef.current = place;
+      heldReading = place;
+    };
     record();
     const unflush = onFlush(() => { record(); leavingUntil = performance.now() + 3000; });
     feed.addEventListener('scroll', onScroll, { passive: true });
@@ -671,6 +685,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     feed.addEventListener('keydown', key);
     window.addEventListener('keydown', tab, true);
     feed.addEventListener('focusin', tabbedIn);
+    feed.addEventListener(REVEAL_EVENT, reveal);
     observer.observe(feed);
     if (column) observer.observe(column);
     return () => {
@@ -681,6 +696,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       feed.removeEventListener('keydown', key);
       window.removeEventListener('keydown', tab, true);
       feed.removeEventListener('focusin', tabbedIn);
+      feed.removeEventListener(REVEAL_EVENT, reveal);
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
       if (settleFrame) cancelAnimationFrame(settleFrame);

@@ -59,6 +59,21 @@ test('the rarer word ranks first, a word in a title above one in a body', () => 
   assert.ok(['Use a time-of-flight sensor', 'Sensor field notes'].includes(sensor[0]!), sensor[0]);
 });
 
+test('a document that holds all the words ranks above one that holds fewer, whatever its kind (personas-37)', () => {
+  // "Antenna log 30": a decision that holds only "30", in its title and rare, came before the message that holds all three.
+  const index = new SealedSearchIndex('w');
+  for (let i = 1; i <= 30; i += 1) index.put(doc('', `Antenna log ${i}`));
+  index.put(doc('Shop opens at 6:30 on fair day', 'The fair starts at 7.', 'project:p', 'decision'));
+  for (const q of ['Antenna log 30', 'antenna log 30 ', 'log 30 antenna']) {
+    const hits = find(index, q);
+    assert.equal(hits[0], 'Antenna log 30', q);
+    const decision = hits.indexOf('Shop opens at 6:30 on fair day');
+    assert.ok(decision > 0 && hits.slice(1, decision).every((hit) => hit.startsWith('Antenna log')), `${q}: two words before one`);
+  }
+  // Among documents that hold as many words, the rarer word and the title still decide.
+  assert.equal(find(index, '30')[0], 'Shop opens at 6:30 on fair day');
+});
+
 test('the word being typed is a prefix, a title tolerates a typo, and there are no stems', () => {
   const index = sample();
   assert.ok(find(index, 'sens').includes('Sensor field notes'));

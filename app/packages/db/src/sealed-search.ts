@@ -17,8 +17,8 @@ import { cleanName } from './display-name.js';
  * configuration's: lowercase, no stemming, the last word also as a prefix, websearch quotes, `or` and `-word`, and a title
  * trigram match that tolerates typos. Plain words (`plan.anyWord`, F-042, #1293) match as they do in a plain space, but without
  * stems and accents: any of the words, the word being typed also as a prefix, and a title with a typo in a word of four letters or
- * more; a document ranks by the words it holds, a rarer word (within the audience's own documents) weighing more, a word in the
- * title more than one in the body. Scores approximate `ts_rank` and `word_similarity`, so order between the two sources is
+ * more; a document ranks first by how many of the words it holds, then by which, a rarer word (within the audience's own documents)
+ * weighing more, a word in the title more than one in the body. Scores approximate `ts_rank` and `word_similarity`, so order between the two sources is
  * approximate. Access is decided before this runs: only the partitions of the audience keys the reader may see are read.
  */
 
@@ -335,6 +335,10 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
   const hits: Hit[] = [];
   const at = new Map<Hit, number>();
   const queryGrams = compiled.queryGrams;
+  // As in the BM25 statement, a hit that holds all the words ranks above one that holds fewer, whatever its kind (personas-37): the words that
+  // are not little words count (all of them when every word is little), and the score is `(held + rank) / (counted + 1)`, in (0, 1).
+  const content = compiled.terms.filter((term) => !isSearchStopWord(term.word));
+  const counted = compiled.any ? (content.length ? content : compiled.terms) : [];
   for (const index of matched) {
     const doc = part.docs[index]!;
     if (!accept(doc)) continue;
@@ -348,7 +352,9 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     }
     rank = total ? rank / total : 0;
     const closeness = similarity.get(index) ?? (doc.title ? Math.max(0, ...(compiled.any ? compiled.typoGrams : [queryGrams]).map((grams) => wordSimilarity(grams, trigramsOf(doc.title)))) : 0);
-    let score = Math.round((rank + 0.5 * closeness) * 1e6);
+    const own = rank + 0.5 * closeness;
+    const held = counted.filter((term) => lookup.both(term.word, term.prefix).has(index)).length;
+    let score = Math.round((counted.length ? (held + Math.min(own / 1.5, 0.999999)) / (counted.length + 1) : own) * 1e6);
     if (plan.number !== null && doc.kind === 'work' && doc.body.split('\n', 1)[0] === `#${plan.number}`) score += 10 * 1e6;
     const hit: Hit = { doc, score, whole: whole.has(index), typoOnly: typoOnly.has(index) };
     hits.push(hit);
@@ -356,7 +362,6 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
   }
   // People's search cuts a hit that holds only the little words of the query while it has other words, as the BM25 statement does
   // (`isSearchStopWord`, persona round 6): a hit holding whole words must hold one of the others (the word being typed as its prefix).
-  const content = compiled.terms.filter((term) => !isSearchStopWord(term.word));
   if (!plan.cutWeak || !compiled.any || !content.length || content.length === compiled.terms.length) return hits;
   const numbered = (hit: Hit) => plan.number !== null && hit.doc.kind === 'work' && hit.doc.body.split('\n', 1)[0] === `#${plan.number}`;
   return hits.filter((hit) => !hit.whole || numbered(hit) || content.some((term) => lookup.both(term.word, term.prefix).has(at.get(hit)!)));

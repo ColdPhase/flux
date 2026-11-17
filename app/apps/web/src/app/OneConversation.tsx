@@ -221,6 +221,11 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     const writing = !!state?.writeDecision && !!new URLSearchParams(location.search).get('open')?.startsWith('decision:');
     if (writing) return focusField(DECISION_COMPOSER);
     if (!state?.focusComposer || (closing !== null && closing === conversation?.id)) return;
+    // Back or Forward to an entry that once asked to write is a return to a screen, not that request again: a control that already has the
+    // focus keeps it. Esc from a task made with Create goes Back to the entry before its `?open=`, which (after a join, or Home's "Write your
+    // first message") still asks for the composer, and the composer took the focus from the new task's card (personas-37, Chromium).
+    const active = document.activeElement;
+    if (navigationKind === 'POP' && active instanceof HTMLElement && active !== document.body && active.isConnected) return;
     return focusField(thread ? 'thread-composer' : 'project-composer');
     // Only a new arrival (a navigation) asks for it, never a re-render; the thread is the one the address names.
     // eslint-disable-next-line react-hooks/exhaustive-deps

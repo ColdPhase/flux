@@ -28,7 +28,7 @@ export const vectorLiteral = (vector: number[]) => `[${vector.join(',')}]`;
 /**
  * The end of the ranked statement with a query vector (`rankedStatement` in search.ts, which defines `ranked`: the visible BM25 hits and
  * their rank): `matched`, the fusion by reciprocal rank (k = 60) of two lists of at most {@link HYBRID_DEPTH} rows. `lexical` is the best
- * of `ranked`; `nearest` the rows with the smallest cosine distance to the query's vector **among the rows the caller may see under the
+ * of `ranked`, those that hold more of the query's words first, as without vectors (personas-37); `nearest` the rows with the smallest cosine distance to the query's vector **among the rows the caller may see under the
  * same filters** (`visible`: the audiences, the place, the author, the dates, the task lifecycle), each distance computed exactly. No
  * approximate index is used (#1326's rule, F-042: no row the caller may not read may influence what they see): an HNSW scan walks a graph
  * built over every row of the instance and filters afterwards, so which visible rows it returns could depend on hidden ones. The cost is
@@ -45,8 +45,8 @@ export function hybridMatched(parts: { vector: string; visible: SQL; number: num
   const scale = sql.raw(String((RRF_K + 1) / 2));
   const numbered = parts.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${parts.number}`})`;
   return sql`lexical AS MATERIALIZED (
-      SELECT l.id, row_number() OVER (ORDER BY l.numbered DESC, l.rank DESC, l.at DESC, l.id DESC) AS rk FROM (
-        SELECT r.id, r.numbered, r.rank, r.at FROM ranked r ORDER BY r.numbered DESC, r.rank DESC, r.at DESC, r.id DESC LIMIT ${depth}) l
+      SELECT l.id, row_number() OVER (ORDER BY l.numbered DESC, l.held DESC, l.rank DESC, l.at DESC, l.id DESC) AS rk FROM (
+        SELECT r.id, r.numbered, r.held, r.rank, r.at FROM ranked r ORDER BY r.numbered DESC, r.held DESC, r.rank DESC, r.at DESC, r.id DESC LIMIT ${depth}) l
     ),
     distances AS MATERIALIZED (
       SELECT d.id, d.distance, d.is_file, d.object_id FROM (

@@ -59,6 +59,11 @@ function usePanelSwap(body: RefObject<HTMLElement | null>, enabled: boolean, ope
 }
 
 /** Where an object's own number ("#8") lands in the panel head; see `PanelMeta`. */
+/**
+ * Sent (bubbling) by an object's card that a closing panel gave the focus to: the card is now where the person is, so a view that keeps its
+ * reading place while the layout changes (a conversation, as the panel leaves) brings it into view and keeps it there instead (personas-37).
+ */
+export const REVEAL_EVENT = 'flux:reveal';
 export const PANEL_META_ID = 'details-meta';
 /** Where the object's state glyph sits before its kind, and its quiet actions (⋯) before the close control. */
 export const PANEL_GLYPH_ID = 'details-glyph';
@@ -181,9 +186,14 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
           target.focus({ preventScroll: true });
           if (document.activeElement === target) return;
         }
-        // The object's own card may be out of view (a new task's card at the end of the stream): it comes into view with the focus.
+        // The object's own card may be out of view (a new task's card at the end of the stream): it comes into view with the focus. The
+        // conversation keeps its reading place while the panel leaves, which would scroll the card out again (personas-37): the card says it
+        // is now the place to keep (`REVEAL_EVENT`), and a view that keeps a place brings it into view and keeps it there.
         const card = focusBackRef.current?.();
-        card?.focus();
+        if (card) {
+          card.focus();
+          card.dispatchEvent(new CustomEvent(REVEAL_EVENT, { bubbles: true }));
+        }
       };
       handBack();
       // WebKit can take focus off the control again as the panel is made inert, a moment after it was given: if the page has no focus once
