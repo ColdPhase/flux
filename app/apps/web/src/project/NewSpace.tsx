@@ -36,10 +36,15 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
   useEffect(() => { made.current.workspaceId = space?.id ?? null; made.current.ids = invites.map((invite) => invite.id); });
   useEffect(() => {
     const kept = made.current;
-    return () => {
+    const revoke = (keepalive: boolean) => {
       if (!kept.workspaceId || kept.tied) return;
-      for (const id of kept.ids) void revokeInvite(kept.workspaceId, id).catch(() => undefined);
+      for (const id of kept.ids) void revokeInvite(kept.workspaceId, id, keepalive).catch(() => undefined);
     };
+    // A tab closed or reloaded with the window open runs no cleanup: the links go off on the way out, as Cancel turns them off. A page kept
+    // for Back (`persisted`) may come back with the window as it was, so it keeps them.
+    const leaving = (event: PageTransitionEvent) => { if (!event.persisted) revoke(true); };
+    window.addEventListener('pagehide', leaving);
+    return () => { window.removeEventListener('pagehide', leaving); revoke(false); };
   }, []);
   const [name, setName] = useState(initialName);
   // The form says what is missing in its own words, like sign-in and sign-up, not with the browser's bubble (#763 FR-9).

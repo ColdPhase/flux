@@ -8,7 +8,7 @@
 .doc-notice--version > span:first-of-type { flex: 1 1 0; min-width: 0; }
 .doc-notice__links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; flex-basis: 100%; padding-left: 24px; }
 @media (pointer: coarse) { .doc-notice a, .doc-notice .ui-link { display: inline-flex; align-items: center; min-height: 44px; } }  /* a link is a 44 px target on touch (#1380) */
-.doc-notice a, .doc-notice .wiki-restore-link { color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.doc-notice a { color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .doc-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
 
 /* ---------- List ---------- */

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { markInboxRead } from './api';
 import type { NeedsYouItem } from '@flux/contracts';
-import { getNeedsYou, getNeedsYouAside, leaveQueues } from './needsYou';
+import { getNeedsYou, leaveQueues, lookInNeedsYouAside } from './needsYou';
 
 /**
  * Opening a task someone gave you takes its Task item out of the Inbox (founder decision, Hubert, 2026-11-15, #1424 C): wherever the task
@@ -19,7 +19,7 @@ export function useGivenTaskOpened(userId: string, task: { id: string; status: s
     void getNeedsYou().then(async (response) => {
       let keys = given(response.items);
       // Put off for later, it would come back tomorrow although opened: it is read all the same.
-      if (!keys.length && response.later) keys = given((await getNeedsYouAside().catch(() => ({ later: [] }))).later.map((entry) => entry.item));
+      if (!keys.length && response.later) keys = given((await lookInNeedsYouAside().catch(() => ({ later: [] }))).later.map((entry) => entry.item));
       if (gone || !keys.length) return;
       void Promise.allSettled(keys.map((key) => markInboxRead(key.slice('note:'.length)))).then(() => leaveQueues(userId, keys));
     }, () => undefined);

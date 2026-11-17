@@ -163,6 +163,7 @@ function toResult(row: SearchRow, marks: SearchMarks | null, reader: string): Se
     place: searchPlaceOf(row),
     author: row.author?.kind === 'agent' ? agentWords(row.authorName ?? 'Agent', row.agentOwnerName) : row.via && row.authorName ? viaName(personName(row), row.via, row.viaAgent) : row.authorName === null ? null : personName(row),
     ...((row.kind === 'person' ? row.objectId === reader : row.author?.kind === 'human' && row.author.id === reader) ? { mine: true as const } : {}),
+    ...(row.author?.kind === 'agent' || row.viaAgent ? { byAgent: true as const } : {}),
     ...(row.agentColour && (row.author?.kind === 'agent' || row.viaAgent) ? { agentColour: row.agentColour } : {}),
     at: row.at.toISOString(),
     target: source.target(row),

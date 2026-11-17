@@ -2407,7 +2407,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): for a company owner or admin the open Add people ends with the
   same Someone new? row as Space settings, the same component and flow (the link is made, copied and shown in place), and Create space
   ties each link made in the window to the new space. **A window closed without Create revokes the links it made** (Cancel, ×,
-  Escape; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
+  Escape, a tab closed or reloaded; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
   company link nobody asked for (persona round, 2026-11-15, #1424). **Several links live side by side and the window says what Cancel does
   before it is pressed** (personas-33 to 35, 2026-11-16): each Someone new? link stays listed with its own "Link for …" and Copy link (a new
   one never hides an earlier one, which still works), and under People, also with Add people folded, one quiet line lists who is waiting:
