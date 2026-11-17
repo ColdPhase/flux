@@ -9,9 +9,12 @@
 .deferred-surface { padding: 16px; }
 .deferred-surface > p { display: flex; align-items: center; gap: 8px; color: var(--t2); }
 .deferred-surface--stage { position: absolute; inset: 0; z-index: 3; background: var(--bg); }
-/* The API said "busy" (#838): a calm pill at the bottom, clear of the phone's tab bar, so it never sits over the route progress row at the top. */
+/* The API said "busy" (#838), or the device is offline: a calm pill at the bottom, so it never sits over the route progress row at the top. It
+   stands where a toast stands, above whatever the phone draws at its foot as measured (the capsule, the "+", the map's toolbar: edgeInset.ts),
+   never over the "+" (round 15 look-1 P2-4), and on the computer well inside the panel, never on its edge (P3-5). */
 .busy-notice {
-  position: fixed; inset: auto 0 calc(16px + env(safe-area-inset-bottom)) 0; margin-inline: auto; width: max-content; max-width: calc(100vw - 32px);
+  position: fixed; inset: auto 0 max(calc(24px + env(safe-area-inset-bottom)), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px),
+    calc(var(--ui-map-dock-inset, 0px) + 8px)) 0;
+  margin-inline: auto; width: max-content; max-width: calc(100vw - 32px);
   min-height: 40px; padding: 0 16px; justify-content: center; border: 1px solid var(--line); border-radius: 999px;
 }
-@media (max-width: 700px) { .busy-notice { bottom: calc(84px + env(safe-area-inset-bottom)); } }

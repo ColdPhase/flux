@@ -18,7 +18,7 @@ export interface PageArgs { params: Readonly<Record<string, string | undefined>>
 /** Any loader of the router. */
 type Loader = (args: never, context?: unknown) => unknown;
 /** A route of the router's tree, as far as this file reads it. */
-interface RouteLike { loader?: unknown; lazy?: unknown; children?: RouteLike[] }
+interface RouteLike { id?: string; loader?: unknown; lazy?: unknown; children?: RouteLike[] }
 
 /** The waits before the quiet retries after a read gave back what it kept: five tries over half a minute, then the next event or focus. */
 export const KEEP_RETRY_MS = [1000, 2000, 4000, 8000, 16_000];
@@ -27,6 +27,21 @@ const FRESH_AFTER_MS = 60_000;
 
 /** What each wrapped loader last read, and for which page (its params and search): that is what its page shows now. */
 const shown = new Map<symbol, { page: string; data: unknown }>();
+/**
+ * What each wrapped loader read for the pages before (the newest few): with no answer at all (offline, or the server can't be reached), a
+ * place read earlier in this tab opens with what it last showed, as the offline line says ("Flux shows what it last loaded", round 15).
+ */
+const earlier = new Map<symbol, Map<string, unknown>>();
+/** How many earlier pages a loader keeps. */
+const EARLIER_PAGES = 12;
+
+function remember(id: symbol, page: string, data: unknown) {
+  const pages = earlier.get(id) ?? new Map<string, unknown>();
+  pages.delete(page);
+  pages.set(page, data);
+  while (pages.size > EARLIER_PAGES) pages.delete(pages.keys().next().value as string);
+  earlier.set(id, pages);
+}
 let refresh: (() => unknown) | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let tries = 0;
@@ -48,33 +63,48 @@ function retrySoon() {
   timer = setTimeout(() => { timer = undefined; tries += 1; void refresh?.(); }, KEEP_RETRY_MS[tries]);
 }
 
-/** Wraps one loader: when it fails to get an answer while its own page is the one it last read, it gives that back and retries. */
-export function keepOnRefresh<L extends Loader>(loader: L): L {
+/**
+ * Wraps one loader: when it fails to get an answer while its own page is the one it last read, it gives that back and retries. With no
+ * answer at all, a page it read earlier gives back what it read then. `everywhere`: the loader reads the same data on every page (the
+ * shell: the person, their spaces and messages), so a move to another place keeps it too, and the sidebar never leaves (round 15 new P2-2).
+ */
+export function keepOnRefresh<L extends Loader>(loader: L, everywhere = false): L {
   const id = Symbol('loader');
   const read = loader as unknown as (args: PageArgs, context?: unknown) => unknown;
   const kept = async (args: PageArgs, context?: unknown) => {
-    const page = pageOf(args);
+    const page = everywhere ? '' : pageOf(args);
     try {
       const data = await read(args, context);
       // A redirect is an answer for this call alone; what it replaces is not shown any more.
-      if (data instanceof Response) shown.delete(id); else shown.set(id, { page, data });
+      if (data instanceof Response) { shown.delete(id); earlier.get(id)?.delete(page); } else { shown.set(id, { page, data }); remember(id, page, data); }
       return data;
     } catch (error) {
       // A read that was stopped (the next one, a navigation) says nothing about the page.
       if (args.request.signal.aborted) throw error;
       const last = shown.get(id);
       if (last && last.page === page && failedToAnswer(error)) { retrySoon(); return last.data; }
+      const before = earlier.get(id);
+      if (error instanceof NetworkError && before?.has(page)) {
+        const data = before.get(page);
+        shown.set(id, { page, data });
+        retrySoon();
+        return data;
+      }
       shown.delete(id);
+      if (!failedToAnswer(error)) before?.delete(page);
       throw error;
     }
   };
   return kept as unknown as L;
 }
 
-/** Wraps every loader of the route and of its children, and of the lazy routes that bring one. */
-export function keepPagesOnRefresh<R extends RouteLike>(route: R): R {
+/**
+ * Wraps every loader of the route and of its children, and of the lazy routes that bring one. The routes whose id is in `everywhere`
+ * read the same data on every page (`keepOnRefresh`'s `everywhere`).
+ */
+export function keepPagesOnRefresh<R extends RouteLike>(route: R, everywhere: readonly string[] = []): R {
   const next: RouteLike = { ...route };
-  if (typeof route.loader === 'function') next.loader = keepOnRefresh(route.loader as Loader);
+  if (typeof route.loader === 'function') next.loader = keepOnRefresh(route.loader as Loader, !!route.id && everywhere.includes(route.id));
   const lazy = route.lazy;
   if (typeof lazy === 'function') {
     next.lazy = async () => {
@@ -86,7 +116,7 @@ export function keepPagesOnRefresh<R extends RouteLike>(route: R): R {
     const load = (lazy as { loader: () => Promise<unknown> }).loader;
     next.lazy = { ...lazy, loader: async () => { const loader = await load(); return typeof loader === 'function' ? keepOnRefresh(loader as Loader) : loader; } };
   }
-  if (route.children) next.children = route.children.map((child) => keepPagesOnRefresh(child));
+  if (route.children) next.children = route.children.map((child) => keepPagesOnRefresh(child, everywhere));
   return next as R;
 }
 
@@ -98,6 +128,7 @@ export function retryKeptPagesWith(revalidate: () => unknown) {
 /** Nothing shown is kept any more, and no retry is waiting: another person's session, or none. */
 export function forgetKeptPages() {
   shown.clear();
+  earlier.clear();
   clearTimeout(timer);
   timer = undefined;
   tries = 0;

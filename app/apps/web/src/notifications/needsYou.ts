@@ -131,7 +131,8 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
       setState({ userId, response: lastRead.response, failed: false });
     }, (error: unknown) => {
       if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
-      setState((previous) => ({ userId, response: previous.userId === userId ? previous.response : null, failed: true }));
+      // The last good answer stays, this tab's included when this view is new (offline Home shows what it last loaded, round 15).
+      setState((previous) => ({ userId, response: (previous.userId === userId ? previous.response : null) ?? (lastRead?.userId === userId ? lastRead.response : null), failed: true }));
     });
     return () => controller.abort();
   }, [userId, version]);

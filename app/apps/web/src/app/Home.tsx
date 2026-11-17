@@ -23,6 +23,7 @@ import { openDm } from '../api/direct-messages';
 import { awaitField, stopAwaitingField } from '../ui/keys';
 import { attemptKeys, firstName, startsSpaces } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
+import { onPlacesForgotten } from '../place/memory';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -50,8 +51,15 @@ interface HomeReads {
  * its due day, #763 H11-5), best first, and how many tasks are yours, for "My tasks (N)". Home shows the first one that
  * "Waiting for you" does not already show (#1424).
  */
+/** Home's last good read in this tab, for the one person who read it: offline, Home shows it as the line above promises (round 15). */
+let lastContinue: { userId: string; choices: Continue[]; tasks: number | null } | null = null;
+/** The first steps this tab last read: a read that fails (offline) keeps them, so they never leave and stay gone (round 15 look-1 P2-5). */
+let lastFirstSteps: { userId: string; read: FirstStepsRead } | null = null;
+onPlacesForgotten(() => { lastContinue = null; lastFirstSteps = null; });
+
 function useContinue(userId: string, workspaceIds: string[]): HomeReads {
-  const [state, setState] = useState<{ userId: string; choices: Continue[]; tasks: number | null; failed: boolean } | null>(null);
+  const [state, setState] = useState<{ userId: string; choices: Continue[]; tasks: number | null; failed: boolean } | null>(
+    () => lastContinue?.userId === userId ? { ...lastContinue, failed: false } : null);
   const [attempt, setAttempt] = useState(0);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   const spaces = workspaceIds.join(',');
@@ -68,12 +76,18 @@ function useContinue(userId: string, workspaceIds: string[]): HomeReads {
       const summary = first ? null : read;
       try {
         const assigned = await listAssignedWork(spaces ? spaces.split(',') : [], 50, controller.signal);
-        tasks = assigned.total;
+        // A read that failed in part is no count: "My tasks (0)" is never said for tasks that could not be read (round 15 look-1 P2-5).
+        if (assigned.failed) failed = true; else tasks = assigned.total;
         const active = assigned.items.filter((item) => item.status === 'in_progress').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
         if (active) choices.push({ kind: 'task', item: active });
       } catch { failed = true; }
       if (summary?.nextStep) choices.push({ kind: 'step', step: summary.nextStep, mark: summary.mark });
-      if (!controller.signal.aborted) setState({ userId, choices, tasks, failed: failed && !choices.length });
+      if (controller.signal.aborted) return;
+      // What could not be read now is what this tab last read, while there is one (offline: "Flux shows what it last loaded").
+      const kept = failed && lastContinue?.userId === userId ? lastContinue : null;
+      if (kept) { setState({ ...kept, failed: false }); return; }
+      if (!failed) lastContinue = { userId, choices, tasks };
+      setState({ userId, choices, tasks, failed: failed && !choices.length });
     })();
     return () => controller.abort();
   }, [userId, spaces, attempt]);
@@ -278,13 +292,18 @@ function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => s
  * (the server decides who is new and still has a step left), at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
  * where push is available and it is not on yet: the one-time offer then waits (`onPushRow`).
  */
-function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; workspaceId: string; onPushRow: (shown: boolean) => void }) {
+function FirstStepsCard({ phone, workspaceId, userId, onPushRow }: { phone: boolean; workspaceId: string; userId: string; onPushRow: (shown: boolean) => void }) {
   const navigate = useNavigate();
   const toast = useToast();
   const keys = useRef(attemptKeys());
   const touch = useMediaQuery(MEDIA.touch);
   const [greeting, setGreeting] = useState<string | null>(null);
-  const [read, setRead] = useState<FirstStepsRead | null>(null);
+  const [read, setReadState] = useState<FirstStepsRead | null>(() => lastFirstSteps?.userId === userId ? lastFirstSteps.read : null);
+  const setRead = (next: FirstStepsRead | null | ((current: FirstStepsRead | null) => FirstStepsRead | null)) => setReadState((current) => {
+    const value = typeof next === 'function' ? next(current) : next;
+    lastFirstSteps = value ? { userId, read: value } : null;
+    return value;
+  });
   const [pushKey, setPushKey] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -298,6 +317,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
       if (!controller.signal.aborted && push?.state === 'prompt') setPushKey(push.publicKey);
     }, () => undefined);
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { projects } = useShellData();
   const spaceName = (id: string | null) => projects.find((project) => project.id === id)?.name ?? 'your space';
@@ -307,7 +327,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   const pushShown = shown.some((row) => row.key === 'push');
   useEffect(() => { onPushRow(pushShown); }, [onPushRow, pushShown]);
   if (!shown.length) return null;
-  const hide = () => { setHidden(true); void hideFirstSteps().catch(() => undefined); };
+  const hide = () => { setHidden(true); lastFirstSteps = null; void hideFirstSteps().catch(() => undefined); };
   /** "Say hello" opens the direct message with the person who joined (made now if there is none); that is what takes the row away. */
   const sayHello = (userId: string) => {
     if (greeting) return;
@@ -379,7 +399,7 @@ export function Home() {
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
       {/* #1438: first steps for every new person but a guest, above what waits (it replaces the new member's empty Home line). */}
-      {firstRun || !workspace ? null : <FirstStepsCard phone={phone} workspaceId={workspace.id} onPushRow={setPushRow} />}
+      {firstRun || !workspace ? null : <FirstStepsCard phone={phone} workspaceId={workspace.id} userId={me.user.id} onPushRow={setPushRow} />}
 
       {firstRun ? (
         <section className="home__card home__first" aria-labelledby="home-first">

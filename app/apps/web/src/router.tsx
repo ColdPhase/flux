@@ -248,7 +248,8 @@ export const router = createBrowserRouter([
           { path: '*', Component: NotFoundView, handle: { notFound: true } },
           ],
         }],
-      }),
+      // The shell's read is the same on every page: offline, a move to another place keeps the sidebar and the header (round 15).
+      }, ['app']),
     ],
   },
 ]);
