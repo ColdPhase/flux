@@ -556,10 +556,41 @@ class UnifiedPanel(unittest.TestCase):
         pill = ada.locator(".convo-newbelow__b")
         expect(pill).to_have_text(re.compile("1 new"))
         self.assertEqual(scroller.evaluate("element => element.scrollTop"), 0, "a reader above the end is not moved")
+        self.assert_band_flush(panel, "computer light")
         shot(ada, "unified-panel-task-live-new-below")
         pill.click()
         expect(later).to_be_in_viewport()
         expect(ada.locator(".convo-newbelow__b")).to_have_count(0)
+        # Round 15 confirm S1: the band sits flush on the panel's edge with nothing of the next message under it, and never over the task's
+        # fields above the discussion (on the phone's sheet it covered Due), on the computer and the phone's sheet, light and dark.
+        for phone, scheme in ((False, "dark"), (True, "light"), (True, "dark")):
+            with self.subTest(phone=phone, scheme=scheme):
+                tag = f"{'phone' if phone else 'computer'} {scheme}"
+                reader = self.page(phone=phone, scheme=scheme)
+                open_panel = self.task_panel(reader, task)
+                rows = open_panel.locator(".wd__scroll")
+                rows.evaluate("element => { element.scrollTop = 0; }")
+                reader.wait_for_timeout(300)
+                send(f"One more seal note for the {tag} reader.")
+                expect(reader.locator(".convo-newbelow__b")).to_have_text(re.compile("1 new"))
+                self.assert_band_flush(open_panel, f"{tag} at the top")
+                # With the discussion's start half way up the panel, the band shows, flush on the edge.
+                rows.evaluate("""element => { const top = element.querySelector('.wd-activity').getBoundingClientRect().top - element.getBoundingClientRect().top;
+                  element.scrollTop += top - element.clientHeight / 2; }""")
+                reader.wait_for_timeout(300)
+                expect(reader.locator(".convo-newbelow__b")).to_be_in_viewport()
+                self.assertTrue(self.assert_band_flush(open_panel, f"{tag} in the discussion"), "the band shows over the discussion")
+                shot(reader, f"unified-panel-task-new-band-{'phone' if phone else 'computer'}-{scheme}")
+
+    def assert_band_flush(self, panel, where):
+        """The "↓ N new" band: its top never above the discussion's start, and when it shows, its bottom on the panel's edge. Returns whether it shows."""
+        band = panel.evaluate("""root => { const scroll = root.querySelector('.wd__scroll'), band = root.querySelector('.wd-newbelow'), talk = root.querySelector('.wd-activity');
+          const s = scroll.getBoundingClientRect(), b = band.getBoundingClientRect(), t = talk.getBoundingClientRect();
+          return { gap: s.bottom - b.bottom, above: t.top - b.top, shown: b.top < s.bottom - 1 }; }""")
+        self.assertLessEqual(band["above"], 0.5, f"{where}: the band never covers the task's fields above the discussion {band}")
+        if band["shown"]:
+            self.assertLessEqual(abs(band["gap"]), 1, f"{where}: the band sits flush on the panel's edge {band}")
+        return band["shown"]
 
     def test_15_done_in_the_panel_by_the_person_waited_for_is_the_inboxs_done(self):
         """Persona round 10 P2 2: the person a task waits for says Done in its panel (on the phone a tap on the Inbox row opens it) with

@@ -229,6 +229,9 @@ class MessageWorkJourney(unittest.TestCase):
         pages.get_by_role("button",name="Refresh",exact=True).click()
         expect(page.locator("#thread").get_by_role("alert").filter(has_text="Linked work could not be loaded")).to_be_visible()
         self.assertEqual(self.chips(page),[]);expect(field).to_have_value("Reply stays private during an unavailable association read")
+        # Round 15 confirm S4: the line says a reply is kept only while one is written.
+        alert=page.locator("#thread").get_by_role("alert").filter(has_text="Linked work could not be loaded")
+        expect(alert).to_contain_text("Your reply is kept");field.fill("");expect(alert).not_to_contain_text("Your reply is kept")
         page.unroute("**/work-associations?**")
         page.locator("#thread").get_by_role("button",name="Refresh linked work",exact=True).click();self.ready(page);self.assertEqual(self.chips(page),first)
 

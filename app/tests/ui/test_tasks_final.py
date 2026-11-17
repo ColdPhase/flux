@@ -238,6 +238,17 @@ class TasksFinalJourney(unittest.TestCase):
         # The reader is named as everywhere a person is (design "Naming people", personas-36): "Ada Kowalska (you)", never "you" alone.
         expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text(f"{ADA['name']} (you)")
         shot(page, "346-tasks-list-1440-light")
+        # Round 15 confirm S6: the task open in the panel is marked on its whole row, its state glyph inside the mark.
+        self.row(page, SUPPLIER).locator(".ws-item").click()
+        expect(self.row(page, SUPPLIER).locator(".ws-item")).to_have_attribute("aria-current", "true")
+        page.mouse.move(2, 2)
+        mark = self.row(page, SUPPLIER).evaluate("""row => {
+          const probe = document.createElement('i'); probe.style.background = 'var(--hov)'; document.body.append(probe);
+          const hov = getComputedStyle(probe).backgroundColor; probe.remove();
+          const glyph = row.querySelector('.ws-task__glyph .ui-glyph').getBoundingClientRect();
+          const marked = [row.querySelector('.ws-task__fg'), row.querySelector('.ws-item')].filter((el) => getComputedStyle(el).backgroundColor === hov);
+          return { glyph: glyph.left, marks: marked.map((el) => el.getBoundingClientRect().left) }; }""")
+        self.assertTrue(mark["marks"] and min(mark["marks"]) <= mark["glyph"] - 4, f"the open row's mark holds its state glyph: {mark}")
 
     # ---------------------------------------------------------------- AC-2: one tap, keys 1-4, Undo
 

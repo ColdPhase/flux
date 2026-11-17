@@ -295,6 +295,16 @@ class FileSearch(unittest.TestCase):
         self.assertNotEqual(metas[0], metas[1], f"the two rows say who sent each file: {metas}")
         self.assertTrue(any("Jonas Berg" in meta for meta in metas) and any("Ada Kowalska (you)" in meta for meta in metas), metas)
         self.assertTrue(all(word in meta for meta in metas), f"each still quotes where it matched: {metas} {names}")
+        # Round 15 confirm S3: who, where and when give way before the quote, so the matched word is never cut off the line ("…Rye …").
+        for index in range(2):
+            seen = rows.nth(index).locator(".sr__hit", has_text=word).first.evaluate("""mark => {
+              let clip = Infinity;
+              for (let node = mark.parentElement; node; node = node.parentElement) {
+                if (getComputedStyle(node).overflowX !== 'visible') clip = Math.min(clip, node.getBoundingClientRect().right);
+                if (node.classList.contains('sr__meta')) break;
+              }
+              return { right: mark.getBoundingClientRect().right, clip }; }""")
+            self.assertLessEqual(seen["right"], seen["clip"] - 12, f"the matched word shows whole, before any ellipsis: {seen} {metas[index]}")
         self.shot(page, "file-search-same-name")
 
     def test_99_a_removed_message_takes_its_file_out_of_search_at_once(self) -> None:

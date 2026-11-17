@@ -241,7 +241,14 @@ class Round15Work(unittest.TestCase):
         row.click()
         expect(page.get_by_role("heading", name=SOURCE)).to_be_visible()
         expect(page.get_by_role("link", name="Community garden sensors · Wiki")).to_have_attribute("href", f"/projects/{self.ids['project']}/docs")
+        # Its header names its space, as the space's other Wiki pages do (look-3 F5), and its way back returns to the Wiki it was opened
+        # from, not to the conversation (round 15 confirm S2).
+        expect(page.get_by_role("heading", level=1)).to_have_text("Community garden sensors")
         shot(page, f"r15-source-page-{ENGINE}")
+        expect(page.get_by_role("link", name="Back to the conversation")).to_have_count(0)
+        page.get_by_role("link", name="Back to Wiki").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/{self.ids['doc']}$"))
+        expect(page.locator(".wiki-switch")).to_be_visible()
 
     # ---------------------------------------------------------------- new P2-4
 
