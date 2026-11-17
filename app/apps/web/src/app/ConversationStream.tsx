@@ -961,7 +961,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} hue={messageHue(message)} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         {shown ? <ShownAnswerName shown={shown} asker={name} /> : <>
-          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <AuthorName workspaceId={project.workspaceId} authorId={message.authorId} name={name} />}</strong>
+          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <AuthorName workspaceId={project.workspaceId} authorId={message.authorId} name={name} removed={!!message.removedAuthorName} />}</strong>
           <ViaTag via={message.via} />
         </>}
       </div> : null}
