@@ -171,7 +171,9 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
     registerAction(toast.id, () => act());
     return () => registerAction(toast.id, null);
   }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
-  // The time left: hovering or focusing the toast pauses it, and leaving it runs on from there (#1424, as a notice's do). Only a pointer that
+  // The time left: hovering or focusing the toast pauses it, and leaving it runs on from there (#1424, as a notice's do). Focus pauses it when
+  // it is the keyboard's (`:focus-visible`): after a tap on Undo in WebKit focus landed on the next toast's × with no key pressed, unseen, and that toast
+  // ("#1 back to Doing") never left (test_tasks_board 09, 3 of 3 alone on WebKit). Only a pointer that
   // hovers pauses it: on a touch screen the tap on Undo leaves the browser's pointer where the next toast ("#4 back to To do") appears, and
   // no finger would ever leave it, so that toast stayed until the next tap elsewhere.
   const left = useRef(toast.timeout);
@@ -215,7 +217,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
 
   return (
     <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { if (!hovers()) return; held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
-      onFocus={() => { held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
+      onFocus={(event) => { if (!(event.target as HTMLElement).matches(':focus-visible')) return; held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
       {/* One look for every toast that says what was done (round 14, daily P3-10: Done in the Inbox had no mark, a role change a ✓): no
           mark beside the words. Only Kreska's Wink for a closed task, and the alert of what failed, stand there. */}
       {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
