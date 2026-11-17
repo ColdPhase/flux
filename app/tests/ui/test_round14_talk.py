@@ -252,9 +252,8 @@ class RoundFourteenTalk(unittest.TestCase):
         expect(thread.locator(".thread__hint:not([role=status])")).to_have_text("3 replies · Today")
         expect(thread.locator(".thread__list .message-day")).to_have_count(0)
         # The composer's ring is its own edge, never a second outline with a gap round it.
-        field = page.locator("#dm-composer")
-        field.click()
-        self.assertEqual(field.locator("xpath=ancestor::*[contains(@class, 'composer__box')][1]").evaluate("el => getComputedStyle(el).outlineOffset"), "-1px")
+        offset = page.locator("#dm-composer").evaluate("el => { el.focus(); return getComputedStyle(el.closest('.composer__box')).outlineOffset; }")
+        self.assertEqual(offset, "-1px")
 
     def test_05_new_on_a_new_day_is_one_divider(self) -> None:
         dm = self.call("jonas", "POST", f"/api/v1/workspaces/{self.ids['ws']}/dms", {"participantIds": [self.ids["ola"]]})["id"]
