@@ -398,8 +398,9 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-toasts {
   /* Above the bottom safe area, the capsule of places and the phone's Create control, each as measured: PhoneDock and
      BottomNav and the map's toolbar (sketch/DockRow.tsx) publish their top edges (edgeInset.ts), absent where the control is not drawn. Feedback keeps 8 px
-     clear of the Create control (#639) so a persistent Undo toast cannot cover it, and of the highest composer drawn (#1424) so it never stands on its hint. */
-  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), calc(var(--ui-composer-inset, 0px) + 8px), var(--toast-modal-inset, 0px));
+     clear of the Create control (#639) so a persistent Undo toast cannot cover it, of the highest composer drawn (#1424) so it never stands on its hint,
+     and of the busy or offline line (BusyNotice.tsx). */
+  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), calc(var(--ui-composer-inset, 0px) + 8px), calc(var(--ui-notice-inset, 0px) + 8px), var(--toast-modal-inset, 0px));
   position: fixed; left: var(--toast-left, 50%); bottom: var(--toast-bottom); transform: translateX(-50%); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: var(--toast-max, calc(100vw - 32px)); pointer-events: none;
 }
