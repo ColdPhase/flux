@@ -161,7 +161,9 @@ svg { flex: none; }
 }
 .ui-input::placeholder { color: var(--t3); }
 /* A field that cannot be changed (an invite for one address, a link to copy) reads as fixed, not as one that ignores typing (#1424). */
-.ui-input[readonly] { background: var(--sub); box-shadow: none; cursor: default; }
+/* A read-only field keeps the field's hairline on its fill, so it is a box on every surface: on the phone's sign-in page `--sub` is the page's
+   own colour, and the address floated with no box (round 15 look-1 P3-1). No lift: it is not written in. */
+.ui-input[readonly] { background: var(--sub); box-shadow: inset 0 0 0 1px var(--line2); cursor: default; }
 /* Every field's placeholder, also those without .ui-input (the new-conversation search, Propose a decision, the AI connection
    name): WebKit's own default is #a9a9a9, 2.4:1 on white (#763 sweep). */
 input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
@@ -445,6 +447,8 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-empty__title:focus { outline: none; }
 .ui-empty__body, .ui-error__body { margin-top: 6px; font-size: var(--fs-base); color: var(--t2); line-height: 1.5; }
 .ui-empty__body p + p, .ui-error__body p + p { margin-top: 8px; }
+/* Centred words balance their lines, so the last never holds a word or two alone ("the map." under a full line, round 15 look-1 P3-8). */
+.ui-empty :is(.ui-empty__title, .ui-empty__body) { text-wrap: balance; }
 .ui-empty__action, .ui-error__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .ui-empty__action { justify-content: center; }
 /* A text button that starts a row of actions under text starts where the text starts: its padding is taken back, so "Try again" lines up

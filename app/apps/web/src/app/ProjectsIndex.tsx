@@ -39,8 +39,8 @@ export function ProjectsIndex() {
   const move = useKeyboardMove(list, rows);
   const moveBy = (id: string, step: -1 | 1) => move(() => { moves.moveTo(id, projects.findIndex((project) => project.id === id) + step); }, `[data-space-id="${CSS.escape(id)}"] .proj-index__more`);
   const moveItems = (id: string, at: number): MoreItem[] => [
-    ...(at > moves.fixed ? [{ label: 'Move up', run: () => moveBy(id, -1) }] : []),
-    ...(at < projects.length - 1 ? [{ label: 'Move down', run: () => moveBy(id, 1) }] : []),
+    ...(at > moves.fixed ? [{ label: 'Move up', icon: 'chevron-up' as const, run: () => moveBy(id, -1) }] : []),
+    ...(at < projects.length - 1 ? [{ label: 'Move down', icon: 'chevron-down' as const, run: () => moveBy(id, 1) }] : []),
   ];
   const phone = useMediaQuery(MEDIA.phone);
   // An encrypted space has a small lock after its name, as in the sidebar (F-026 §4).
