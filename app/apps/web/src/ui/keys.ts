@@ -175,12 +175,40 @@ function holdFocus(field: HTMLElement): () => void {
   return end;
 }
 
-function focusFieldBy(find: () => HTMLElement | null): () => void {
+/** Focus that is nowhere a person put it: the page, the content pane (a navigation's own place) or none. */
+const nowhere = (element: Element | null) => !element || element === document.body || element === document.getElementById('content') || element.tagName === 'MAIN';
+
+/**
+ * What had the focus when the person last navigated (Back or Forward, a press, an Enter). The page a navigation opens is drawn
+ * after its reads, so its arrival focus can come late: by then the person may have moved on (F-026 §4: arrival focus never takes focus the
+ * person moved themselves).
+ */
+let focusAtNavigation: Element | null = null;
+let navigationWatched = false;
+function watchNavigation() {
+  if (navigationWatched || typeof window === 'undefined') return;
+  navigationWatched = true;
+  const note = () => { focusAtNavigation = document.activeElement; };
+  window.addEventListener('popstate', note, true);
+  // A press or an Enter is what navigates (a link, a row, New message's search): the focus then is where it was asked from.
+  document.addEventListener('click', note, true);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Enter') note(); }, true);
+}
+if (typeof window !== 'undefined') watchNavigation();
+
+function focusFieldBy(find: () => HTMLElement | null, arrival = false): () => void {
   waitForField();
   let frame = 0;
   let release: (() => void) | null = null;
+  // An arrival's focus (F-026 §4) never takes focus the person moved themselves: only from nowhere, or from what had it when they navigated.
   const attempt = () => {
     const field = find();
+    const active = document.activeElement;
+    if (arrival && active !== field && active !== focusAtNavigation && !nowhere(active)) {
+      // The person went on (Tab to a chip, a link or a button while the conversation was still being drawn): the arrival leaves them there.
+      frame = 0; fieldDue = 0;
+      return;
+    }
     if (field && document.activeElement !== field) {
       field.focus({ preventScroll: true });
       // At the end of what it holds (a kept draft): typing goes on from there, never in front of it (persona round 27, P2 3).
@@ -220,7 +248,7 @@ export function focusComposerOnArrival(id: string): () => void {
   // A view tab chosen from the keyboard keeps the focus, so Left and Right go on along the tabs (F-026 §4); one clicked is a press on a link
   // to the conversation (`watchConversationLinks`).
   if (active instanceof Element && active.closest(KEYBOARD_ROWS) && !fieldOnItsWay()) return () => undefined;
-  return focusField(id);
+  return focusFieldBy(() => document.getElementById(id), true);
 }
 
 /** Where a keyboard choice keeps its focus: the view tabs. */
