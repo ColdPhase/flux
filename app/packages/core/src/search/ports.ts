@@ -72,6 +72,8 @@ export interface SearchRow {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  /** The author is a person who left the company of the row's workspace or was removed from it, and has not come back (#1424, 2026-11-17). */
+  authorRemoved?: boolean;
   /** An agent author's owner, for its one label "Planner · Ada's agent". */
   agentOwnerName?: string | null;
   /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */

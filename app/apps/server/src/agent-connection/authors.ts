@@ -1,16 +1,19 @@
-import { citeMark, type ConversationMessage } from '@flux/contracts';
+import { citeMark, removedName, type ConversationMessage } from '@flux/contracts';
 import { authorLabel, evaluateProject, firstName, sharedFirstNames } from '@flux/core';
 import { accessReader, personalRunRows, schema, type Executor } from '@flux/db';
-import { inArray } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { projectAuthorOwners } from '../conversation/author-owners.js';
 
-// Who wrote what, as people see it, in what the Flux tools return to an agent (#1160). A reading agent is told a person's name only when that
+// Who wrote what, as people see it, in what the Flux tools return to an agent (#1160). A reading agent is told a person's name when that
 // person can read the space now (`project.read`: its people, and the company's owners and admins, who reach every space), which is no more
 // than a member of the space sees named there, and an agent's owner by the same rule (`projectAuthorOwners`). A person who left the company
-// or the space is a former member, as the space's own views show them (#763 XC-2). The ids stay, for the tools that take them.
+// or was removed from it, and wrote here, is "Stefan Kowal (removed)", as the space's own views show them (founder decision, Hubert,
+// 2026-11-17, #1424): their name is already in this space's history. Anyone else (someone who left only the space) is a former member. The
+// ids stay, for the tools that take them.
 
 /** How the conversation reads and the search tools name who wrote each message (#1160): as people see it, so a person's posted answer is never taken for the reader's own. */
-export const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Former member" once they can no longer read this space); '
+export const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Stefan Kowal (removed)" once they left the company or were removed, '
+  + '"Former member" once they can no longer read this space otherwise); '
   + 'an agent with whose it is, "Assistant (Ada\'s agent)"; "Ada\'s Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
   + 'not yours; and "Ada Nowak · via Claude Code" for what her local client posted for her. author.id is the person\'s or the agent\'s id.';
 
@@ -47,11 +50,23 @@ async function userNames(db: Executor, ids: readonly string[]): Promise<Map<stri
   return new Map(rows.map((row) => [row.id, row.name]));
 }
 
-/** The people of `ids` who can read the space now, by name: the only people a reading agent is told the name of. */
-export async function spaceReadersNamed(db: Executor, projectId: string, ids: Iterable<string>): Promise<Map<string, string>> {
+/**
+ * The authors of `ids` (people who wrote in this space) as a reading agent is told them: who can read the space now by name, and who left the
+ * space's company or was removed from it, and has not come back, as "Stefan Kowal (removed)" (`removedName`, #1424, 2026-11-17), the same
+ * rule as the space's own views (`formerMembers`). Nobody else is named: the caller passes only the authors of what it read in this space.
+ */
+export async function spaceAuthorsNamed(db: Executor, projectId: string, ids: Iterable<string>): Promise<Map<string, string>> {
   const visible: string[] = [];
-  for (const id of new Set(ids)) if ((await evaluateProject({ kind: 'human', id }, 'project.read', projectId, accessReader(db))).allowed) visible.push(id);
-  return userNames(db, visible);
+  const others: string[] = [];
+  for (const id of new Set(ids)) ((await evaluateProject({ kind: 'human', id }, 'project.read', projectId, accessReader(db))).allowed ? visible : others).push(id);
+  const names = await userNames(db, visible);
+  if (others.length) {
+    const rows = (await db.execute(sql`SELECT u.id, u.name FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+      JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id JOIN auth_users u ON u.id = r.user_id
+      WHERE p.id = ${projectId}::uuid AND r.user_id = ANY(${sql.param(others)}::text[])`)).rows as { id: string; name: string }[];
+    for (const row of rows) names.set(row.id, removedName(row.name));
+  }
+  return names;
 }
 
 /**
@@ -88,7 +103,7 @@ export type AgentReadMessage = Omit<ConversationMessage, 'authorId' | 'author' |
  * owner by `withAgentLabels`, which the caller applies to the whole result.
  */
 export async function messagesForAgents(db: Executor, projectId: string, messages: readonly ConversationMessage[]): Promise<AgentReadMessage[]> {
-  const names = await spaceReadersNamed(db, projectId, messages.flatMap((message) => message.authorId !== null ? [message.authorId] : []));
+  const names = await spaceAuthorsNamed(db, projectId, messages.flatMap((message) => message.authorId !== null ? [message.authorId] : []));
   return messages.map((message) => {
     const { authorId: _authorId, author: _author, via, viaColour, id, conversationId, sequence, createdAt, body, ...rest } = message;
     void _authorId; void _author;

@@ -7,7 +7,7 @@ import { accessReader, fileTextRows, schema, searchRows, visibleFilter, type Dat
 import { conversationStore } from '../conversation/store.js';
 import { policySearchAccess } from '../search/adapters.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
-import { messagesForAgents, spaceReadersNamed, withAgentLabels } from './authors.js';
+import { messagesForAgents, spaceAuthorsNamed, withAgentLabels } from './authors.js';
 import { textPageEnd } from './domain-reads.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -110,7 +110,7 @@ async function told(ctx: FluxAgentReadContext, rows: readonly SearchRowRecord[])
     } else bySpace.set(row.projectId, [...(bySpace.get(row.projectId) ?? []), index]);
   });
   for (const [projectId, indexes] of bySpace) {
-    const names = await spaceReadersNamed(ctx.tx, projectId, indexes.flatMap((index) => rows[index]!.author?.kind === 'human' ? [rows[index]!.author!.id] : []));
+    const names = await spaceAuthorsNamed(ctx.tx, projectId, indexes.flatMap((index) => rows[index]!.author?.kind === 'human' ? [rows[index]!.author!.id] : []));
     const labelled = indexes.map((index) => {
       const row = rows[index]!;
       const author = row.author?.kind === 'human' ? { kind: 'human' as const, id: row.author.id, name: authorLabel({ kind: 'human', name: names.get(row.author.id) ?? null, via: row.via ?? null, viaAgent: row.viaAgent }) }

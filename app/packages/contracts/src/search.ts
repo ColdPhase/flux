@@ -106,8 +106,16 @@ export interface SearchResult {
   /** A second line from the body with the matched words marked, when the body has one. */
   snippet: SearchText | null;
   place: SearchPlace;
-  /** Who wrote or proposed it, when known. */
+  /**
+   * Who wrote or proposed it, when known: a person who left the company or was removed is "Stefan Kowal (removed)" (`removedName`, founder
+   * decision 2026-11-17, #1424).
+   */
   author: string | null;
+  /**
+   * Present when the reader wrote it, or a person result is the reader: the row names them "Kasia Wójcik (you)" as every view does (design §5
+   * "Naming people", personas-37).
+   */
+  mine?: true;
   /**
    * Present when that author is an agent, or the result is an agent's answer its person showed everyone (#1232): the agent's colour, so the
    * result's tile is its Kreska in it (#1528), as the message itself draws it. Absent for a person and for an agent without a colour (ink).

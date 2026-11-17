@@ -756,6 +756,9 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   const workspaceNames = new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, name FROM workspaces WHERE id = ${index.workspaceId}::uuid`)).map((r) => [r.id, r.name]));
   const humans = ids((doc) => (doc.author?.kind === 'human' ? doc.author.id : null));
   const people = humans.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, ${cleanName(sql`name`)} AS name FROM auth_users WHERE id = ANY(${sql.param(humans)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
+  // Who of them left the company or was removed, as the SQL path reads it (#1424, 2026-11-17): named "Stefan Kowal (removed)".
+  const removed = humans.length ? new Set((await get<{ user_id: string }>(sql`SELECT r.user_id FROM workspaces w JOIN workspace_removed_people r
+    ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id WHERE w.id = ${index.workspaceId}::uuid AND r.user_id = ANY(${sql.param(humans)}::text[])`)).map((r) => r.user_id)) : new Set<string>();
   const agentIds = ids((doc) => (doc.author?.kind === 'agent' ? doc.author.id : null)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
   const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, ${cleanName(sql`name`)} AS name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));
@@ -792,6 +795,7 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
       sketchTitle: doc.kind === 'thought' && doc.parentId ? index.doc(`sketch:${doc.parentId}`)?.title ?? null : null,
       workNumber: doc.number, version: doc.version, currentVersion: versions.get(doc.objectId) ?? null, status: doc.status, title, snippet, hasBody: doc.body.length > 0,
       authorName: doc.author ? (doc.author.kind === 'human' ? people.get(doc.author.id) : agents.get(doc.author.id)) ?? null : null,
+      authorRemoved: doc.author?.kind === 'human' && removed.has(doc.author.id),
       author: doc.author, at: doc.at,
       ...(doc.kind === 'file' ? { messageId: fileMessages.get(doc.objectId) ?? null } : {}),
     };

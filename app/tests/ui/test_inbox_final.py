@@ -466,6 +466,55 @@ class InboxFinal(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(page.locator("#details")).to_contain_text(DECISION)
 
+    def test_03c_tab_moves_the_ring_and_the_open_item_together(self) -> None:
+        """personas-37 P2 (3x, both engines): Tab put the ring on the next row while the right column still showed the first item; A then
+        accepted the first for everyone, and Enter opened the ringed row, so Enter and A acted on different items. Whatever moves the focus
+        (Tab, Shift+Tab, a script), the row with the ring is the open item, and A and Enter act on it (F-026 §4)."""
+        page = self.page()
+        page.goto("/inbox")
+        rows = page.locator(".nyq__list .nyc")
+        expect(rows).to_have_count(4)
+        pane = page.locator(".nyq__col--open .nyc__title")
+
+        def ringed(index: int) -> None:
+            row = rows.nth(index)
+            expect(row.locator(".nyc__open"), f"row {index} has the ring").to_be_focused()
+            expect(row, f"row {index} is the open item").to_have_attribute("aria-current", "true")
+            expect(page.locator(".nyq__list .nyc[aria-current='true']")).to_have_count(1)
+            expect(pane, "the right column shows the ringed row").to_have_text(row.locator(".nyc__open").inner_text())
+
+        expect(rows.first.locator(".nyc__open")).to_be_focused()
+        page.keyboard.press("Tab")
+        ringed(1)
+        page.keyboard.press("Tab")
+        ringed(2)
+        page.keyboard.press("Shift+Tab")
+        ringed(1)
+        rows.nth(3).locator(".nyc__open").focus()
+        ringed(3)
+        # The decision is reached with Tab from the row above it: A accepts the decision with the ring, for everyone, and Z takes it back.
+        titles = [row.locator(".nyc__open").inner_text() for row in rows.all()]
+        at = next(index for index, title in enumerate(titles) if DECISION in title)
+        self.assertGreater(at, 0, "the decision is not the first row (newest first), so Tab has to bring the ring to it")
+        rows.nth(at - 1).locator(".nyc__open").focus()
+        ringed(at - 1)
+        page.keyboard.press("Tab")
+        ringed(at)
+        page.keyboard.press("a")
+        expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
+        self.wait_for(lambda: self.decision_status() == "accepted", "A to accept the decision with the ring", seconds=4)
+        self.assertEqual(sorted(self.kinds()), sorted(["question", "mention", "blocked"]), "only the ringed decision left the Inbox")
+        page.keyboard.press("z")
+        self.wait_for(lambda: self.decision_status() == "proposed", "Z to take the acceptance back")
+        expect(self.card(page, DECISION)).to_have_count(1)
+        # Enter on a ringed row opens that row's item, the same item A acted on.
+        page.wait_for_timeout(500)
+        rows.nth(at - 1).locator(".nyc__open").focus()
+        page.keyboard.press("Tab")
+        ringed(at)
+        page.keyboard.press("Enter")
+        expect(page.locator("#details")).to_contain_text(DECISION)
+
     def test_04_not_now_is_one_button_until_tomorrow_morning(self) -> None:
         page = self.page()
         page.goto("/inbox")

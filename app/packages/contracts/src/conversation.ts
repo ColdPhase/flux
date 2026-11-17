@@ -50,6 +50,12 @@ export interface ConversationMessageFields {
    * message with it is read as that agent's answer, "Hubert's Assistant", shown by the person who is its author.
    */
   viaColour?: AgentColour;
+  /**
+   * Present only on a person's message whose author left the company or was removed from it, and has not come back (founder decision,
+   * Hubert, 2026-11-17, #1424): their name, which every reader of the space shows as "Stefan Kowal (removed)" (`removedName`). It is
+   * already in the space's history; Restore takes it off, and then they are named as everyone is.
+   */
+  removedAuthorName?: string;
   /** Present only for a saved blocker, a "what came of it" line or an explicit public handoff. */
   contribution?: MessageContribution;
   /**

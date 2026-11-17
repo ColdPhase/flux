@@ -225,8 +225,10 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   by name, an agent with whose it is ("Asystent (Ada's agent)"), and an answer a person posted with
   Show everyone as that person's, by its one name ("Ada's Asystent", #1424), never the reading agent's own; the
   agent is told its own id and label, which has its owner's full name when another reader of the
-  space shares the first name. Only someone who can read the space now is named; anyone else is
-  "Former member" ([coordinator default C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160).
+  space shares the first name. Only someone who can read the space now is named, and someone who
+  left the company or was removed, and wrote there, is "Stefan Kowal (removed)", as the space's own
+  views name them (founder decision, Hubert, 2026-11-17, #1424); anyone else is "Former member"
+  ([coordinator default C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160).
 - **What `/ai` may use.** Inside a conversation, `/ai` uses only what that conversation's
   audience can see: the conversation and the places its people can all see. So Show everyone
   never publishes anything private, because the answer was drawn only from what its readers
@@ -573,8 +575,8 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   Codex alike, and **nothing is stored**: no summary record, no trigger, no job. A long range comes in answers of about 4,000
   tokens (16,000 characters, a message cut at 500 characters with the tool that reads it whole); an answer that stopped early
   says so, how many messages remain and the `next` to go on with. It reads what the caller may read now, as search does: a lost
-  grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member) are
-  reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
+  grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member, or
+  "Stefan Kowal (removed)" for someone who left the company or was removed, #1424) are reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
   a run in it, while its owner is one of its people; an encrypted space never.
 - **The Wiki is the space's knowledge base, reached with tools, and the agent cites what it uses**
   ([C-62](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), founder decision, Hubert, 2026-11-13, #1381). The brief says

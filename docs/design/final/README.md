@@ -582,7 +582,11 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   New message's Find people (also the down arrow), Add people's filter and a blocked task's "Waiting for" (where the words typed found one
   row and it is a person, and no row was chosen with the arrows). In New message a second Enter opens the conversation, however fast it is typed.
 - **The Inbox's open item is chosen, never implied:** from the moment the Inbox opens, the item with the ring is the open one (the top
-  one at first), on the phone the expanded card too. An item that arrives live never takes its place, so E acts only on what has the
+  one at first), on the phone the expanded card too. **The ring and the open item move together, whatever moves the focus**
+  (personas-37 P2: Tab put the ring on the next row while the right column still showed the first, and A accepted the first for
+  everyone): Tab, Shift+Tab, J, K, a click or a script that puts the focus on a row makes that row's item the open one at once, so
+  A, E, S, R and Enter always act on the item with the ring. In one column only a keyboard's focus opens a card; a tap opens it by its
+  own action. An item that arrives live never takes its place, so E acts only on what has the
   ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox. What Put back
   or Bring back now returns is the open item as it takes the ring, whether the window was closed with Esc or closed by itself (personas-34).
   **The same on a touch screen** (coordinator decision, sweep 34 C6 and C7, 2026-11-16): what Undo, `Z`, Put back or Bring back now
@@ -611,7 +615,10 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
 - **`/decide` with its words opens the window with the cursor in Why** (personas-36: after `/decide Bake rye on Tuesdays`, Tab to Send
   and "Fewer orders on Monday.", the Space on Send opened the window, the rest of the sentence went into the title and Enter proposed it,
   with no Why, to everyone). The words are the whole title, and a decision reaches everyone at once, so what is typed on is its reason:
-  Enter in Why starts a new line, and only ⌘↵ / Ctrl+↵ or Propose decision proposes it. `/task` keeps the cursor in its title, where Enter
+  Enter in Why starts a new line, and only ⌘↵ / Ctrl+↵ or Propose decision proposes it. **Tab from a `/decide` with its words does what
+  Enter does** (personas-37 P3-1: Tab put the focus on Send, the first word typed was lost and the next Space sent it): the window opens
+  with the cursor in Why, the next field, and every key typed on, from the moment of Tab or Enter, goes into Why, none into the composer
+  that is being left and none lost. Tab never leaves a `/decide` draft on Send. `/task` keeps the cursor in its title, where Enter
   creates the task, which is only the person's own. A decision made from a message starts on its title, selected, as before.
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
 - **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself. The same
@@ -691,6 +698,14 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 - **The reader** is "Ada Kowalska (you)" in every one of those places: on a Board card, in a panel, in a fold (S8), on the map ("From
   Ada Kowalska (you) · 13:05"), never "You" alone, "From you" or a first name. A sentence spoken to the reader still says "you"
   ("Jonas asked you", "Only you are in this space").
+- **Someone who left the company or was removed** is "Stefan Kowal (removed)" in every one of those places, and in Search and in what
+  agents read (founder decision, Hubert, 2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a message, a thread, a
+  decision's discussion, a task, its history, a Wiki version, a notice in the conversation, a Search result. "Former member" is never
+  used for them; Restore takes the mark off. Their name is shown only where it is already in a space's history, to the people who read
+  that space; someone who was never in the company or the space is never named. "Former member" stays only for someone who left a space
+  and can no longer be named there (an agent's read of a space, a guest's view).
+- In Search the reader is named the same way: "Kasia Wójcik (you) · Bakery floor · 22:51" on their own message or file, and "Ana Costa
+  (you)" among People (personas-37).
 - First names stay only in the short summaries drawn with them: a notice's preview ("Maja: I moved…"), "Seen by Maurycy", a finished
   call's list of who was in it, Home's "since you were away" lines ("Ari and Kai replied in …", [return view](../../development/return-view.md))
   and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant").
@@ -1840,8 +1855,11 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   - **Remove** asks on the row in plain words for that person (personas-33/34): "Tomek loses access to Riverside and its spaces at once.
     Tasks given to Tomek stay; you can give them to someone else. Restore brings everything back." Their tasks keep them as owner or as the
     person waited for, and every place that names them there (the panel, the board, a card, a row, the task's history) says "Tomek Wiśniewski (removed)" until
-    Restore or until the task is given to someone else (personas-33). A removed person's Home makes no offer to turn notifications on
-    (personas-34). A role chosen on a row moves no row while the page is open (personas-33: Admin sorted the row up under the pointer); the
+    Restore or until the task is given to someone else (personas-33). So does every other place their name is already in: their messages,
+    threads and a decision's discussion, Search and what agents read ([Naming people](#5-behaviour), founder decision 2026-11-17, #1424).
+    A removed person's Home makes no offer to turn notifications on (personas-34). Every other page of the company they can still reach
+    (the Inbox, My tasks, My map, a conversation's address) says what Home says, "You’re no longer in Riverside Bakery" and how to come
+    back, never an empty Inbox (personas-37 P3-4). A role chosen on a row moves no row while the page is open (personas-33: Admin sorted the row up under the pointer); the
     next visit sorts by role again.
   - **Removed · N** (owners and admins; under the links waiting to be used): the people who left or were removed, each row a face, the
     name and one line, "maja@example.org · Admin · 3 spaces" (the role they had and the spaces they were in, Everyone counted, as the sidebar counts

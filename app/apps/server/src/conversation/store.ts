@@ -56,9 +56,22 @@ function creator(row: ConversationRow, names: Map<string, string>) {
   return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
+/**
+ * The names a page of messages needs: its agents', and its people who left the space's company or were removed (`removed:<id>`), whom every
+ * reader names "Stefan Kowal (removed)" (#1424, 2026-11-17). One statement, as the agents' names alone were read.
+ */
+async function authorNames(db: Executor, workspaceId: string, rows: readonly { authorId: string | null; authorAgentId: string | null }[], more: readonly string[] = []) {
+  const refs = [...rows.flatMap((row): Actor[] => row.authorId !== null ? [{ kind: 'human', id: row.authorId }] : row.authorAgentId !== null ? [{ kind: 'agent', id: row.authorAgentId }] : []),
+    ...more.map((id): Actor => ({ kind: 'agent', id }))];
+  if (!refs.length) return new Map<string, string>();
+  const { names, gone } = await workRows(db).namesIn(refs, workspaceId);
+  for (const key of gone) if (names.has(key)) names.set(`removed:${key.slice('human:'.length)}`, names.get(key)!);
+  return names;
+}
 function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[]; references?: MessageReferenceCard[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
   const contribution = messageContribution(row.contributionKind);
-  return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
+  const removedAuthorName = row.authorId !== null ? names.get(`removed:${row.authorId}`) : undefined;
+  return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId, ...(removedAuthorName ? { removedAuthorName } : {}) } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
@@ -319,8 +332,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
       .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1));
     const hasMoreBefore = rows.length > window.limit;
-    const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
-      .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
+    const names = await authorNames(db, row.workspaceId, rows, row.createdByAgentId !== null ? [row.createdByAgentId] : []);
     const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
     const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
     const selected = rows.slice(0, window.limit).reverse();
@@ -415,8 +427,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const cut = rows.slice(0, window.limit).reverse();
         const openedRoots = await openRows(tx as unknown as DbExecutor, 'project_messages', cut.map((row) => row.root));
         const page = cut.map((row, index) => ({ ...row, root: openedRoots[index]! }));
-        const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
-          .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
+        const names = await authorNames(tx, authorizedProject.workspaceId, page.map((row) => row.root));
         const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
         const cited = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: authorizedProject.workspaceId }, page.map((row) => row.root.id));
         const owners = await projectAuthorOwners(tx, projectId, authorizedProject.workspaceId, page.flatMap((row) => row.root.authorAgentId ? [row.root.authorAgentId] : []));
@@ -437,8 +448,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
         .where(and(eq(schema.projectMessages.conversationId, row.id), gte(schema.projectMessages.sequence, sequence - before), lte(schema.projectMessages.sequence, sequence + after)))
         .orderBy(asc(schema.projectMessages.sequence)));
-      const names = await workRows(db).names(rows.map((item) => item.authorAgentId).filter((actorId): actorId is string => actorId !== null)
-        .map((actorId) => ({ kind: 'agent' as const, id: actorId })));
+      const names = await authorNames(db, row.workspaceId, rows);
       const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
       const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
       const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, rows.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));

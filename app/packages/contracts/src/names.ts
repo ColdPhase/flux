@@ -17,3 +17,10 @@ export const hasInvisibleFormat = (text: string): boolean => ANY_INVISIBLE_FORMA
 
 /** The text without its direction-control and invisible format characters. */
 export const withoutInvisibleFormat = (text: string): string => text.replace(INVISIBLE_FORMAT, '');
+
+/**
+ * How a person who left the company or was removed from it, and has not come back, is named wherever their name is already in a space's
+ * history (founder decision, Hubert, 2026-11-17, #1424): "Stefan Kowal (removed)", for people and agents alike, in messages, threads, a
+ * decision's discussion, a task and its history, Search and People. Restore takes the mark off. One helper for every reader of it.
+ */
+export const removedName = (name: string): string => `${name} (removed)`;

@@ -249,6 +249,15 @@ class AccountsByLink(unittest.TestCase):
         page.goto("/projects")
         expect(page.get_by_text(f"You’re no longer in {company['name']}.")).to_be_visible()
         expect(page.get_by_role("button", name="Create a space")).to_have_count(0)
+        # personas-37 P3-4: the Inbox (still in the rail) said "Nothing needs you right now". Every page of the company they can reach says
+        # what Home says, the Inbox, My tasks and My map alike, also when the address is typed.
+        for path in ("/inbox", "/tasks", "/map"):
+            page.goto(path)
+            expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}"), path).to_be_visible()
+            expect(page.get_by_text("Ask an owner or admin of the company for an invite link to come back."), path).to_be_visible()
+            expect(page.get_by_text("Nothing needs you right now"), path).to_have_count(0)
+        page.goto("/")
+        expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}")).to_be_visible()
         # Nothing to make without a company (personas-30): no New, no C, no Messages "+".
         expect(page.locator(".side__new")).to_have_count(0)
         expect(page.get_by_role("link", name="New message")).to_have_count(0)

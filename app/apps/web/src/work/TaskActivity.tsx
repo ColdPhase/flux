@@ -171,7 +171,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
 
   const author = useCallback((message: ConversationMessage) => {
     if (message.authorId === null) return agentDisplayName(message.author);
-    return personName(message.authorId, { id: me.id, name: me.name }, members, people);
+    return personName(message.authorId, { id: me.id, name: me.name }, members, people, message.removedAuthorName);
   }, [me.id, me.name, members, people]);
 
   const lines = useMemo<Line[]>(() => {

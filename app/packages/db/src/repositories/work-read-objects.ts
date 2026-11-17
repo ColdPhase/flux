@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import { withoutCiteMarks, type DecisionRowProjection, type NamedPrincipal, type NativeWorkRow, type PrincipalRef, type WorkDetailObject, type WorkRowProjection } from '@flux/contracts';
+import { removedName, withoutCiteMarks, type DecisionRowProjection, type NamedPrincipal, type NativeWorkRow, type PrincipalRef, type WorkDetailObject, type WorkRowProjection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
@@ -40,7 +40,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     const named = (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.names.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
     const assignee = (ref: PrincipalRef): NamedPrincipal => {
       const person = named(ref);
-      return found.gone.has(actorKey(ref)) ? { ...person, name: `${person.name} (removed)` } : person;
+      return found.gone.has(actorKey(ref)) ? { ...person, name: removedName(person.name) } : person;
     };
     return Object.assign(named, { assignee });
   }

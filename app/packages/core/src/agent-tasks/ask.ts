@@ -83,7 +83,10 @@ export function sharedFirstNames(people: readonly { id: string; name: string }[]
   return new Set([...named].filter(([, name]) => count.get(name)! > 1).map(([id]) => id));
 }
 
-/** A person who wrote in a space and can no longer read it (#763 XC-2): named the same way everywhere, never by name. */
+/**
+ * A person who wrote in a space and can no longer read it, and who did not leave the company (#763 XC-2): never named. Someone who left the
+ * company or was removed is "Stefan Kowal (removed)" instead (`removedName`, founder decision 2026-11-17, #1424), which the caller gives as the name.
+ */
 export const FORMER_MEMBER = 'Former member';
 /**
  * Who wrote a message, as people see it, for an agent that reads a space (#1160; the API-key engine's `from`, the Flux tools' `author.name`):

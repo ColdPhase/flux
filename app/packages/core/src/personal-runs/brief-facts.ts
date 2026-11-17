@@ -1,4 +1,4 @@
-import { authorLabel, firstName, FORMER_MEMBER, sharedFirstNames } from '../agent-tasks/ask.js';
+import { firstName, sharedFirstNames } from '../agent-tasks/ask.js';
 import type { BriefPlace, TaskFacts } from './brief.js';
 import type { AgentBrief, MessageSource, PersonalRunPorts, RunRecord } from './ports.js';
 
@@ -58,19 +58,4 @@ async function namesakesIn(ports: PersonalRunPorts, workspaceId: string, project
   for (const person of await ports.runs.namesakes(workspaceId, owners.map((owner) => firstName(owner.name))))
     if (await ports.access.canUseProject({ kind: 'human', id: person.id }, 'read', projectId)) readers.push(person);
   return sharedFirstNames([...new Map([...owners, ...readers].map((person) => [person.id, person])).values()]);
-}
-
-/**
- * A space's messages with their authors as people see them (#1160, `authorLabel`): a person by name and an agent with whose it is, "Fieldbot
- * (Jonas's agent)", with the owner's full name when someone else who can read the space has the same first name (#1163). Only someone who
- * can read the space now is named, which is no more than its members see named there; anyone else is a former member, an agent's owner too.
- */
-export async function namedAuthors(ports: PersonalRunPorts, run: Pick<RunRecord, 'workspaceId'> & { projectId: string }, messages: readonly MessageSource[]): Promise<MessageSource[]> {
-  const people = new Set(messages.flatMap((message) => message.author.kind === 'human' ? [message.author.id] : message.author.ownerUserId ? [message.author.ownerUserId] : []));
-  const readers = new Set<string>();
-  for (const id of people) if (await ports.access.canUseProject({ kind: 'human', id }, 'read', run.projectId)) readers.add(id);
-  const owners = await ports.runs.names(messages.flatMap((message) => message.author.kind === 'agent' && message.author.ownerUserId && readers.has(message.author.ownerUserId) ? [message.author.ownerUserId] : []));
-  const full = await namesakesIn(ports, run.workspaceId, run.projectId, [...owners].map(([id, name]) => ({ id, name })));
-  return messages.map((message) => ({ ...message, authorName: message.author.kind === 'human' ? (readers.has(message.author.id) ? message.authorName : FORMER_MEMBER)
-    : authorLabel({ kind: 'agent', name: message.authorName, ownerName: owners.get(message.author.ownerUserId ?? '') ?? null, full: full.has(message.author.ownerUserId ?? '') }) }));
 }

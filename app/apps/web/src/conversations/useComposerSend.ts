@@ -42,7 +42,8 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     // A task from your own `/task` words is yours (#1424 M).
     // A `/decide` goes on in Why: a decision reaches everyone, so the words typed after it are its reason, not more of its title (personas-36).
     // What is typed while the window opens is kept for Why, so no letter is lost on the way (F-026 §4, a form's first field).
-    if (name === 'decide') awaitField();
+    // Keys typed while it opens in the composer that is being left are kept for Why too, never typed on in the composer (personas-37 P3-1).
+    if (name === 'decide') awaitField(undefined, document.getElementById(composerId));
     openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume, ...(name === 'task' ? { ownerMe: true } : { afterTitle: true }),
       ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)), conversationId: fromThread.conversationId }] } : {}) });
   }
@@ -74,8 +75,17 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     }
   }
   function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // A key the page kept for a field on its way (the Why of a `/decide` that is opening) is not the composer's.
+    if (event.nativeEvent.defaultPrevented) return;
     if (menu.menuKey(event)) return;
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); ask.exitAsk(); return; }
+    // Tab from a `/decide` with its words does what Enter does (F-026 §4, personas-37 P3-1): the window opens with the cursor in Why, the next
+    // field, and every letter typed on goes there. Tab to Send left the focus on a button, where the first word was lost and a Space sent it.
+    if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && writable && !asking && /^\/decide\s+\S/.test(draft.trim())) {
+      event.preventDefault();
+      void send();
+      return;
+    }
     if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
   return { send, onKey };
