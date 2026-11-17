@@ -7,6 +7,9 @@ const FADE = 20;
 /** The room under which a panel counts as short: 25 rem (400 px), so larger text (200 %, Text size) makes the same panel short sooner. */
 const SHORT_ROOM_REM = 25;
 
+/** Per panel scroller: where it opened and whether the reader's last scroll reached its end. */
+const reading = new WeakMap<HTMLElement, { opened: number; atEnd: boolean }>();
+
 /** The panel is the phone's sheet: a few lines of room, under the work it was opened over. */
 export const inPhoneSheet = (element: Element | null | undefined) => !!element?.closest('.ui-detent-sheet');
 
@@ -50,13 +53,23 @@ export function usePanelOpening(scrollRef: RefObject<HTMLElement | null>, object
   useScrollEdges(scrollRef, [objectKey]);
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || !opensAtTop(scroller)) return;
-    scroller.scrollTop = 0;
-    showWhole(scroller, scroller.querySelector<HTMLElement>(ask), scroller.querySelector<HTMLElement>('.details__title'));
+    if (!scroller) return undefined;
+    if (opensAtTop(scroller)) {
+      scroller.scrollTop = 0;
+      showWhole(scroller, scroller.querySelector<HTMLElement>(ask), scroller.querySelector<HTMLElement>('.details__title'));
+    }
+    // Whether the reader has since scrolled on to the panel's end (`wantsNewest`): a later part that grows the panel (its rows, its
+    // discussion) moves the end away from them without a scroll of theirs.
+    const state = { opened: scroller.scrollTop, atEnd: false };
+    reading.set(scroller, state);
+    const onScroll = () => { state.atEnd = scroller.scrollTop > state.opened && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2; };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => scroller.removeEventListener('scroll', onScroll);
   // Once for each object opened: what it asks stays where the reader leaves it after that.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectKey]);
 }
+
 
 /**
  * Where the panel opened at its top (`opensAtTop`), a discussion drawn for the first time still shows its newest line when the person already
@@ -67,7 +80,8 @@ export function wantsNewest(section: HTMLElement | null | undefined) {
   const scroller = section?.closest<HTMLElement>('.wd__scroll');
   if (!section || !scroller) return false;
   if (scroller.closest('.wd')?.querySelector('.wd__foot')?.contains(document.activeElement)) return true;
-  return scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - section.offsetHeight - 2;
+  return !!reading.get(scroller)?.atEnd
+    || (scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - section.offsetHeight - 2);
 }
 
 /** Where the panel opened at its top (`opensAtTop`), the newest line comes into view when the cursor goes into the panel's field at its foot. */
