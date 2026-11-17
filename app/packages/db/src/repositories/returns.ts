@@ -1,4 +1,4 @@
-import { agentWords, messagePreview, withoutInvisibleFormat } from '@flux/contracts';
+import { agentWords, messagePreview, removedName, withoutInvisibleFormat } from '@flux/contracts';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -80,7 +80,10 @@ const SUMMARY_DOCS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project
   FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[]) AND pm.kind = 'doc'`;
 const SUMMARY_SKETCHES = 'SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title FROM sketches WHERE id = ANY($1::uuid[])';
 const PEOPLE_NAMES = 'SELECT id, name FROM auth_users WHERE id = ANY($1::text[])';
-const AGENT_NAMES = 'SELECT a.id, a.name, u.name AS owner_name FROM agents a LEFT JOIN auth_users u ON u.id = a.owner_user_id WHERE a.id = ANY($1::uuid[])';
+// The owner of an agent who left its workspace's company or was removed, and has not come back, is marked (#1424, 2026-11-17).
+const AGENT_NAMES = `SELECT a.id, a.name, u.name AS owner_name, EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r
+  ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id WHERE w.id = a.workspace_id AND r.user_id = a.owner_user_id) AS owner_removed
+  FROM agents a LEFT JOIN auth_users u ON u.id = a.owner_user_id WHERE a.id = ANY($1::uuid[])`;
 type PointRow = { key: string; seq: string | number; savedAt: Date; previousSeq: string | number | null; previousSavedAt: Date | null };
 
 // A space's rows: its own events (their object is the space) and its sketches'; a conversation's: its messages.
@@ -245,8 +248,9 @@ export function returnRows(db: DbExecutor) {
       const names = new Map<string, string>();
       if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, PEOPLE_NAMES, [humans])).rows) names.set(`human:${row.id}`, withoutInvisibleFormat(row.name));
       // An agent by its one label, "Planner · Ada's agent" (#1364).
-      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string; owner_name: string | null }>(db, AGENT_NAMES, [agents])).rows) {
-        names.set(`agent:${row.id}`, agentWords(withoutInvisibleFormat(row.name), row.owner_name === null ? null : withoutInvisibleFormat(row.owner_name)));
+      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string; owner_name: string | null; owner_removed: boolean }>(db, AGENT_NAMES, [agents])).rows) {
+        const owner = row.owner_name === null ? null : withoutInvisibleFormat(row.owner_name);
+        names.set(`agent:${row.id}`, agentWords(withoutInvisibleFormat(row.name), owner !== null && row.owner_removed ? removedName(owner) : owner));
       }
       return names;
     },

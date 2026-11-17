@@ -31,6 +31,11 @@ export interface LiveCallLine {
   joinedBy: string[];
   /** While it is on: who is in it now, as the media server says; null when that cannot be read or once it ended. */
   inCall: string[] | null;
+  /**
+   * The people of this line who left the company or were removed, and have not come back, by id: "Stefan Kowal (removed)" (founder decision,
+   * Hubert, 2026-11-17, #1424). They are no longer among the space's people, so the reader's list of names cannot name them. Absent when none.
+   */
+  removed?: Record<string, string>;
 }
 export interface LiveCallLinesResponse { items: LiveCallLine[] }
 export const projectLiveSessionsPath = (projectId: string) => `/api/v1/projects/${projectId}/live-sessions`;

@@ -1,6 +1,6 @@
-import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { LIVE_SPACES_PATH, projectCallsPath, type LiveCallLine, type LiveCallLinesResponse, type LiveContextRef, type LiveSession, type LiveSpacesResponse } from '@flux/contracts';
+import { LIVE_SPACES_PATH, removedName, withoutInvisibleFormat, projectCallsPath, type LiveCallLine, type LiveCallLinesResponse, type LiveContextRef, type LiveSession, type LiveSpacesResponse } from '@flux/contracts';
 import { schema, type Database } from '@flux/db';
 import { DomainError, InvalidInputError, NotFoundError, type LiveMedia, type Principal } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -166,6 +166,18 @@ export async function listCallLines(db: Database, media: Pick<LiveMedia, 'partic
       endedAt: on ? null : (row.endedAt ?? row.updatedAt).toISOString(), joinedBy: row.joinedBy, inCall,
     };
   }));
+  // Who of these lines left the company or was removed is named "Stefan Kowal (removed)" (#1424, 2026-11-17): the space's people no longer list them.
+  const people = [...new Set(items.flatMap((item) => [item.startedBy, ...item.joinedBy, ...(item.inCall ?? [])]))];
+  if (people.length) {
+    const gone = (await db.execute(sql`SELECT u.id, u.name FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+      JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id JOIN auth_users u ON u.id = r.user_id
+      WHERE p.id = ${projectId}::uuid AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { id: string; name: string }[];
+    const names = new Map(gone.map((row) => [row.id, removedName(withoutInvisibleFormat(row.name))]));
+    if (names.size) for (const item of items) {
+      const removed = Object.fromEntries([item.startedBy, ...item.joinedBy, ...(item.inCall ?? [])].flatMap((id) => (names.has(id) ? [[id, names.get(id)!]] : [])));
+      if (Object.keys(removed).length) item.removed = removed;
+    }
+  }
   return { items: items.reverse() };
 }
 

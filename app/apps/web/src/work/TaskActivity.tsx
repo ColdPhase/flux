@@ -33,7 +33,7 @@ import { STATUS_LABEL } from './format';
 import { dueLabel } from './TaskParts';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
-import { callWords, useCallLines, useNow } from '../live/callLines';
+import { callNameOf, callWords, useCallLines, useNow } from '../live/callLines';
 import { useStreamEvents } from '../api/stream';
 import { END_SLACK, NewBelow, arrivedBelow, useNewBelow } from '../app/unreadReading';
 import { useObservation } from '../app/receipts';
@@ -517,7 +517,7 @@ function byTime(lines: { at: string; node: ReactNode }[], calls: { at: string; n
 function TaskCallLine({ line, nameOf, mine }: { line: LiveCallLine; nameOf: (userId: string) => string; mine: boolean }) {
   const now = useNow(line.endedAt === null);
   const words = callWords(line, nameOf, now);
-  const starter = nameOf(line.startedBy);
+  const starter = callNameOf(line, nameOf)(line.startedBy);
   return (
     <li className="wd-act__item" data-activity="call" id={`call-${line.id}`}>
       <Face actor={{ kind: 'human', id: line.startedBy, name: starter }} mine={mine} />

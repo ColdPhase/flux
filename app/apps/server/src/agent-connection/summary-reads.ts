@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { and, asc, eq, gte, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import { AGENT_SUMMARY_LIMITS } from '@flux/contracts';
 import { authorLabel, digestPage, DomainError, NotFoundError, summaryCursorText, summaryNote, summaryRange, type DigestMessage, type SummaryCursor, type SummaryRange } from '@flux/core';
-import { schema, type Database, type Transaction } from '@flux/db';
+import { dmAuthorName, removedInDm, schema, type Database, type Transaction } from '@flux/db';
 import { taskDiscussionInTransaction } from '../work/task-discussions.js';
 import { spaceAuthorsNamed, withAgentLabels } from './authors.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
@@ -154,7 +154,10 @@ async function summarize(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input
   if (scope.kind === 'dm') {
     // Everyone in a direct message sees each other's names, and the owner is one of them (checked above, and again as the bytes go out).
     const rows = await readDm(tx, scope.dmId, range, limit);
-    page = digestPage(rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, length: row.length, files: 0, author: authorLabel({ kind: 'human', name: row.name, via: row.via, viaAgent: !!row.viaColour }) })));
+    // One who left the company or was removed is "Stefan Kowal (removed)", as the people of the direct message see them (#1424, 2026-11-17).
+    const removed = await removedInDm(tx, scope.dmId, rows.map((row) => row.humanId));
+    page = digestPage(rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, length: row.length, files: 0,
+      author: authorLabel({ kind: 'human', name: dmAuthorName(row.name, removed, row.humanId), via: row.via, viaAgent: !!row.viaColour }) })));
     if (rows.length > page.count) {
       const [left] = await tx.select({ n: sql<number>`count(*)::int` }).from(d).where(dmCondition(scope.dmId, range, { at: page.last!.atKey, id: page.last!.id }));
       remaining = Number(left?.n ?? 0);
