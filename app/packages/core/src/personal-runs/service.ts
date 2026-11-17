@@ -221,7 +221,7 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     ...(record.answerBody === null && !['queued', 'reading', 'dispatching'].includes(record.status) ? await webSourcesOf(ports, record) : {}),
     authority: record.authority, backgroundLabel: record.backgroundLabel,
     behind: record.status === 'queued' && !record.resumeAt ? await behindView(ports, record) : null,
-    ...(record.kind === 'task' && record.workId ? await ports.runs.workLabel(record.workId).then((label) => (label ? { task: { id: record.workId!, number: label.number, title: label.title } } : {})) : {}),
+    ...(await taskOf(ports, record)),
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
     completedAt: record.completedAt ? iso(record.completedAt) : null,
     shownAt: record.shownAt ? iso(record.shownAt) : null, dismissedAt: record.dismissedAt ? iso(record.dismissedAt) : null,
@@ -231,6 +231,14 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     // The files its owner sent with the request in the chat (#1438, C-64).
     ...(record.attachmentCount ? await chatFilesOf(ports, record).then((files) => (files.length ? { files } : {})) : {}),
   };
+}
+
+/** The task a run on a task is about, named only while its owner can still read the task's space (#919), as the agent's chat names it. */
+async function taskOf(ports: PersonalRunPorts, record: RunRecord): Promise<{ task?: { id: string; number: number; title: string } }> {
+  if (record.kind !== 'task' || !record.workId) return {};
+  const label = await ports.runs.workLabel(record.workId);
+  if (!label || !(await ports.access.canUseProject({ kind: 'human', id: record.ownerUserId }, 'read', label.projectId))) return {};
+  return { task: { id: record.workId, number: label.number, title: label.title } };
 }
 
 /** The run holding the owner's lane, for the line of a request waiting behind it (AST-6 "Queue"). */
