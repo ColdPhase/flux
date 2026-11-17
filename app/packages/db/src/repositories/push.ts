@@ -115,7 +115,7 @@ async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'i
   // 2026-11-17, #1424), as the conversation it came from names them; the same rule as `formerMembers`.
   const spaces = [...new Set(actors.filter((actor) => actor.kind === 'human').map((actor) => actor.workspaceId))];
   const gone = humans.length && spaces.length ? new Set(((await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
-    JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
     WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(humans)}::text[])`)).rows as { workspace_id: string; user_id: string }[])
     .map((row) => `${row.workspace_id}:${row.user_id}`)) : new Set<string>();
   for (const actor of actors) {

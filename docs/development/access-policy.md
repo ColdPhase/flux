@@ -142,7 +142,8 @@ gets a `manager` grant. A space's people are its grants: `manager` is a space ad
 never a guest, and an agent never holds it) and `contributor` a space member. Becoming a guest turns
 the person's `manager` grants into `contributor` ones marked `admin_held` (migration 0095); becoming a
 member, admin or owner again turns them back, so the role change's Undo restores what it removed
-(personas-35, final design §7 Settings). Every member is in
+(personas-35, final design §7 Settings). Removal keeps the mark and Restore puts it back, so a guest removed and restored still gets
+the role back when they are a member again; a role a space admin then sets on that grant (`updateGrant`) replaces what was held. Every member is in
 Everyone through its `workspace` visibility; guests are not. In the company, only setup makes a
 `workspace`-visible space (`SPACE_NOT_FOR_EVERYONE`).
 
@@ -160,6 +161,13 @@ owner or admin restores them from Settings › Company. Removal keeps what the p
 membership goes. Restore brings them back as they were (founder decision, #1424 F, 2026-11-15): the same role, each kept
 space that still exists with the same grant (`project.grant_set.v1`), and each kept direct message (`dm.changed.v1`,
 `rejoined`), in one transaction. Only an owner restores a former owner (`OWNER_REQUIRED`), as only an owner gives the role.
+Restoring someone to the company does not bring back their places in its encrypted spaces: leaving the company ended each one as a
+removal from that space (C-24), kept on the space's own removed list, and only the space's admins change its people (the company's
+admins cannot, [encrypted spaces](../product/encrypted-workspaces.md)); an admin of that space brings them back there
+(`POST /api/v1/workspaces/:space/removed-people/:user/restore`, which asks what adding does) or adds them again. A space admin who
+held its keys comes back with no unlock password: a current holder must grant one, as for any new admin. "Name (removed)" is for the
+company alone (#1424, 2026-11-17): every read asks `workspace_removed_people` of the company (`coalesce(company_workspace_id, id)`), so
+someone taken out of one encrypted space, still in the company, keeps their plain name there, as after leaving a plain space.
 Joining again any other way (a link, adding) clears the row and what it kept. With
 single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WITH_SSO`).
 Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
