@@ -49,6 +49,18 @@ describe('cite marks in what an agent writes (C-62, v0.2.1 real-model gate)', ()
     assert.equal(item.detail, `Why 200: - It fits the budget and #${task.number} is the order. - Fair contacts names it. - Not as “Shop opens at 6:30” said. - Elsewhere.`);
   });
 
+  test('a mark inside a web address names nothing there: no title of the space goes into an address (C-30)', async () => {
+    await scene.setMayDo('act');
+    const { task, page } = await objects();
+    const live = await scene.liveRun();
+    const rationale = `Booked at https://print.example/order?ref=[doc:${page.id}] for #${task.number} [task:${task.id}].`;
+    const made = JSON.parse(text((await live.call('flux_propose_decision', { decision: { title: 'Print at the corner shop', rationale } })).message)) as { decisionId: string };
+    assert.ok(made.decisionId);
+    await scene.complete(live.runId);
+    const decision = expectStatus(await scene.peer.browser.request('GET', `/api/v1/decisions/${made.decisionId}`), 200) as { rationale: string };
+    assert.equal(decision.rationale, `Booked at https://print.example/order?ref= for #${task.number}.`);
+  });
+
   test('a change that waits for the owner\'s OK keeps the readable words, and Approve writes them', async () => {
     await scene.setMayDo('ask');
     const { rationale, readable } = await objects();
