@@ -1320,8 +1320,8 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   - Under a message, its own time comes first, then the thread's line ("4 replies · last 7:47", the speech-bubble icon in a
     space and in a direct message alike), so the two times never read as one said twice.
   - A person's face beside a message is the same grey face in a space and in a direct message.
-  - A long address in a message breaks after `/`, `_`, `#`, `?`, `&`, `=`, `.` or `-`, never inside a word; a link card that shows
-    an address keeps it on one line ending in "…".
+  - A long address in a message, and the address line of a link card (up to its three lines, #348), breaks after `/`, `_`, `#`,
+    `?`, `&`, `=`, `.` or `-`, never inside a word.
   - Editing one's message in place: the message takes its column's full width and the field grows with its words (to 40 % of
     the window), with no resize grip.
   - The `@` and `/` lists keep the ↵ badge's slot on every row, so the right column never moves with the highlight.

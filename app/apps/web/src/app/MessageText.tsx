@@ -132,7 +132,7 @@ export function LinkPreviews({ body, projectId, messageId }: { body: string; pro
       <a className="link-preview" href={raw} target="_blank" rel="noopener noreferrer nofollow" data-page={page?.description ? 'described' : page?.title ? 'titled' : 'address'}>
         <span className="link-preview__site"><Icon name="link" size={12} />{url.hostname.replace(/^www\./, '')}</span>
         <strong>{page?.title ?? addressTitle(url)}</strong>
-        <small>{page?.description ?? (url.pathname.length > 1 ? `${url.hostname}${url.pathname}` : 'Opens in a new tab')}</small>
+        <small>{page?.description ?? (url.pathname.length > 1 ? breakable(`${url.hostname}${url.pathname}`) : 'Opens in a new tab')}</small>
       </a>
     </li>;
   })}</ul>;

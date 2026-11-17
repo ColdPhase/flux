@@ -208,8 +208,6 @@ a.ref-chip--thought:focus-visible { outline: 2px solid var(--ring); outline-offs
 .link-preview__site { display: flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
 .link-preview strong { font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .link-preview small { color: var(--t2); font-size: var(--fs-xs); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-/* A card without a description shows the address: one line that ends in "…", never an address broken mid-word (visual review 2026-11-17). */
-.link-preview:not([data-page="described"]) small { display: block; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 @media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } .photo-grid__retry { min-height: 44px; min-width: 44px; } }
 
 /* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2).
