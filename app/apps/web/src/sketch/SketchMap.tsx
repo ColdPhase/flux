@@ -355,7 +355,8 @@ export function SketchMap(props: SketchMapProps) {
       let dy = 0;
       const own = canvas.querySelector<HTMLElement>('.sk-node[aria-pressed="true"]')?.getBoundingClientRect();
       const others = [...canvas.querySelectorAll<HTMLElement>('.sk-node:not([aria-pressed="true"])')].map((el) => el.getBoundingClientRect());
-      const meets = (r: DOMRect, left: number, top: number) => r.right > left && r.left < left + bounds.width && r.bottom > top && r.top < top + bounds.height;
+      // A touch of 4 px at the top or bottom is no cover: the bar's own rounded edge and a card's top padding take it.
+      const meets = (r: DOMRect, left: number, top: number) => r.right > left && r.left < left + bounds.width && r.bottom > top + 4 && r.top < top + bounds.height - 4;
       const free = (left: number, top: number) => left >= view.left + 8 && left + bounds.width <= view.right - 8 && top >= view.top + 8 && top + bounds.height <= view.bottom - 8
         && !others.some((r) => meets(r, left, top)) && !floating.some((r) => r.width && meets(r, left, top));
       if (own && others.some((r) => meets(r, bounds.left + dx, bounds.top))) {
