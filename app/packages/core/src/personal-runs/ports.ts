@@ -151,7 +151,8 @@ export interface MessageSource {
   contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string;
   /**
    * Who wrote it, as people see it (#1160, `authorLabel`): a person's name, or an agent with whose it is, "Fieldbot (Jonas's agent)". The
-   * repository gives the stored names; the run names only who can read the space now (`namedAuthors`).
+   * repository gives the stored names. A run reads a space's messages with the Flux tools, which name authors as people see them
+   * (`spaceAuthorsNamed`: who can read the space now, and someone who left the company or was removed as "Stefan Kowal (removed)", #1424).
    */
   authorName: string;
   /** `ownerUserId`: an agent's owner, whom the run names only while they can read the space. */
