@@ -603,6 +603,11 @@ before, about 251 KB with the Create window deferred, 245.6 KB with the pickers 
 with the sign-out wiring apart from the composer. The entry chunk is 106.5 KB (was 118.7) and the stylesheet 20.8 KB (was 26.1). Rebased on `585be00c5`:
 40 files and **239.1 KB** (213.5 KB of JS and 25.6 KB of CSS; 945 KB raw before, 816 KB after), the entry chunk 106.6 KB (was 121.0) and the stylesheet 20.8 KB (was 26.0).
 
+**Observed at the candidate** (2026-11-17, `scripts/perf-bundle.mjs` in the `build` stage of `docker/Dockerfile`, both built that day on one host):
+the train head `44947da84` has 44 files and **248.9 KB** brotli (843.0 KB raw; 1.1 KB under the budget), and the `v0.2.0` tag (`b396187ea`)
+35 files and **242.0 KB** (844.3 KB raw). The release is 6.9 KB above v0.2.0's first screen, not below it; the 239.1 KB above was true when it
+was counted, before the features and fixes the train added after it.
+
 **Guard.** `tests/app/first-screen-budget.test.ts` runs against the finished build with the API tests (`./scripts/check_application.sh`,
 or `ci_test.sh api tests/app/first-screen-budget.test.ts`): it counts the files of `index.html` as `perf-bundle.mjs` does and fails above 250 KB,
 and it fails when the Create window, the notice card, Settings, Details, Jump to…, Tasks, the Wiki or the live stage turns up in the first

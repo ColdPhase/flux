@@ -973,10 +973,11 @@ sso_only() {
   [ -n "$(env_value FLUX_OIDC_ISSUER)" ] && [ "$(env_value FLUX_SSO_MODE | tr 'A-Z' 'a-z')" != prepare ]
 }
 print_setup_link() {
-  # A database that does not answer here never stops `up`: the line is left out.
+  # A database that does not answer here never stops `up`: the line is left out. `--if-new` (a refused demo) says nothing once the company exists.
   companies=$(db_query "SELECT count(*) FROM workspaces WHERE company" 2>/dev/null | tr -d '[:space:]') || companies=''
   case "$companies" in ''|*[!0-9]*) return 0 ;; esac
   if [ "$companies" != 0 ]; then
+    [ "${1:-}" != --if-new ] || return 0
     say "Sign in there. People join from the invite links you make in Settings › Company; ./flux reset-link <email> makes a password reset link."
     return 0
   fi
@@ -1007,7 +1008,10 @@ cmd_demo() {
   if [ "$target" = dev ]; then check_owner "$DEV_PROJECT"; else claim_project "$PROJECT"; fi
   if [ "$target" = dev ]; then origin=$(dev_origin); else origin=$(public_origin); fi
   if ! is_loopback_origin "$origin" && [ "$force" != 1 ]; then
-    die "demo refuses to seed $origin: it looks like a production deployment. Demo data and known passwords belong on a local development instance (use --force only if this really is a throwaway instance)."
+    # A refusal is not a dead end: while no company exists the setup link is how its owner is made (the `up` a demo starts leaves it out, B-10), so it is printed here.
+    warn "demo refuses to seed $origin: it looks like a production deployment. Demo data and known passwords belong on a local development instance (use --force only if this really is a throwaway instance)."
+    [ "$target" != main ] || print_setup_link --if-new
+    exit 1
   fi
   ensure_demo_passwords
   ensure_setup_token
