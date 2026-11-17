@@ -481,19 +481,29 @@ class MapCanvasJourney(unittest.TestCase):
         expect(page.get_by_role('tree', name='Thoughts in Plane directions')).to_be_visible()
         self.assertEqual([tool['name'] for tool in self.assert_concentric_dock(page, 'list')], ['Thought', 'Undo'])
 
+    def kept_movement(self, width, height, scheme):
+        """A map whose browser keeps an unfinished movement privately, so "An unfinished movement is kept privately" shows."""
+        touch = width < 1000
+        page = self.page(width, height, scheme, has_touch=touch, is_mobile=width < 500)
+        sketch = self.scene(page, touch=touch)
+        first = next(t for t in self.stored(page, sketch)['thoughts'] if t['text'] == FIRST)
+        me = self.api(page.context, 'GET', '/api/v1/me')['user']['id']
+        page.evaluate('([key, value]) => sessionStorage.setItem(key, value)', [f'flux:map-gesture:{me}:{sketch}', json.dumps({
+            'generation': 'g1', 'gestureId': 'kept-gesture', 'versions': [], 'positions': [{'id': first['id'], 'x': 140, 'y': 60}]})])
+        page.reload()
+        return page, touch
+
+    @staticmethod
+    def overlaps(a, b):
+        return a['x'] < b['x'] + b['width'] and b['x'] < a['x'] + a['width'] and a['y'] < b['y'] + b['height'] and b['y'] < a['y'] + a['height']
+
+    SIZES = ((1440, 900, 'dark'), (1440, 900, 'light'), (820, 1180, 'dark'), (390, 844, 'dark'))
+
     def test_14_a_notice_in_the_list_takes_its_own_room(self):
         # Founder check, Hubert 2026-11-17: in the List "An unfinished movement is kept privately" lay on the first row ("test").
-        for width, height, scheme in ((1440, 900, 'dark'), (1440, 900, 'light'), (820, 1180, 'dark'), (390, 844, 'dark')):
+        for width, height, scheme in self.SIZES:
             with self.subTest(width=width, scheme=scheme):
-                touch = width < 1000
-                page = self.page(width, height, scheme, has_touch=touch, is_mobile=width < 500)
-                context = page.context
-                sketch = self.scene(page, touch=touch)
-                first = next(t for t in self.stored(page, sketch)['thoughts'] if t['text'] == FIRST)
-                me = self.api(context, 'GET', '/api/v1/me')['user']['id']
-                page.evaluate('([key, value]) => sessionStorage.setItem(key, value)', [f'flux:map-gesture:{me}:{sketch}', json.dumps({
-                    'generation': 'g1', 'gestureId': 'kept-gesture', 'versions': [], 'positions': [{'id': first['id'], 'x': 140, 'y': 60}]})])
-                page.reload()
+                page, touch = self.kept_movement(width, height, scheme)
                 show_map_as(page, 'List', touch=touch)
                 tree = page.get_by_role('tree', name='Thoughts in Plane directions')
                 expect(tree).to_be_visible()
@@ -502,11 +512,8 @@ class MapCanvasJourney(unittest.TestCase):
                 row = tree.get_by_role('treeitem').first.bounding_box()
                 box = notice.bounding_box()
                 for name, other in (('the first row', row), ('the header', page.locator('.sk-head').bounding_box())):
-                    if other is None:
-                        continue  # My map's phone header is not drawn
-                    overlap = box['x'] < other['x'] + other['width'] and other['x'] < box['x'] + box['width'] and box['y'] < other['y'] + other['height'] and other['y'] < box['y'] + box['height']
-                    self.assertFalse(overlap, f'{width} {scheme}: the notice {box} lies on {name} {other}')
-                self.assertLessEqual(notice.bounding_box()['y'] + notice.bounding_box()['height'], row['y'], f'{width}: the notice stands above the list')
+                    self.assertFalse(self.overlaps(box, other), f'{width} {scheme}: the notice {box} lies on {name} {other}')
+                self.assertLessEqual(box['y'] + box['height'], row['y'], f'{width}: the notice stands above the list')
                 # Opened, it still pushes the list down rather than covering it.
                 notice.locator('summary').click()
                 expect(notice.get_by_role('button', name='Discard private movement copy')).to_be_visible()
@@ -514,6 +521,23 @@ class MapCanvasJourney(unittest.TestCase):
                 self.assertLessEqual(opened['y'] + opened['height'], tree.get_by_role('treeitem').first.bounding_box()['y'], f'{width}: the open notice stands above the list')
                 shot(page, f'map-list-notice-{width}-{scheme}')
 
+    def test_15_on_the_map_the_plane_starts_under_a_notice(self):
+        # Founder check, Hubert 2026-11-17 (the same overlap on the Map): under the header the notice lay on the first thought, the phone's
+        # first card and the computer's top-left thought after Fit. The plane starts under it now.
+        for width, height, scheme in self.SIZES:
+            with self.subTest(width=width, scheme=scheme):
+                page, _ = self.kept_movement(width, height, scheme)
+                expect(page.locator('.sk-node')).to_have_count(2)
+                notice = page.locator('.editing-map-recovery')
+                expect(notice).to_be_visible()
+                page.wait_for_timeout(300)
+                box = notice.bounding_box()
+                for node in page.locator('.sk-node').all():
+                    other = node.bounding_box()
+                    self.assertFalse(self.overlaps(box, other), f'{width} {scheme}: on the Map the notice {box} lies on a thought {other}')
+                self.assertNotIn(notice.evaluate('el => getComputedStyle(el).backgroundColor'), ('rgba(0, 0, 0, 0)', 'transparent'),
+                    'over the plane the notice is a raised card, never words printed on the dots')
+                shot(page, f'map-plane-notice-{width}-{scheme}')
 
 if __name__ == '__main__':
     unittest.main()
