@@ -207,8 +207,9 @@ covers it. It is not a human audit.
   answers are compressed more lightly. With the API and the database each held to one CPU and two clients sending requests without
   pause, the p95 of all requests went from about 45 ms to 22–26 ms, measured on a host that was not quiet.
 - **A space and its Conversation open in one read each:** at most 8 requests on every move (v0.2.0: about 14).
-- **The first screen downloads 239 KB**, under its 250 KB budget (v0.2.0: 242 KB), and a test keeps it there. The Create window, the
-  notice card and the date and time fields load with the code that needs them.
+- **The first screen downloads 249 KB** (44 files, brotli, counted by `scripts/perf-bundle.mjs` on `44947da84`), under its 250 KB budget
+  and **7 KB more than v0.2.0's 242 KB** (35 files): the features of this release had taken it to 272 KB, and the Create window, the
+  notice card and the date and time fields now load with the code that needs them. A test keeps it under 250 KB.
 - A change whose save takes more than 2 s on a slow database is no longer answered as failed (500) after it was stored.
 
 ## Install
