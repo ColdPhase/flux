@@ -79,7 +79,10 @@ const SUMMARY_MATERIALS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.pr
 const SUMMARY_DOCS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version, v.reason
   FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[]) AND pm.kind = 'doc'`;
 const SUMMARY_SKETCHES = 'SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title FROM sketches WHERE id = ANY($1::uuid[])';
-const PEOPLE_NAMES = 'SELECT id, name FROM auth_users WHERE id = ANY($1::text[])';
+// A person who left the company of a workspace these lines are about, or was removed from it, and has not come back, is marked, as an agent's
+// owner is below (#1424, 2026-11-17; delta review N2).
+const PEOPLE_NAMES = `SELECT u.id, u.name, EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+  WHERE w.id = ANY($2::uuid[]) AND r.user_id = u.id) AS removed FROM auth_users u WHERE u.id = ANY($1::text[])`;
 // The owner of an agent who left its workspace's company or was removed, and has not come back, is marked (#1424, 2026-11-17).
 const AGENT_NAMES = `SELECT a.id, a.name, u.name AS owner_name, EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r
   ON r.workspace_id = coalesce(w.company_workspace_id, w.id) WHERE w.id = a.workspace_id AND r.user_id = a.owner_user_id) AS owner_removed
@@ -242,11 +245,15 @@ export function returnRows(db: DbExecutor) {
       return byId(await openRows(db, 'sketches', (await queryPrepared<{ id: string; workspaceId: string; projectId: string | null; title: string }>(db, SUMMARY_SKETCHES, [ids])).rows));
     },
 
-    async names(keys: string[]) {
+    /** `workspaceIds`: the workspaces of the lines that name them, whose company decides who is "(removed)". */
+    async names(keys: string[], workspaceIds: string[] = []) {
       const humans = keys.filter((item) => item.startsWith('human:')).map((item) => item.slice(6));
       const agents = keys.filter((item) => item.startsWith('agent:')).map((item) => item.slice(6)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
       const names = new Map<string, string>();
-      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, PEOPLE_NAMES, [humans])).rows) names.set(`human:${row.id}`, withoutInvisibleFormat(row.name));
+      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string; removed: boolean }>(db, PEOPLE_NAMES, [humans, workspaceIds])).rows) {
+        const name = withoutInvisibleFormat(row.name);
+        names.set(`human:${row.id}`, row.removed && name.trim() ? removedName(name) : name);
+      }
       // An agent by its one label, "Planner · Ada's agent" (#1364).
       if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string; owner_name: string | null; owner_removed: boolean }>(db, AGENT_NAMES, [agents])).rows) {
         const owner = row.owner_name === null ? null : withoutInvisibleFormat(row.owner_name);

@@ -119,8 +119,11 @@ export interface ReturnRepository {
   materials(ids: string[]): Promise<Map<string, ReturnMaterial>>;
   sketches(ids: string[]): Promise<Map<string, ReturnSketch>>;
   docs(ids: string[]): Promise<Map<string, ReturnDoc>>;
-  /** Display names keyed by `<kind>:<id>`: a person's name, an agent's one label ("Planner · Ada's agent"). */
-  names(keys: string[]): Promise<Map<string, string>>;
+  /**
+   * Display names keyed by `<kind>:<id>`: a person's name, an agent's one label ("Planner · Ada's agent"). Someone who left the company of
+   * one of `workspaceIds` (the workspaces of the lines) is "Full Name (removed)" (#1424).
+   */
+  names(keys: string[], workspaceIds?: string[]): Promise<Map<string, string>>;
 }
 
 export interface ReturnPorts {

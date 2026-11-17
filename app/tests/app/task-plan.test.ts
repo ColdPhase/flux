@@ -523,18 +523,27 @@ test('the reader is direct, distinct, ascending, lock-free and bounded; the star
   await pool.query('DELETE FROM project_task_dependencies WHERE task_id=$1', [a.id]);
 });
 
+/**
+ * The rows the graph test builds (2,072 tasks and 2,050 edges) are not what it measures. Each task row runs its triggers (its number, its
+ * search document with the BM25 index), about a second for a thousand on an idle machine and past the pool's 2 s read timeout on a loaded
+ * one, where four full checks failed on this setup alone ("Query read timeout" at `insertTasks`). Setup gets a read timeout of its own;
+ * the reads and writes under test keep the pool's.
+ */
+const SETUP_TIMEOUT_MS = 60_000;
+const setupQuery = (text: string, values: unknown[]) => pool.query({ text, values, query_timeout: SETUP_TIMEOUT_MS } as { text: string; values: unknown[] });
+
 test('the graph reader and the cycle walk are bounded by TASK_GRAPH_LIMIT instead of accepting a partial graph', async () => {
   const f = await scene();
   const actor = { kind: 'human' as const, id: f.owner.id } as Principal;
   const work = workUseCases(db);
-  const insertTasks = async (count: number, prefix: string) => (await pool.query(
+  const insertTasks = async (count: number, prefix: string) => (await setupQuery(
     `INSERT INTO project_work_items (id, workspace_id, project_id, title, created_by_kind, created_by_id)
      SELECT gen_random_uuid(), $1::uuid, $2::uuid, $3::text || n, 'human', $4::text FROM generate_series(1, $5::int) AS n RETURNING id`,
     [f.ws.id, f.place.id, prefix, f.owner.id, count])).rows.map((row: { id: string }) => row.id).sort();
   // 21 tasks with 50 distinct prerequisites each: 1,050 distinct direct prerequisites is over the bound; 20 tasks is exactly at it.
   const dependents = await insertTasks(21, 'wide-');
   const prerequisites = await insertTasks(1050, 'leaf-');
-  await pool.query(`INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id)
+  await setupQuery(`INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id)
     SELECT $1::uuid, $2::uuid, ($3::uuid[])[(n - 1) / 50 + 1], ($4::uuid[])[n] FROM generate_series(1, 1050) AS n`, [f.ws.id, f.place.id, dependents, prerequisites]);
   await db.transaction(async (tx) => {
     assert.equal((await taskPrerequisiteIds(tx, f.ws.id, dependents.slice(0, 20))).length, 1000);
@@ -545,7 +554,7 @@ test('the graph reader and the cycle walk are bounded by TASK_GRAPH_LIMIT instea
   // A chain of 1,001 tasks reaches more than the cycle walk may visit; a chain of 1,000 does not.
   const chain = await insertTasks(1001, 'chain-');
   const order = chain;
-  await pool.query(`INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id)
+  await setupQuery(`INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id)
     SELECT $1::uuid, $2::uuid, ($3::uuid[])[n], ($3::uuid[])[n + 1] FROM generate_series(1, 1000) AS n`, [f.ws.id, f.place.id, order]);
   const head = await work.createWork(actor, f.place.id, { title: 'Wants the whole chain' });
   const tooLong = work.updateWork(actor, head.id, { dependencyIds: [order[0]!] }, head.version);

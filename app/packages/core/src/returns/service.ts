@@ -1,4 +1,4 @@
-import { messagePreview, viaName } from '@flux/contracts';
+import { messagePreview, ownerInLabel, viaName } from '@flux/contracts';
 import type {
   ReturnItem, ReturnNextStep, ReturnPlace, ReturnPoint, ReturnSource, ReturnSummary, ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
@@ -247,13 +247,14 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (const item of work.values()) if (item.ownerKey) actorKeys.add(item.ownerKey);
     for (const item of decisions.values()) actorKeys.add(item.proposedByKey);
     for (const message of messages.values()) actorKeys.add(`${message.author.kind}:${message.author.id}`);
-    const names = await returns.names([...actorKeys]);
-    // People by first name, as in conversation ("Nia's task"); agents by their one label, "Planner · Ada's agent".
+    const names = await returns.names([...actorKeys], [...new Set(events.flatMap((event) => event.workspaceId ? [event.workspaceId] : []))]);
+    // People by first name, as in conversation ("Nia's task"), and someone removed from the company by the whole marked name, "Stefan Kowal
+    // (removed)" (#1424, delta review N2), the one rule of an agent's label for its owner; agents by their one label, "Planner · Ada's agent".
     const nameOf = (actorKey: string | null) => {
       if (!actorKey) return null;
       const name = names.get(actorKey)?.trim();
       if (!name) return actorKey.startsWith('agent:') ? 'An agent' : 'A former member';
-      return actorKey.startsWith('human:') ? name.split(/\s+/)[0]! : name;
+      return actorKey.startsWith('human:') ? ownerInLabel(name) : name;
     };
     const myName = names.get(me) ?? '';
     const canWrite = new Map<string, boolean>();

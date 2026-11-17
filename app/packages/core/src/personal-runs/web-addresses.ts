@@ -265,6 +265,15 @@ function addressSpans(text: string): { start: number; end: number; address: stri
   return spans.sort((one, other) => one.start - other.start);
 }
 
+/**
+ * Whether a position of a text is inside a web address written there, with a scheme or without one (`print.example/order?ref=`): the same
+ * addresses `addressSpans` finds. The spans are read once per text, so asking about each mark of a text costs one pass.
+ */
+export function insideAddress(text: string): (at: number) => boolean {
+  const spans = addressSpans(text);
+  return (at) => spans.some((span) => span.start <= at && at < span.end);
+}
+
 /** Whether a text names a web address, one too long to be read included: what `withoutPrivateAddresses` would look at. */
 export const holdsAddress = (text: string) => addressSpans(text).length > 0;
 

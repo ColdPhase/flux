@@ -181,7 +181,7 @@ async function stageDraft(page: Page, f: Scene, item: WorkItem) {
 /** Read-only history: no Undo, no change, no live entry, no composer; the reverter and the time are named. */
 async function reverted(page: Page, item: WorkItem) {
   await title(page, item).waitFor();
-  await panel(page).getByText('Creation undone · read-only history', { exact: true }).waitFor();
+  await panel(page).getByText('Undone · read-only history', { exact: true }).waitFor();
   await panel(page).locator('[data-task-lifecycle="creation_reverted"]').waitFor();
   // The task's number and its space are the line above the title (#1364).
   assert.equal(await page.locator('#details .wd__ref .ui-task-number').innerText(), `#${item.number}`);
@@ -526,7 +526,7 @@ test('desktop and phone-width history render readable actor and time, keyboard l
     await withContexts([context], async () => {
       const page = await context.newPage(); watchErrors(page);
       await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
-      assert.match(await panel(page).innerText(), /Creation undone by Ari Task author \(you\) (on |today)/);
+      assert.match(await panel(page).innerText(), /Undone by Ari Task author \(you\) (on |today)/);
       const activity = panel(page).getByRole('list', { name: 'Task activity', exact: true });
       // The timeline lists newest first (#601): the Undo line leads and the creation is the oldest line.
       assert.equal(await activity.locator('time').first().getAttribute('datetime'), life.revertedAt);

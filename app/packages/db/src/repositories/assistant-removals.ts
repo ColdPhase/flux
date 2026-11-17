@@ -95,18 +95,20 @@ export function assistantRemovalRows(db: DbExecutor) {
 
   return {
     /**
-     * Whether people's use keeps a decision or a message of the assistant's for good, so its Undo is not offered (round 15 ai P2-4: Undo of a
+     * Which decisions and messages of the assistant's people's use keeps for good, so their Undo is not offered (round 15 ai P2-4: Undo of a
      * discussed proposal stayed offered and answered "Replies since"): a decision someone wrote about or decided, a message with a reply after
-     * it. A plain read for the change line, without locks: the Undo itself checks everything again under its own.
+     * it. `undoing` are the messages taken back by the same Undo: a later one of them is no reply, as the Undo removes it first, newest first
+     * (delta review N1: a run's start and its own reply in it are both taken back). Two statements for any number of rows (N-P3-1). A plain
+     * read for the change line, without locks: the Undo itself checks everything again under its own.
      */
-    async keptByUse(operation: string, id: string): Promise<boolean> {
-      if (operation === 'decision.propose') return yes(db, sql`SELECT (
-        EXISTS (SELECT 1 FROM project_decisions WHERE id = ${id} AND status <> 'proposed')
-        OR EXISTS (SELECT 1 FROM project_decision_discussions WHERE decision_id = ${id})) AS found`);
-      if (operation === 'conversation.create' || operation === 'conversation.reply') return yes(db, sql`SELECT EXISTS (
-        SELECT 1 FROM project_messages m JOIN project_messages later ON later.conversation_id = m.conversation_id AND later.sequence > m.sequence AND later.removed_at IS NULL
-        WHERE m.id = ${id} AND m.removed_at IS NULL) AS found`);
-      return false;
+    async keptByUse(decisions: readonly string[], messages: readonly string[], undoing: readonly string[] = []): Promise<Set<string>> {
+      const kept = new Set<string>();
+      if (decisions.length) for (const row of (await db.execute(sql`SELECT d.id FROM project_decisions d WHERE d.id = ANY(${sql.param([...decisions])}::uuid[])
+        AND (d.status <> 'proposed' OR EXISTS (SELECT 1 FROM project_decision_discussions dd WHERE dd.decision_id = d.id))`)).rows as { id: string }[]) kept.add(row.id);
+      if (messages.length) for (const row of (await db.execute(sql`SELECT m.id FROM project_messages m WHERE m.id = ANY(${sql.param([...messages])}::uuid[])
+        AND m.removed_at IS NULL AND EXISTS (SELECT 1 FROM project_messages later WHERE later.conversation_id = m.conversation_id AND later.sequence > m.sequence
+          AND later.removed_at IS NULL AND NOT (later.id = ANY(${sql.param([...undoing])}::uuid[])))`)).rows as { id: string }[]) kept.add(row.id);
+      return kept;
     },
     /**
      * A map's row, `FOR NO KEY UPDATE`, taken before anything else: the strength and the order every writer of a map's thoughts and links
