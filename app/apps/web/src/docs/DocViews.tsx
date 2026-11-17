@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Doc, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Select, Option } from '../ui';
+import { Button, Icon } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { docUrl, getDoc, getLiveDoc, getVersion, listVersions } from './api';

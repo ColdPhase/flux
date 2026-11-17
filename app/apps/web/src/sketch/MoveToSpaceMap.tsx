@@ -6,7 +6,8 @@ import { addLink, listSpaceMaps, moveThoughtsToMap } from '../api/sketches';
 import { useShellData, type ProjectSummary } from '../app/data';
 import { startsSpaces } from '../people/api';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
-import { Button, Icon, MEDIA, Option, Overlay, Select, useMediaQuery, useToast } from '../ui';
+import { Button, Icon, MEDIA, Overlay, useMediaQuery, useToast } from '../ui';
+import { Option, Select } from '../ui/Select';
 import { quote } from './format';
 import '../people/space.css';
 

@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import type { AssistantJob, AssistantJobSchedule } from '@flux/contracts';
-import { Button, Option, Select } from '../ui';
+import { Button } from '../ui';
+import { Option, Select } from '../ui/Select';
 import { TimeField } from '../ui/TimeField';
 import type { AgentSchedulesState } from './useAgentSchedules';
 

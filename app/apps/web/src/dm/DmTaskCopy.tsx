@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DmMessage, DmPerson, DmTaskCopyPreview, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { copyDmToTask, previewDmTaskCopy } from '../api/direct-messages';
-import { Button, Icon, Overlay, useMediaQuery, MEDIA, Select, Option } from '../ui';
+import { Button, Icon, Overlay, useMediaQuery, MEDIA } from '../ui';
+import { Select, Option } from '../ui/Select';
 
 /**
  * Create a task from a private message (#537). Nothing is written until "Create task": first the person sees the

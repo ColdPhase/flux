@@ -3,7 +3,8 @@ import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getSketch } from '../api/sketches';
 import { listProjectSketches } from '../project/data';
-import { Button, Icon, Select, Option } from '../ui';
+import { Button, Icon } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { linkObjects } from './api';
 import { RefLink } from '../place/origin';
 

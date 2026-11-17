@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import '../app/settings.css';
-import { Button, Icon, Slider } from '../ui';
+import { Button, Icon } from '../ui';
+import { Slider } from '../ui/Slider';
 import { SwitchRow } from '../ui/SwitchRow';
 import { personSound } from './audio-prefs';
 import { useAudioSnapshot } from './audio-settings-state';

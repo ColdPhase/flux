@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input, Option, Select } from '../ui';
+import { Button, Icon, Input } from '../ui';
+import { Option, Select } from '../ui/Select';
 import { encryptionProblem, grantUnlockPassword, isWrongPassword, lockWorkspace, newRecoveryCode, setUnlockPassword, type EncryptedWorkspace, type KeyRotation } from './api';
 import { checkPassword, generatePassphrase, loadWords } from './passphrase';
 import { PasswordLength, passwordRefusal } from './PasswordLength';

@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, defaultListedModel, groupModelsByFamily, listPrice,
   type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind, type AiProviderPriceList } from '@flux/contracts';
-import { Button, Select, Option, OptionGroup } from '../ui';
+import { Button } from '../ui';
+import { Select, Option, OptionGroup } from '../ui/Select';
 import { ApiError } from '../api/client';
 import { listAiModels } from './api';
 

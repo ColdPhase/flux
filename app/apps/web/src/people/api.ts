@@ -24,7 +24,7 @@ import {
   type WorkspaceMember,
   type WorkspaceRole,
 } from '@flux/contracts';
-import { youLabel } from '../docs/format';
+import { youLabel } from '../docs/youLabel';
 import { ApiError, NetworkError, request } from '../api/client';
 
 // People in the company and its spaces (#188, F-037). Only the existing access routes (#29): add, change and

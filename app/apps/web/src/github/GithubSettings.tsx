@@ -4,7 +4,8 @@ import type { GithubBinding, GithubCapabilities, GithubRepository, GithubRuleDef
 import { ApiError } from '../api/client';
 import { bindGithubRepository, disconnectGithubAccount, disconnectGithubBinding, getGithubCapabilities, linkTaskPull, listGithubBindings, listGithubInstallations, listGithubRepositories, listTaskGithubLinks, saveGithubRuleDefault, startGithub } from './api';
 import { useProjectShell, type ProjectShell } from '../project/data';
-import { Button, Spinner, Select, Option } from '../ui';
+import { Button, Spinner } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { useShellData } from '../app/data';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';

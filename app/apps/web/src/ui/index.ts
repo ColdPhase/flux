@@ -25,5 +25,3 @@ export { publishHighestTopEdge, publishTopEdge } from './edgeInset';
 export { useFocusBack } from './focusBack';
 export { ToastProvider, UNDO_MS, useClearOfToast, useLeaveUndoToasts, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { Mascot, Opening, OpeningRows, PullToRefresh } from './Moments';
-export { Slider } from './Slider';
-export { Option, OptionGroup, Select, type OptionGroupProps, type OptionProps, type SelectProps } from './Select';

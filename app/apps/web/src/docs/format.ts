@@ -1,4 +1,5 @@
 import type { NamedPrincipal } from '@flux/contracts';
+import { named, youLabel } from './youLabel';
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const stamp = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -37,13 +38,8 @@ export function personName(userId: string, me: { id: string; name: string }, mem
   return members.find((member) => member.userId === userId)?.name
     ?? people?.find((person) => person.kind === 'human' && person.id === userId)?.name ?? FORMER_MEMBER;
 }
-/**
- * The one way a person is named as the author or owner of something (design §5 "Naming people"): the full name, and "Ada Kowalska (you)"
- * for the reader, never "You" alone or a first name. `mine` says the person is the reader; `named` decides it from a person and the reader's id.
- */
-export const youLabel = (name: string, mine: boolean) => (mine ? `${name} (you)` : name);
-export const named = (person: { kind?: string; id: string; name: string }, meId: string) =>
-  youLabel(person.name, (person.kind ?? 'human') === 'human' && person.id === meId);
+/** The reader is "Ada Kowalska (you)" (design §5 "Naming people"): one rule, kept in `./youLabel`. */
+export { named, youLabel };
 /**
  * Who made a version: the reader is "Ada Kowalska (you)" as everywhere a person is named (personas-36); an agent writing under its owner's
  * standing grant (#152) is named "name · agent", as in the conversation.

@@ -1,5 +1,5 @@
 import { blockedWords, type Decision, type ObjectLink, type WorkItem, type WorkStatus } from '@flux/contracts';
-import { named } from '../docs/format';
+import { named } from '../docs/youLabel';
 
 /**
  * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped is Done with a "dropped" note

@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import '../app/settings.css';
-import { Button, Icon, IconButton, MEDIA, Option, Select, Sheet, Slider, useMediaQuery, useStripOnlyModal, useToast } from '../ui';
+import { Button, Icon, IconButton, MEDIA, Sheet, useMediaQuery, useStripOnlyModal, useToast } from '../ui';
+import { Option, Select } from '../ui/Select';
+import { Slider } from '../ui/Slider';
 import { SwitchRow } from '../ui/SwitchRow';
 import { closeAudioSettings, openAudioSettings, toggleAudioSettings, useAudioSettingsOpen, useAudioSnapshot } from './audio-settings-state';
 import { meterWord } from './audio-prefs';
