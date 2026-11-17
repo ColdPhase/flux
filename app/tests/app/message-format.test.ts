@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { messageLinkUrls, messagePreview, parseInline, parseMessage, plainMessageText, plainPreviewText, withoutCiteMarks, type MessageBlock, type MessageInline } from '@flux/contracts';
+import { messageLinkUrls, messagePreview, oneLinePreviewText, parseInline, parseMessage, plainMessageText, plainPreviewText, withoutCiteMarks, type MessageBlock, type MessageInline } from '@flux/contracts';
 import { plainWords } from '../../apps/web/src/work/messageWords.js';
 import { plainInstruction } from '../../apps/web/src/my-agents/plainInstruction.js';
 
@@ -258,10 +258,11 @@ describe('an agent\'s cite marks are never words for a reader (C-62, v0.2.1 real
     assert.equal(withoutCiteMarks('items[0] and [task:not-an-id] and [1]'), 'items[0] and [task:not-an-id] and [1]');
   });
   test('a preview is plain words: no marks, a page by its title, a list on its lines', () => {
-    // A list reads as words in a one-line place (train 37 row 22: "Reasons: - Setup time…" in the Inbox).
-    assert.equal(plainPreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200\nIt fits Fair contacts; Cheaper');
-    assert.equal(plainPreviewText('Reasons:\n- Setup time: the stand needs 45 minutes.\n- Volunteers arrive at 8:00'), 'Reasons:\nSetup time: the stand needs 45 minutes. Volunteers arrive at 8:00');
-    assert.ok(!/(^|\s)- /.test(plainPreviewText('Reasons:\n- Setup\n- Power').replace(/\s+/g, ' ')), 'no list dash is left');
+    assert.equal(plainPreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200\n- It fits Fair contacts\n- Cheaper');
+    // A list reads as words in a one-line place (train 37 row 22: "Reasons: - Setup time…" in the Inbox); Copy text keeps it a list.
+    assert.equal(oneLinePreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200 It fits Fair contacts; Cheaper');
+    assert.equal(oneLinePreviewText('Reasons:\n- Setup time: the stand needs 45 minutes.\n- Volunteers arrive at 8:00'), 'Reasons: Setup time: the stand needs 45 minutes. Volunteers arrive at 8:00');
+    assert.ok(!/(^|\s)- /.test(oneLinePreviewText('Reasons:\n- Setup\n- Power')), 'no list dash is left');
     assert.equal(messagePreview(`Done [task:${id}]`), 'Done');
   });
 });

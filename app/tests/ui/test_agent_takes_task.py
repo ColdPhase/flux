@@ -207,9 +207,10 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
         # Train 37 row 24: the conversation's lines name the agent "Planner · Kai's agent", with the space before the dot (an inline-block part
         # dropped it: "Planner· Kai's agent"). innerText is the text as drawn.
+        talk = self.api(ada, "GET", f"/api/v1/work/{task['id']}/discussion", status=200)
         stream = self.page("ada")
-        stream.goto(f"/projects/{self.ids['project']}")
-        label = stream.locator(".convo-notice__meta .agent-id__label").filter(has_text="Planner").first
+        stream.goto(f"/projects/{self.ids['project']}/conversations/{talk['conversationId']}")
+        label = stream.locator(":is(.project-convo__message-meta, .thread__root-meta) .agent-id__label").filter(has_text="Planner").first
         expect(label).to_be_visible(timeout=20000)
         self.assertEqual(" ".join(label.inner_text().split()), "Planner · Kai's agent")
 

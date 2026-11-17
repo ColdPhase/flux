@@ -48,5 +48,7 @@ export function RefChipOpen({ kind, value, className, children }: { kind: 'task'
       toast({ message: 'Couldn’t open it. Try again.', tone: 'danger' });
     } finally { setBusy(false); }
   };
-  return <button type="button" className={`${className} ref-chip--open`} data-ref={kind} title={label} aria-busy={busy || undefined} onClick={(event) => void open(event)}>{children}</button>;
+  // Enter and Space are the chip's own too: the message row's keys (Enter opens its thread) do not get them.
+  return <button type="button" className={`${className} ref-chip--open`} data-ref={kind} title={label} aria-busy={busy || undefined} onClick={(event) => void open(event)}
+    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); }}>{children}</button>;
 }

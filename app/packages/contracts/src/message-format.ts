@@ -256,17 +256,22 @@ export function withoutCiteMarks(text: string): string {
 }
 
 /**
- * Words for a plain one-line place (an Inbox preview, a card's reason, a change line, a notification): what `plainMessageText` gives, a Wiki page
- * `[[Title]]` as its title, and no cite mark. A list reads as words, not marks (train 37 row 22: "Reasons: - Setup time…"): its items one after
- * another, a "; " between two where the first ends without its own stop.
+ * Words for a plain place (Copy text, a preview): what `plainMessageText` gives, a Wiki page `[[Title]]` as its title, and no cite mark.
  */
 export function plainPreviewText(body: string): string {
-  const words = parseMessage(withoutCiteMarks(body)).map((block) => {
-    if (block.kind !== 'list') return blockText(block);
-    return block.items.map((item) => inlineText(item).trim()).filter(Boolean)
-      .reduce((line, item) => (!line ? item : `${line}${/[.!?;:…]$/.test(line) ? ' ' : '; '}${item}`), '');
-  }).join('\n');
-  return words.replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').trim();
+  return plainMessageText(withoutCiteMarks(body)).replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').trim();
+}
+
+/**
+ * Words for a one-line place (an Inbox row, a message preview, a notification, a change line): `plainPreviewText` on one line, where a list
+ * reads as words, not marks (train 37 row 22: "Reasons: - Setup time…"): its items one after another, "; " between two where the first ends
+ * without its own stop.
+ */
+export function oneLinePreviewText(body: string): string {
+  return parseMessage(withoutCiteMarks(body)).map((block) => (block.kind !== 'list' ? blockText(block)
+    : block.items.map((item) => inlineText(item).trim()).filter(Boolean)
+      .reduce((line, item) => (!line ? item : `${line}${/[.!?;:…]$/.test(line) ? ' ' : '; '}${item}`), '')))
+    .join(' ').replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').replace(/\s+/g, ' ').trim();
 }
 
 /**
