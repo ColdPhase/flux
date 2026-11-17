@@ -260,6 +260,14 @@ class FilesReferencesPhotos(unittest.TestCase):
         cls.ids["task"] = task["id"]
         cls.ids["task-root"] = post("jonas", f"/api/v1/work/{task['id']}/discussion", {"body": "Mount after the rain, see #8 and https://www.thethingsnetwork.org/docs/gateways/placement-guide/", "attachmentIds": [upload("jonas", "IMG_2050.png", BEDS)],
                                                                                    "clientMessageId": str(uuid.uuid4()), "kind": "text"})["id"]
+        # A direct message with a photo and words (founder check, Hubert 2026-11-17: one message, one unit, in a direct message too).
+        dm = post("jonas", f"/api/v1/workspaces/{ws['id']}/dms", {"participantIds": [cls.ids["ada"]]})
+        cls.ids["dm"] = dm["id"]
+        staged = contexts["jonas"].request.post(f"/api/v1/dms/{dm['id']}/files?uploadId={uuid.uuid4()}&name=dm-hedge.png", data=FIELD,
+                                                headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
+        assert staged.status == 201, staged.text()
+        cls.ids["dm-photo"] = post("jonas", f"/api/v1/dms/{dm['id']}/messages", {"body": "The hedge side this morning", "attachmentIds": [staged.json()["id"]],
+                                                                                  "clientMessageId": str(uuid.uuid4())})["id"]
         for context in contexts.values():
             context.close()
 
@@ -334,16 +342,46 @@ class FilesReferencesPhotos(unittest.TestCase):
             self.assertLess(abs(grid_box["x"] - bubble_box["x"]), 1, "the photo and its caption share one left edge")
 
     def assert_meta_under_photo(self, scope) -> None:
-        """A single photo's name and size stand right under the photo, before its caption (round 15: under the caption it read as another file's)."""
-        meta = scope.locator(":scope > .photo-meta")
-        bubble = scope.locator(":scope > .message-bubble")
+        """A single photo's name and size sit on the photo's lower edge, inside it, so nothing stands between the photo and its words (founder check,
+        Hubert 2026-11-17; round 15: under the words it read as another file's)."""
+        meta = scope.locator(":scope > .photo-grid > .photo-meta")
         grid = scope.locator(":scope > .photo-grid")
         expect(meta).to_have_count(1)
+        expect(meta).to_be_visible()
+        meta_box, grid_box = meta.bounding_box(), grid.bounding_box()
+        self.assertGreaterEqual(meta_box["x"], grid_box["x"], "on the photo")
+        self.assertLessEqual(meta_box["x"] + meta_box["width"], grid_box["x"] + grid_box["width"] + 0.001, "on the photo")
+        self.assertGreaterEqual(meta_box["y"], grid_box["y"] + grid_box["height"] / 2, "on the photo's lower half")
+        self.assertLessEqual(meta_box["y"] + meta_box["height"], grid_box["y"] + grid_box["height"] + 0.001, "inside the photo")
+
+    def assert_one_unit(self, scope) -> None:
+        """A photo and the words sent with it are one message, so they read as one unit (founder check, Hubert 2026-11-17: the words stood
+        apart under the photo and its name, and read as a second message): the words' bubble hangs from the photo's lower edge with nothing
+        between them, as wide as the photo, with square corners where the two meet and the photo's 16 px corners at the unit's own corners."""
+        grid = scope.locator(":scope > .photo-grid")
+        bubble = scope.locator(":scope > .message-bubble")
+        expect(grid).to_have_count(1)
         expect(bubble).to_be_visible()
-        meta_box, bubble_box, grid_box = meta.bounding_box(), bubble.bounding_box(), grid.bounding_box()
-        self.assertGreaterEqual(meta_box["y"], grid_box["y"] + grid_box["height"] - 0.001, "the name and size follow the photo")
-        self.assertLessEqual(meta_box["y"] - (grid_box["y"] + grid_box["height"]), 8, "right under the photo")
-        self.assertLessEqual(meta_box["y"] + meta_box["height"], bubble_box["y"] + 0.001, "and before the caption")
+        grid.evaluate("media => Promise.all([...media.querySelectorAll('img')].map(image => image.complete ? undefined : image.decode().catch(() => undefined)))")
+        shape = scope.evaluate("""row => {
+          const grid = row.querySelector(':scope > .photo-grid'), bubble = row.querySelector(':scope > .message-bubble');
+          const tiles = grid.querySelector('.photo-grid__tiles'), tile = grid.querySelector('.photo-grid__tile');
+          const g = grid.getBoundingClientRect(), b = bubble.getBoundingClientRect();
+          const between = [...row.children].slice([...row.children].indexOf(grid) + 1, [...row.children].indexOf(bubble)).filter((el) => el.getClientRects().length);
+          const radius = (el, corner) => parseFloat(getComputedStyle(el)[`border${corner}Radius`]);
+          const lower = (el) => Math.max(radius(el, 'BottomLeft'), radius(el, 'BottomRight'));
+          return { gap: b.top - g.bottom, left: b.left - g.left, right: b.right - g.right, between: between.map((el) => el.className),
+                   photoLower: Math.max(lower(tiles), grid.querySelectorAll('.photo-grid__tile').length === 1 ? lower(tile) : 0),
+                   bubbleUpper: Math.max(radius(bubble, 'TopLeft'), radius(bubble, 'TopRight')),
+                   bubbleLower: [radius(bubble, 'BottomLeft'), radius(bubble, 'BottomRight')], photoUpper: radius(tiles, 'TopLeft') };
+        }""")
+        self.assertEqual(shape["between"], [], shape)
+        self.assertLessEqual(abs(shape["gap"]), 0.5, f"the words hang from the photo's lower edge: {shape}")
+        self.assertLessEqual(abs(shape["left"]), 0.5, f"as wide as the photo: {shape}")
+        self.assertLessEqual(abs(shape["right"]), 0.5, f"as wide as the photo: {shape}")
+        self.assertEqual(shape["photoLower"], 0, f"square where they meet: {shape}")
+        self.assertEqual(shape["bubbleUpper"], 0, f"square where they meet: {shape}")
+        self.assertEqual(shape["bubbleLower"], [shape["photoUpper"]] * 2, f"the unit's corners are the photo's: {shape}")
 
     def assert_inside_bubble(self, scope, child) -> None:
         expect(scope.locator(":scope > .message-bubble")).to_be_visible()
@@ -424,7 +462,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         photo_only = self.message(page, "photo-only")
         expect(photo_only.locator(".photo-grid img[src^='blob:']")).to_have_count(1)
         expect(photo_only.locator(":scope > .message-bubble")).to_be_hidden()
-        expect(photo_only.locator(":scope > .photo-meta")).to_contain_text("bed-without-caption.png · ")
+        expect(photo_only.locator(":scope > .photo-grid > .photo-meta")).to_contain_text("bed-without-caption.png · ")
         expect(six.locator(".photo-meta")).to_have_count(0)  # several photos: no single name and size line
         self.assertEqual(photo_only.locator(":scope > .message-bubble").evaluate("e => [e.offsetWidth, e.offsetHeight]"), [0, 0], "no empty padded bubble below a captionless photo")
         fake = self.message(page, "fake")
@@ -659,6 +697,102 @@ class FilesReferencesPhotos(unittest.TestCase):
                     self.assertGreaterEqual(bubble["width"], grid["width"] - 1, "the caption bubble is as wide as the photo")
                     self.assertGreaterEqual(card["width"], grid["width"] - 1, "the task card is as wide as the photo")
 
+    def test_a_photo_and_its_words_read_as_one_message(self) -> None:
+        """Founder check, Hubert 2026-11-17: a photo sent with words showed the photo, its name and size, and the words in a bubble of their own
+        under them, so it was unclear the words belonged to the photo. They are one unit in every place a message is read: someone else's and
+        one's own in a space, a reply in a thread and a direct message, on the computer and the phone, in both themes. The viewer still opens."""
+        project, thread = self.ids["project"], self.ids["conversation:" + self.ids["files"]]
+        places = (
+            ("others", "ada", f"/projects/{project}", f"#message-{self.ids['two']}"),
+            ("own", "jonas", f"/projects/{project}", f"#message-{self.ids['two']}"),
+            ("thread reply", "ada", f"/projects/{project}/conversations/{thread}", f"#message-{self.ids['photo-reply']}"),
+            ("direct message, others", "ada", f"/dm/{self.ids['dm']}", f"#message-{self.ids['dm-photo']} .dm-msg__main"),
+            ("direct message, own", "jonas", f"/dm/{self.ids['dm']}", f"#message-{self.ids['dm-photo']} .dm-msg__main"),
+        )
+        for phone, dark in ((False, True), (False, False), (True, True)):
+            for name, who, path, selector in places:
+                with self.subTest(place=name, phone=phone, dark=dark):
+                    page = self.page(who, phone=phone, dark=dark, path=path)
+                    scope = page.locator(selector)
+                    scope.scroll_into_view_if_needed()
+                    self.assert_one_unit(scope)
+                    if name != "others":
+                        self.assert_meta_under_photo(scope)
+                    if name == "direct message, own" and not phone:
+                        opener = scope.get_by_role("button", name="Open photo dm-hedge.png")
+                        opener.click()
+                        viewer = page.get_by_role("dialog")
+                        expect(viewer.locator("img[src^='blob:']")).to_be_visible()
+                        expect(viewer.get_by_role("link", name="Save")).to_have_attribute("download", "dm-hedge.png")
+                        self.close_viewer(page)
+                        expect(opener).to_be_focused()
+                    self.shot(page, f"photo-words-unit-{name.replace(', ', '-').replace(' ', '-')}-{'390' if phone else '1440'}-{'dark' if dark else 'light'}", scope)
+                    page.context.close()
+
+    def test_the_message_toolbar_is_in_reach_from_anywhere_on_the_message(self) -> None:
+        """Founder check, Hubert 2026-11-17: the toolbar (reply, +, ⋯) stood beside a photo's top corner and went as soon as the pointer, on its way
+        there from the middle of the photo, left the message. The room beside the bubble belongs to its message for its whole height, and the toolbar
+        stays a moment after the pointer leaves, so a pointer travelling straight to it never loses it; another message under the pointer takes
+        over at once, and it is gone soon after the pointer leaves for good. Own and someone else's message, a photo in a space and in a direct
+        message. The keyboard reaches it as before."""
+        project = self.ids["project"]
+        places = (
+            ("others' photo", "ada", f"/projects/{project}", f"#message-{self.ids['two']}"),
+            ("own photo", "jonas", f"/projects/{project}", f"#message-{self.ids['two']}"),
+            ("direct message, others' photo", "ada", f"/dm/{self.ids['dm']}", f"#message-{self.ids['dm-photo']}"),
+            ("direct message, own photo", "jonas", f"/dm/{self.ids['dm']}", f"#message-{self.ids['dm-photo']}"),
+        )
+        state = "el => { const s = getComputedStyle(el); return s.pointerEvents === 'auto' && parseFloat(s.opacity) > 0.5; }"
+        for name, who, path, selector in places:
+            with self.subTest(place=name):
+                page = self.page(who, path=path)
+                message = page.locator(selector)
+                message.scroll_into_view_if_needed()
+                grid = message.locator(".photo-grid")
+                grid.evaluate("media => Promise.all([...media.querySelectorAll('img')].map(image => image.complete ? undefined : image.decode().catch(() => undefined)))")
+                pill = message.locator(".msg-acts")
+                photo = grid.bounding_box()
+                start = (photo["x"] + photo["width"] / 2, photo["y"] + photo["height"] * 0.8)
+                page.mouse.move(*start)
+                expect(pill).to_have_css("opacity", "1")
+                bar = pill.bounding_box()
+                self.assertGreater(start[1] - (bar["y"] + bar["height"]), 60, f"{name}: the pointer starts well below the toolbar")
+                goal = (bar["x"] + bar["width"] / 2, bar["y"] + bar["height"] / 2)
+                lost = []
+                for step in range(1, 21):
+                    point = (start[0] + (goal[0] - start[0]) * step / 20, start[1] + (goal[1] - start[1]) * step / 20)
+                    page.mouse.move(*point)
+                    page.wait_for_timeout(16)
+                    if not pill.evaluate(state):
+                        lost.append([round(value) for value in point])
+                self.assertEqual(lost, [], f"{name}: the toolbar stays while the pointer travels to it")
+                more = pill.get_by_role("button", name="More actions")
+                more.click()
+                expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(page.get_by_role("menu", name="Message actions")).to_have_count(0)
+                page.evaluate("document.activeElement?.blur()")  # focus on ⋯ would keep the toolbar for the keyboard
+                # A detour through the empty room beside the message, away from its lane: the toolbar waits a moment for the pointer.
+                page.mouse.move(*start)
+                expect(pill).to_have_css("opacity", "1")
+                mine = "is-mine" in (message.get_attribute("class") or "")
+                away = (bar["x"] - 40 if mine else bar["x"] + bar["width"] + 40, start[1])
+                page.mouse.move(*away)
+                page.wait_for_timeout(60)
+                self.assertTrue(pill.evaluate(state), f"{name}: the toolbar waits a moment after the pointer left")
+                page.mouse.move(*goal, steps=2)
+                self.assertTrue(pill.evaluate(state), f"{name}: and the pointer reaches it")
+                # Left for good, it goes.
+                page.mouse.move(2, 2)
+                expect(pill).to_have_css("opacity", "0")
+                # The keyboard reaches it as before: focus on its first button shows it.
+                pill.locator(".msg-acts__b").first.focus()
+                page.keyboard.press("Shift+Tab")
+                page.keyboard.press("Tab")
+                expect(pill).to_have_css("opacity", "1")
+                self.shot(page, f"toolbar-reach-{name.replace(', ', '-').replace(chr(39), '').replace(' ', '-')}-1440", message)
+                page.context.close()
+
     def test_photo_file_and_words_caption_is_the_photos_width(self) -> None:
         """Round 15 confirm S5: a photo, a file and words made the caption bubble 373 px wide under a 340 px photo; it is the photo's width,
         as a photo with words alone is."""
@@ -717,27 +851,28 @@ class FilesReferencesPhotos(unittest.TestCase):
                     self.assertEqual(style["fill"], style["own"], style)
                     self.assertGreater(style["padding"], 0, style)
                     self.assertGreater(style["radius"], 0, style)
-                    # Photo filename/size is a plain metadata line, not another own-message bubble.
+                    # A photo's name and size are words on a dark chip on the photo (founder check, Hubert 2026-11-17), in both themes: white words
+                    # that stay readable on the lightest picture, never the page's grey on a picture's colours.
                     for path, selector in (
-                        (f"/projects/{self.ids['project']}", f"#message-{self.ids['photo-only']} > .photo-meta"),
-                        (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", f"#message-{self.ids['photo-reply']} > .photo-meta"),
+                        (f"/projects/{self.ids['project']}", f"#message-{self.ids['photo-only']} > .photo-grid > .photo-meta"),
+                        (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:' + self.ids['files']]}", f"#message-{self.ids['photo-reply']} > .photo-grid > .photo-meta"),
                     ):
                         self.leave_quietly(page, path)
                         metadata = page.locator(selector)
                         metadata.scroll_into_view_if_needed()
                         expect(metadata).to_be_visible()
                         appearance = metadata.evaluate("""element => {
-                          const style=getComputedStyle(element), probe=document.createElement('i');
-                          probe.style.color='var(--t3)'; document.body.append(probe);
-                          const colour=getComputedStyle(probe).color; probe.remove();
-                          return {image:style.backgroundImage,background:style.backgroundColor,shadow:style.boxShadow,
-                            padding:parseFloat(style.paddingLeft)+parseFloat(style.paddingRight), colour:style.color, expected:colour};
+                          const style=getComputedStyle(element);
+                          return {background:style.backgroundColor, colour:style.color, events:style.pointerEvents};
                         }""")
-                        self.assertEqual(appearance["image"], "none", appearance)
-                        self.assertEqual(appearance["background"], "rgba(0, 0, 0, 0)", appearance)
-                        self.assertEqual(appearance["shadow"], "none", appearance)
-                        self.assertEqual(appearance["padding"], 0, appearance)
-                        self.assertEqual(appearance["colour"], appearance["expected"], appearance)
+                        self.assertEqual(appearance["colour"], "rgb(255, 255, 255)", appearance)
+                        self.assertEqual(appearance["events"], "none", "a press on the words opens the photo under them")
+                        chip = [float(part) for part in re.findall(r"[\d.]+", appearance["background"])]
+                        self.assertEqual(chip[:3], [0, 0, 0], appearance)
+                        # The chip over a white picture: its grey under white words, WCAG ratio.
+                        grey = 255 * (1 - chip[3]) / 255
+                        lum = grey / 12.92 if grey <= .04045 else ((grey + .055) / 1.055) ** 2.4
+                        self.assertGreaterEqual(1.05 / (lum + .05), 4.5, appearance)
 
     def test_composer_thumbnails_drop_and_photo_states(self) -> None:
         for phone in (False, True):
@@ -798,6 +933,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(pending.locator(".photo-grid__tile img[src^='blob:'], .photo-grid__tile img[src^='data:image/']")).to_have_count(2)
                 self.assert_caption_below(pending)
                 self.assert_grid_aligned(pending)
+                self.assert_one_unit(pending)  # a message still being sent is one unit too (founder check 2026-11-17)
                 self.shot(page, f"sending-{'390' if phone else '1440'}", pending)
                 for _ in range(50):
                     if held:

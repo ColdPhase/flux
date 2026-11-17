@@ -687,7 +687,8 @@ class MessageAlignment(unittest.TestCase):
                 # A click on a message focuses it, but only a keyboard makes that a reason to show its toolbar.
                 first.locator(".message-bubble").first.click(position={"x": 20, "y": 6})
                 page.mouse.move(2, 2)
-                page.wait_for_timeout(250)
+                # The pointer's toolbar stays a moment after it leaves (founder check 2026-11-17, work/messageActions.tsx LINGER_MS); then none is left.
+                page.wait_for_timeout(700)
                 self.assertEqual(showing(page), [], f"{name}: a mouse click leaves no toolbar behind")
                 # Hand-over: the pointer moves to the next message and no frame shows two toolbars.
                 first.hover()

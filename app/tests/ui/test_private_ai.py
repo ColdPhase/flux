@@ -266,6 +266,54 @@ class PrivateAiJourney(unittest.TestCase):
         card.get_by_role("button", name="Dismiss").click()
         expect(card).to_have_count(0)
 
+    def test_02c_an_empty_space_stops_asking_where_to_start_once_the_assistant_is_at_work_or_answered(self) -> None:
+        """Founder check, Hubert 2026-11-17: in a new, empty space the private answer card showed and "Where do we start?" with Kreska stayed right
+        under it, touching it. Anything in the conversation is a start: the agent at work, its private answer, a message being sent. The empty
+        state comes back only when the conversation is empty again (the answer dismissed). On the computer and the phone, in both themes."""
+        jo = self.page("jo")
+        empty = self.api(jo, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Seed swap", "visibility": "restricted"}, status=201)["id"]
+        jo.close()
+        mock("/__script", {"reset": True, "delay": 2, "text": "Nothing has been written here yet, so there is nothing to catch up on."})
+        page = self.page("jo", dark=True)
+        page.goto(f"/projects/{empty}")
+        start = page.get_by_role("heading", name="Where do we start?")
+        expect(start).to_be_visible()  # an empty space asks where to start
+        self.ask_in(page, "#project-composer", "catch me up")
+        expect(page.locator(".assistant-working")).to_be_visible()
+        expect(start).to_have_count(0)
+        card = self.asked_card(page, "catch me up")
+        expect(card).to_be_visible(timeout=20000)
+        expect(start).to_have_count(0)
+        shot(page, "private-ai-1440-empty-space-answer-dark")
+        for phone, dark in ((True, True), (False, False), (True, False)):
+            with self.subTest(phone=phone, dark=dark):
+                other = self.page("jo", phone=phone, dark=dark)
+                other.goto(f"/projects/{empty}")
+                expect(self.asked_card(other, "catch me up")).to_be_visible()
+                expect(other.get_by_role("heading", name="Where do we start?")).to_have_count(0)
+                self.no_horizontal_scroll(other)
+                shot(other, f"private-ai-{'390' if phone else '1440'}-empty-space-answer-{'dark' if dark else 'light'}")
+                other.close()
+        # Dismissed, the conversation is empty again and asks where to start.
+        card.get_by_role("button", name="Dismiss").click()
+        expect(card).to_have_count(0)
+        expect(start).to_be_visible()
+        # A message being sent is a start too, before the server stores it.
+        held = []
+        page.route("**/api/v1/projects/*/conversations", lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+        page.locator("#project-composer").fill("Seeds from last year: tomatoes and beans")
+        page.locator("#project-composer").press("Enter")
+        expect(page.locator("[data-client-message-id]")).to_have_count(1)
+        expect(start).to_have_count(0)
+        for _ in range(50):
+            if held:
+                break
+            page.wait_for_timeout(100)
+        page.unroute("**/api/v1/projects/*/conversations")
+        held[0].continue_()
+        expect(page.locator(".project-convo__message").filter(has_text="Seeds from last year")).to_be_visible()
+        expect(start).to_have_count(0)
+
     # ---------------------------------------------------------------- a thread
 
     def test_03_in_a_thread_dismiss_puts_it_away_and_a_reload_does_not_bring_it_back(self) -> None:

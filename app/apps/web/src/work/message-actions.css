@@ -15,6 +15,15 @@
 .project-convo__message:is(:hover, :focus-visible, :has(:focus-visible)) > .msg-acts,
 .dm-msg:is(:hover, :focus-visible, :has(:focus-visible)) .dm-msg__main > .msg-acts,
 .msg-acts:has([aria-expanded="true"]) { opacity: 1; transform: none; pointer-events: auto; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+/* The pill is in reach from anywhere on its message (founder check, Hubert 2026-11-17: from the middle of a photo the pointer left the message on
+   its way to the pill, and the pill went before the pointer got there). The room beside the bubble, the whole height of the message, belongs
+   to that message: a pointer travelling through it keeps the message hovered. The room is kept free of anything else (--acts-room). And when
+   the pointer leaves the message the pill stays a moment ([data-linger], messageActions.tsx); another message under the pointer takes over at once. */
+@media (hover: hover) {
+  .project-convo__message:has(> .msg-acts)::after { content: ""; position: absolute; top: 0; bottom: 0; left: 100%; width: var(--acts-room); }
+  .project-convo__message.is-mine:has(> .msg-acts)::after { left: auto; right: 100%; }
+}
+.msg-acts[data-linger] { opacity: 1; transform: none; pointer-events: auto; }
 /* The pointer wins over a focused message, wherever it is in the conversation (the stream, the thread, a thread's root):
    while one message is hovered no other toolbar shows, unless its own menu is open. The sibling forms cover one list
    (and are what WebKit honours for it); the last covers messages in different lists of the conversation and its panel. */

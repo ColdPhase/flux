@@ -76,15 +76,21 @@ span.photo-grid__open { cursor: default; }
 .photo-grid--1 .photo-grid__tile[data-photo-state="ready"] { aspect-ratio: auto; }
 .photo-grid--1 .photo-grid__tile[data-photo-state="ready"] img { height: auto; max-height: 420px; object-fit: contain; }
 .photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: var(--fs-xl); font-weight: 600; color: #fff; }
-.photo-grid:has(.photo-grid__file) + .photo-meta { display: none; }
 /* A fixed 340 px (at most the column): a percentage here let the picture's own size widen the message, and its toolbar stood 70 px off the photo. */
 .project-convo__message > .photo-grid { width: 340px; max-width: 100%; }
-/* A single photo's name and size stand right under the photo, before its caption (round 15), as wide as the photo. */
-.photo-meta { margin: 4px 2px 2px; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
-.project-convo__message > .photo-meta { width: 336px; max-width: calc(100% - 4px); }
-.is-mine > .photo-meta { text-align: right; }
-/* A photo's caption is as wide as the photo at most (round 15 look-2 P3-10: a 406 px caption under a 340 px photo looked disjointed). */
-.project-convo__message > .photo-grid ~ .message-bubble { max-width: min(100%, 340px); }
+/* A single photo's name and size sit on the photo's lower edge, on a dark chip that reads on any picture (founder check, Hubert 2026-11-17):
+   nothing stands between the photo and its words. Only one photo has the line; a file that is not a picture, or one that cannot be read, none. */
+.photo-grid { position: relative; }
+.photo-meta { position: absolute; left: 8px; bottom: 8px; box-sizing: border-box; max-width: calc(100% - 16px); margin: 0; padding: 2px 8px; border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, .62); color: #fff; font-size: var(--fs-xs); line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.photo-grid:has(.photo-grid__file, .is-unavailable) > .photo-meta { display: none; }
+/* A photo and its words are one message, so they are one unit (founder check, Hubert 2026-11-17: the words stood apart and read as a message of
+   their own): the words' bubble hangs from the photo's lower edge, as wide as the photo, with the photo's 16 px corners at the unit's four corners and square ones where they meet.
+   The same for one's own and someone else's message, a reply in a thread, a direct message and a message still being sent. */
+.photo-grid:has(+ .message-bubble:not(:empty)) { width: 340px; max-width: 100%; margin-bottom: 0; }
+.photo-grid:has(+ .message-bubble:not(:empty)) > .photo-grid__tiles,
+.photo-grid--1:has(+ .message-bubble:not(:empty)) .photo-grid__tile { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.photo-grid + .message-bubble, .is-mine > .photo-grid + .message-bubble { width: 340px; max-width: 100%; border-radius: 0 0 16px 16px; }
 .photo-grid__tile.is-unavailable { display: grid; place-items: center; padding: 12px; color: var(--t3); font-size: var(--fs-xs); text-align: center; }
 /* Sending, offline and failure show on the photo itself. */
 .photo-grid__state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: rgba(0, 0, 0, .28); color: #fff; font-size: var(--fs-xs); font-weight: 500; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }

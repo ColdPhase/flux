@@ -235,13 +235,17 @@ export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?
       <ul className="photo-grid__tiles" aria-label={photos.length === 1 ? '1 photo' : `${photos.length} photos`}>
         {shown.map((file, index) => <PhotoTile key={file.id} file={file} index={index} count={photos.length} more={index === shown.length - 1 ? more : 0} onOpen={setOpen} />)}
       </ul>
+      <PhotoMeta photos={photos} />
       {open !== null ? <PhotoViewer photos={photos} start={open} context={context} onClose={() => setOpen(null)} /> : null}
     </div>
   );
 }
 
-/** A single photo's name and size, right under the photo it names (round 15). */
-export function PhotoMeta({ photos }: { photos: MessageFile[] }) {
+/**
+ * A single photo's name and size, on the photo's lower edge (founder check, Hubert 2026-11-17): the photo and the words sent with it are one
+ * unit, so nothing stands between them, and the name never reads as another file's (round 15).
+ */
+function PhotoMeta({ photos }: { photos: MessageFile[] }) {
   const only = photos.length === 1 ? photos[0] : undefined;
   return only ? <p className="photo-meta">{only.name} · {fileSize(only.size)}</p> : null;
 }
@@ -341,28 +345,26 @@ export function MessageFiles({ files, context }: { files?: MessageFile[]; contex
   const others = files.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
-    <PhotoMeta photos={photos} />
     {others.length ? <ol className="message-files" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.id}>
       {fileKind(file.name) === 'audio' ? <VoiceNote file={file} /> : <FileRow file={file} />}
     </li>)}</ol> : null}
   </>;
 }
 
-/**
- * The media comes first, a single photo's name and size right under it (round 15: under the bubble it stood 110 px from the photo and read as
- * the name of the file row above it); then its caption, file rows and native references share one message bubble.
- */
 /** The one visible bubble shell for stored and queued messages on every conversation surface. */
 export function MessageBubble({ children }: { children: ReactNode }) {
   return <div className="message-bubble">{children}</div>;
 }
 
+/**
+ * The media comes first, a single photo's name and size on it; then its words, file rows and native references share one message bubble, joined
+ * to the photo's lower edge as one unit of the photo's width (founder check, Hubert 2026-11-17: the words read as a second message).
+ */
 export function MessageContent({ files, context, body, references, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; references?: readonly MessageReferenceCard[]; children?: ReactNode }) {
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
-    <PhotoMeta photos={photos} />
     <MessageBubble>{body}<MessageFiles files={others} />{children}<MessageReferences references={references} /></MessageBubble>
   </>;
 }

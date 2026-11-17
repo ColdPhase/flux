@@ -1367,7 +1367,8 @@ class LightMotionJourney(unittest.TestCase):
         shown = toolbar.evaluate("el => { const s = getComputedStyle(el); return { opacity: s.opacity, transform: s.transform }; }")
         self.assertEqual((shown["opacity"], shown["transform"]), ("1", "none"))
         page.mouse.move(2, 2)
-        page.wait_for_timeout(400)
+        # It stays a moment for a pointer on its way to it (founder check 2026-11-17, LINGER_MS 300 ms), then fades.
+        page.wait_for_timeout(800)
         self.assertEqual(toolbar.evaluate("el => getComputedStyle(el).opacity"), "0")
 
     # ------------------------------------------------------------------ AC-6: discipline

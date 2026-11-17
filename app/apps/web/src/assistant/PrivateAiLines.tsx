@@ -102,6 +102,9 @@ function RunLine({ run, assistant, composerId, changed, lookups }: { run: Assist
  * What the asker's own agent is doing in this place, and what it answered: the working line, the request waiting behind it, and the
  * private answers. List items, for the place's own list.
  */
+/** Whether the person's own agent has anything to show here: a run at work, a request waiting behind it, or a private answer (#842). */
+export const hasPrivateAiLines = ({ run, queued, privateAnswers }: Pick<ConversationAssistant, 'run' | 'queued' | 'privateAnswers'>) => !!run || !!queued || privateAnswers.length > 0;
+
 export function PrivateAiLines({ assistant, meId, meName, others, composerId, lookups, changed = 0, own = false }: {
   assistant: ConversationAssistant; meId: string; meName: string; others: readonly string[]; composerId?: string; lookups: SourceLookups;
   /** Changes the working run made before it ended, for its line. */
@@ -110,7 +113,7 @@ export function PrivateAiLines({ assistant, meId, meName, others, composerId, lo
   own?: boolean;
 }) {
   const { run, queued, privateAnswers, tick } = assistant;
-  if (own && !run && !queued && !privateAnswers.length) return null;
+  if (own && !hasPrivateAiLines(assistant)) return null;
   const items = <>
     {privateAnswers.map((answered) => <PrivateAnswer key={answered.id} run={answered} assistant={assistant} meId={meId} meName={meName} others={others} composerId={composerId} lookups={lookups} refreshKey={tick} />)}
     {run ? <RunLine key="assistant-working" run={run} assistant={assistant} composerId={composerId} changed={changed} lookups={lookups} /> : null}

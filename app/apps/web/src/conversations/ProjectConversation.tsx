@@ -11,7 +11,7 @@ import { useSpaceAi } from '../ai/spaceAi';
 import { useProjectQuestions } from '../agents/questions';
 import { useAgentOwners } from '../agents/owners';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
-import { PrivateAiLines } from '../assistant/PrivateAiLines';
+import { PrivateAiLines, hasPrivateAiLines } from '../assistant/PrivateAiLines';
 import { useFollowEnd } from '../assistant/useFollowEnd';
 import { useAssistantChanges } from '../assistant/WaitingChanges';
 import { agentAuthorLabel, personName } from '../docs/format';
@@ -103,7 +103,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   return <div className={`${conversation ? 'thread__pane' : 'project-convo'}${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
-    {!conversation ? feed?.(<PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={privateAi.lookups} own />) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} privateAi={privateAi} owners={owners}
+    {/* The stream is given its end only when there is one: an empty conversation's "Where do we start?" stands only while nothing is in it (founder check 2026-11-17). */}
+    {!conversation ? feed?.(hasPrivateAiLines(assistant) ? <PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={privateAi.lookups} own /> : null) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} privateAi={privateAi} owners={owners}
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
       waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} onOpenDiscussion={onOpenDiscussion} />}
     {conversation ? <MessageWorkPages read={messageWork} typed={typed} /> : null}

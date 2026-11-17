@@ -127,7 +127,10 @@ button. A primary button that waits (`disabled`) keeps a 1 px `--line2` edge, so
 looks ugly"). The same element looks the same on every screen, in light and dark, on the computer and the phone:
 - **Empty states** are one component (`EmptyState`): centred in their place, Kreska (a small moment, 80 px) or a 40 px icon tile, a title
   at `--fs-xl`, one line in `--t2` and the action. The Inbox, Search's "Nothing matches", My tasks and every space view use it. A list's
-  own empty row inside a card (Home's "Nothing is waiting for you.") stays a row of that card.
+  own empty row inside a card (Home's "Nothing is waiting for you.") stays a row of that card. **An empty state stands only while its place is
+  empty** (founder check, Hubert 2026-11-17: "Where do we start?" stood under the assistant's private answer and touched it): a conversation
+  with anything in it, the person's own agent at work or its private answer, a message being sent, a task or a decision card, has none; it
+  comes back when the place is empty again (the answer dismissed).
 - **An error state** (`ErrorState`) has the same parts at the start of its column, and its "Try again" is the secondary button with the
   refresh icon everywhere. A message never says "Try again." beside a Try again button.
 - **Faces** are `--face` with a `--line2` hairline; two initials in a 20 px face are scaled like the 16 px face's, so a row of faces never
@@ -256,8 +259,12 @@ looks ugly"):
   never as a space before "." or after "("; on your own bubble (`--own`) the pill is `--el`. A chip or a code span and the punctuation that
   touches it ("(#2", "rota;") never part at a line's edge. `#1–#5` and `#1/#2` are two chips. A `#N` chip of the space being read opens the
   task in the panel beside the conversation, as its card does; a task of another place opens where it lives.
-- **A photo's name and size** ("IMG_2042.png · 39.8 KB") stand right under the photo they name, before its caption and its file rows; the
-  caption under a photo is as wide as the photo at most (340 px).
+- **A photo and its words are one message, one unit** (founder check, Hubert 2026-11-17, replacing round 15's line under the photo: with the
+  name between them the words read as a second message). The words' bubble hangs from the photo's lower edge with nothing between them, as wide
+  as the photo (340 px, or the column), square where the two meet and with the photo's 16 px corners at the unit's own four; its file rows and
+  cards are in that bubble. The same for one's own and someone else's message, a reply in a thread, a direct message, a task's discussion and a
+  message still being sent. **A single photo's name and size** ("IMG_2042.png · 39.8 KB") sit on the photo's lower edge, 8 px in, as white
+  words on a dark chip (black at 62 %, readable on the lightest picture) that a press goes through to the photo; several photos have none.
 - **Send keeps the field.** Pressing Send (a tap on a phone) never takes the focus from the field, so a phone's keyboard stays up for the next
   message, in a space, a thread, a direct message and a task.
 - **Composers side by side end at one height** on a computer: a stream's composer box ends 31 px above its pane's foot (a direct message's typing line is
@@ -1491,7 +1498,10 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   message, the task's row, "#3" and its title, which opens the task in the one panel, as a decision's discussion has the decision's
   row at its top.
 - The message toolbar sits at the bubble's top corner, as
-  [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
+  [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. **It is in reach from anywhere on its message** (founder check, Hubert
+  2026-11-17: from the middle of a photo the pointer left the message on its way to the toolbar, and the toolbar went before it got there): the
+  room beside the bubble, the whole height of the message, belongs to that message, and when the pointer leaves the message the toolbar stays
+  300 ms. Another message under the pointer takes the toolbar at once, so two never show; the keyboard reaches it as before. A line in the ⋯ menu
   divides Add to map, Copy link and Copy text from Edit and Delete. **The menu opens away from its message** (visual review
   2026-11-17): from the toolbar's far edge, to the right of someone else's message and to the left of one's own, so it never
   covers the words it acts on. In a narrow thread pane the toolbar keeps its raised container in the bubble's corner.

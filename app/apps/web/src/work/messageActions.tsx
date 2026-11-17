@@ -166,6 +166,22 @@ function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[];
   return pop.mounted ? <MessageMenu {...props} popProps={pop.props} /> : null;
 }
 
+/** How long the pill stays after the pointer leaves its message: time to travel to it, short enough not to stay over the next one. */
+const LINGER_MS = 300;
+let lingering: { pill: HTMLElement; timer: number } | null = null;
+/** Ends the pill's moment after the pointer left (when the pointer enters any message, or the time is up). */
+function endLinger() {
+  if (!lingering) return;
+  window.clearTimeout(lingering.timer);
+  delete lingering.pill.dataset.linger;
+  lingering = null;
+}
+function linger(pill: HTMLElement) {
+  endLinger();
+  pill.dataset.linger = '';
+  lingering = { pill, timer: window.setTimeout(endLinger, LINGER_MS) };
+}
+
 /**
  * The computer's actions on one message: reply in thread, create a task and a menu. They appear over the
  * message's corner on hover and focus and take no room in the stream; a phone has gestures instead.
@@ -192,6 +208,19 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
     row.addEventListener('keydown', onKey);
     return () => row.removeEventListener('keydown', onKey);
   }, [touch, writable, onReply, onCreateWork, removed]);
+  // The pill stays a moment after the pointer leaves its message (founder check, Hubert 2026-11-17: it went before the pointer reached it), so a
+  // pointer on its way to it, past the bubble's edge or through the room between two messages, still finds it. One pill lingers at a time, and
+  // another message under the pointer takes the toolbar at once (message-actions.css), so two never show.
+  useEffect(() => {
+    const pill = group.current;
+    const host = pill?.parentElement?.closest<HTMLElement>('.project-convo__message, .dm-msg');
+    if (touch || !pill || !host) return;
+    const enter = () => endLinger();
+    const leave = (event: globalThis.PointerEvent) => { if (event.pointerType === 'mouse' || event.pointerType === 'pen') linger(pill); };
+    host.addEventListener('pointerenter', enter);
+    host.addEventListener('pointerleave', leave);
+    return () => { if (lingering?.pill === pill) endLinger(); host.removeEventListener('pointerenter', enter); host.removeEventListener('pointerleave', leave); };
+  }, [touch]);
   if (touch) return null;
   return (
     <div ref={group} className="msg-acts ui-reveal" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>

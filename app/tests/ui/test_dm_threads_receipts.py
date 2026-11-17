@@ -545,7 +545,8 @@ class DmThreadsReceipts(unittest.TestCase):
             # A click leaves nothing behind and the hand-over from one reply to the next never shows two.
             replies.nth(1).locator(".message-bubble").click(position={"x": 20, "y": 6})
             page.mouse.move(2, 2)
-            page.wait_for_timeout(200)
+            # The pointer's toolbar stays a moment after it leaves (founder check 2026-11-17, work/messageActions.tsx LINGER_MS); then none is left.
+            page.wait_for_timeout(700)
             self.assertEqual(showing(page), [], f"{who}: a click leaves no toolbar")
             replies.nth(1).locator(".message-bubble").hover()
             expect(replies.nth(1).locator(".msg-acts")).to_have_css("opacity", "1")

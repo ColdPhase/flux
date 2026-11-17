@@ -321,7 +321,7 @@ export interface StreamProps {
   audience: string;
   /** The root whose thread is open beside the stream. */
   openId: string | null;
-  /** What ends the stream: the person's own agent at work and its private answers, list items for the list below (#842). */
+  /** What ends the stream: the person's own agent at work and its private answers, list items for the list below (#842); null when there is none. */
   end?: ReactNode;
   /** A root to bring into view: a link named it, rather than the person choosing it here. */
   reveal: { conversationId: string; key: string } | null;
@@ -821,8 +821,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           ) : null}
           {/* The person's own agent at work and what it answered them: theirs alone, at the end like a message about to be sent (#842). */}
           {end}
-          {/* Only an empty conversation asks where to start: a task or a decision card is already a start (v0.2.1 audit). */}
-          {entries.length || stream.hasOlder || outbox.pending.length ? null
+          {/* Only an empty conversation asks where to start: a task or a decision card is already a start (v0.2.1 audit), and so is the person's own
+              agent at work or its private answer (founder check, Hubert 2026-11-17: the empty state stood under the answer card and touched it). */}
+          {entries.length || stream.hasOlder || outbox.pending.length || end ? null
             : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write anything to start. {audience === 'You' && project.visibility !== 'workspace' ? 'The people you add to this space will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
