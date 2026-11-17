@@ -30,6 +30,6 @@
 .pull[data-ready] .pull__in, .pull[data-refreshing] .pull__in { color: var(--t2); }
 
 /* The wink in the toast and Asleep in the offline line. */
-.ui-toast .kreska { color: var(--oninv); }
+.ui-toast .kreska { color: var(--t1); }
 .ui-toast .kreska__frame { fill: none; }
 .connection-line .kreska { margin-right: 2px; }

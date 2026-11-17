@@ -74,7 +74,7 @@
 .sk-edge-hits path:hover { stroke: var(--line); }
 .sk-el--edit { pointer-events: auto; padding: 3px 9px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--sh-card); cursor: pointer; }
 .sk-el--edit:hover { background: var(--hov); color: var(--t1); }
-.sk-el--edit:focus-visible { outline: 2px solid var(--t1); outline-offset: 3px; }
+.sk-el--edit:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 @media (pointer: coarse) { .sk-edge-hits path { stroke-width: 32px; } }
 
 /* Thought reading follows Prostota's body/meta tokens, including larger phone text. Stored

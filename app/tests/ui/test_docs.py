@@ -467,8 +467,27 @@ class DocsJourney(unittest.TestCase):
         shot(page, "wiki-history-rendered-desktop-1440-dark")
         page.emulate_media(color_scheme="light")
 
+        # Restore lives on the chosen version's row, only for a version that is not the page (founder direction, Hubert 2026-11-17,
+        # #1424): none while the current version is chosen, and no Restore at the top right.
+        expect(page.get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        versions.last.locator(".doc-version").click()
+        expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("v1 · ")
+        expect(versions.last.get_by_role("button", name="Restore this version")).to_be_visible()
+        expect(versions.first.get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        expect(page.locator(".wiki-head").get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        # The timeline is one line from dot to dot: the first row's line ends at the centre of the next row's dot.
+        joined = page.evaluate("""() => {
+          const rows = [...document.querySelectorAll('.doc-versions > li')];
+          const line = getComputedStyle(rows[0], '::before'), top = rows[0].getBoundingClientRect().top;
+          const end = top + parseFloat(line.top) + parseFloat(line.height);
+          const start = top + parseFloat(line.top);
+          const dot = (row) => { const r = row.querySelector('.doc-version__dot').getBoundingClientRect(); return r.top + r.height / 2; };
+          return { start: start - dot(rows[0]), end: end - dot(rows[1]) };
+        }""")
+        self.assertLessEqual(abs(joined["start"]), 1, f"the line starts at the first dot: {joined}")
+        self.assertLessEqual(abs(joined["end"]), 1, f"the line reaches the next dot: {joined}")
         # Restore brings the earlier text back as the page, for everyone writing in it, as the next version that says so.
-        page.get_by_role("button", name="Restore version 1").click()
+        versions.last.get_by_role("button", name="Restore this version").click()
         expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
         expect(page).to_have_url(re.compile(re.escape(f"/docs/{doc['id']}") + "$"))
         restored = self.doc(owner, doc["id"])

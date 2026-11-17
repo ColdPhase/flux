@@ -1,4 +1,4 @@
-.composer-files button:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.composer-files button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .composer-files { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; margin: 4px 0; font-size: var(--fs-xs); }
 .composer-files button { font: inherit; color: var(--t2); border: 0; background: transparent; min-height: 32px; padding: 4px 6px; border-radius: var(--r); cursor: pointer; }
 .composer-files button:disabled { opacity: .5; cursor: default; }

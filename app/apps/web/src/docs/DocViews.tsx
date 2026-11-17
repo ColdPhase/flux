@@ -202,10 +202,10 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
 function RestoreButton({ docUrl: base, version, quiet = false }: { docUrl: string; version: number; quiet?: boolean }) {
   const navigate = useNavigate();
   const restore = () => navigate(base, { state: { restore: version } });
-  // In a sentence it is a link; as the history page's action it is a button of the system (an outline: the page's main action, not a Send).
+  // In a sentence it is a link; on the chosen version's row of History it is a button of the system (an outline, as a row's action).
   return quiet
     ? <button type="button" className="ui-link wiki-restore-link" onClick={restore}>Restore this version</button>
-    : <Button variant="outline" size="sm" icon="undo" onClick={restore}>{`Restore version ${version}`}</Button>;
+    : <Button variant="outline" size="sm" icon="undo" className="doc-version__restore" onClick={restore}>Restore this version</Button>;
 }
 
 /** History (⋯ › History): every version with who made it and when, what changed between two, and Restore. */
@@ -220,14 +220,12 @@ export function DocHistory() {
     const source = next.from ?? (next.to ? target - 1 : from?.version ?? target - 1);
     setSearch(source >= 1 && source !== target ? { from: String(source), to: String(target) } : { to: String(target) });
   };
-  // Restore brings back the earlier side of the comparison: the chosen version, or the one before the current page.
-  const restore = to.version !== doc.version ? to.version : from?.version ?? null;
+  // Restore lives in one place (founder direction, Hubert 2026-11-17, #1424): the chosen version's row, when it is not the current page.
   return (
     <div className="wiki-page wiki-page--wide doc-history">
       <div className="wiki-head">
         <Link className="ui-btn ui-btn--quiet wiki-head__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>
         <p className="wiki-head__meta">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</p>
-        {restore ? <RestoreButton docUrl={base} version={restore} /> : null}
       </div>
       <h2 className="wiki-title__h wiki-title--plain">{doc.title}</h2>
       <div className="doc-history__grid">
@@ -244,6 +242,7 @@ export function DocHistory() {
                   </span>
                 </button>
                 <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
+                {item.version === to.version && item.version !== doc.version ? <RestoreButton docUrl={base} version={item.version} /> : null}
               </li>
             ))}
           </ol>

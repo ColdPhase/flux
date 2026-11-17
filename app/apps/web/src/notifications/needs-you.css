@@ -5,7 +5,7 @@
 .nyq__clear { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 72px 16px 48px; text-align: center; color: var(--t1); }
 .nyq__clear h2 { margin: 18px 0 0; font-size: var(--fs-xl); letter-spacing: -.02em; }
 .nyq__clear h2:focus { outline: none; }
-.nyq__clear h2:focus-visible { outline: 2px solid var(--t1); outline-offset: 4px; border-radius: var(--r-sm); }
+.nyq__clear h2:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; border-radius: var(--r-sm); }
 .nyq__clear p { margin: 0; max-width: 420px; font-size: var(--fs-base); color: var(--t2); }
 .nyq__clear-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 12px; }
 
@@ -30,7 +30,7 @@
 .nyc--note .nyc__title, .nyc--blocked .nyc__title, .nyc--mention .nyc__title, .nyc--question .nyc__title { font-size: var(--fs-lg); }
 .nyc__open { padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
 .nyc__open:hover { text-decoration: underline; text-underline-offset: 3px; }
-.nyc__open:focus-visible { outline: 2px solid var(--t1); outline-offset: 3px; border-radius: 4px; }
+.nyc__open:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 4px; }
 .nyc__reason { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
 .nyc__based { margin: 0; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .nyc__based span { color: var(--t3); margin-right: 4px; }
@@ -129,7 +129,7 @@
 /* The row is what is focused (L931: arriving at the Inbox, the open item's row takes the focus): the ring goes round the whole row, as a
    list row's does, never round the title's words (release audit ffcb07c). */
 .nyc--list .nyc__open:focus-visible { outline: none; }
-.nyc--list:has(.nyc__open:focus-visible) .nyc__card { outline: 2px solid var(--t1); outline-offset: -2px; }
+.nyc--list:has(.nyc__open:focus-visible) .nyc__card { outline: 2px solid var(--ring); outline-offset: -2px; }
 .nyc__snippet { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--t3); }
 /* The open item is its card with no box around it, in its own column. */
 .nyc--open .nyc__card--pane { max-width: 680px; padding: 0; background: none; box-shadow: none; }

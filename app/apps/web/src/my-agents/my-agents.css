@@ -47,7 +47,7 @@
 .agp__label { margin: 10px 0 0; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .agp__hint { font-weight: 400; font-size: var(--fs-xs); color: var(--t3); }
 .agp__input { width: 100%; box-sizing: border-box; min-height: var(--ctl); padding: 8px 12px; border: 1px solid var(--line2, var(--line)); border-radius: var(--r); background: var(--bg, transparent); color: var(--t1); font: inherit; font-size: var(--fs-base); }
-.agp__input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.agp__input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .agp__text { resize: vertical; line-height: 1.5; }
 .agp__models { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .agp__model-group { display: flex; flex-direction: column; gap: 4px; }
@@ -118,7 +118,7 @@
 .agc__sched { margin: 0 0 10px; }
 .agc__sched-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .agc__sched-row:hover { background: var(--hov); }
-.agc__sched-row:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.agc__sched-row:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .agc__sched-row svg { flex: none; }
 .agc__sched-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agc__sched-count { flex: none; font-size: var(--fs-xs); color: var(--t3); }

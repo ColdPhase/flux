@@ -69,6 +69,7 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--t3` | `#636363` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg`, `--el`, `--side`, `--sub` and `--hov`; APCA Lc at least 45) |
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
+| `--ring` | `--t2` (`#4A4A4A`) | `--t2` (`#BDBDBD`) | The keyboard focus ring, everywhere (founder direction, Hubert 2026-11-17, #1424) |
 | `--seg` / `--seg-on` / `--seg-off` | `--act` / `--el` / `--t2` | `--sub` / `--pick` / `--t3` | A segmented control: its track, the selected option's pill and an unselected label (#1238). Roles over existing colours, no new colour |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
@@ -82,9 +83,29 @@ Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for re
 - Dark mode uses inset 1 px light outlines plus deeper shadows. Layers get lighter as they rise.
 
 **Gradients**
-- Own bubbles, toasts and inverted chips: `linear-gradient(#3B3B3F, #18181B)`. In dark mode it is
-  `linear-gradient(#FFFFFF, #D9D9D9)` with dark text.
+- `--grad-inv`: `linear-gradient(#3B3B3F, #18181B)`, in dark mode `linear-gradient(#FFFFFF, #D9D9D9)` with dark
+  text. Own bubbles are `--own` (Spokój) and inverted chips are flat `--inv`, so nothing on screen draws it now.
+  **A toast is never an inverted bar** (founder direction, Hubert 2026-11-17,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424): "Tragicznie źle i brzydko wygląda na białym"): it is a raised
+  card like a notice or a menu, `--el` with `--t1` text, a 1 px `--line2` hairline and the pop-over shadow (`--sh-pop`),
+  in both themes (in dark mode `--el` is the raised dark surface and `--sh-pop` carries its light inset edge). Its
+  actions keep the toast's own quiet style: Undo, Another task and × in `--t1`/`--t2` with a `--hov` fill on hover, the
+  key cap `Z` on `--sub` in `--t2`, the divider `--line2`, the Wink in `--t1`. Everything else about a toast stays: where
+  it stands, the safe area, never over the open panel, wrapping at 200 %, its times.
 - Buttons have no gradient (amendment 2026-10-31 below).
+
+**The focus ring** (founder direction, Hubert 2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a
+heavy black frame around an Inbox title on the phone, after a tap, is not a focus ring anyone asked for. One rule for
+every ring in the app:
+- It is drawn only for **keyboard focus**: `:focus-visible`, and only while the last input was a key. A tap or a
+  click, and the focus a script moves after one (the phone Inbox's expanded title, a window's first field), draws no
+  ring; the next key brings it back where the focus is. A text field keeps its ring when it is tapped or clicked: the
+  caret is going there.
+- It is 2 px of `--ring` (`--t2`: 8.1:1 on `--bg`, 7.4:1 on `--sub`, 10.1:1 on the dark `--bg`; at least 3:1 on every
+  surface, WCAG 2.4.7 and 2.4.11), with an offset, and follows the rounded shape of what it surrounds. It is lighter
+  than the `--t1` ink and stays distinct from the selection, which is a fill and never an outline.
+- Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
+  `data-input` on `<html>` (`pointer` or `keys`), set by the first pointer or key event.
 
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.
@@ -1655,6 +1676,13 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   switcher.
 - You edit on the rendered page, and versions save by themselves. Live co-editing shows the other
   person's cursor and name.
+- **History** (⋯ › History) lists the versions on the left as a timeline: one continuous hairline from dot to dot,
+  the chosen version's dot filled. **Restore lives in one place** (founder question and coordinator decision, Hubert
+  2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): the chosen version's row in that list carries
+  **Restore this version**, only when it is not the current version. There is no separate Restore button at the top
+  right. Restore opens the page and makes that version the page again as the next version, with the toast "Version N
+  is the page again." (a restore is itself a version, so it is undone by restoring the one before). The same history
+  serves every Wiki page, the former materials included.
 
 ### Search
 
@@ -1704,7 +1732,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   title), and the space in view is not listed ([#1424](https://github.com/ColdPhase/flux/issues/1424)); and one action, **Go to
   Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
   no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
-  the field's row carries the 2 px `--t1` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
+  the field's row carries the 2 px `--ring` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
 
 ### My map
 
