@@ -491,7 +491,11 @@ class WikiPanesJourney(unittest.TestCase):
         expect(page.locator(".doc-changes__why")).to_contain_text(f" to the one by {PARTNER['name']} of ")
         expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Privacy"])
         shot(page, "wiki-history-desktop-1440")
-        page.get_by_role("link", name="Read version 1").click()
+        # The chosen row says what can be done with it (round 14 daily 9): choose version 1, then "Read this version".
+        versions.last.locator(".doc-version").click()
+        expect(page.get_by_role("heading", name="Version 1, the first")).to_be_visible()
+        expect(versions.first.get_by_role("link")).to_have_count(0)
+        page.get_by_role("link", name="Read this version").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp", "/versions/1")) + "$"))
         expect(page.locator(".wiki-head__meta")).to_contain_text("Version 1")
         expect(page.locator(".wiki-head__meta")).to_contain_text(f"{OWNER['name']} (you)")

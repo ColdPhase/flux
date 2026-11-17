@@ -172,19 +172,25 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   }, [from, to]);
   const page = useMemo(() => blockDiff(from?.html ?? '', to.html), [from, to.html]);
   const stats = diffStats(rows);
+  // The first version has nothing before it to compare with (round 14 new d, daily 9: "+0 −0 · The text is the same in both versions." under a
+  // lone v1, and a first version all underlined as "added"): it is shown as it was written, or says it started with no text.
+  const first = !from;
   return (
     <section className="doc-changes" aria-labelledby="doc-changes-h">
       <header className="doc-changes__top">
         <h3 id="doc-changes-h">
           {from ? <>v{from.version} → v{to.version}</> : <>Version {to.version}, the first</>}
-          <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
+          {first ? null : <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>}
         </h3>
       </header>
       {/* Each version is named by who made it, the reader as "Jonas Berg (you)" (personas-36), so the sentence says "by", not a possessive. */}
       <p className="doc-changes__why">{from ? <>From the version by {authorLabel(from.author, meId)} of {longDate(from.createdAt)} to the one by {authorLabel(to.author, meId)} of </>
         : <>By {authorLabel(to.author, meId)} on </>}{longDate(to.createdAt)} · {to.reason}</p>
       {from && from.title !== to.title ? <ul className="doc-changes__facts"><li>Title: <del>{from.title}</del> → <ins>{to.title}</ins></li></ul> : null}
-      {page.changed ? (
+      {first ? (to.body.trim()
+        ? <section className="doc-changes__page doc-changes__page--first" aria-label="The text of the first version"><DocProse html={to.html} onClick={onClick} /></section>
+        : <p className="doc-muted">The page started with no text.</p>)
+      : page.changed ? (
         <>
           <section className="doc-changes__page" aria-label="Changes in the text">
             <DocProse html={page.html} onClick={onClick} />
@@ -242,8 +248,14 @@ export function DocHistory() {
                     <span className="doc-version__s">v{item.version} · {authorLabel(item.author, meId)} · {shortDate(item.createdAt)}</span>
                   </span>
                 </button>
-                <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
-                {item.version === to.version && item.version !== doc.version ? <RestoreButton docUrl={base} version={item.version} /> : null}
+                {/* The chosen version's row says what can be done with it, in words (round 14 daily 9: a "Read" on every row was unclear): read it
+                    as it was written (the page itself for the current one), and Restore it when it is not the page. */}
+                {item.version === to.version ? (
+                  <span className="doc-version__acts">
+                    <Link className="ui-link doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`}>{item.version === doc.version ? 'Open the page' : 'Read this version'}</Link>
+                    {item.version !== doc.version ? <RestoreButton docUrl={base} version={item.version} /> : null}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ol>

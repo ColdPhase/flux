@@ -18,6 +18,7 @@ export { Drawer, Overlay, Sheet, focusableIn, trapTab, useStripOnlyModal } from 
 export { AgentIdentity, AgentTag } from './AgentIdentity';
 export { AGENT_HUES, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';
 export { Morph } from './Morph';
+export { PersonName } from './PersonName';
 export { StatusGlyph, TASK_STATE_WORD } from './StatusGlyph';
 export { PanelActions, PanelGlyph, PanelMeta, REVEAL_EVENT, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';

@@ -144,7 +144,9 @@ looks ugly"). The same element looks the same on every screen, in light and dark
 - **Sign-in, invite, reset and setup pages** start at one height (pinned to the top, not centred), so the logo and the title never move from one
   to the next. A form is a card; a page with one button has no card around it; a reset link the server refused shows only the dead-link page.
 - **The phone's "+"** stands at one height on every screen: in a space, without the capsule, it stands where it stands above the capsule.
-- **A panel that scrolls** (the task and decision panels, their phone sheets) fades at its lower edge into the field under it; a pinned
+- **A panel that scrolls** (the task and decision panels, their phone sheets) fades at its lower edge into the field under it **only while
+  there is more below** (`useScrollEdges`, as the sidebar): at the end nothing fades, so the newest message is never washed out, and a proposed
+  decision's Accept, Not now and Discuss stand over the fade, never under it (round 14 look-b B1, look-a A5); a pinned
   decision title fades what passes under it once the panel is scrolled; a window's list that is longer than the window fades at its end.
 - **The rail** pins the Inbox count to the Inbox button's corner, and a space's tile has the list's dot for what needs you on its corner.
 
@@ -154,7 +156,8 @@ looks ugly"):
   of it, the date field, a picker) has the field hairline (`--line2` or the field shadow) on `--el`, and while it is written in the one
   2 px `--ring`. None draws its own black frame.
 - **Selected text** is `--selection` behind the text's own colour, in both themes; never the browser's blue or CodeMirror's lavender.
-- **A state in a pill** is its glyph and word on a 1 px `--line2` hairline in `--t1` (the task panel's "Blocked"), never an inverted slab.
+- **A state in a pill** is its glyph and word on a 1 px `--line2` hairline in `--t1`, never an inverted slab. A state is said once per panel:
+  the task panel's Status row says Blocked, so its "Waiting for" card has no second pill (round 14 look-b P8).
 - **A text button that starts a line** in a panel (Add to a thought, Add to a Wiki page) hangs its padding outside, so its icon stands on
   the edge of the labels above it.
 - **Hover fills need a hovering pointer** (`@media (hover: hover)`): a tap on a phone leaves no fill on whatever lies under the finger.
@@ -166,14 +169,24 @@ looks ugly"):
   over another thought (they slide beside it, or rise above it); an edit's **Save** and **Cancel** are that toolbar beside the thought
   (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
   with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
-  minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden. A
+  minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden, down to
+  a 640 px pane (200 % text on a 1440 px window). In the map's List the canvas tools (Select, Move around) are not drawn and keep their room,
+  so Thought and Undo stay where they are, never two greyed tools that do nothing (round 14 look-b P13). The phone's map has one bottom row:
+  the selection's Thought actions (or an edit's Save and Cancel), Undo and **Thought** side by side, with the once-said computer line above
+  it (round 14 look-b P14). A connection's label tries every point of its line, nearest the middle first, before it gives way (P11). A
   thought's tasks show once, as its quiet count (UI116-4); the line that repeated its first task beside the count is gone. The phone's
   **Thought** is the soft fill of the phone's floating "+". In the map's List a connection's label stays the tag before the title (#510),
   in a slot of one width right against the title, so labelled siblings' titles start at one edge; the tree's ticks reach their rows.
 - **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
   an ellipsis); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
-  in a 10 px gutter of `--bg`; the blocked card's words keep the room on a phone and Edit and Unblock take the next line; a multi-line
-  value keeps its label on its first line; the thought chooser scrolls into view when it opens.
+  in a 10 px gutter of `--bg`; the blocked card's words take the card's whole width and Edit and Unblock (or Done) take the line under
+  them, starting where the words start, on the computer and the phone; a multi-line
+  value keeps its label on its first line; the thought chooser scrolls into view when it opens. **A name keeps its mark:** where a row is
+  short (a card beside the open panel, 160 px columns), the name gives way with "…" and "(you)" or "(removed)" stays whole after it,
+  "Ola Now… (you)" (`PersonName`; round 14 daily P2-3). The person a blocked task waits for is named as every list names people: "Waiting for
+  Ada Kowalska (you)" to Ada (round 14 look-a A4). A card's due day is the panel's words for it without this year: the panel's "21 Nov 2026"
+  is "Due 21 Nov" on the card, never a weekday the panel does not say (round 14 look-b P10). The phone's List has each state's heading over
+  its card, as the computer's has (round 14 look-b P16).
 - A heading that takes the focus from a script (a page opened like a panel, as Space settings, or an emptied list) draws
   no ring: it is where reading starts, not a control (visual review 2026-11-17 V1).
 - A radio is drawn by the app at 16 px in every engine: a 1.5 px `--t3` ring, chosen a `--t1` ring and dot (V22).
@@ -1778,7 +1791,12 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   above the field, a task's as a decision's and as a conversation (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
   "Show earlier" is at its top, and the newest stays in view as it arrives or is sent. **Both panels open the same way**
   (personas-34): a task's panel opens as a decision's does, with the discussion's newest line in view just above the field, as
-  every conversation opens at its end (S23; a short discussion moves nothing, its rows stay at the top). The discussion has no heading ("Activity" is
+  every conversation opens at its end (S23; a short discussion moves nothing, its rows stay at the top), with the newest line whole above
+  the field, the panel's bottom padding included, so no fade lies on it. **The phone's sheet opens at its top** (round 14 new P2-3, look-b B3,
+  look-a A3: its half height opened on the newest lines, with no title, no Why and no state, and Marta saw only Accept): what the task or
+  the decision is comes first, scrolled only as far as needed to show whole what it asks of the reader (a proposed decision's Accept row, a
+  blocked task's "Waiting for" card). The cursor put in its field (Discuss, `R`, a tap) brings the newest line into view, as a conversation's
+  composer does; what arrives or is sent after that stays in view as everywhere. The discussion has no heading ("Activity" is
   removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
@@ -1810,7 +1828,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - You edit on the rendered page, and versions save by themselves. Live co-editing shows the other
   person's cursor and name.
 - **History** (⋯ › History) lists the versions on the left as a timeline: one continuous mid-grey line from dot to dot,
-  the chosen version's dot filled. In the comparison, added text is underlined only (no fill, no grey bar under a
+  the chosen version's dot filled. The chosen row says in words what can be done with it, under its line: **Read this version** (**Open
+  the page** for the current one) and Restore this version; the other rows are only chosen (round 14 daily 9: a "Read" on every row was
+  unclear). **The first version** has nothing before it: "Version 1, the first" with no "+N −M", the page as it was written with nothing
+  underlined, or "The page started with no text." (round 14 new d). In the comparison, added text is underlined only (no fill, no grey bar under a
   heading) and removed text is struck through in `--t3`. **Restore lives in one place** (founder question and coordinator decision, Hubert
   2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): the chosen version's row in that list carries
   **Restore this version**, only when it is not the current version. There is no separate Restore button at the top

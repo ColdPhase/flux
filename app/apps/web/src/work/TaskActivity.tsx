@@ -38,6 +38,7 @@ import { useStreamEvents } from '../api/stream';
 import { END_SLACK, NewBelow, arrivedBelow, useNewBelow } from '../app/unreadReading';
 import { useObservation } from '../app/receipts';
 import { observeProjectMessages } from '../conversations/api';
+import { inPhoneSheet } from './panelOpening';
 
 // A task's one discussion (F-026 P10, #488, #1364): one timeline, oldest first with the newest at the bottom above the composer (every
 // discussion lists oldest first: founder decision, Hubert, 2026-11-15, round 8, #1424), of what changed and who said what. It has no heading
@@ -290,11 +291,13 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       // The first draw of the read discussion: the panel opens at its newest line, as the decision's panel does. A short discussion (one
       // that fits in the panel's height) moves nothing: its rows stay at the top, where the skeleton drew them (F-026 §7 "Both panels open
       // the same way"; #863 rule 6, no jump from the skeleton). Only the panel's own scroller moves, never the sheet or the page around it.
+      // The phone's sheet opens at its top instead (`usePanelOpening`): its few lines would show the newest and nothing of the task.
       const scroller = root?.closest<HTMLElement>('.wd__scroll');
       const list = root?.querySelector<HTMLElement>('.wd-act');
       const last = list?.lastElementChild;
-      if (scroller && list && last instanceof HTMLElement && list.getBoundingClientRect().height > scroller.clientHeight) {
-        const over = last.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom;
+      if (scroller && !inPhoneSheet(scroller) && list && last instanceof HTMLElement && list.getBoundingClientRect().height > scroller.clientHeight) {
+        // Its bottom padding too, so the newest line is whole at the end and no fade lies on it (round 14 look-b B1: 20 px short of the end).
+        const over = last.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(scroller).paddingBottom) || 0);
         if (over > 0) scroller.scrollTop += over;
       }
       return;

@@ -19,7 +19,7 @@
 .doc-ul { list-style: none; margin: 0; padding: 0; }
 .doc-ul > li + li { border-top: 1px solid var(--line); }
 .doc-item { display: flex; align-items: flex-start; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 11px 8px; border-radius: var(--r); color: inherit; text-decoration: none; transition: var(--tr); }
-.doc-item:hover { background: var(--hov); }
+@media (hover: hover) { .doc-item:hover { background: var(--hov); } }
 .doc-item__ic { display: grid; place-items: center; width: 16px; height: 22px; flex: none; color: var(--t3); }
 .doc-item__b { flex: 1; min-width: 0; }
 .doc-item__t { display: block; font-size: var(--fs-md); font-weight: 500; color: var(--t1); line-height: 1.5; overflow-wrap: anywhere; }
@@ -72,7 +72,7 @@
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 0 10px; border-radius: var(--r-sm);
   color: var(--t1); font: inherit; text-align: left; text-decoration: none; transition: var(--tr-fill);
 }
-.wiki-menu__row:hover { background: var(--hov); }
+@media (hover: hover) { .wiki-menu__row:hover { background: var(--hov); } }
 .wiki-menu__row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .wiki-menu__row[aria-current="page"] { background: var(--sub); font-weight: 500; }
 .wiki-menu__row > svg { flex: none; margin-left: auto; }
@@ -162,19 +162,19 @@
 .doc-prose a.doc-ref[data-ref-type="doc"]::before { border-radius: 1px; }
 /* A server-resolved Wiki page in text uses the shared page icon and a compact object chip. */
 .doc-prose a.doc-page { padding: 2px 7px; border-radius: var(--r-sm); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font-size: inherit; line-height: inherit; text-decoration: none; overflow-wrap: anywhere; box-decoration-break: clone; }
-.doc-prose a.doc-page:hover { background: var(--hov); }
+@media (hover: hover) { .doc-prose a.doc-page:hover { background: var(--hov); } }
 .doc-prose a.doc-ref.doc-page::before { display: none; }
 .doc-page__icon { display: inline-flex; align-items: center; margin-right: 5px; vertical-align: -3px; }
 /* A task in the text: its state glyph, #number and the state in words. */
 .doc-prose a.doc-task { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 6px; min-height: 24px; padding: 0 9px 0 7px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font-size: var(--fs-md); line-height: 1.4; text-decoration: none; vertical-align: 1px; }
-.doc-prose a.doc-task:hover { background: var(--hov); }
+@media (hover: hover) { .doc-prose a.doc-task:hover { background: var(--hov); } }
 .doc-prose a.doc-ref.doc-task::before { display: none; }
 .doc-task__mark { display: inline-flex; align-items: center; gap: 6px; }
 .doc-task__n { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t2); font-variant-numeric: tabular-nums; }
 .doc-task__state { font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 /* A decision standing on its own line is a card: kind and state, its title, the date and who. */
 .doc-prose a.doc-decision { display: block; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); color: var(--t1); font-size: var(--fs-base); line-height: 1.4; text-decoration: none; transition: var(--tr); }
-.doc-prose a.doc-decision:hover { box-shadow: var(--sh-pop); }
+@media (hover: hover) { .doc-prose a.doc-decision:hover { box-shadow: var(--sh-pop); } }
 .doc-prose a.doc-ref.doc-decision::before { display: none; }
 .doc-decision__body { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .doc-decision__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -192,25 +192,24 @@
 /* ---------- History and diff ---------- */
 .doc-history__grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 32px; align-items: start; }
 .doc-versions { list-style: none; margin: 0; padding: 0; }
-/* A row is the version's button and Read; the chosen version, when it is not the page, adds Restore this version under its words
-   (founder direction, Hubert 2026-11-17, #1424: restore lives in one place). */
-.doc-versions li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; column-gap: 2px; border-radius: var(--r); }
+/* A row is the version's button; the chosen one adds its actions under its words: "Read this version" ("Open the page" for the current
+   one) and, when it is not the page, Restore this version (founder direction, Hubert 2026-11-17, #1424: restore lives in one place). */
+.doc-versions li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; border-radius: var(--r); }
 .doc-versions li:has([aria-current="true"]) { background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); }
 .doc-versions li:has([aria-current="true"]) .doc-version { background: none; }
 /* A timeline (#511, AC-2): a dot per version on one continuous hairline, the chosen one filled. The line belongs to the row and runs
    from this dot's centre to the next row's dot centre (each dot's centre is 20.5 px under its row's top), so it meets every dot
    whatever a row holds; the dots are drawn over it. A mid-grey, so it reads on the chosen row's --sub fill as well as on the page. */
 .doc-version { position: relative; min-width: 0; display: flex; gap: 12px; padding: 10px 8px 10px 10px; border-radius: var(--r); text-align: left; transition: var(--tr); }
-.doc-version:hover { background: var(--hov); }
+@media (hover: hover) { .doc-version:hover { background: var(--hov); } }
 .doc-version__dot { position: relative; z-index: 2; flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t3); background: var(--bg); }
 .doc-version[aria-current="true"] .doc-version__dot { background: var(--t1); box-shadow: none; }
 .doc-versions li:not(:last-child)::before { content: ""; position: absolute; z-index: 1; left: 14px; top: 20.5px; bottom: -20.5px; width: 1px; background: color-mix(in srgb, var(--t3) 55%, transparent); pointer-events: none; }
-.doc-version__restore { grid-column: 1 / -1; justify-self: start; margin: -2px 0 10px 31px; }
+.doc-version__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: -2px 0 10px 31px; }
 .doc-version__b { min-width: 0; }
 .doc-version__t { display: block; font-size: var(--fs-md); color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; }
 .doc-version__s { display: block; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
-.doc-version__open { display: grid; place-items: center; flex: none; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 500; color: var(--t3); text-decoration: none; }
-.doc-version__open:hover { background: var(--hov); color: var(--t1); }
+.doc-version__open { font-size: var(--fs-sm); }
 .doc-compare { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: var(--fs-sm); color: var(--t3); }
 .doc-compare .ui-select { min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .doc-changes__top h3 { margin: 0; font-size: var(--fs-lg); font-weight: 600; }

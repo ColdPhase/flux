@@ -18,6 +18,7 @@ import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
+import { useNewestOnWrite, usePanelOpening } from './panelOpening';
 import { DecisionComposer, DecisionMessages, useDecisionDiscussion } from './DecisionDiscussion';
 import { undoTaskCreation, updateWork } from './api';
 import { useAcceptDecision } from './acceptDecision';
@@ -448,11 +449,15 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // Empty sections are hidden (#868): a task without a source has no "From" row. While the relationships have more pages
   // than the one shown, the row stays, so paging never adds or takes rows away.
   const cameFrom = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.role === 'source') || !!item.planIntent || !relations.complete;
+  // On the phone's sheet it opens at its top, with a blocked task's "Waiting for" card whole (round 14 look-a A3).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  usePanelOpening(scrollRef, item.id, '.wd-blocker');
+  useNewestOnWrite(scrollRef);
 
   return (
     <div className="details wd wd--task" data-detail-kind="work" data-detail-id={item.id} data-version={item.version}>
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
-      <div className="wd__scroll">
+      <div className="wd__scroll" ref={scrollRef}>
         {/* "#4 · Rain barrel monitor" above the title, as drawn (§7 Tasks): the task's number and the space it belongs to (#1364). */}
         <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> ·</span><span className="ui-vh"> in</span>{' '}{context.project.name}</p>
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
@@ -488,12 +493,12 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
+            {/* Status already says Blocked: the card is what it waits for, then Edit and Unblock (or Done) under the words (round 14 look-b P8). */}
             <div className="wd-blocker__head">
-              <span className="ui-pill ui-pill--line"><StatusGlyph status="blocked" size={12} />Blocked</span>
               <p className="wd-blocker__text">
-                {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
+                {item.waitingFor ? <>Waiting for <b>{named(item.waitingFor, me.user.id)}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
                   : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>
-                    : blockedLine(item)}
+                    : blockedLine(item, me.user.id)}
               </p>
               {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
                 {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
@@ -833,10 +838,14 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
   // whose earlier one is named below does not also say "replaces an earlier decision" in its top line: it is said once (#1058).
   const earlierDay = earlierObject ? ` (${shortDate(earlierObject.decidedAt ?? earlierObject.createdAt)})` : '';
+  // On the phone's sheet it opens at its top, with the answer's row whole (round 14 new P2-3).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  usePanelOpening(scrollRef, decision.id, '.wd-decide');
+  useNewestOnWrite(scrollRef);
 
   return (
     <div className="details wd wd--decision" data-detail-kind="decision" data-detail-id={decision.id}>
-      <div className="wd__scroll">
+      <div className="wd__scroll" ref={scrollRef}>
       <div className="wd-decision-identity" ref={identityRef}>
         <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>

@@ -18,13 +18,13 @@
 /* A row is one 32 px line (40 px with its 4 px padding): the toggle or leaf slot, the title and the row's end are each a 32 px box centred on it, so
    a one-line row's title and actions share a centre line; a longer title wraps under its first line and the end stays beside that line (#1237). */
 .sk-outline-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 10px; min-width: 0; min-height: 40px; padding: 4px 10px 4px 6px; border-radius: var(--r-sm); cursor: default; transition: var(--tr); }
-.sk-outline-row:hover { background: var(--el); }
+@media (hover: hover) { .sk-outline-row:hover { background: var(--el); } }
 /* The selection is quiet, as the other lists': a filled row of the ordinary radius, no outline, so the connector and the guide meet it plainly. */
 .sk-outline-row.is-selected { background: var(--el); }
 .sk-outline-row:focus { outline: none; }
 .sk-outline-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; height: 32px; margin: 0 -4px 0 0; border-radius: var(--r-sm); color: var(--t2); }
-.sk-outline-toggle:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .sk-outline-toggle:hover { background: var(--hov); color: var(--t1); } }
 .sk-outline-tagslot { flex: none; display: flex; justify-content: flex-end; min-width: 84px; margin-block: 6px; }
 .sk-outline-tag { flex: none; margin-block: 0; padding: 0 7px; border-radius: 7px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); line-height: 20px; white-space: nowrap; }
 /* Title and "also under" share the flexible middle; the row's end stays at the right, below when there is no room. */

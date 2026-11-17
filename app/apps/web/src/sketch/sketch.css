@@ -73,7 +73,7 @@
 .sk-edge-hits path { fill: none; stroke: transparent; stroke-width: 18px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
 .sk-edge-hits path:hover { stroke: var(--line); }
 .sk-el--edit { pointer-events: auto; padding: 3px 9px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--sh-card); cursor: pointer; }
-.sk-el--edit:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .sk-el--edit:hover { background: var(--hov); color: var(--t1); } }
 .sk-el--edit:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 @media (pointer: coarse) { .sk-edge-hits path { stroke-width: 32px; } }
 
@@ -84,7 +84,7 @@
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line);
   /* A card moves only when the person drags it (and then it follows the pointer): it never slides on first layout or on a live update (#863). */
   transition: box-shadow var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
-.sk-node:hover { box-shadow: 0 1px 2px rgba(16, 17, 20, .06), inset 0 0 0 1px var(--t3); }
+@media (hover: hover) { .sk-node:hover { box-shadow: 0 1px 2px rgba(16, 17, 20, .06), inset 0 0 0 1px var(--t3); } }
 .sk-node[aria-pressed="true"] { touch-action: none; box-shadow: 0 0 0 3px var(--sub), inset 0 0 0 1.5px var(--t1); }
 .sk-node.is-dragging { z-index: 3; cursor: grabbing; transition: none; box-shadow: var(--sh-pop), inset 0 0 0 1.5px var(--t1);
   /* Moved thoughts follow the pointer on their own layers, not by repainting the plane each frame. */
@@ -140,7 +140,7 @@
 .sk-tasks__list { list-style: none; margin: 0; padding: 4px 8px; }
 .sk-tasks__list li + li { border-top: 1px solid var(--line); }
 .sk-task { display: flex; align-items: flex-start; gap: 10px; margin: 2px 0; padding: 9px 8px; border-radius: var(--r); color: var(--t1); text-decoration: none; transition: var(--tr); }
-.sk-task:hover { background: var(--hov); }
+@media (hover: hover) { .sk-task:hover { background: var(--hov); } }
 .sk-task .ui-glyph { margin-top: 2px; }
 .sk-task > svg { flex: none; margin-top: 2px; color: var(--t3); }
 .sk-task__b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -173,14 +173,14 @@
    visual review): the soft --own fill with --t1, --r-btn corners, no drop shadow, so a phone screen never has a dark slab at its foot. */
 .sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-btn);
   background: var(--own); color: var(--t1); font-size: var(--fs-lg); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line); }
-.sk-fab:hover { background: var(--hov); }
+@media (hover: hover) { .sk-fab:hover { background: var(--hov); } }
 @media (pointer: coarse) { .sk-dot { width: 16px; height: 16px; } .sk-dot::before { inset: -14px; } }
 @media (prefers-reduced-motion: reduce) { .sk-dot { transition: none; } }
 
 .sk-actions { position: absolute; left: 0; top: 0; z-index: 4; display: flex; align-items: center; gap: 8px; transform-origin: 0 0; }
 .sk-plus { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-pill);
   background: transparent; color: var(--t1); transition: background-color var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
-.sk-plus:hover { background: var(--sub); }
+@media (hover: hover) { .sk-plus:hover { background: var(--sub); } }
 .sk-plus--labelled { display: inline-flex; align-items: center; width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 28px; padding: 0 12px; border-radius: var(--r-pill); background: var(--el);
   color: var(--t1); font-size: var(--fs-sm); font-weight: 500; box-shadow: var(--sh-card), inset 0 0 0 1px var(--line2); transition: var(--tr); }
@@ -203,7 +203,7 @@
 .sk-zoom { position: absolute; right: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 0;
   padding: 2px; border-radius: var(--r); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk-zoom button { font-family: var(--font); display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--t3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
-.sk-zoom button:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .sk-zoom button:hover:not(:disabled) { background: var(--hov); color: var(--t1); } }
 .sk-zoom button:disabled { opacity: .45; cursor: default; }
 .sk-zoom .sk-zoom__level { min-width: 44px; }
 /* 38px holds "Fit" in the loaded face too (37.6px in WebKit), so the web font arriving never widens the group and moves it (Spokój rule 7, #510). */
@@ -356,9 +356,11 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock .ui-btn[aria-disabled="true"] { opacity: .55; }
 .sk-dock .ui-btn--primary { padding: 0 18px; }
 .sk-tool { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--t2); transition: var(--tr); }
-.sk-tool:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .sk-tool:hover { background: var(--hov); color: var(--t1); } }
 .sk-tool[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
 .sk-tool[aria-disabled="true"] { opacity: .5; }
+/* In the List the canvas tools are not drawn but keep their room, so Thought and Undo stay where they are in the Map (round 14 look-b P13). */
+.sk-tool--away { visibility: hidden; }
 .sk--map .sk-help:not(.is-open) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk--map .sk-help.is-open { position: absolute; left: 50%; bottom: 110px; z-index: 9; width: min(560px, calc(100% - 28px)); max-width: none; margin: 0; padding: 12px 16px; transform: translateX(-50%);
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); color: var(--t2); }
@@ -404,7 +406,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* The selected outline and named action entry already identify the phone selection; announce
    it without a second visual pill. Changes and errors remain visible in the measured dock. */
 .sk-phone .sk-line:has(.sk-status--selection), .sk-composition .sk-line { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.sk-phone__secondary { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 20px); }
+.sk-phone__row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 20px); }
+.sk-phone__secondary { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; max-width: 100%; }
 .sk-phone__secondary:empty { display: none; }
 .sk-phone__secondary .sk-edit-btn { display: inline-flex; align-items: center; gap: 6px; }
 .sk-map-options { display: inline-flex; align-items: center; gap: 6px; }
@@ -428,9 +431,10 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-corner { position: absolute; right: 16px; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
 .sk-corner > * { pointer-events: auto; }
 /* Beside the minimap the corner needs the room of a wide pane; with the minimap gone (a short pane, below) the zoom alone fits beside the
-   centred tools down to about 680 px, so it stays in its corner instead of floating mid-edge (founder direction 2026-11-17 visual review). */
+   centred tools down to about 640 px (the 252 px tools and the 157 px zoom with 16 px between them), so it stays in its corner instead of
+   floating mid-edge (founder direction 2026-11-17 visual review; round 14 look-b P15: at 200 % the 648 px pane still lifted it). */
 @container (max-width: 1080px) and (min-height: 561px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
-@container (max-width: 680px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
+@container (max-width: 639px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } }
 /* A touch screen's tools and zoom are 44 px each: beside them the zoom needs the wide pane again. */
 @media (pointer: coarse) { @container (max-width: 1080px) { .sk-corner { bottom: calc(16px + var(--sk-dock-h, 64px) + 8px); } } }
 /* A short pane keeps the zoom controls and lets the minimap go; the arrows and Fit still reach every thought. */

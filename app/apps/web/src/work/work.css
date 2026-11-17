@@ -12,7 +12,7 @@
 @media (pointer: coarse) { .ws-attach__more { min-height: 44px; } }
 /* Calm chips under a message (#117): icon, title and a quiet state; the object opens in Details. */
 .ws-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 30px; padding: 0 10px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line2); font-size: var(--fs-sm); color: var(--t2); text-align: left; transition: var(--tr); }
-.ws-chip:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .ws-chip:hover { background: var(--hov); color: var(--t1); } }
 .ws-chip svg { flex: none; color: var(--t3); }
 .ws-chip__num { flex: none; color: var(--t3); }
 .ws-chip__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--t1); }
@@ -38,7 +38,7 @@
 .ws-list { list-style: none; margin: 0; padding: 0; }
 .ws-list > li + li { border-top: 1px solid var(--line); }
 .ws-item { display: flex; align-items: center; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 10px 8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
-.ws-item:hover { background: var(--hov); }
+@media (hover: hover) { .ws-item:hover { background: var(--hov); } }
 .ws-item__st { display: grid; place-items: center; width: 16px; flex: none; color: var(--t3); }
 .ws-item__st.ws-need { color: var(--t1); }
 .ws-item__st.ws-neg { color: var(--t2); }
@@ -67,7 +67,8 @@
 }
 .ws-task__done:focus-visible { outline-color: var(--ring-inv); outline-offset: -3px; }
 .ws-task__glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin: 0 2px 0 -8px; border-radius: 50%; transition: background-color var(--dur-1) var(--ease-out); }
-button.ws-task__glyph:hover, button.ws-task__glyph:focus-visible { background: var(--sub); }
+button.ws-task__glyph:focus-visible { background: var(--sub); }
+@media (hover: hover) { button.ws-task__glyph:hover { background: var(--sub); } }
 button.ws-task__glyph:active { background: var(--hov); }
 .ws-task .ws-item { flex: 1; min-width: 0; width: auto; margin: 0; }
 .ws-task .ws-item__r .ui-pill { height: 24px; padding: 0 12px; font-size: var(--fs-md); }
@@ -75,8 +76,9 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-tasks { padding-top: 6px; }
   .ws-tasks .ws-task-controls { margin: 0 -16px; padding: 0 16px; }
   .ws-tasks .ws-group { margin-top: 12px; }
-  /* Read by assistive technology, in the flow so the section jumps still land on it. */
-  .ws-tasks .ws-group__h { height: 1px; margin: 0 0 -1px; overflow: hidden; white-space: nowrap; }
+  /* Each state's card has its heading over it, as on the computer (round 14 look-b P16: the phone's cards had none, so Doing, Blocked and
+     To do read as one list cut in pieces). */
+  .ws-tasks .ws-group__h { margin: 0 4px 6px; }
   .ws-tasks .ws-list { --task-bg: var(--el); overflow: hidden; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
   .ws-task { min-height: 62px; }
   .ws-task__fg { min-height: 62px; padding-left: 4px; }
@@ -119,7 +121,8 @@ button.ws-task__glyph:active { background: var(--hov); }
   font: inherit; letter-spacing: inherit; line-height: inherit; color: inherit; text-align: left; overflow-wrap: anywhere;
 }
 .wd-title__text { cursor: text; }
-.wd-title__text:hover { background: var(--hov); }
+/* A tap on the title leaves no grey block behind on a phone (round 14 look-a B2): hover needs a pointer that hovers. */
+@media (hover: hover) { .wd-title__text:hover { background: var(--hov); } }
 .wd-title__field { resize: none; overflow: hidden; border: 0; background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-title__field:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 .wd-rows { margin: 8px 0 0; }
@@ -262,7 +265,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
    the title and its state. */
 .message-bubble .ws-attach { flex-direction: column; flex-wrap: nowrap; width: min(100%, 460px); }
 .message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(min(15ch, 100%), 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
-.message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); }
+@media (hover: hover) { .message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); } }
 .message-bubble .ws-attach > .ws-chip > svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; box-sizing: content-box; padding: 8px; margin: 0 2px 0 -2px; border-radius: 10px; background: var(--el); color: var(--t1); }
 .message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: var(--fs-glyph); font-weight: 600; text-transform: uppercase; color: var(--t3); }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="work"]::before { content: "Task"; }
@@ -312,8 +315,10 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd--task, .wd--decision { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-bottom: 20px; }
 /* Where the panel can still scroll, its lower edge fades into the field under it (#1375's soft edge): a row the composer cuts reads as
-   "more", not as cut (visual review 2026-11-17, core 7). At the end the fade lies on the panel's own bottom padding. */
-.wd__scroll::after { content: ""; position: sticky; bottom: 0; z-index: 1; display: block; height: 20px; margin: 0 0 -20px; background: linear-gradient(transparent, var(--panel-bg, var(--el))); pointer-events: none; }
+   "more", not as cut (visual review 2026-11-17, core 7). Only while there is more below (`data-scroll-down`, ui/scrollEdges.ts): at the end
+   nothing fades, so the newest message is never washed out (round 14 look-b B1). */
+.wd__scroll::after { content: ""; position: sticky; bottom: 0; z-index: 1; display: block; height: 20px; margin: 0 0 -20px; background: linear-gradient(transparent, var(--panel-bg, var(--el))); pointer-events: none; opacity: 0; }
+.wd__scroll[data-scroll-down]::after { opacity: 1; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 /* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
 .wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }
@@ -340,16 +345,17 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .ui-select-sheet .wd-menu__group { margin: 12px 12px 4px; font-size: var(--fs-md); }
 @media (pointer: coarse) { .wd-state { min-height: 44px; } .wd-menu__item { min-height: 44px; } .wd-came__field { min-height: 44px; } .wd-came__dropped { min-height: 44px; } }
 
-/* The blocker is one card: the pill, who or what it waits for, then quiet Edit and Resolve. The field shows only while editing. */
-.wd-blocker { margin-top: 14px; padding: 10px 12px 10px 14px; border-radius: var(--r-card); background: var(--sub); }
-.wd-blocker__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
-.wd-blocker__head .ui-pill { flex: none; }
-/* Where the words would get less than about 12 characters a line beside the pill and the actions (a phone), Edit and Unblock take the next
-   line at the right, and the words keep the room (founder direction 2026-11-17 visual review). */
-.wd-blocker .wd-blocker__text { flex: 1 1 9em; min-width: 0; margin: 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
-.wd-blocker__acts { margin-left: auto; }
+/* The blocker is one card: who or what it waits for, then quiet Edit and Unblock (or Done) on the line under the words. Status says Blocked
+   above it, so the card has no second "Blocked" pill, and the words have the card's whole width on the computer and the phone (founder
+   direction 2026-11-17 visual review; round 14 look-b P8: the pill, four lines of words and the actions were squeezed into one row). The
+   field shows only while editing. */
+.wd-blocker { margin-top: 14px; padding: 10px 12px 6px 14px; border-radius: var(--r-card); background: var(--sub); }
+.wd-blocker__head { display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-width: 0; }
+.wd-blocker .wd-blocker__text { min-width: 0; margin: 0; font-size: var(--fs-md); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .wd-blocker__text b { font-weight: 600; color: var(--t1); }
+/* A row of text buttons under text starts where the words start: the first one's padding hangs outside (F-026 "One look for one element"). */
 .wd-blocker__acts { display: flex; flex: none; gap: 2px; }
+.wd-blocker__acts > .ui-btn:first-child { margin-inline-start: -12px; }
 .wd-blocker__resolve { color: var(--t1) !important; font-weight: 600; }
 .wd-blocker-form { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 10px; }
 .wd-blocker__form-acts { display: flex; justify-content: flex-end; gap: 6px; }
@@ -415,7 +421,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
    Where the title and the answer would take more than two fifths of the scrolling room (200 %, large text, a phone's half sheet), the title
    scrolls and the answer is a bar of its buttons: its waiting line goes before them and out of view above as it sticks, so the discussion
    keeps its room (personas-36). Where even the buttons would take more, nothing sticks (WorkDetails.tsx `data-pin`). */
-.wd-decide { position: sticky; top: var(--wd-decide-top, 0px); z-index: 1; background: var(--panel-bg, var(--el)); padding-bottom: var(--s-2); }
+/* Its buttons stand over the panel's lower fade, never under it (round 14 look-a A5: a pale band crossed Accept). */
+.wd-decide { position: sticky; top: var(--wd-decide-top, 0px); z-index: 2; background: var(--panel-bg, var(--el)); padding-bottom: var(--s-2); }
 .wd__scroll:is([data-pin="bar"], [data-pin="none"]) .wd-decision-identity { position: static; }
 .wd__scroll[data-pin="none"] .wd-decide { position: relative; top: auto; }
 .wd__scroll[data-pin="bar"] .wd-decide .nyc__waiting { order: -1; }

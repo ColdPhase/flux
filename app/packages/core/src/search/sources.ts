@@ -1,4 +1,4 @@
-import type { SearchFilterType, SearchKind, SearchPlace, SearchTarget } from '@flux/contracts';
+import { UNTITLED_SKETCH, type SearchFilterType, type SearchKind, type SearchPlace, type SearchTarget } from '@flux/contracts';
 import type { SearchAudienceType, SearchRow } from './ports.js';
 
 /**
@@ -80,7 +80,9 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   thought: {
     filter: 'sketch', audience: 'sketch', textIsTitle: true,
-    label: (row) => (row.sketchTitle ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought'),
+    // A map nobody named is not named in a result (round 14 new h: every result read "Thought on the map “Untitled map”"): the space beside
+    // it already says where it is.
+    label: (row) => (row.sketchTitle && row.sketchTitle.trim() !== UNTITLED_SKETCH ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought on the map'),
     target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId }),
   },
   person: {

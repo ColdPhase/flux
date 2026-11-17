@@ -61,19 +61,26 @@ export function decisionState(decision: Pick<Decision, 'status' | 'supersedes' |
   return decisionPieces(decision).filter((piece) => !piece.text.startsWith('Decision')).map((piece) => piece.text).join('');
 }
 
-/** What a blocked task waits for, said one way on the board, the panel, the List, Home and the Inbox (personas-28): see `blockedWords`. */
-export const blockedLine = blockedWords;
+/**
+ * What a blocked task waits for, said one way on the board, the panel, the List, Home and the Inbox (personas-28): see `blockedWords`. The
+ * person waited for is named as every list names people (round 14 look-a A4): "Waiting for Ada Kowalska (you)" to Ada herself.
+ */
+export const blockedLine = (item: Parameters<typeof blockedWords>[0] & { waitingFor?: { kind?: string; id: string; name: string } | null }, meId: string) =>
+  blockedWords({ ...item, waitingFor: item.waitingFor ? { name: named(item.waitingFor, meId) } : item.waitingFor });
 
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-/** A due day on a card: "Due Fri" within the coming week, else "Due 12 Nov"; "Due today" and "Overdue" say so. */
+/**
+ * A due day on a card, in the panel's words for the day (round 14 look-b P10: the panel said "21 Nov 2026", the card "Due Sat"): "Due 21 Nov",
+ * with the year only when it is not this year ("Due 14 Nov 2027"); "Due today" and "Overdue · 12 Nov" say so.
+ */
 export function dueShort(day: string) {
   const date = new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-  if (days < 0) return `Overdue · ${monthDay.format(date)}`;
+  const words = date.getFullYear() === today.getFullYear() ? monthDay.format(date) : dueLabel(day);
+  if (days < 0) return `Overdue · ${words}`;
   if (days === 0) return 'Due today';
-  return `Due ${days < 7 ? weekday.format(date) : monthDay.format(date)}`;
+  return `Due ${words}`;
 }
 
 /** The first line of a message, for prefilled titles. */
