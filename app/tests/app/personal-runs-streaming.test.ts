@@ -100,6 +100,10 @@ describe('an answer appears as it is written (#1248)', () => {
 
   test('founder check 2026-11-17: the words a model writes before a tool call are a working note, never shown as the answer; the step is', async () => {
     const mine = await StreamClient.connect(hubert.browser);
+    try { await notes(mine); } finally { await mine.close(); }
+  });
+  /** The founder's run: a note before each call, then the answer. */
+  async function notes(mine: StreamClient) {
     await mine.ready();
     const call = { tool: 'mcp__flux__flux_get_conversation', args: { projectId: lamp.id, id: thread.id } };
     // A note sent at once with its call, and one the model keeps writing for a while before the call (its words reach the asker first).
@@ -122,8 +126,7 @@ describe('an answer appears as it is written (#1248)', () => {
     assert.ok(mine.messages.some((message) => JSON.stringify(message).includes('Let me check')), 'the slow note did reach the asker, then went');
     assert.deepEqual(stepsOf(mine, started.run.id), ['flux_get_conversation', 'flux_get_conversation'], 'the working line says each step');
     assert.equal((await read(started.run.id)).answer?.body, 'Here are the mugs I found.');
-    await mine.close();
-  });
+  }
 
   test('Stop while pi works posts nothing: a stop before any words keeps nothing', async () => {
     pi.gateway.script([{ tool: 'bash', args: { command: 'sleep 30' } }, { text: 'Too late.' }]);
