@@ -105,7 +105,8 @@ export function waitForField(ms = FIELD_WAIT_MS) {
   document.addEventListener('focusin', (event) => {
     if (!inField(event.target) || event.target === leavingField) return;
     leavingField = null;
-    const text = fieldOnItsWay() ? typed : '';
+    // Never into a password field: it is not what was asked for, and a sentence typed on the way must not land among secrets. The wait ends; the letters go.
+    const text = fieldOnItsWay() && !(event.target instanceof HTMLInputElement && event.target.type === 'password') ? typed : '';
     const enter = text && enterKept;
     fieldDue = 0;
     typed = '';
