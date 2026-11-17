@@ -184,15 +184,22 @@ const nowhere = (element: Element | null) => !element || element === document.bo
  * person moved themselves).
  */
 let focusAtNavigation: Element | null = null;
+/** Whether the person has moved the focus themselves since then (a key that moves it, or a press): the page's own focus moves do not count. */
+let movedSinceNavigation = false;
+const MOVING_KEYS = new Set(['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'F6']);
 let navigationWatched = false;
 function watchNavigation() {
   if (navigationWatched || typeof window === 'undefined') return;
   navigationWatched = true;
-  const note = () => { focusAtNavigation = document.activeElement; };
+  const note = () => { focusAtNavigation = document.activeElement; movedSinceNavigation = false; };
   window.addEventListener('popstate', note, true);
   // A press or an Enter is what navigates (a link, a row, New message's search): the focus then is where it was asked from.
   document.addEventListener('click', note, true);
-  document.addEventListener('keydown', (event) => { if (event.key === 'Enter') note(); }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') note();
+    else if (MOVING_KEYS.has(event.key)) movedSinceNavigation = true;
+  }, true);
+  document.addEventListener('pointerdown', () => { movedSinceNavigation = true; }, true);
 }
 if (typeof window !== 'undefined') watchNavigation();
 
@@ -200,11 +207,12 @@ function focusFieldBy(find: () => HTMLElement | null, arrival = false): () => vo
   waitForField();
   let frame = 0;
   let release: (() => void) | null = null;
-  // An arrival's focus (F-026 §4) never takes focus the person moved themselves: only from nowhere, or from what had it when they navigated.
+  // An arrival's focus (F-026 §4) never takes focus the person moved themselves since they navigated: only from nowhere, from what had it when
+  // they navigated, or from where the page itself put it (a panel opening).
   const attempt = () => {
     const field = find();
     const active = document.activeElement;
-    if (arrival && active !== field && active !== focusAtNavigation && !nowhere(active)) {
+    if (arrival && movedSinceNavigation && active !== field && active !== focusAtNavigation && !nowhere(active)) {
       // The person went on (Tab to a chip, a link or a button while the conversation was still being drawn): the arrival leaves them there.
       frame = 0; fieldDue = 0;
       return;
