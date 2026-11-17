@@ -38,7 +38,7 @@ export interface PaneProps {
    * the root and the discussed task's row, from its own bounded reads (#155), never a project collection.
    */
   /** `firstDay`: the day of the first reply, which the root's reply count line names instead of a day line of its own. */
-  rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null; firstDay: string | null }) => ReactNode;
+  rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null; firstDay: string | null; newFirst: boolean }) => ReactNode;
   /** thread: the root's message id, which the stream shows and arrives at. */
   rootMessageId?: string | null;
   /** thread: the decisions the project's conversation announces (#694); the thread shows the ones made from it. */
@@ -270,8 +270,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <ThreadFollow conversationId={thread.id} projectId={project.id} />
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={discussed ? null : rootMessage?.id ?? null} objects={objects}
             onThreadSize={roots.threadSize} onOpenDiscussion={openDiscussion}
-            rootHeader={({ preview, firstDay }) => discussed ? <DiscussedDecision decision={discussed} notice={objects.find((item) => item.decisionId === discussed.decisionId) ?? null} replies={replies} firstDay={firstDay} /> : <>{thread.task ? <DiscussedTaskHead task={thread.task} /> : null}<ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} preview={preview} onDenied={onDenied}
+            rootHeader={({ preview, firstDay, newFirst }) => discussed ? <DiscussedDecision decision={discussed} notice={objects.find((item) => item.decisionId === discussed.decisionId) ?? null} replies={newFirst ? 0 : replies} firstDay={firstDay} /> : <>{thread.task ? <DiscussedTaskHead task={thread.task} /> : null}<ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
+              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={newFirst ? 0 : replies} preview={preview} onDenied={onDenied}
               photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} /></>} />
         </OwnedPanelContent>) : null}
     </div>

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, max, sql, type SQL } from 'drizzle-orm';
 import { removedName, type AgentColour } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -68,8 +68,8 @@ export interface NewDmMessageRow {
   attachmentCount?: number;
 }
 
-export function toDmMessageRecord(row: MessageRow, replyCount = 0) {
-  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, viaColour: row.viaColour, kind: row.kind,
+export function toDmMessageRecord(row: MessageRow, replies: { n: number; last: Date | null } = { n: 0, last: null }) {
+  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount: replies.n, lastReplyAt: replies.last, via: row.via, viaColour: row.viaColour, kind: row.kind,
     editedAt: row.editedAt, removedAt: row.removedAt, attachmentCount: row.attachmentCount };
 }
 
@@ -122,11 +122,12 @@ export function dmRows(db: DbExecutor) {
       createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, lastMessageVia, participants: people.get(row.id) ?? [],
     }));
   }
+  /** How many replies each root has and when the newest was written, for "3 replies · last 9:40" (round 14: a space's thread line says when). */
   async function replyCounts(rootIds: string[]) {
-    const counts = new Map<string, number>();
+    const counts = new Map<string, { n: number; last: Date | null }>();
     if (!rootIds.length) return counts;
-    const rows = await db.select({ rootId: m.threadRootId, n: count() }).from(m).where(inArray(m.threadRootId, rootIds)).groupBy(m.threadRootId);
-    for (const row of rows) if (row.rootId) counts.set(row.rootId, row.n);
+    const rows = await db.select({ rootId: m.threadRootId, n: count(), last: max(m.createdAt) }).from(m).where(inArray(m.threadRootId, rootIds)).groupBy(m.threadRootId);
+    for (const row of rows) if (row.rootId) counts.set(row.rootId, { n: row.n, last: row.last ? new Date(row.last) : null });
     return counts;
   }
   /** The files each of these messages carries (#1438 point 10), by the one read; a message without files is left as it is. */
@@ -181,12 +182,12 @@ export function dmRows(db: DbExecutor) {
         .orderBy(desc(m.sequence)).limit(window.limit + 1));
       const page = rows.slice(0, window.limit).reverse();
       const counts = await replyCounts(page.map((row) => row.id));
-      return { messages: await withFiles(page.map((row) => toDmMessageRecord(row, counts.get(row.id) ?? 0))), hasMoreBefore: rows.length > window.limit };
+      return { messages: await withFiles(page.map((row) => toDmMessageRecord(row, counts.get(row.id)))), hasMoreBefore: rows.length > window.limit };
     },
     /** One message of this DM, root or reply, whose reply count is included. Null for any other id. */
     async message(dmId: string, messageId: string) {
       const [row] = await open(await db.select().from(m).where(and(eq(m.dmId, dmId), eq(m.id, messageId))));
-      return row ? (await withFiles([toDmMessageRecord(row, row.threadRootId ? 0 : (await replyCounts([row.id])).get(row.id) ?? 0)]))[0]! : null;
+      return row ? (await withFiles([toDmMessageRecord(row, row.threadRootId ? undefined : (await replyCounts([row.id])).get(row.id))]))[0]! : null;
     },
     /** The newest `limit` replies of one root below `beforeSequence`, ascending. */
     async threadWindow(dmId: string, rootId: string, window: { limit: number; beforeSequence: number | null }) {

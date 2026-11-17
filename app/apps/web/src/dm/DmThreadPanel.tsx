@@ -21,7 +21,6 @@ import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import { pageBackTo } from '../app/seekMessage';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
-import { MessageDay } from '../app/messageParts';
 import { NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { focusArrival } from '../ui/keys';
 
@@ -43,7 +42,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   others: readonly string[]; writable: boolean;
   refreshTick: number; receiptTick: number; focusComposer: boolean; canObserve: boolean;
   onDenied: (cause: unknown) => void; onCreateTask: (message: DmMessage, excerpt: string | undefined) => void;
-  onCount: (rootId: string, replies: number) => void;
+  onCount: (rootId: string, replies: number, lastReplyAt: string | null) => void;
 }) {
   const touch = useMediaQuery(MEDIA.touch);
   const [thread, setThread] = useState<DmThread | null>(null);
@@ -95,7 +94,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
           setReplies((current) => merge(current, next.replies));
           setOlder((current) => (current === undefined ? next.messagePage.nextBeforeSequence : current));
           setUnreadFrom((current) => current === undefined ? next.unreadFrom ?? null : current);
-          onCount(rootId, next.root.replyCount);
+          onCount(rootId, next.root.replyCount, next.root.lastReplyAt);
         } catch (cause) { onDenied(cause); }
       } while (loadAgain.current);
     } finally { loading.current = false; }
@@ -250,6 +249,10 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root && !returned.pending, feed,
     ids: (root ? [root, ...shown] : shown).filter((m) => m.authorId !== meId).map((m) => m.id), depend: shown.length });
   const count = root?.replyCount ?? shown.length;
+  // One line between the message and its replies, as in a space's thread (round 14): "3 replies · Today", the first replies' day, which then
+  // has no day line of its own; where the first reply is already new, the one divider is "New · Today" and the head keeps the count.
+  const firstDay = rows[0]?.newDay ? rows[0].label : null;
+  const firstNew = !!rows[0]?.line.message && rows[0].line.message.id === unreadFrom;
 
   return (
     <>
@@ -265,11 +268,12 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />
               </ol>
             ) : <p className="thread__hint" role="status">Opening…</p>}
-            {/* The head says how many replies there are: the line between the message and them is then only the rule, not the count again (#1374). */}
-            <p className="thread__hint">{count ? null : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>
+            {count && firstNew ? null : <p className="thread__hint">{count ? `${count} ${count === 1 ? 'reply' : 'replies'}${firstDay ? ` · ${firstDay}` : ''}`
+              : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>}
             {older ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier replies</Button></div> : null}
             <ol className="dm__list thread__list" aria-label="Replies">
-              {rows.flatMap(({ line, label: dayLabel, newDay, continued, groupLast }) => {
+              {rows.flatMap(({ line, label: dayLabel, newDay: changesDay, continued, groupLast }, index) => {
+                const newDay = changesDay && !(index === 0 && firstDay && !firstNew);
                 const mine = line.authorId === meId;
                 if (!line.message) {
                   const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
@@ -284,7 +288,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
                   receipt={seen.get(message.id)}
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;
                 // Where what is new begins (#1246): its day line first, then the divider, then the reply.
-                return starts ? [newDay ? <MessageDay key={`day-${message.id}`} label={dayLabel} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;
+                return starts ? [<UnreadDivider key="unread" day={newDay ? dayLabel : null} />, bubble] : bubble;
               })}
             </ol>
             {/* The person's own agent at work in this thread and what it answered them: theirs alone, at the end like a reply about to be sent (#1016). */}

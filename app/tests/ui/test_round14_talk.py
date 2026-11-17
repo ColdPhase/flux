@@ -39,7 +39,8 @@ EARLIER = [("jonas", "The far east bed stayed online all night, first time this 
            ("jonas", "The probe in bed four was half out of the soil, I pushed it back in."), ("ola", "Then bed four needs a fresh reading tomorrow."),
            ("jonas", "The gateway rebooted twice last night, I will check the power supply."), ("ola", "Thanks, the spare supply is on the top shelf.")]
 NEWER = [("jonas", "Gateway is fine now, it was the loose plug."), ("ola", "Great, then we keep the old supply as the spare."),
-         ("jonas", "I will label it so nobody takes it for the fair.")]
+         ("jonas", "I will label it so nobody takes it for the fair."), ("ola", "Good, and put the spare probes in the same box."),
+         ("jonas", "Done, the box is on the top shelf by the door.")]
 LONG = "Kick-off: the spring fair is on 17 April. We need a stand plan, a volunteer list and a budget by December, and two tables near the power."
 
 
@@ -189,16 +190,24 @@ class RoundFourteenTalk(unittest.TestCase):
     def test_03_the_new_task_card_is_whole_above_the_composer_and_toast(self) -> None:
         project = self.space("Beds", EARLIER)
         page = self.page("ada")
-        # Ada read the space; three messages arrive while she is away; she comes back and it opens at "New", all of it in view.
+        # Ada reads the space to its end and goes to Messages in the app; five messages arrive meanwhile; she comes back, and the space
+        # opens at "New" with all of it in view: at its end, though she never scrolled there (round 14, look-b B2).
         page.goto(f"/projects/{project}")
         expect(page.locator(".project-convo__message", has_text=EARLIER[-1][1])).to_be_visible()
+        page.mouse.move(600, 400)
+        for _ in range(6):
+            page.mouse.wheel(0, 1500)
+            page.wait_for_timeout(100)
         page.wait_for_timeout(1500)
-        page.goto("/")
-        expect(page.get_by_role("main")).to_be_visible()
+        page.evaluate("(path) => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate', { state: {} })); }", "/dm")
+        page.wait_for_timeout(1000)
         for who, body in NEWER:
             self.say(who, project, body)
-        page.goto(f"/projects/{project}")
+        page.wait_for_timeout(1000)
+        page.evaluate("(path) => { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate', { state: {} })); }", f"/projects/{project}")
         expect(page.locator(".project-convo__message", has_text=NEWER[-1][1])).to_be_visible()
+        expect(page.get_by_role("separator", name="New")).to_have_count(1)
+        page.wait_for_timeout(2500)
         self.settle(page)
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
         expect(title_field(page)).to_be_visible()

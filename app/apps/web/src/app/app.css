@@ -147,7 +147,12 @@ body:has(.app) { background: var(--side); }
 .side__locked { gap: 8px; padding-inline: 8px 6px; padding-block: 4px; }
 .side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); font-weight: 400; color: var(--t2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side__label--removed { display: flex; gap: .25em; }
+.side__label--removed > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.side__removed { flex: none; }
 .side__dm .ui-avatar, .side__agent .kreska { flex: none; }
+/* A conversation's face and name start where a space's tile and name start (round 14: names at 52 px against 48). */
+.side__dm { gap: 8px; padding-inline: 8px 6px; }
 /* Assistant is pinned first in Messages (F-036 AG-4); its pin sits where an unread dot would. */
 .side__pin { margin-left: auto; flex: none; color: var(--t3); }
 /* An encrypted space has a small lock after its name, at the row's end as drawn (F-026 §4); a dot of news follows it. */
@@ -500,8 +505,9 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
   display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border-radius: var(--r-composer);
   box-shadow: var(--sh-field); background: var(--el); transition: var(--tr);
 }
-/* The composer takes the one focus ring (README §2), 2 px of --ring round its card, never a dark frame (visual review 2026-11-17). */
-.composer__box:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* The composer is a text field: its ring is its edge, 2 px of --ring over its hairline (offset -1 px, as .ui-input), never a second outline
+   with a gap round the card (round 14: a grey ring, a white gap and the border read as a double frame after a click), nor a dark frame. */
+.composer__box:focus-within { outline: 2px solid var(--ring); outline-offset: -1px; }
 .composer__box[aria-disabled="true"] { background: var(--sub); }
 .composer__box textarea {
   field-sizing: content; flex: 1; min-height: 32px; max-height: 180px; padding: 6px 4px; border: 0; resize: none; background: transparent;

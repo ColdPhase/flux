@@ -188,7 +188,8 @@ export function askState(status: PersonalAssistantStatus | null, outside = false
   const runtime = status.enablement?.engine === 'runtime';
   switch (status.state) {
     case 'ready': return { kind: 'ready', note: `Only you see the answer, until you choose Show everyone · on ${runtime ? runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client) : 'your API key'}` };
-    case 'not_enabled': return canHaveAi(status) ? { kind: 'blocked', note: 'You haven’t set up your assistant.', action: 'connect', actionLabel: 'Connect your AI' }
+    // Short, so the line and Connect your AI share one row beside the chip on a phone (round 14: the link stood alone on a second line).
+    case 'not_enabled': return canHaveAi(status) ? { kind: 'blocked', note: 'Not set up yet.', action: 'connect', actionLabel: 'Connect your AI' }
       : { kind: 'blocked', note: `${SERVER_AI_OFF_LINE}.`, action: null };
     // #854: the API key's one daily budget; a request asked now waits for the key's next day.
     case 'capped': return { kind: 'ready', note: `Not enough left of your API key’s ${dollars(status.today?.budgetCents ?? 0)} daily budget. A request now starts ${status.today ? resumeWords(status.today.resetsAt) : 'tomorrow'}.` };

@@ -129,10 +129,11 @@ function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file:
   const shown = poster || (!broken ? url : '');
   const photo = !!shown;
   return <li className={`composer-thumb${photo ? ' is-photo' : ''}`} data-file-state={file.state}>
-    <span className="composer-thumb__face">{photo ? <img src={shown} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
-      {order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}</span>
-    {/* One size for one file (#1424): the stored copy's once it is staged (a picture is cleaned, so smaller), the same the sent message shows. */}
-    <span className="composer-files__name">{file.name}<small>{typeLine(file.staged ?? file, detailLine(file.staged))} · {status}</small></span>
+    <span className="composer-thumb__face">{photo ? <img src={shown} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}</span>
+    {/* One size for one file (#1424): the stored copy's once it is staged (a picture is cleaned, so smaller), the same the sent message shows.
+        The line wraps between its two parts where the tile has no room, never inside "Ready to send". */}
+    {/* The order stands before the name, off the photo (round 14: the badge sat on the thumbnail). */}
+    <span className="composer-files__name">{order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}{file.name}<small><span>{typeLine(file.staged ?? file, detailLine(file.staged))}</span> · <span>{status}</span></small></span>
     {file.state === 'failed' && !file.refused ? <Button variant="outline" size="sm" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</Button> : null}
     <button type="button" className="composer-thumb__x" disabled={blocked} onClick={onRemove} aria-label={`Remove ${file.name}`}><span className="composer-thumb__xface"><Icon name="x" size={12} /></span></button>
     {file.error && !file.refused ? <p className="composer-files__error" role="alert">{file.error}</p> : null}

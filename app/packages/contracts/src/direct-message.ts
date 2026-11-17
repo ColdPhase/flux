@@ -71,6 +71,8 @@ export interface DmSummary {
  * root and has no replies of its own. A reply is read only by the DM's current participants.
  */
 export type DmMessage = HumanConversationMessage & { threadRootId: string | null; replyCount: number;
+  /** When the newest reply of a root was written ("3 replies · last 9:40", as a space's root says); null without replies and for a reply. */
+  lastReplyAt: string | null;
   /**
    * `ai_used` is the line "Ada used AI here (Claude)" both people of a DM see when `/ai` is used in it (#842, F-036 AG-4): its
    * `body` is the name of the company that receives the conversation. Absent on a message.

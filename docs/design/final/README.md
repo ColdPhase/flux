@@ -113,8 +113,9 @@ every ring in the app:
   `data-input` on `<html>` (`pointer`, `field` or `keys`), set by the first pointer or key event: `field` is a tap or a click in a
   text field (its label or the box drawn round it), so that field shows its ring; a field the app focuses after a tap elsewhere
   (a conversation's composer as it opens, a window's first field) is `pointer` and shows none until a key or a click in it
-  (visual review 2026-11-17: every conversation and every Create window opened framed). The composer's ring is this ring, 2 px
-  out from its card, never a dark inset frame.
+  (visual review 2026-11-17: every conversation and every Create window opened framed). The composer is a text field: its ring is
+  this ring on its edge (offset −1 px over its hairline, as every field's), never a second outline with a gap round its card (round 14)
+  and never a dark inset frame.
 
 **Raised, never inverted** (visual review 2026-11-17, after the toast rule above): a tooltip is a small raised card, `--el` with
 `--t1` words, the pop-over shadow and a `--line2` hairline, in both themes; a message toolbar's tooltip is centred on its
@@ -562,7 +563,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 
 - **Tab bar.** Home · Spaces (the four-square grid, the same glyph as Create's Space) · Inbox, in a floating capsule, with a separate round **Search**
   button. Spaces lists your spaces and then Messages, with Assistant pinned first; an unread space or conversation has its name
-  in bold, the same in both parts ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)).
+  in bold, the same in both parts ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)). A space's row is the way in and
+  ends with the dot (what needs you) and its ⋯, with no chevron between them (round 14: three marks for two things). In the sidebar a
+  conversation's face and name start where a space's tile and name start, and a long name ends in "…" before "(removed)", which
+  stays whole.
 - **Home** adds rows under the waiting items, because the phone has no sidebar: "My tasks (N)"
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
@@ -962,10 +966,11 @@ These functional rules from UI116-4 remain required:
   with "+N" on the last one.
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're
     back", Retry.
-  - Before sending, thumbnails with × sit in the composer: one tile per file, a photo and any other file alike, 240 × 56 on
-    `--sub` with a 44 px face (the photo cropped, or the page icon), the name and its line on one line each, × at the tile's top
-    corner, and on a touch screen a small order number on the face's lower corner; the tray stands on the pane's `--bg`
-    (visual review 2026-11-17).
+  - Before sending, thumbnails with × sit in the composer: one tile per file, a photo and any other file alike, 56 px tall on
+    `--sub` with a 44 px face (the photo cropped, or the page icon), the name and its line ("Image · 230.6 KB · Ready to send"),
+    × at the tile's top corner, and on a touch screen a small order number before the name, off the photo; the tray stands on the
+    pane's `--bg` (visual review 2026-11-17). A tile is as wide as its words, 200 to 360 px (or the tray): its line is never cut,
+    only a long name ends in "…", and where the line has no room it wraps between its parts (round 14).
   - On the phone the system's own picker numbers your choices as you make them and hands them back in that
     order. Flux adds no picker of its own (founder review 2026-11-13, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
     the files arrive in the draft at once, each with its name, numbered "Sends 1", "Sends 2" on its thumbnail. The
@@ -1392,9 +1397,17 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   covers the words it acts on. In a narrow thread pane the toolbar keeps its raised container in the bubble's corner.
 - **One look for a conversation's pieces** (visual review 2026-11-17):
   - One divider: its words in the middle and a hairline to each edge, for the day ("Today"), **New** (stronger words and line)
-    and a thread's "2 replies · Today".
-  - Under a message, its own time comes first, then the thread's line ("4 replies · last 7:47", the speech-bubble icon in a
-    space and in a direct message alike), so the two times never read as one said twice.
+    and a thread's "2 replies · Today" (in a space's thread and a direct message's alike). Two never stack (round 14): where what is
+    new starts a day it is one divider, **New · Today**, and where it starts at a thread's first reply that divider stands alone
+    (the panel's head keeps the count).
+  - Under a message, its own time comes first, then the thread's line ("4 replies · last 7:47", the speech-bubble icon and the
+    last reply's time in a space and in a direct message alike), so the two times never read as one said twice.
+  - A direct message reads in a space's reading column and composer width, so the composer never jumps between the two (round 14).
+  - The `@` and `/` lists stand on the pane's `--bg` down to the composer: no strip of the conversation shows between them.
+  - A message toolbar's tooltip is centred on its button; only at the pill's outer end (the last button beside someone else's
+    message, the first beside one's own) does it end with its button, so it never runs past the pane.
+  - The task card of a task just created comes into view whole, above the composer and the toast, also when the conversation
+    opened at **New** and was at its end without the person scrolling (round 14).
   - A person's face beside a message is the same grey face in a space and in a direct message.
   - A long address in a message, and the address line of a link card (up to its three lines, #348), breaks after `/`, `_`, `#`,
     `?`, `&`, `=`, `.` or `-`, never inside a word.
@@ -1687,8 +1700,13 @@ type, because a message is written in the composer. The phone's "+" opens that w
 sheet at once: it has no list of the types before the tabs (founder direction, Hubert, 2026-11-13,
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
-- **The window's fields and lists** (visual review 2026-11-17): a field without a frame (the title, the details) has its edge on the
-  content's edge, where the space chip and the property chips start, with its words 8 px inside it; it never reaches out of the column.
+- **The window's fields and lists** (round 14, replacing the visual review of 2026-11-17): **one inset** — the words of a field without a
+  frame (the title, the details, Why) start on the content's edge, where the space chip and the property chips start, on the computer and
+  the phone; the field's box reaches 8 px out round its words, so its ring (only while it is written in) stands round them with room for
+  the caret. The window is 384 px tall and grows (to 78vh) only when what it holds needs more, so a long message's chip and
+  **+ From a message or thought** are never cut by the footer's line; past 78vh its list fades at its end. On the phone Close is the
+  sheets' plain 44 px ×, the five kinds share the rest of the row, and a list chosen in its own sheet (Space, Owner) rises up to the
+  Create sheet's tabs, so no row of the sheet below shows cut in half above it.
   **+ From a message or thought** grows the window to show the search and its results above the footer ("Search messages and
   thoughts"). The Space list shows each space's tile and the Owner list each person's face (an agent's Kreska), as the chips do.
   In the New space window, Add people open is one box (chosen people, a hairline, the search and the list, then Someone new?) that
@@ -2282,7 +2300,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   **`/ai` without an assistant opens Connect AI** (persona round, 2026-11-15, on the founder's "the same name does the same thing",
   [#1424](https://github.com/ColdPhase/flux/issues/1424)). Choosing `/ai` in the `/` menu (in a space, a thread, a task or a direct
   message) while the person has connected no AI opens the one **Connect AI** window in place, the same window as Settings › AI and
-  Home's Connect AI; the ask bar keeps "You haven't set up your assistant. **Connect your AI**", which opens the same window. There is no
+  Home's Connect AI; the ask bar keeps "Not set up yet. **Connect your AI**" (short, so it shares the chip's row on a phone, round 14), which opens the same window. There is no
   side panel of its own (the MCP explainer panel is gone). `/ai` is listed whenever it can do something, to ask or to connect: a server that
   runs no AI (Settings › AI's "AI is off on this server") does not offer it, and typed anyway the bar says "AI is off on this server." with nothing
   to press. A guest is never offered it; typed, it says who can change that: "Guests don't have AI. An admin can make you a member."

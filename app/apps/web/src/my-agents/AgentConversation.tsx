@@ -331,7 +331,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                   const item = entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} schedules={schedules} first newDay={newDay && entry.key !== newFrom} />
                     : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay && entry.key !== newFrom} onChanged={chat.refresh} />;
                   // Where what is new begins (#1246): its day line first, then the divider, then what the agent said.
-                  return entry.key === newFrom ? [newDay ? <MessageDay key={`day-${entry.key}`} label={day(entry.at)} /> : null, <UnreadDivider key="unread" />, item] : item;
+                  return entry.key === newFrom ? [<UnreadDivider key="unread" day={newDay ? day(entry.at) : null} />, item] : item;
                 })}
               </ol>
             </>) : chat.incomplete ? <p className="agc__empty" role="alert">This chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p>

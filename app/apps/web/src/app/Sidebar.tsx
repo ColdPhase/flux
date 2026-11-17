@@ -391,7 +391,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
                   <li key={dm.id}>
                     <NavLink to={`/dm/${dm.id}`} end={false} className={`side__item side__dm${fresh && !quiet ? ' is-unread' : ''}`} onClick={navigate} title={dm.title}
                       aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
-                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><span className="side__label">{dm.title}</span>
+                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><SideName title={dm.title} />
                       {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}
                       {quiet && fresh ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : null}
                     </NavLink>
@@ -432,3 +432,11 @@ function ListAgent({ agent, pinned, onNavigate }: { agent: MyAgent; pinned: bool
     </li>
   );
 }
+
+/** A conversation's name in its row: a long name ends in "…" before "(removed)", which always stays whole (round 14: "Tomek Wiśniewski (remo…"). */
+function SideName({ title }: { title: string }) {
+  const removed = title.endsWith(REMOVED_MARK) ? REMOVED_MARK.trim() : null;
+  if (!removed) return <span className="side__label">{title}</span>;
+  return <span className="side__label side__label--removed"><span>{title.slice(0, -REMOVED_MARK.length)}</span> <span className="side__removed">{removed}</span></span>;
+}
+const REMOVED_MARK = ' (removed)';

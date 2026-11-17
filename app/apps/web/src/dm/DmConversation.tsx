@@ -2,7 +2,6 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
 import { NewBelow, UNREAD_READ_BACK, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
-import { MessageDay } from '../app/messageParts';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { NavigateWithNote } from '../app/NavigateWithNote';
@@ -447,8 +446,9 @@ function DmContent({ initial }: { initial: Dm }) {
     if (cause instanceof ApiError && cause.status === 404 && !denied(cause)) return;
     denied(cause);
   }, [denied]);
-  const threadCount = useCallback((rootId: string, replies: number) => {
-    setMessages((current) => current.some((m) => m.id === rootId && m.replyCount !== replies) ? current.map((m) => m.id === rootId ? { ...m, replyCount: replies } : m) : current);
+  const threadCount = useCallback((rootId: string, replies: number, lastReplyAt: string | null) => {
+    setMessages((current) => current.some((m) => m.id === rootId && (m.replyCount !== replies || m.lastReplyAt !== lastReplyAt))
+      ? current.map((m) => m.id === rootId ? { ...m, replyCount: replies, lastReplyAt } : m) : current);
   }, []);
   const copyTrigger = useRef<string | null>(null);
   function startCopy(message: DmMessage, excerpt: string | undefined) {
@@ -525,7 +525,7 @@ function DmContent({ initial }: { initial: Dm }) {
                   observed={!mine} receipt={seen.get(message.id)} nav="stream"
                   onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} />;
                 // Where what is new begins (#1246): its day line first, then the divider, then the message.
-                return message.id === unreadFrom ? [newDay ? <MessageDay key={`day-${message.id}`} label={label} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;
+                return message.id === unreadFrom ? [<UnreadDivider key="unread" day={newDay ? label : null} />, bubble] : bubble;
               })}
             </ol>
           ) : (

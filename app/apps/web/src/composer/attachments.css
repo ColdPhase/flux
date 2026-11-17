@@ -167,22 +167,26 @@ span.photo-grid__open { cursor: default; }
 @media (max-width: 680px) { .file-viewer__sheet, .file-viewer__sheet--text, .file-viewer__sheet--json, .file-viewer__sheet--markdown { width: 100%; border-radius: 0; } .file-viewer__scroll, .file-viewer__markdown { padding: 12px 16px; } .file-viewer__table-scroll { padding: 0; } }
 
 /* Before sending: one tile per file in the composer, a photo and any other file alike (visual review 2026-11-17: a bare 64 px photo
-   beside a 250 px file card, × in two places, the order badge over the icon). Every tile is 240 × 56 on --sub: a 44 px face (the photo,
-   cropped, or the file's page icon), the name and its line on one line each, × at the tile's top corner. On a touch screen several choices
-   carry a small order number on the face's lower corner. The tray stands on the pane's --bg, so the conversation never shows between tiles. */
+   beside a 250 px file card, × in two places, the order badge over the icon). A tile is on --sub: a 44 px face (the photo, cropped, or the
+   file's page icon), the name on one line and its line under it, × at the tile's top corner. It is as wide as its words, 200 px at least and
+   360 px (or the tray) at most, so "Image · 230.6 KB · Ready to send" is never cut (round 14: "Ready to s…" in a fixed 240 px tile while the
+   tray had room); only a long name ends in "…", and where even the line has no room it wraps between its parts, never inside a word. On a
+   touch screen several choices carry a small order number before the name, off the photo. The tray stands on the pane's
+   --bg, so the conversation never shows between tiles. */
 .composer-files:has(.composer-thumb) { background: var(--bg); border-radius: var(--r); }
 .composer-files .composer-files__list { display: flex; flex-wrap: wrap; gap: 10px; max-height: 176px; padding: 10px 10px 2px 0; }
 .composer-files .composer-files__list li.composer-thumb { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; box-sizing: border-box;
-  width: 240px; max-width: 100%; min-height: 56px; padding: 6px 12px 6px 6px; border: 0; border-radius: var(--r); background: var(--sub); }
+  width: auto; min-width: min(200px, 100%); max-width: min(360px, 100%); min-height: 56px; padding: 6px 12px 6px 6px; border: 0; border-radius: var(--r); background: var(--sub); }
 .composer-thumb__face { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; }
 .composer-thumb.is-photo .composer-thumb__face { border-radius: var(--r-sm); background: var(--el); }
 .composer-thumb.is-photo .composer-thumb__face img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .composer-thumb .composer-files__name { flex: 1; min-width: 0; font-family: inherit; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-thumb .composer-files__name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.composer-thumb .composer-files__name small { white-space: normal; font-weight: 400; }
+.composer-thumb .composer-files__name small > span { white-space: nowrap; }
 .composer-files .composer-thumb__x { position: absolute; top: -12px; right: -12px; display: grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; background: none; }
 .composer-thumb__xface { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--bg); }
 .composer-files .composer-thumb__retry { flex: none; }
-.composer-thumb__order { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-glyph); font-weight: 600; box-shadow: 0 0 0 2px var(--sub); }
+.composer-thumb__order { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-right: 6px; padding: 0 4px; box-sizing: border-box; vertical-align: 1px; border-radius: var(--r-pill); background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line2); font-size: var(--fs-glyph); font-weight: 600; line-height: 1; }
 @media (hover: none), (max-width: 680px) {
   .composer-files .composer-thumb__x { top: -17px; right: -17px; width: 44px; height: 44px; min-width: 44px; }
 }

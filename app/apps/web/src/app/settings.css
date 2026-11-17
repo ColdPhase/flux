@@ -231,11 +231,13 @@
 .proj-index__row:hover > .top__more, .proj-index__row > .top__more:is(:focus-within, :has([aria-expanded="true"])) { opacity: 1; }
 .proj-index__more { width: 32px; height: 32px; }
 /* A touch screen shows the ⋯ always, as a 44 px target at the row's end (a gesture is never the only way, #343); every row, Everyone too,
-   keeps room for it, so the dot and the count stay in line and the chevron sits before it. */
+   keeps room for it, so the dot and the count stay in line. The row is the way in, so it has no chevron there: a dot, a chevron and a ⋯ at
+   every row's end were three marks for two things (round 14). */
 @media (pointer: coarse) {
   .proj-index__row > .top__more { right: 0; margin-top: -22px; opacity: 1; }
   .proj-index__more { width: 44px; height: 44px; }
   .proj-index__spaces > li > .set-row { padding-right: 44px; }
+  .proj-index__spaces > .proj-index__row > .set-row > .set-row__go { display: none; }
 }
 [data-reordering].proj-index__spaces .set-row { pointer-events: none; }
 [data-reordering] .proj-index__row > .top__more { opacity: 0; }
