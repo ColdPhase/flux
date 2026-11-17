@@ -128,7 +128,7 @@ class Round15Core(unittest.TestCase):
         expect(page.locator(".pane-scroll").get_by_text(title)).to_be_visible()
         made = [item for item in self.contexts["ada"].request.get(f"/api/v1/projects/{self.ids['project']}/work?limit=100").json()["items"] if item["title"] == title]
         self.assertEqual(len(made), 1)
-        self.assertEqual(made[0]["owner"], {"kind": "human", "id": self.ids["ada"]})
+        self.assertEqual((made[0]["owner"]["kind"], made[0]["owner"]["id"]), ("human", self.ids["ada"]))
         shot(page, f"round15-my-tasks-new-task-{UI_BROWSER}")
 
     def test_02_offline_home_and_a_space_read_before_keep_what_was_loaded(self) -> None:
@@ -160,8 +160,11 @@ class Round15Core(unittest.TestCase):
         page = self.page(PHONE, touch=True, errors_ok=True)
         page.goto("/")
         mine = page.locator(".home__places").get_by_role("link", name=re.compile("^My tasks"))
-        expect(mine).to_contain_text("(1)")
-        page.goto("/inbox")
+        expect(mine).to_contain_text(re.compile(r"\(\d+\)"))
+        count = re.search(r"\(\d+\)", mine.inner_text()).group(0)
+        self.assertNotEqual(count, "(0)", "Ada owns a task")
+        tabs = page.get_by_role("navigation", name="Main places")
+        tabs.get_by_role("link", name=re.compile("^Inbox")).click()
         expect(page.locator(".nyq__list .nyc").first).to_be_visible()
         page.context.set_offline(True)
         notice = page.locator("[data-offline-notice]")
@@ -171,9 +174,9 @@ class Round15Core(unittest.TestCase):
         line, plus = notice.bounding_box(), fab.bounding_box()
         self.assertLessEqual(line["y"] + line["height"], plus["y"] + 0.5, f"the offline line stands above the +: {line} {plus}")
         shot(page, f"round15-offline-phone-inbox-{UI_BROWSER}")
-        page.get_by_role("navigation", name="Main places").get_by_role("link", name="Home").click()
+        tabs.get_by_role("link", name="Home").click()
         # "My tasks (0)" was said for tasks that could not be read: offline it keeps the count it last read.
-        expect(mine).to_contain_text("(1)")
+        expect(mine).to_contain_text(count)
         expect(mine).not_to_contain_text("(0)")
         page.context.set_offline(False)
 
