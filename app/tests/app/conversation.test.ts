@@ -148,6 +148,10 @@ describe('project capture and inline conversation', () => {
     // Founder decision (Hubert, 2026-11-17, #1424; personas-37 P3-3): one removed person read "Former member" in a task's discussion and a
     // decision's, "Former member" in the thread opened from Search and "Stefan Kowal" (no mark) in Search's list, beside "Stefan Kowal
     // (removed)" on the task. Their name is already in the space's history, so its readers see it with the mark everywhere.
+    // A member of the space who reads it (the file's partner lost the space in an earlier test).
+    const member = await person('Removed-names reader');
+    await addMember(owner, ws.id, member, 'member');
+    await grant(owner, project.id, member, 'contributor');
     const stefan = await person('Stefan Kowal');
     await pool.query('UPDATE auth_users SET name = $1 WHERE id = $2', ['Stefan Kowal', stefan.id]);
     await addMember(owner, ws.id, stefan, 'member');
@@ -188,7 +192,7 @@ describe('project capture and inline conversation', () => {
       proposedBy: 'Stefan Kowal (removed)', search: 'Stefan Kowal (removed)' };
     // Every reader of the space, the owner and a member alike; the web shows the message names as "Stefan Kowal (removed)" (`removedName`).
     assert.deepEqual(await names(owner), removed);
-    assert.deepEqual(await names(partner), removed);
+    assert.deepEqual(await names(member), removed);
     // Someone who cannot read the space reads none of it, so is told no name.
     expectStatus(await outsider.browser.request('GET', `/api/v1/conversations/${thread.id}`), 404);
     // Restore takes the mark off.
