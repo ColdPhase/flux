@@ -350,7 +350,7 @@ export function SketchMap(props: SketchMapProps) {
         if (bounds.left + right + bounds.width <= view.right - 8 && !hit(bounds.left + right)) dx = right;
       }
       // Never over another thought's words (founder direction 2026-11-17 visual review). In order: where it is; slid sideways while it
-      // still stands over its own thought; raised above the thought in the way; under its own thought. Each place must be inside the
+      // still stands over its own thought; in the gap above its own thought; raised above the thought in the way; under its own thought. Each place must be inside the
       // view and clear of every other thought and of the floating header.
       let dy = 0;
       const own = canvas.querySelector<HTMLElement>('.sk-node[aria-pressed="true"]')?.getBoundingClientRect();
@@ -365,7 +365,10 @@ export function SketchMap(props: SketchMapProps) {
         const blocking = others.filter((r) => meets(r, bounds.left + dx, bounds.top));
         const lifted = Math.min(...blocking.map((r) => r.top)) - 8 - bounds.height;
         const below = own.bottom + 14;
+        // Or in the gap between the thought in the way and its own, touching at most its own top padding.
+        const between = Math.max(...blocking.map((r) => r.bottom)) + 2;
         if (slides.length) dx = slides[0]!;
+        else if (between + bounds.height <= own.top + 10 && free(bounds.left + dx, between)) dy = between - bounds.top;
         else if (free(bounds.left + dx, lifted)) dy = lifted - bounds.top;
         else if (free(bounds.left + dx, below)) dy = below - bounds.top;
       }

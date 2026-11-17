@@ -17,7 +17,7 @@
 .wiki-editor .cm-editor .cm-md-h3 { padding-top: 6px; font-size: var(--fs-lg); }
 .wiki-editor .cm-editor .cm-md-h4 { font-size: var(--fs-base); }
 /* The empty line under a heading is a short step (half the reader's 14 px under an H2 plus the heading's own leading), not a whole line. */
-.wiki-editor .cm-editor .cm-line.cm-md-after-h { line-height: 6px; font-size: 6px; }
+.wiki-editor .cm-editor .cm-line.cm-md-after-h { line-height: 6px; font-size: .4em; }
 .wiki-editor .cm-editor .cm-md-setext { color: var(--t3); }
 .wiki-editor .cm-md-strong { font-weight: 600; color: var(--t1); }
 .wiki-editor .cm-md-em { font-style: italic; }
