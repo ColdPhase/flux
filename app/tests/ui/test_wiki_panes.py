@@ -498,8 +498,12 @@ class WikiPanesJourney(unittest.TestCase):
         expect(page.locator(".doc-notice").first).to_contain_text("You are reading an earlier version")
         expect(page.locator(".doc-prose")).not_to_contain_text("Privacy")
         expect(page.locator(".cm-content")).to_have_count(0)  # an earlier version is read, not written
-        # Restore: version 1 becomes the page again, as the next version that says so.
-        page.get_by_role("button", name="Restore this version").click()
+        # Restoring lives in one place, the version's row in History (founder direction, Hubert 2026-11-17, #1424): none on the version's own page.
+        expect(page.get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        expect(page.get_by_role("link", name=re.compile(r"^Restore"))).to_have_count(0)
+        # From there: version 1 becomes the page again, as the next version that says so.
+        page.goto(self.url("lamp", "/history?to=1"))
+        page.locator(".doc-versions > li", has=page.locator(".doc-version[aria-current='true']")).get_by_role("button", name="Restore this version").click()
         expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
         restored = self.doc(page, self.ids["lamp"])
