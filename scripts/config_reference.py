@@ -215,7 +215,7 @@ VARIABLES: dict[str, Var] = {
     "FLUX_WEB_READS": Var("ai", "`on` · `off`",
         "On by default (founder direction 2026-11-08, C-29): a server agent's run reads public web pages and searches the web. "
         "`off` turns both off. Reading is Flux's `flux_read_web` tool (read-only, GET only), with the guard of link cards: public `http(s)` addresses on default "
-        "ports, three redirects at most, bounded in time and size. Searching is the provider's own built-in search on the owner's key, with no other account "
+        "ports, five redirects at most (a link card keeps three), bounded in time and size. Searching is the provider's own built-in search on the owner's key, with no other account "
         "(Anthropic's `web_search`, OpenAI's Responses `web_search` on its cached index; $0.01 a search, counted in the key's daily budget; no limit on how many an agent makes), "
         "and on the owner's own Claude Code its `WebSearch` tool, on their Codex its own search on the cached index (#1065); other providers have none. An agent "
         "may read any public address, as many as its question needs, but the server refuses one that carries private Flux text the run read: an address is a way to "

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { webSourceLabel, webSourceList } from '@flux/contracts';
 import { ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, answerCleaner, answerWithSchedule, defangedAddresses, endedSourcesLine, parseOutput, preparedAnswer, takeScheduleBlocks, withoutCitationMarks, briefPrivateText, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, privateFragmentsIn, PrivateTextIndex, privateTextIndex,
   runtimeBrief, takeAsk, webSourcesLine, withoutPrivateAddresses, writtenAddresses, WEB_SOURCES_HEADINGS, type BriefInput } from '@flux/core';
 import { registerAgentWebReads } from '../../apps/server/src/agent-connection/web-reads.js';
@@ -785,5 +786,28 @@ describe('the tool is offered only where it can work (#953)', () => {
     assert.deepEqual(registered(webReader({ enabled: false }), true), [], 'off: not offered, so not listed to the model');
     assert.deepEqual(registered(null, true), []);
     assert.deepEqual(registered(on, false), [], 'a local client reads the web with its own tools');
+  });
+});
+
+describe('the list of sources as a reader sees it (founder check, Hubert 2026-11-17)', () => {
+  test('each address once, a read page wins, a reason is short; queries and "and N more" are kept apart', () => {
+    const wiki = 'https://commons.wikimedia.org/wiki/Category:Coffee_mugs';
+    const hop = 'https://commons.wikimedia.org/wiki/Special:FilePath/Coffee_mugs_cups.jpg?width=1000';
+    const block = webSourcesLine([{ finalUrl: wiki, outcome: 'read', writable: true }, { finalUrl: hop, outcome: 'redirected', writable: true },
+      { finalUrl: 'https://example.org/n', outcome: 'status', writable: true }], { queries: ['ceramic mugs photo'], cited: [wiki, 'https://en.wikipedia.org/wiki/Tiki_mug'] });
+    const list = webSourceList(block);
+    assert.deepEqual(list.queries, ['ceramic mugs photo']);
+    assert.deepEqual(list.items.map((item) => [item.address, item.state, item.reason]), [[wiki, 'read', null], ['https://en.wikipedia.org/wiki/Tiki_mug', 'found', null],
+      [hop, 'asked', 'redirected'], ['https://example.org/n', 'asked', 'site error']]);
+    assert.equal(webSourceList('Found on the web:\n- https://a.example/x\n- and 3 more').more, 3);
+  });
+
+  test('an address is its site and the last words of its path; a defanged one is no address', () => {
+    assert.deepEqual(webSourceLabel('https://commons.wikimedia.org/wiki/Category:Coffee_mugs'), { site: 'commons.wikimedia.org', page: 'Coffee mugs' });
+    assert.deepEqual(webSourceLabel('https://upload.wikimedia.org/wikipedia/commons/7/70/Coffee_mugs_cups.jpg?utm_source=x'), { site: 'upload.wikimedia.org', page: 'Coffee mugs cups' });
+    assert.deepEqual(webSourceLabel('https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/Coffee_mugs_cups.jpg&width=1000'), { site: 'commons.wikimedia.org', page: 'Coffee mugs cups' });
+    assert.deepEqual(webSourceLabel('https://www.example.org/'), { site: 'example.org', page: null });
+    assert.deepEqual(webSourceLabel('https://store.wikimedia.org/products/wikipedia-mug'), { site: 'store.wikimedia.org', page: 'wikipedia mug' });
+    assert.equal(webSourceLabel('hxxps://evil[.]example/c'), null);
   });
 });
