@@ -128,7 +128,12 @@ export type RunFrame =
   | { t: 'run'; e: 'search'; n: number; query: string }
   | { t: 'run'; e: 'found'; n: number; results: string[]; queries?: string[] }
   /** The CLI's words of its `turn`th message, as it writes them (#1248). */
-  | { t: 'run'; e: 'text'; turn: number; text: string };
+  | { t: 'run'; e: 'text'; turn: number; text: string }
+  /**
+   * The `turn`th message calls a tool (founder check, Hubert 2026-11-17): its words were a working note before the tool ("Need a direct
+   * image"), not the answer, and the asker's view drops them; the working line says the step.
+   */
+  | { t: 'run'; e: 'note'; turn: number };
 
 export type SupervisorResult =
   | { kind: 'bind'; bindingId: string }
@@ -233,6 +238,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('run'), e: literal('found'), n: int(1, Number.MAX_SAFE_INTEGER), results: arrayOf(str(WEB_ADDRESS, 2048), SEARCH_FRAME_LIMITS.results) },
     { queries: arrayOf(text(SEARCH_FRAME_LIMITS.query, 1), SEARCH_FRAME_LIMITS.queries) }),
   object({ t: literal('run'), e: literal('text'), turn: int(1, Number.MAX_SAFE_INTEGER), text: text(TEXT_FRAME_LIMITS.chars, 1) }),
+  object({ t: literal('run'), e: literal('note'), turn: int(1, Number.MAX_SAFE_INTEGER) }),
 ] as unknown as Check<SupervisorFrame>[];
 
 /** The frame, or null when the value is not exactly one of the closed frame shapes. */

@@ -245,21 +245,38 @@ class PrivateAiJourney(unittest.TestCase):
         The key's hosted search (#954) is Flux's `flux_web_search`, which this stack cannot run: the API's searcher opens the key of a stored connection and
         the fixture key is none, so a search would end "not available for this key". Its offer is checked here; the search itself and its listing are in
         tests/app/agent-runtime-pi-search.test.ts."""
-        page = "http://public.test/ferry"
+        page = "http://public.test/wiki/Winter_ferry_timetable"
+        missing = "http://public.test/wiki/Category:Winter_ferry_timetables"
         mock("/__script", {"reset": True, "text": "The winter timetable starts on 3 November.",
-                           "tool": [{"name": "flux_read_web", "input": {"url": page}}]})
+                           "tool": [{"name": "flux_read_web", "input": {"url": page}}, {"name": "flux_read_web", "input": {"url": missing}}]})
         jo = self.space("jo")
         self.ask_in(jo, "#project-composer", "when does the winter ferry timetable start?")
         card = self.asked_card(jo, "when does the winter ferry timetable start?")
         expect(card).to_be_visible(timeout=20000)
         expect(card).to_contain_text("The winter timetable starts on 3 November.")
-        expect(card).to_contain_text("Read on the web:")
-        expect(card).to_contain_text("public.test/ferry")
-        expect(card).not_to_contain_text("Requested, not read:")
-        expect(card).not_to_contain_text("Searched the web for:")
+        # Founder check (Hubert 2026-11-17): the sources are one quiet, closed "Sources (2)" line, never raw addresses under four headings.
+        sources = card.locator("[data-web-sources]")
+        toggle = sources.get_by_role("button", name="Sources (2)")
+        expect(toggle).to_have_attribute("aria-expanded", "false")
+        for heading in ("Read on the web:", "Requested, not read:", "Searched the web for:", page, missing):
+            expect(card).not_to_contain_text(heading)
         shot(jo, "private-ai-1440-web-sources")
+        toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        # Open: each address once, as its site and the last words of its path, a link on one line; the one not read says why, short.
+        read = sources.get_by_role("link", name="public.test › Winter ferry timetable", exact=True)
+        expect(read).to_have_attribute("href", page)
+        expect(read).to_have_attribute("target", "_blank")
+        unread = sources.locator("li").filter(has_text="Winter ferry timetables")
+        expect(unread.get_by_role("link")).to_have_attribute("href", missing)
+        expect(unread).to_contain_text("not read · site error")
+        expect(sources).not_to_contain_text("http://")
+        for line in sources.locator(".web-sources__link").all():
+            box = line.bounding_box()
+            self.assertLess(box["height"], 26, "a source is one line, never an address wrapping")
+        shot(jo, "private-ai-1440-web-sources-open")
         sent = self.messages_sent()
-        self.assertEqual(len(sent), 2, "the tool call, then the answer")
+        self.assertEqual(len(sent), 3, "two tool calls, then the answer")
         # The server, not pi, read the page; pi was offered Flux's search and read tools, and no search of its own.
         self.assertTrue({"flux_read_web", "flux_web_search"} <= self.flux_tools(sent[0]), self.flux_tools(sent[0]))
         self.assertNotIn("web_search", {tool["name"] for tool in sent[0]["body"].get("tools", [])})

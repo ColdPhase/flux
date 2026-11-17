@@ -17,7 +17,7 @@ import { toolError, toolResult } from './tool-results.js';
 /**
  * `flux_attach_image` (#1217, F-036 AG-8, C-59): an agent attaches a public picture to its answer to `/ai` in a space. The Flux server, never
  * the agent's process, downloads it with the web reads' guard and switch (`WebReader.picture`: public addresses only, the name resolved once
- * and that answer connected to, at most 3 redirects each judged again, short timeouts, at most 5 MiB read whole), keeps only the picture
+ * and that answer connected to, at most 5 redirects each judged again, short timeouts, at most 5 MiB read whole), keeps only the picture
  * (`cleanPicture`: PNG, JPEG, WebP or GIF by its bytes, never SVG, metadata and anything after its end dropped, a pixel bound), and stages
  * it as a file of the asker's, through the same stored-files path as a person's upload: only the asker can open it, in their private answer
  * card, until their Show everyone posts it with the answer as an ordinary attachment.

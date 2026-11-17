@@ -123,6 +123,83 @@ export function webSourcesStart(text: string): number {
 }
 
 /**
+ * Why an address the server asked for a run was not read, as the block says it (`webSourcesLine`) and as the reader's list of sources says
+ * it, short (founder check, Hubert 2026-11-17). `redirected`: the site sent the request on to the next address, which is listed too, so
+ * it is no failure and says only that.
+ */
+export const WEB_NOT_READ = {
+  asked: { says: 'the request was sent; no answer was recorded', short: 'not read · no answer' },
+  redirected: { says: 'it sent the request on to another address', short: 'redirected' },
+  blocked: { says: 'refused: not a public address', short: 'not read · not public' },
+  unreachable: { says: 'not reached', short: 'not read · not reached' },
+  timeout: { says: 'took too long', short: 'not read · too slow' },
+  status: { says: 'the site answered with an error', short: 'not read · site error' },
+  type: { says: 'not a web page or a text page', short: 'not read · not a page' },
+  redirects: { says: 'too many redirects', short: 'not read · too many redirects' },
+  invalid: { says: 'not a web address', short: 'not read · not an address' },
+  empty: { says: 'no text on the page', short: 'not read · empty page' },
+} as const;
+
+/** One address of the block: `read` came back, `found` an answer cited it, `asked` was sent and not read (with its short reason). */
+export interface WebSourceItem { address: string; state: 'read' | 'found' | 'asked'; reason: string | null }
+export interface WebSourceList { queries: string[]; items: WebSourceItem[]; more: number }
+
+/**
+ * The block Flux appended to a text (`webSourcesStart`), as the list a reader is shown (founder check, Hubert 2026-11-17): what was
+ * searched for, and each address once, in the block's order. A page read wins over the same address cited or asked for; "- and 3 more"
+ * lines are counted.
+ */
+export function webSourceList(block: string): WebSourceList {
+  const queries: string[] = [];
+  const items = new Map<string, WebSourceItem>();
+  let more = 0;
+  let section = -1;
+  const rank = { read: 2, found: 1, asked: 0 } as const;
+  for (const line of block.split('\n')) {
+    const heading = (WEB_SOURCES_HEADINGS as readonly string[]).indexOf(line.trim());
+    if (heading >= 0) { section = heading; continue; }
+    if (!line.startsWith('- ') || section < 0) continue;
+    const value = line.slice(2).trim();
+    const counted = /^and (\d+) more$/.exec(value);
+    if (counted) { more += Number(counted[1]); continue; }
+    if (section === 0) { queries.push(value); continue; }
+    let address = value;
+    let reason: string | null = null;
+    if (section === 3) {
+      const said = /^(.*\S) \(([^()]*)\)$/.exec(value);
+      if (said) {
+        address = said[1]!;
+        reason = Object.values(WEB_NOT_READ).find((item) => item.says === said[2])?.short ?? 'not read';
+      }
+    }
+    const state = section === 2 ? 'read' : section === 1 ? 'found' : 'asked';
+    const before = items.get(address);
+    if (!before || rank[state] > rank[before.state]) items.set(address, { address, state, reason: state === 'asked' ? reason : null });
+  }
+  return { queries, items: [...items.values()], more };
+}
+
+/**
+ * An address as a short line of the list of sources: its site and the last words of its path ("commons.wikimedia.org › Coffee mugs"),
+ * decoded, with `_`, `-` and `+` as spaces, without a file's extension and a wiki's `Category:`-style prefix. Null when it is not a web
+ * address (a defanged one, `hxxps://…`, stays as written and is never a link).
+ */
+export function webSourceLabel(address: string): { site: string; page: string | null } | null {
+  let url: URL;
+  try { url = new URL(address); } catch { return null; }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  const site = url.hostname.replace(/^www\./, '');
+  const segments = url.pathname.split('/').filter(Boolean);
+  let segment = segments.pop() ?? '';
+  // `index.php?title=Special:Redirect/file/X`, `/view?id=`: a generic last segment says nothing; a `title` query does.
+  if (/^(index|default|view|show|redirect)(\.[a-z]{2,5})?$/i.test(segment)) segment = url.searchParams.get('title')?.split('/').pop() ?? segments.pop() ?? '';
+  let page: string;
+  try { page = decodeURIComponent(segment); } catch { page = segment; }
+  page = page.replace(/^[A-Z][A-Za-z]{2,15}:(?=\S)/, '').replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[-_+]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return { site, page: page || null };
+}
+
+/**
  * The web addresses of a message that get a link card (#469), in order and without repeats: the one rule the reader and the
  * server share, so a card the server returns lands on the address the reader shows. The server reads them from the stored body,
  * never from a request, so no caller can name an address for it to fetch. A `*` ends no address: `**https://a.example**` is bold (#1247).

@@ -108,6 +108,27 @@ describe('flux_attach_image: an agent attaches a public picture to its answer', 
     await scene.complete(run.runId);
   });
 
+  test('founder check 2026-11-17: a picture whose address sends the request on, as Wikimedia\'s and a CDN\'s do, is attached; up to 5 redirects, each judged again', async () => {
+    const run = await scene.liveRun(undefined, 'find a photo of mugs on the internet and send it');
+    // Wikimedia: Special:FilePath → Special:Redirect → the file with its tracking query; and a short link four hops deep.
+    const wiki = at('/wiki/Special:FilePath/Coffee_mugs_cups.jpg?width=1000');
+    for (const url of [wiki, at('/pic/hops/4')]) {
+      const said = await run.call('flux_attach_image', { url, caption: 'Coffee mugs' });
+      assert.equal(result(said.message)?.isError, undefined, `${url}: ${text(said.message)}`);
+    }
+    assert.equal((await stagedFor(scene.owner.id)).length, 2, 'both pictures are the asker\'s');
+    const asked = (await pool.query(`SELECT final_url, outcome FROM personal_run_web_reads WHERE run_id = $1 ORDER BY read_at, id`, [run.runId])).rows;
+    assert.deepEqual(asked.map((row) => [row.final_url, row.outcome]).slice(0, 3), [[wiki, 'redirected'],
+      [at('/w/index.php?title=Special:Redirect/file/Coffee_mugs_cups.jpg&width=1000'), 'redirected'],
+      [at('/wikipedia/commons/7/70/Coffee_mugs_cups.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail_unscaled'), 'read']], 'every hop is a source');
+    // Past five redirects the address is refused in plain words, and nothing is kept.
+    const far = await run.call('flux_attach_image', { url: at('/pic/hops/5') });
+    assert.equal(result(far.message)?.isError, true);
+    assert.match(text(far.message), /redirects too many times/);
+    assert.equal((await stagedFor(scene.owner.id)).length, 2);
+    await scene.complete(run.runId);
+  });
+
   test('a stored picture is decoded and written again: a turned JPEG is upright without its EXIF or what hid in it, a GIF keeps its frames, a WebP is the picture it says (#1343)', async () => {
     const run = await scene.liveRun(undefined, 'pictures please');
     for (const path of ['/pic/jpeg-turned.jpg', '/pic/jpeg-thumbnail.jpg', '/pic/moving.gif', '/pic/solid-64x48.webp']) {

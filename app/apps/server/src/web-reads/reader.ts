@@ -4,12 +4,18 @@ import type { ThoughtImageType } from '@flux/contracts';
 import { readablePage, type ReadablePage } from './readable.js';
 
 // An agent reads a web page (#918, F-036 AG-8): the server fetches it, never the agent's own process, with the same guard as a link
-// card (`link-previews/safe-fetch.ts`: public addresses only, the scheme's default port, no credentials, at most 3 redirects each
-// judged again, no cookies, no Referer, one fixed User-Agent), and only ever with GET. Nothing is posted or submitted: there is no
+// card (`link-previews/safe-fetch.ts`: public addresses only, the scheme's default port, no credentials, each redirect judged again,
+// no cookies, no Referer, one fixed User-Agent), and only ever with GET. Nothing is posted or submitted: there is no
 // way to send anything to a page from here. The page comes back as bounded plain text, labelled as data.
 
-/** Reading a page may take longer than a card and returns more of it, but it is still bounded in time and in bytes. */
-export const WEB_READ_LIMITS = { connectMs: 3_000, totalMs: 8_000, maxBytes: 512 * 1024, maxRedirects: 3 } as const;
+/**
+ * Reading a page may take longer than a card and returns more of it, but it is still bounded in time and in bytes. It follows up to 5
+ * redirects, each hop judged by the whole guard again and written down before it is asked (founder check, Hubert 2026-11-17): a picture's
+ * or a page's ordinary address often sends the request on twice or more (Wikimedia's `Special:FilePath` → `Special:Redirect` → the file,
+ * a CDN's short link → its edge), and a link card's 3 left such a picture out of reach.
+ */
+export const WEB_READ_REDIRECTS = 5;
+export const WEB_READ_LIMITS = { connectMs: 3_000, totalMs: 8_000, maxBytes: 512 * 1024, maxRedirects: WEB_READ_REDIRECTS } as const;
 export const WEB_READ_KIND: FetchKind = { accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1', types: /^(text\/html|application\/xhtml\+xml|text\/plain)\b/ };
 /**
  * Pages the server reads at once: the one guard of the fetcher. There is no limit per minute (founder direction 2026-11-09, #1116): a
@@ -23,7 +29,7 @@ export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'private_
  * A picture an agent attaches to its answer (#1217, AG-8, C-59): the same guard and the same switch as a page read, a little longer to
  * arrive, and a body of at most a stored file's 5 MiB, read whole or refused. What is kept is only the picture (`cleanPicture`).
  */
-export const PICTURE_FETCH_LIMITS = { connectMs: 3_000, totalMs: 10_000, maxBytes: PICTURE_LIMITS.bytes, maxRedirects: 3 } as const;
+export const PICTURE_FETCH_LIMITS = { connectMs: 3_000, totalMs: 10_000, maxBytes: PICTURE_LIMITS.bytes, maxRedirects: WEB_READ_REDIRECTS } as const;
 export const PICTURE_KIND: FetchKind = { accept: 'image/png,image/jpeg,image/webp,image/gif;q=0.9,*/*;q=0.1',
   // Any image/ type and an untyped body pass on to the bytes, which alone decide (an SVG is then refused as one, in its own words).
   types: /^(image\/|application\/octet-stream\b|binary\/octet-stream\b)/, binary: true };

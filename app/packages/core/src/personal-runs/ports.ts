@@ -712,7 +712,9 @@ export type PersonalRuntimeEvent =
   | { kind: 'search'; n: number; query: string }
   | { kind: 'found'; n: number; results: string[]; queries?: string[] }
   /** The CLI's words as it streams them (#1248): `turn` is its message; Codex hands each message whole. */
-  | { kind: 'text'; turn: number; text: string };
+  | { kind: 'text'; turn: number; text: string }
+  /** Message `turn` calls a tool: its words were a working note, not the answer (founder check, Hubert 2026-11-17). */
+  | { kind: 'note'; turn: number };
 
 /** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
 export type PersonalRuntimeEnd =
