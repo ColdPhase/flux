@@ -1142,7 +1142,7 @@ class KeyRotation(Base):
                 expect(section.locator("[data-no-recovery-code]")).to_have_count(0)
                 row = ada.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Eli Dahl")
                 row.get_by_role("button", name=f"Remove Eli Dahl from {A_NAME}").click()
-                row.get_by_role("button", name="Remove Eli").click()
+                row.get_by_role("button", name="Remove Eli", exact=True).click()
                 expect(ada.get_by_text(f"Eli Dahl is no longer in {A_NAME}.")).to_be_visible()
                 # The group that makes a new recovery code opens in place, and focus is in it.
                 group = section.get_by_role("group", name="New recovery code")

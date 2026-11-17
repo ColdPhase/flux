@@ -180,7 +180,7 @@
 .people__waiting .people__row { min-height: 56px; padding: 8px 18px; }
 .people__waiting :is(.people__link, .people__edit) { margin: 0 18px 14px; }
 /* What was said about a link stands in its row, under its field (round 15), at the row's inset. */
-.people__waiting .people__item > .people__invite-status { margin: -4px 18px 14px; }
+.people__waiting .people__item > .people__invite-status { margin: -4px 18px 0; padding-bottom: 14px; }
 .people__removing, .people__rownote { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
 /* What Remove ends starts under the name, not under the face (round 14): the card's 18 px, the 26 px face and the row's 10 px gap. */
 .people--page .people__removing, .people--page .people__rownote { margin-inline: calc(18px + 26px + 10px) 18px; }

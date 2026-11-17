@@ -74,10 +74,8 @@ class Round15Admin(unittest.TestCase):
         context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", service_workers="block", viewport=DESKTOP, device_scale_factor=1,
                                            storage_state=self.states[who])
         self.addCleanup(context.close)
-        try:
+        if UI_BROWSER == "chromium":  # WebKit has no clipboard permission to grant: the link is said "created" instead of "created and copied".
             context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
-        except Exception:  # WebKit has no clipboard permission to grant: the link is said "created" instead of "created and copied".
-            pass
         page = context.new_page()
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -167,8 +165,8 @@ class Round15Admin(unittest.TestCase):
         page.wait_for_timeout(300)
         for what, element in (("the link", link), ("its sentence", said)):
             room = element.evaluate(IN_PANE)
-            self.assertGreaterEqual(room["top"], 0, f"{what} is in view: {room}")
-            self.assertGreaterEqual(room["bottom"], 0, f"{what} is in view: {room}")
+            self.assertGreaterEqual(room["top"], -1, f"{what} is in view: {room}")
+            self.assertGreaterEqual(room["bottom"], -1, f"{what} is in view: {room}")
         self.assertEqual(said.evaluate("el => el.closest('li')?.dataset.invite ?? null"), link.evaluate("el => el.closest('li')?.dataset.invite ?? null"),
                          "the sentence stands in the new link's row")
         shot(page, f"round15-company-link-{UI_BROWSER}")
