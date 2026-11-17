@@ -43,7 +43,12 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
       const target = event.target as HTMLElement | null;
       if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"], #details')) return;
       const key = event.key.toLowerCase();
-      const at = items.findIndex((item) => item.key === selected);
+      // The item with the ring is the open one (F-026 §4, personas-37 P2): a key pressed on a row acts on that row's item, also before the
+      // list has drawn it open, so A, E, S, R and Enter never act on another item than the one the focus is on.
+      const ringed = target?.closest<HTMLElement>('.nyq__list .nyc[data-key]')?.dataset.key;
+      const onRow = !!ringed && ringed !== selected && items.some((item) => item.key === ringed);
+      if (onRow) select(ringed);
+      const at = items.findIndex((item) => item.key === (onRow ? ringed : selected));
       const current = items[at] ?? null;
       const offers = current ? itemKeys(current, !!handlers.answer) : null;
       // A key pressed again on the item that has just swapped in does nothing (personas-34 P2 3), nor do the letters typed with it.
@@ -127,6 +132,17 @@ export function InboxView() {
     if (document.activeElement?.closest('.nyq__list')) rowControl(key)?.focus({ preventScroll: true });
   }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers);
+  // The ring and the open item move together (F-026 §4, personas-37 P2): whatever puts the focus on a row (Tab, Shift+Tab, J, K, a click, a
+  // script), that row's item is the open one, so the right column shows it and A, E, S, R and Enter act on it. In one column, where the open
+  // item is the expanded card, only a keyboard's focus opens a card: a tap's focus must not expand a card under the finger before its click.
+  const followFocus = (target: EventTarget) => {
+    const element = target as HTMLElement;
+    const key = element.closest?.<HTMLElement>('.nyc[data-key]')?.dataset.key;
+    if (!key || key === currentKey || !shown.some((item) => item.key === key)) return;
+    if (!two && !element.matches(':focus-visible')) return;
+    inboxSettled();
+    setSelected(key);
+  };
   // On the phone the open item is the expanded card, and none of it is ever under the floating "+" (personas-35 D11-45): whenever another card
   // opens (a tap, a return, Undo), the list brings all of it above the "+", also once a place put back on arrival has settled.
   const expandedKey = !two && queue.items !== null ? current?.key ?? null : null;
@@ -242,7 +258,7 @@ export function InboxView() {
   // Put off for later and done today, said under the list; each opens its list (#1424 E).
   const later = <InboxAside queue={queue} onBack={cameBack} />;
   const list = (
-    <ul className="nyq__list" aria-label="Needs you" onFocus={() => { listFocused.current = true; }}
+    <ul className="nyq__list" aria-label="Needs you" onFocus={(event) => { listFocused.current = true; followFocus(event.target); }}
       onBlur={(event) => { if (event.relatedTarget) listFocused.current = event.currentTarget.contains(event.relatedTarget as Node); }}>
       {shown.map((item) => (
         <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={cardHandlers}
