@@ -1102,14 +1102,15 @@ export function SketchMap(props: SketchMapProps) {
               });
               const cards = [...rects.values()].map((r) => ({ ...r, ...place(r) }));
               const spots = placeLabels(shownLinks.map(({ link, path, w, h }) => ({ id: link.id, at: path.at, w, h })), cards);
-              return shownLinks.map(({ link }) => {
+              return shownLinks.map(({ link, path }) => {
               const on = highlighted(link.fromId) || highlighted(link.toId);
               const spot = spots.get(link.id);
-              // A label every point of which lies under a thought is not drawn: a card would show only a piece of it.
-              if (!spot) return null;
-              const mid = spot;
+              // A line with no free part (two thoughts side by side) keeps its label: at its middle, raised over the thoughts' edges, so it
+              // is never hidden and never under a thought.
+              const over = !spot;
+              const mid = spot ?? path.mid;
               const style = { transform: `translate(${mid.x}px, ${mid.y}px) translate(-50%, -50%)`, minHeight: editable ? (coarse ? 44 : 28) / zoom : undefined, minWidth: editable && coarse ? 44 / zoom : undefined };
-              return editable ? <button key={link.id} type="button" className={`sk-el sk-el--edit${on ? ' is-on' : ''}`} style={style}
+              return editable ? <button key={link.id} type="button" className={`sk-el sk-el--edit${on ? ' is-on' : ''}${over ? ' sk-el--over' : ''}`} style={style}
                 data-link-id={link.id} title={link.label ?? 'Add label'}
                 aria-label={`${link.label ? 'Edit' : 'Add'} label between ${byId.get(link.fromId)?.text} and ${byId.get(link.toId)?.text}`}
                 onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
@@ -1119,7 +1120,7 @@ export function SketchMap(props: SketchMapProps) {
                   props.onLabel(link.id);
                 }}>
                 {link.label ?? '+ Label'}
-              </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={style}>{link.label}</span>;
+              </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}${over ? ' sk-el--over' : ''}`} style={style}>{link.label}</span>;
               });
             })()}
           </div>
