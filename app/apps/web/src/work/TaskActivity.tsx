@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import type { AssistantChange, ConversationMessage, LiveCallLine, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
+import { agentNamed, type AssistantChange, type ConversationMessage, type LiveCallLine, type NamedPrincipal, type ObjectLink, type Project, type TaskActivityEntry, type TaskDiscussion as Discussion, type WorkItem, type WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
@@ -83,7 +83,7 @@ const FROM: Record<NonNullable<Source>, string> = {
 };
 
 /** The text after the actor's name; the actor and the time are shown beside it. */
-function changeText(entry: TaskActivityEntry, meId: string): string {
+function changeText(entry: TaskActivityEntry, meId: string, nameOf: (who: NamedPrincipal) => string = (who) => who.name): string {
   const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (its agent finished)'
     : entry.automation === 'agent_unable' ? ' (its agent couldn’t take it)'
     : entry.automation === 'wait_resolved' ? ' (what it waited for is resolved)' : '';
@@ -98,13 +98,14 @@ function changeText(entry: TaskActivityEntry, meId: string): string {
   if (entry.kind === 'owner' && entry.owner) {
     const { from, to } = entry.owner;
     // The agent that held it was deleted: say so, rather than a reassignment by the setting (#1003).
+    // An agent is named by its one label, "Ola's Assistant", as everywhere else on the screen (round 15 ai P2-5).
     if (entry.automation === 'agent_deleted' && to) return `deleted the agent${from ? ` ${from.name}` : ''}, so it came back to ${to.name}`;
-    if (!to) return `removed the owner${from ? ` (${from.name})` : ''}${rule}`;
+    if (!to) return `removed the owner${from ? ` (${nameOf(from)})` : ''}${rule}`;
     // A person stopped the agent (v0.2.1 release gate, M21): a stop, not a take or a finish, in the words of the task's state line.
-    if (entry.automation === 'agent_stopped') return `stopped ${from?.name ?? 'the agent'}; the task is back with ${named(to, meId)}`;
+    if (entry.automation === 'agent_stopped') return `stopped ${from ? nameOf(from) : 'the agent'}; the task is back with ${named(to, meId)}`;
     // A person who made themselves the owner took it: "Ana took it", never "Ana assigned it to Ana Souza" (personas-26).
-    if (to.kind === entry.actor.kind && to.id === entry.actor.id) return `took it${from ? ` from ${from.name}` : ''}${rule}`;
-    return `${to.kind === 'agent' ? 'handed it off to' : from ? 'reassigned it to' : 'assigned it to'} ${to.name}${rule}`;
+    if (to.kind === entry.actor.kind && to.id === entry.actor.id) return `took it${from ? ` from ${nameOf(from)}` : ''}${rule}`;
+    return `${to.kind === 'agent' ? 'handed it off to' : from ? 'reassigned it to' : 'assigned it to'} ${nameOf(to)}${rule}`;
   }
   if (entry.kind === 'due' && entry.due) {
     return entry.due.to ? `set it due ${dueLabel(entry.due.to)}${rule}` : `cleared the due date${rule}`;
@@ -252,6 +253,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version' | 'number' | 'title'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
 }) {
   const owners = useAgentOwners(project);
+  const agentNameOf = (who: NamedPrincipal) => { const owner = who.kind === 'agent' ? agentAuthorOwner(who, owners) : undefined; return owner ? agentNamed(who.name, owner) : who.name; };
   const hueOf = useAgentHue();
   // A local client's change is said once, by its change line with Undo above; the timeline does not name the same change again, as "Claude
   // Code [Agent] for Ada" under another name (#1116). The two are made in one request, so they are told apart by their time.
@@ -393,7 +395,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
           }
           const actor = line.kind === 'change' ? line.entry.actor : line.actor;
           const mine = actor.id === me.id && actor.kind === 'human';
-          const text = line.kind === 'change' ? changeText(line.entry, me.id) : line.kind === 'reverted' ? 'undid its creation' : line.source ? FROM[line.source] : 'created the task';
+          const text = line.kind === 'change' ? changeText(line.entry, me.id, agentNameOf) : line.kind === 'reverted' ? 'undid its creation' : line.source ? FROM[line.source] : 'created the task';
           return (
             <li key={line.key} className="wd-act__item" data-line={line.key} data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
               <Face actor={actor} mine={mine} hue={hueOf(actor.kind === 'agent' ? actor : null)} />

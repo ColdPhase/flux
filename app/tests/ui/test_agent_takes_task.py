@@ -382,10 +382,10 @@ class AgentTakesTask(unittest.TestCase):
         # The history says a stop, not a take or a finish (v0.2.1 release gate, M21), to each reader in their words.
         history = view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")
         # The owner is named by the full name, the reader with "(you)" (F-026 "Naming people", personas-33).
-        expect(history).to_contain_text(f"stopped Planner; the task is back with {KAI['name']} (you)")
+        expect(history).to_contain_text(f"stopped Kai's Planner; the task is back with {KAI['name']} (you)")
         expect(history).not_to_contain_text("its agent finished")
         ada_view = self.open_task("ada", task["id"])
-        expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Planner; the task is back with Kai")
+        expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Kai's Planner; the task is back with Kai")
         # #919: the stop is reported to the agent's chat too, by name.
         lines = self.api(kai, "GET", f"/api/v1/agent-chats/{self.ids['agent']}/messages", status=200)["items"]
         self.assertIn(f"Stopped by Ada Kowalska: #{task['number']} Weigh the full barrel on Thursday", [line["body"] for line in lines])

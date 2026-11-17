@@ -1830,7 +1830,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **My tasks** lists a task as every other list does (personas-33): its state glyph with its word, then its number and title
   ("Doing · #8 Order two frost sensors"), and a blocked task's line under it.
 - **An agent's label** is one line, "Ada's Planner", on a card, in a List row, in the panel's
-  Owner row and in its discussion (#1364), and on a conversation's task card, never the bare "Planner" (round 15 ai P3). Kreska beside it
+  Owner row, in its discussion and its history ("Kai stopped Ada's Planner"), and on a conversation's task card, never the bare "Planner"
+  (round 15 ai P3). Kreska beside it
   says it is an agent, so a row, a card and a sentence ("Ada's Planner proposed a decision") carry no "Agent" tag; a message's name line
   does, as an answer shown to everyone does (#1232), so an agent's own message and a shown answer look the same (round 15 ai P2-5). Only
   while the owner is not known does the bare name carry the tag everywhere. The label sets its line's baseline: words after it in the same
