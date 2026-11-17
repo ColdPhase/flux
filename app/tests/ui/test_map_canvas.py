@@ -3,6 +3,7 @@ zoom around the pointer and by pinching, a minimap and one bottom toolbar with t
 the List keeps the map's pill and toolbar in exactly the same places."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import unittest
@@ -48,9 +49,9 @@ class MapCanvasJourney(unittest.TestCase):
         assert response.status == status, response.text()
         return response.json() if response.text() else None
 
-    def page(self, width=1440, height=900, **options):
+    def page(self, width=1440, height=900, scheme='light', **options):
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state,
-            viewport={'width': width, 'height': height}, color_scheme='light', **options)
+            viewport={'width': width, 'height': height}, color_scheme=scheme, **options)
         self.addCleanup(context.close)
         page = context.new_page()
         errors = []
@@ -58,7 +59,7 @@ class MapCanvasJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], 'no uncaught browser errors'))
         return page
 
-    def scene(self, page, extra=()):
+    def scene(self, page, extra=(), touch=False):
         project = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/projects',
             {'name': 'Open plane study', 'visibility': 'restricted'}, 201)['id']
         sketch = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/sketches',
@@ -66,7 +67,7 @@ class MapCanvasJourney(unittest.TestCase):
         for text, x, y in ((FIRST, 0, 0), (SECOND, 300, 180), *extra):
             self.api(page.context, 'POST', f'/api/v1/sketches/{sketch}/thoughts', {'text': text, 'x': x, 'y': y}, 201)
         page.goto(f'/projects/{project}/map/{sketch}')
-        show_map_as(page, 'Map')
+        show_map_as(page, 'Map', touch=touch)
         expect(page.locator('.sk-node')).to_have_count(2 + len(extra))
         expect(page.locator('.sk-canvas')).to_be_visible()
         return sketch
@@ -431,6 +432,87 @@ class MapCanvasJourney(unittest.TestCase):
                 self.assertEqual(len({tuple(row) for row in frames}), 1,
                     f'{width}: the zoom group and the minimap were in one place in every frame, at the first load and after two trips to the List: {frames}')
                 page.close()
+
+    DOCK = """() => {
+        const row = document.querySelector('.sk-dock__row').getBoundingClientRect();
+        const every = [...document.querySelectorAll('.sk-dock__row button')], tools = every.filter((b) => getComputedStyle(b).visibility !== 'hidden');
+        const shape = (b) => { const r = b.getBoundingClientRect(), css = getComputedStyle(b);
+            return {name: b.getAttribute('aria-label') || b.innerText.trim(), left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height,
+                    radius: parseFloat(css.borderTopLeftRadius), fill: css.backgroundColor}; };
+        // A tool not drawn in the List keeps its room (round 14 look-b P13), so the insets are measured on every tool.
+        return {row: {left: row.left, right: row.right, top: row.top, bottom: row.bottom, height: row.height}, tools: tools.map(shape), every: every.map(shape)};
+    }"""
+
+    def assert_concentric_dock(self, page, label):
+        dock = page.evaluate(self.DOCK)
+        row, tools, every = dock['row'], dock['tools'], dock['every']
+        for tool in tools:
+            self.assertGreaterEqual(tool['radius'], tool['height'] / 2 - 0.5,
+                f"{label}: {tool['name']} is a pill or a circle in the dock's pill, so its hover fill follows the dock's curve: {tool}")
+        first, last = every[0], every[-1]
+        inset = first['top'] - row['top']
+        for side, gap in (('left', first['left'] - row['left']), ('right', row['right'] - last['right']), ('bottom', row['bottom'] - last['bottom'])):
+            self.assertAlmostEqual(gap, inset, delta=1, msg=f'{label}: the dock keeps one inset on every side ({side} {gap} vs top {inset}), concentric with its tools')
+        return tools
+
+    def test_13_a_word_tool_in_the_dock_is_a_pill_its_hover_fill_follows(self):
+        # Founder check, Hubert 2026-11-17: hovering "+ Thought" drew a 10 px box inside the dock's round pill, a second outline.
+        for scheme in ('dark', 'light'):
+            with self.subTest(scheme=scheme):
+                page = self.page(scheme=scheme)
+                # A map with nothing to undo: the dock is Thought alone (the founder's screenshot).
+                project = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/projects', {'name': 'Bare dock study', 'visibility': 'restricted'}, 201)['id']
+                bare = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/sketches', {'title': 'Nothing yet', 'scope': 'project', 'projectId': project}, 201)['id']
+                page.goto(f'/projects/{project}/map/{bare}')
+                thought = page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True)
+                expect(thought).to_be_visible()
+                self.assertEqual([tool['name'] for tool in self.assert_concentric_dock(page, f'{scheme} bare')], ['Thought'])
+                thought.hover()
+                page.wait_for_timeout(300)
+                hovered = page.evaluate(self.DOCK)['tools'][0]
+                self.assertNotIn(hovered['fill'], ('rgba(0, 0, 0, 0)', 'transparent'), 'the hover fills the pill')
+                self.assertGreaterEqual(hovered['radius'], hovered['height'] / 2 - 0.5, 'the hover fill has the pill\'s radius')
+                shot(page, f'map-dock-thought-hover-bare-1440-{scheme}')
+                page.close()
+        page = self.page()
+        self.scene(page)
+        self.assertEqual([tool['name'] for tool in self.assert_concentric_dock(page, 'full')], ['Select', 'Move around', 'Thought', 'Undo'])
+        show_map_as(page, 'List')
+        expect(page.get_by_role('tree', name='Thoughts in Plane directions')).to_be_visible()
+        self.assertEqual([tool['name'] for tool in self.assert_concentric_dock(page, 'list')], ['Thought', 'Undo'])
+
+    def test_14_a_notice_in_the_list_takes_its_own_room(self):
+        # Founder check, Hubert 2026-11-17: in the List "An unfinished movement is kept privately" lay on the first row ("test").
+        for width, height, scheme in ((1440, 900, 'dark'), (1440, 900, 'light'), (820, 1180, 'dark'), (390, 844, 'dark')):
+            with self.subTest(width=width, scheme=scheme):
+                touch = width < 1000
+                page = self.page(width, height, scheme, has_touch=touch, is_mobile=width < 500)
+                context = page.context
+                sketch = self.scene(page, touch=touch)
+                first = next(t for t in self.stored(page, sketch)['thoughts'] if t['text'] == FIRST)
+                me = self.api(context, 'GET', '/api/v1/me')['user']['id']
+                page.evaluate('([key, value]) => sessionStorage.setItem(key, value)', [f'flux:map-gesture:{me}:{sketch}', json.dumps({
+                    'generation': 'g1', 'gestureId': 'kept-gesture', 'versions': [], 'positions': [{'id': first['id'], 'x': 140, 'y': 60}]})])
+                page.reload()
+                show_map_as(page, 'List', touch=touch)
+                tree = page.get_by_role('tree', name='Thoughts in Plane directions')
+                expect(tree).to_be_visible()
+                notice = page.locator('.editing-map-recovery')
+                expect(notice).to_be_visible()
+                row = tree.get_by_role('treeitem').first.bounding_box()
+                box = notice.bounding_box()
+                for name, other in (('the first row', row), ('the header', page.locator('.sk-head').bounding_box())):
+                    if other is None:
+                        continue  # My map's phone header is not drawn
+                    overlap = box['x'] < other['x'] + other['width'] and other['x'] < box['x'] + box['width'] and box['y'] < other['y'] + other['height'] and other['y'] < box['y'] + box['height']
+                    self.assertFalse(overlap, f'{width} {scheme}: the notice {box} lies on {name} {other}')
+                self.assertLessEqual(notice.bounding_box()['y'] + notice.bounding_box()['height'], row['y'], f'{width}: the notice stands above the list')
+                # Opened, it still pushes the list down rather than covering it.
+                notice.locator('summary').click()
+                expect(notice.get_by_role('button', name='Discard private movement copy')).to_be_visible()
+                opened = notice.bounding_box()
+                self.assertLessEqual(opened['y'] + opened['height'], tree.get_by_role('treeitem').first.bounding_box()['y'], f'{width}: the open notice stands above the list')
+                shot(page, f'map-list-notice-{width}-{scheme}')
 
 
 if __name__ == '__main__':
