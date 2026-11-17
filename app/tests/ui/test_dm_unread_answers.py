@@ -24,11 +24,15 @@ from test_work_pagination import api
 PASSWORD = "an answer reaches the one who asked"
 SPACE = "Corner shop"
 BOLD = re.compile(r"\bis-unread\b")
-# The page's sockets, so a test can drop them; while `__refuse` is set a new one asks for an address the server does not serve and never opens.
+# The page's sockets, so a test can drop them. While `__refuse` is set a new one asks for an address the server does not serve and never opens;
+# while `__drop` is set the page is never told of a sent message (a connection that missed it, as one whose cursor was refused does). `__frames`
+# is what the sockets were sent.
 SOCKETS = """(() => {
   const Native = window.WebSocket;
   window.__sockets = [];
+  window.__frames = [];
   window.__refuse = false;
+  window.__drop = false;
   window.WebSocket = class extends Native {
     constructor(url, protocols) {
       const address = new URL(url);
@@ -36,6 +40,15 @@ SOCKETS = """(() => {
       super(address, protocols);
       window.__sockets.push(this);
     }
+    set onmessage(handler) {
+      super.onmessage = handler && ((event) => {
+        const text = String(event.data);
+        window.__frames.push(text);
+        if (window.__drop && text.includes('dm.message_sent.v1')) return;
+        handler.call(this, event);
+      });
+    }
+    get onmessage() { return super.onmessage; }
   };
 })();"""
 
@@ -176,12 +189,15 @@ class AnswersAndUnreadMessages(unittest.TestCase):
         expect(row).not_to_have_class(BOLD)
         marta.wait_for_timeout(1500)
         # Her connection drops and the server refuses to resume it; a message comes in while it is down, and nothing replays it.
-        marta.evaluate("() => { window.__refuse = true; window.__sockets.forEach((socket) => socket.close()); }")
+        marta.evaluate("() => { window.__refuse = true; window.__drop = true; window.__sockets.forEach((socket) => socket.close()); }")
         self.say("Can you put the prices on it?")
         marta.wait_for_timeout(2000)
         expect(row).not_to_have_class(BOLD)
         marta.evaluate("() => { window.__refuse = false; window.dispatchEvent(new Event('online')); }")
-        expect(row).to_have_class(BOLD)
+        try:
+            expect(row).to_have_class(BOLD)
+        except AssertionError:
+            self.fail(f"still read after the reconnect; frames: {marta.evaluate('() => window.__frames.slice(-6)')}")
 
     # ------------------------------------------------------------------ decision 1
     def test_2_an_answer_to_your_question_lands_in_the_askers_inbox(self):
