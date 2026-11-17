@@ -12,7 +12,10 @@
 .nyq-aside__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 16px 8px 24px; }
 .nyq-aside__head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); }
 .nyq-aside__note { margin: 0; padding: 12px 24px 24px; font-size: var(--fs-base); color: var(--t2); }
-.nyq-aside__list { margin: 0; padding: 0 12px 16px; list-style: none; overflow-y: auto; min-height: 0; }
+/* A list longer than the window ends in a soft fade over its bottom padding, never a row cut at the edge (visual review 2026-11-17, core 22). */
+.nyq-aside__list { margin: 0; padding: 0 12px 20px; list-style: none; overflow-y: auto; min-height: 0;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); }
+.ui-overlay--bottom .nyq-aside-win .ui-grabber { margin-bottom: -18px; }
 .nyq-aside__row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding: 10px 12px; border-radius: var(--r); }
 .nyq-aside__row + .nyq-aside__row { box-shadow: 0 -1px 0 var(--line); }
 .nyq-aside__b { display: grid; gap: 2px; min-width: 0; }

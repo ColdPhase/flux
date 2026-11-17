@@ -288,7 +288,7 @@ export function ProjectTasks() {
           {/* No Refresh: the List updates live, and on focus (#1419). */}
           <WorkPagination noun="tasks" page={data} caption={needle && data ? `${work.length} ${work.length === 1 ? 'match' : 'matches'}` : undefined} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} stepsWhenPaged />
         </div>
-        {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
+        {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <Button variant="link" size="sm" onClick={refresh}>refresh from the start</Button>.</p> : null}
         {searchedPage ? <p className="tb-note" role="note"><Icon name="search" size={14} /><span>The search looks through the tasks on this page. Use Previous and Next to look through the others.</span></p> : null}

@@ -789,7 +789,14 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
     observer.observe(scroller);
     observer.observe(identity);
     if (answerRef.current) observer.observe(answerRef.current);
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); delete scroller.dataset.pin; };
+    // Scrolled, what passes under the pinned title fades out under its line rather than being cut mid-bubble (visual review 2026-11-17, core 6).
+    const scrolled = () => {
+      const on = scroller.scrollTop > 2;
+      if (on !== ('scrolled' in scroller.dataset)) { if (on) scroller.dataset.scrolled = ''; else delete scroller.dataset.scrolled; }
+    };
+    scrolled();
+    scroller.addEventListener('scroll', scrolled, { passive: true });
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); scroller.removeEventListener('scroll', scrolled); delete scroller.dataset.pin; delete scroller.dataset.scrolled; };
   }, [proposed]);
   // Undo gives the focus back to the control that made the change (F-026 §4): once the decision is proposed again, Accept has it, not the
   // replaced decision's link the focus went on to (personas-35). Focus the person took out of the panel meanwhile stays where it is. On a

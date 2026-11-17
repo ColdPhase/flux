@@ -12,7 +12,8 @@
 .home__rows { list-style: none; margin: 0; padding: 0; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; }
 .home__rows > li + li { border-top: 1px solid var(--line); }
 .home__row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 56px; padding: 10px 16px; color: var(--t1); text-decoration: none; }
-.home__row:hover { background: color-mix(in srgb, var(--hov) 40%, var(--el)); }
+/* Hover is the hover fill itself: a 40 % mix was the page grey in light (the card melted into the page) and no change in dark (visual review 2026-11-17, core 11). */
+.home__row:hover { background: var(--hov); }
 .home__row:active { background: var(--act); }
 .home__row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .home__row-b { display: flex; flex-direction: column; gap: 1px; min-width: 0; }

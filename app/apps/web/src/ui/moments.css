@@ -3,10 +3,7 @@
 .mascot { color: var(--t1); }
 
 /* Empty screens with the big Kreska (empty Inbox, no results): centred, with the text beside the meaning. */
-/* Two classes: the plain `.ui-empty` in ui.css comes later in the bundle and would otherwise keep its start alignment. */
-.ui-empty.ui-empty--mascot { align-items: center; text-align: center; margin: 0 auto; }
-.ui-empty--mascot .ui-empty__mascot { margin-bottom: 18px; }
-.ui-empty--mascot .ui-empty__action { justify-content: center; }
+.ui-empty--mascot .ui-empty__mascot { margin-bottom: 14px; }
 
 /* Opening a project. The rows stand in the stream's place from the frame the switch is made on (#863 rule 2, 6): the stream under them is
    laid out but hidden until its first reads settle, and a blank feed is never shown. The words wait a beat, so a quick open never flashes them. */

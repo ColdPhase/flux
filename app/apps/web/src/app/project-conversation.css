@@ -119,6 +119,9 @@ button.project-convo__contribution { cursor: pointer; }
 @media (max-width: 640px) {
   .project-convo__composer { padding: 6px 10px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
   .project-convo__composer .project-convo__to { margin: 4px 4px 0; }
+  /* With the "Replying to" line under the field, the composer keeps 12 px under it, or the home indicator's room: the line never sits on
+     the screen's bottom edge (visual review 2026-11-17, core 21). */
+  .project-convo__composer:has(.project-convo__current-thread) { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
 
 
@@ -183,7 +186,9 @@ button.project-convo__contribution { cursor: pointer; }
 .message-time { display: flex; align-items: center; gap: 8px; min-height: calc(var(--fs-xs) * 1.5); margin-top: 5px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.5; }
 /* A `time` is interface text with tabular figures everywhere (ui.css); the one under a message also has normal figures (#1231, #1215, #1373). */
 .message-time time { font-variant-numeric: normal; }
-@media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; } }
+/* On the phone an own message keeps the face column's room on its left, as other people's keep it for their face, so a long own message (one
+   not sent yet with its Retry line too) still stands at the right and never reads as someone else's (visual review 2026-11-17, core 31). */
+@media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; max-width: calc(100% - 42px); } }
 
 .thread__root { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .thread__root.is-mine { align-items: flex-end; }

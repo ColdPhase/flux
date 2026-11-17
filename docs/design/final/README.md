@@ -70,6 +70,7 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
 | `--ring` | `--t3` (`#636363`) | `--t3` (`#A1A1A1`) | The keyboard focus ring, everywhere (founder direction, Hubert 2026-11-17, #1424) |
+| `--face` | `--el` (`#FFFFFF`) | `#2C2C2C` | A person's face (the avatar circle), with a 1 px `--line2` hairline: a disc on the sidebar, the page and a card in both themes (visual review 2026-11-17) |
 | `--seg` / `--seg-on` / `--seg-off` | `--act` / `--el` / `--t2` | `--sub` / `--pick` / `--t3` | A segmented control: its track, the selected option's pill and an unselected label (#1238). Roles over existing colours, no new colour |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
@@ -79,7 +80,8 @@ Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for re
 **Shadows**
 - Card: `0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12)`.
 - Pop-over: `0 1px 2px rgba(0,0,0,.06), 0 12px 30px -10px rgba(0,0,0,.22)`.
-- Field: `inset 0 0 0 1px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -8px rgba(0,0,0,.12)`.
+- Field: `inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -8px rgba(0,0,0,.12)`; dark `inset 0 0 0 1px rgba(255,255,255,.16)`.
+  The edge is the strong hairline (`--line2`): a white field on a white card was almost invisible (visual review 2026-11-17).
 - Dark mode uses inset 1 px light outlines plus deeper shadows. Layers get lighter as they rise.
 
 **Gradients**
@@ -107,6 +109,35 @@ every ring in the app:
   black frame, and stays distinct from the selection, which is a fill and never an outline.
 - Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
   `data-input` on `<html>` (`pointer` or `keys`), set by the first pointer or key event.
+
+**One look for one element** (founder direction, Hubert 2026-11-17, the fresh-eyes visual review of v0.2.1: "a UI check must catch what
+looks ugly"). The same element looks the same on every screen, in light and dark, on the computer and the phone:
+- **Empty states** are one component (`EmptyState`): centred in their place, Kreska (a small moment, 80 px) or a 40 px icon tile, a title
+  at `--fs-xl`, one line in `--t2` and the action. The Inbox, Search's "Nothing matches", My tasks and every space view use it. A list's
+  own empty row inside a card (Home's "Nothing is waiting for you.") stays a row of that card.
+- **An error state** (`ErrorState`) has the same parts at the start of its column, and its "Try again" is the secondary button with the
+  refresh icon everywhere. A message never says "Try again." beside a Try again button.
+- **Faces** are `--face` with a `--line2` hairline; two initials in a 20 px face are scaled like the 16 px face's, so a row of faces never
+  reads as one word.
+- **A tooltip** is a raised card (`--el`, `--t1`, `--line2` hairline, the pop-over shadow), like a menu or a toast, never an inverted block,
+  and it is not drawn while its control's menu is open.
+- **Hover is for a pointer that hovers** (`@media (hover: hover)`): after a tap a touch screen keeps `:hover`, which left a primary button in
+  its hover grey (it read as disabled) and a task's Status in a grey pill.
+- **Selected text** is `--pick` with `--t1`, never the browser's blue.
+- **A key hint** (`C`, `S`, `E`) is one style: a 1 px `--line2` outline on the surface it stands on (the toast's key cap keeps its own).
+- **A text button that starts a row of actions under text** ("Reply", "Try again") takes its padding back, so its word starts where the text
+  above it starts, as a filled button's edge does.
+- **A hovered tab** is `--t2` with the neutral mark; only the current tab is `--t1`.
+- **A text field's ring is its edge** (offset −1 px over its hairline), so focus never draws a second outline or makes the field look wider.
+  A field that is invalid has the strong `--t1` edge; while the person types in it, the focus ring is its only frame.
+- **Search** marks a match by weight (600), never a fill that can land on the "…" of a cut row; every row is 48 px with its icon in the
+  28 px tile (places and actions too); the dialog has one height whatever it lists; the hint never leaves one word on a line.
+- **Sign-in, invite, reset and setup pages** start at one height (pinned to the top, not centred), so the logo and the title never move from one
+  to the next. A form is a card; a page with one button has no card around it; a reset link the server refused shows only the dead-link page.
+- **The phone's "+"** stands at one height on every screen: in a space, without the capsule, it stands where it stands above the capsule.
+- **A panel that scrolls** (the task and decision panels, their phone sheets) fades at its lower edge into the field under it; a pinned
+  decision title fades what passes under it once the panel is scrolled; a window's list that is longer than the window fades at its end.
+- **The rail** pins the Inbox count to the Inbox button's corner, and a space's tile has the list's dot for what needs you on its corner.
 
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.

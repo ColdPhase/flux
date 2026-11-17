@@ -209,6 +209,12 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const blockedPage = loaded(blockedRead);
   const finishedPage = loaded(finishedRead);
   const unavailable = reads.some((read) => read.phase === 'unavailable');
+  // A column whose read failed says so; it never says "Loading" next to the error above the board (visual review 2026-11-17, core 8).
+  const failedRead: Record<ColumnId, boolean> = {
+    open: openRead.phase === 'unavailable', in_progress: progressRead.phase === 'unavailable',
+    blocked: blockedRead.phase === 'unavailable', done: finishedRead.phase === 'unavailable',
+  };
+  const allFailed = reads.every((read) => read.phase === 'unavailable');
   const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage, blocked: !blockedPage, done: !finishedPage };
   // A card that moves to another column slides there, a new one grows in and one that left collapses (#593 AC-4); the first
   // read of each column only replaces what the board showed.
@@ -488,7 +494,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       ) : null}
       {unavailable ? (
         <div className="tb-note tb-note--error" role="alert">
-          <Icon name="alert" size={14} /><span>Some of the board could not be loaded. The columns shown are current; the others are empty until they load.</span>
+          <Icon name="alert" size={14} /><span>{allFailed ? 'The board could not be loaded.' : 'Some columns could not be loaded. The others are current.'}</span>
           <button type="button" className="tb-note__x" onClick={refresh}>Refresh</button>
         </div>
       ) : null}
@@ -510,7 +516,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
               <div className="tb-col__head">
                 <StatusGlyph status={column.status} className="tb-col__g" />
                 <h2 className="tb-col__h" id={headingId}>{column.label}</h2>
-                <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>
+                {failedRead[column.id] ? null : <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>}
               </div>
               <div className={`tb-col__cards${highlight === column.id ? ' is-over' : ''}`}>
                 {list.length ? (
@@ -528,7 +534,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                   </ol>
                 ) : waitingFor[column.id] || !(filtered && !shown.length)
                   // One empty message for a search that matches nothing: the line above the board says it, not each column (#763 C7).
-                  ? <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
+                  ? <p className="tb-col__empty">{failedRead[column.id] ? 'Not loaded.' : waitingFor[column.id] ? `Loading ${column.label} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
                 {hidden[column.id] ? (
                   <button type="button" className="ws-none__b tb-col__more" onClick={() => showInList(column.group)}>
                     {hidden[column.id]} more in the List

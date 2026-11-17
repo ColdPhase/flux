@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { flushPlace } from '../place/memory';
 import type { SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
-import { Icon, MEDIA, Mascot, Spinner, useMediaQuery, type IconName } from '../ui';
+import { EmptyState, Icon, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
 import { leaveFocusToDestination } from '../ui/Overlay';
 import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
@@ -148,9 +148,9 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
   // No results: Kreska looks aside (unless Settings turned the small moments off), then the words (the drawn no-results moment; the guide's S16).
   const empty = text && state.status === 'ready' && !found ? (
     <div className="jump__none">
-      <Mascot expression="looking" size={64} />
-      <h3>Nothing matches “{text}”</h3>
-      <p>{/[\p{L}\p{N}]{2,}/u.test(text) ? 'Try fewer or different words.' : 'Type at least two letters of a word.'}</p>
+      <EmptyState mascot="looking" icon="search" level={3} title={`Nothing matches “${text}”`}>
+        <p>{/[\p{L}\p{N}]{2,}/u.test(text) ? 'Try fewer or different words.' : 'Type at least two letters of a word.'}</p>
+      </EmptyState>
     </div>
   ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null;
 

@@ -91,6 +91,11 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd .details__title { overflow-wrap: anywhere; }
 /* The pinned title paints the panel's own surface, so it is not a box of its own (#693). */
 .wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
+/* What scrolls under the pinned title fades out under its line instead of being cut mid-bubble (visual review 2026-11-17, core 6). */
+.wd__scroll[data-scrolled][data-pin="all"]:not(:has(.wd-decide)) .wd-decision-identity::after,
+.wd__scroll[data-scrolled]:is([data-pin="all"], [data-pin="bar"]) .wd-decide::after {
+  content: ""; position: absolute; left: 0; right: 0; top: calc(100% + 1px); height: 20px; background: linear-gradient(var(--panel-bg, var(--el)), transparent); pointer-events: none;
+}
 .ui-sheet .wd-decision-identity { top: -18px; }
 /* "Proposed" and "Accepted by" are the task panel's rows (.wd-rows), a step under the lead. */
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
@@ -114,6 +119,10 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 42px; padding: 2px 0; }
 .wd-row + .wd-row { border-top: 1px solid var(--line); }
 .wd-row dt { color: var(--t3); font-size: var(--fs-sm); }
+/* A label stands on its value's first line, never in the middle of a value of two rows ("What came of it" over its line and "Dropped, not
+   finished", visual review 2026-11-17, core 33): the control is one --ctl high and its text is centred in it. */
+.wd-row:has(.wd-came) { align-items: start; }
+.wd-row:has(.wd-came) dt { padding-top: calc((var(--ctl) - 1.43 * var(--fs-sm)) / 2); }
 .wd-row dt label { color: inherit; }
 .wd-row dd { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: var(--fs-md); overflow-wrap: anywhere; }
 .wd-from { flex-wrap: wrap; }
@@ -124,7 +133,10 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-value { display: inline-flex; align-items: center; gap: 8px; }
 .wd-menu { position: relative; }
 .wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
-.wd-state:hover, .wd-state[aria-expanded="true"] { background: var(--hov); }
+/* Hover only where a pointer hovers: a touch screen kept the fill on the control under the tap that opened the sheet (WebKit's "Blocked"
+   pill, visual review 2026-11-17, core 20). */
+.wd-state[aria-expanded="true"] { background: var(--hov); }
+@media (hover: hover) { .wd-state:hover { background: var(--hov); } }
 .wd-state__go { color: var(--t3); }
 /* Saving: the value keeps its focus (aria-disabled, never disabled) and only says it is busy. */
 .wd-state[aria-disabled="true"] { cursor: progress; }
@@ -291,7 +303,10 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .ui-panel__body:has(> .wd--task, > .wd--decision) { display: flex; padding: 0; overflow: hidden; }
 /* A decision's panel keeps its one discussion's field at its foot, as a task's does (#1424). */
 .wd--task, .wd--decision { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
-.wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-bottom: 20px; }
+/* Where the panel can still scroll, its lower edge fades into the field under it (#1375's soft edge): a row the composer cuts reads as
+   "more", not as cut (visual review 2026-11-17, core 7). At the end the fade lies on the panel's own bottom padding. */
+.wd__scroll::after { content: ""; position: sticky; bottom: 0; z-index: 1; display: block; height: 20px; margin: 0 0 -20px; background: linear-gradient(transparent, var(--panel-bg, var(--el))); pointer-events: none; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 /* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
 .wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }

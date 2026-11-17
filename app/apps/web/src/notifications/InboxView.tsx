@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { NeedsYouItem } from '@flux/contracts';
-import { Button, ErrorState, Kreska, MEDIA, Spinner, useMediaQuery, useRowMotion } from '../ui';
-import { useSmallMoments } from '../app/smallMoments';
+import { Button, EmptyState, ErrorState, MEDIA, Spinner, useMediaQuery, useRowMotion } from '../ui';
 import { NotAvailable } from '../app/NotAvailable';
 import { useShellData } from '../app/data';
 import { remember, usePlaceState, useArrival } from '../place/memory';
@@ -90,7 +89,6 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
  */
 export function InboxView() {
   const { me } = useShellData();
-  const moments = useSmallMoments();
   const two = useMediaQuery(TWO_COLUMNS);
   const touch = useMediaQuery(MEDIA.touch);
   // A return to the Inbox shows the list it had at once, while it is read again (#592).
@@ -267,19 +265,17 @@ export function InboxView() {
     </ul>
   );
   const empty = queue.items !== null && !shown.length;
+  // The app's one empty state (visual review 2026-11-17, core 9); the focus comes to its title when the last item leaves.
   const clear = (
     <div className="nyq__clear">
-      {moments ? <Kreska size={96} expression="done" /> : null}
-      <h2 ref={clearRef} tabIndex={-1}>Nothing needs you right now</h2>
-      <p>When someone asks you something, it shows up here.</p>
-      <div className="nyq__clear-actions">
-        <Link className="ui-btn ui-btn--quiet" to="/settings/notifications">Notification settings</Link>
-      </div>
-      {later}
+      <EmptyState mascot="done" icon="inbox" title="Nothing needs you right now" headingRef={clearRef}
+        action={<Link className="ui-btn ui-btn--quiet" to="/settings/notifications">Notification settings</Link>} after={later}>
+        <p>When someone asks you something, it shows up here.</p>
+      </EmptyState>
     </div>
   );
   const state = queue.failed && queue.items === null ? (
-    <ErrorState title="The Inbox couldn’t be loaded" actions={<Button onClick={queue.reload}>Try again</Button>}>
+    <ErrorState title="The Inbox couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={queue.reload}>Try again</Button>}>
       <p>Check your connection. Nothing was lost.</p>
     </ErrorState>
   ) : queue.items === null ? <p className="inbox__loading"><Spinner label="Loading the Inbox" /></p> : null;

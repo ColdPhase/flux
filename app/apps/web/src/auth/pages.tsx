@@ -248,7 +248,8 @@ export function SignUpPage() {
     return (
       <>
         <Heading title="This Flux is set up">Its owner’s account exists. Sign in, or ask an owner or admin for an invite link.</Heading>
-        <div className="auth__card"><Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in</Link></div>
+        {/* One button needs no card around it (visual review 2026-11-17, core 25): it stands as wide as a form, where a form's would. */}
+        <Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in</Link>
       </>
     );
   }
@@ -416,11 +417,13 @@ export function ResetPasswordPage() {
     return () => controller.abort();
   }, [token, linkError]);
 
-  if (!token || linkError) {
+  // A link the server refused on Save is the same dead link: the page says so, without the filled form under it (visual review
+  // 2026-11-17, core 25).
+  if (!token || linkError || result?.invalidToken) {
     return (
       <ErrorState level={1} title="This reset link no longer works"
         actions={<><Link className="ui-btn ui-btn--primary ui-btn--lg" to="/forgot-password">Request a new link</Link><Link className="ui-btn ui-btn--secondary ui-btn--lg" to="/sign-in">Back to sign in</Link></>}>
-        <p>Reset links work once and expire. Request a new one and use the latest email.</p>
+        <p>{result?.invalidToken && result.formError ? `${result.formError} ` : ''}Reset links work once and expire. Request a new one and use the latest email.</p>
       </ErrorState>
     );
   }
@@ -429,9 +432,7 @@ export function ResetPasswordPage() {
     <>
       <Heading title="Choose a new password">{account ? `Reset the password for ${account}. ` : ''}After this, you’ll be signed out everywhere and can sign in with the new password.</Heading>
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Choose a new password">
-        <FormError message={result?.formError}>
-          {result?.invalidToken ? <p><Link className="ui-link" to="/forgot-password">Request a new link</Link></p> : null}
-        </FormError>
+        <FormError message={result?.formError} />
         <input type="hidden" name="token" value={token} />
         {/* The address named above goes with the form, not in a link: the sign-in page after it fills Email with it (personas-35). */}
         {account ? <input type="hidden" name="account" value={account} /> : null}
