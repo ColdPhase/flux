@@ -458,8 +458,8 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
    icon stands on the edge of the labels above it, founder direction 2026-11-17 visual review), and in Settings (round 14) Add people's lone
    Close, Leave space and Sign out all other devices (`.sset-lead`). The margin is the button's own padding;
    a filled or outlined button keeps its edge where it is. */
-:is(.ui-error__actions, .nyc__actions, .wd-acts, .wd .wd-actions:not(.wd-pick__cancel), .spset__add .newspace__foot, .spset__actions, .sset-lead) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--block) { margin-inline-start: -14px; }
-:is(.ui-error__actions, .nyc__actions, .wd-acts, .wd .wd-actions:not(.wd-pick__cancel), .spset__add .newspace__foot, .spset__actions, .sset-lead) > .ui-btn--sm:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--block) { margin-inline-start: -12px; }
+:is(.ui-error__actions, .web-sources, .nyc__actions, .wd-acts, .wd .wd-actions:not(.wd-pick__cancel), .spset__add .newspace__foot, .spset__actions, .sset-lead) > .ui-btn:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--block) { margin-inline-start: -14px; }
+:is(.ui-error__actions, .web-sources, .nyc__actions, .wd-acts, .wd .wd-actions:not(.wd-pick__cancel), .spset__add .newspace__foot, .spset__actions, .sset-lead) > .ui-btn--sm:is(.ui-btn--secondary, .ui-btn--quiet):first-child:not(.ui-btn--lg, .ui-btn--block) { margin-inline-start: -12px; }
 .ui-error__detail { margin-top: 16px; font: var(--fs-xs)/1.5 var(--mono); color: var(--t3); letter-spacing: var(--tracking); }
 
 /* ---------- Task state glyphs (StatusGlyph.tsx): shape, not colour ---------- */

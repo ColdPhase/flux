@@ -433,7 +433,7 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
 
 - **An agent attaches a picture to its answer** with `flux_attach_image` (an address and an optional caption). The Flux server, not
   the agent's process, downloads it under the rules of `flux_read_web` and link cards ([F-031](decisions.md)): GET only, public
-  addresses only, the name resolved once and the connection made to that answer, at most three redirects each judged again, short
+  addresses only, the name resolved once and the connection made to that answer, at most five redirects each judged again (founder check, Hubert 2026-11-17: Wikimedia's `Special:FilePath` and a CDN's short link send a picture's ordinary address on twice or more), short
   timeouts, and an address that carries private Flux text the run read is refused (C-30); every address asked is listed with the
   run's sources. Only PNG, JPEG, WebP and GIF, recognised by their bytes and not by the site's word; never SVG; at most 5 MiB, the
   size of any file a person attaches, and at most 8,000 pixels on a side and 40 million pixels. The server keeps only the picture,

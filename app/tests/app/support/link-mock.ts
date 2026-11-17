@@ -91,6 +91,17 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
     return left > 0 ? redirect(response, `/hop/${left - 1}`, 301 + (left % 2) * 6) : html(response, ARTICLE);
   }
   if (path === '/loop') return redirect(response, '/loop');
+  // Founder check (Hubert 2026-11-17): a picture's ordinary address that sends the request on, as Wikimedia's does (`Special:FilePath` →
+  // `Special:Redirect` → the file with its tracking query), and a chain of `n` hops to a picture (a CDN's short link and its edges).
+  if (path === '/wiki/Special:FilePath/Coffee_mugs_cups.jpg') return redirect(response, `/w/index.php?title=Special:Redirect/file/Coffee_mugs_cups.jpg&width=${url.searchParams.get('width') ?? ''}`, 301);
+  if (path === '/w/index.php' && url.searchParams.get('title') === 'Special:Redirect/file/Coffee_mugs_cups.jpg') {
+    return redirect(response, '/wikipedia/commons/7/70/Coffee_mugs_cups.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail_unscaled');
+  }
+  if (path === '/wikipedia/commons/7/70/Coffee_mugs_cups.jpg') { response.writeHead(200, { 'content-type': 'image/jpeg' }); return response.end(jpeg()); }
+  if (path.startsWith('/pic/hops/')) {
+    const left = Number(path.slice(10));
+    return left > 0 ? redirect(response, `/pic/hops/${left - 1}`) : redirect(response, '/pic/photo.jpg');
+  }
   if (path === '/redirect-private') return redirect(response, 'http://linkmock/secret');
   if (path === '/redirect-loopback') return redirect(response, 'http://127.0.0.1/secret');
   if (path === '/redirect-metadata') return redirect(response, 'http://169.254.169.254/latest/meta-data/');

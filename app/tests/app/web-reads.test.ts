@@ -111,6 +111,18 @@ describe('flux_read_web: one public page as text, read-only, with its source kep
     await scene.complete(run.runId);
   });
 
+  test('founder check 2026-11-17: a page behind up to 5 redirects is read, each hop judged and listed; a sixth is refused', async () => {
+    const run = await asked(scene, '/hop/5', '/hop/6');
+    const read = await reading(run, at('/hop/5'));
+    assert.equal(result(read.message)?.isError, undefined, text(read.message));
+    const refused = await reading(run, at('/hop/6'));
+    assert.equal(code(refused.message), 'WEB_READ_REDIRECTS');
+    const rows = (await pool.query(`SELECT final_url, outcome FROM personal_run_web_reads WHERE run_id = $1 ORDER BY read_at, id`, [run.runId])).rows;
+    assert.deepEqual(rows.slice(0, 6).map((row) => [row.final_url, row.outcome]),
+      [5, 4, 3, 2, 1].map((left) => [at(`/hop/${left}`), 'redirected']).concat([[at('/hop/0'), 'read']]));
+    await scene.complete(run.runId);
+  });
+
   test('any public address opens: one nothing wrote, a link the page does not write, one with words added (#1065, founder direction 2026-11-09)', async () => {
     const run = await scene.liveRun(undefined, 'Find out when the last boat leaves');
     for (const url of [at('/read/timetable'), at('/read/hidden'), `${at('/read/second')}?d=hello%20there`])

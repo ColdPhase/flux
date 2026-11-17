@@ -2530,6 +2530,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     the message formatting, with a thin caret (a 2 px `--t1` bar, `--dur-loop` opacity blink) at its end; a web
     address in it is plain words until the answer is done. Its one control is **Stop**, the `outline`
     Button, in the card's own line under the text. Nobody else sees any of it.
+  - **Only the answer is written there** (founder check, Hubert 2026-11-17: "Need a direct image |" stood in the card while the
+    agent went to fetch a picture). The words a model writes in a message that then calls a tool are a working note, not the
+    answer: they are dropped from the card the moment the call starts (most never reach it), and the working line says the step
+    ("Searching…", "Reading a web page…"). Every engine says the same (pi, Claude Code, Codex): a message that calls a tool is a step.
   - **When it is done** it is the answer card (or bubble) as drawn, with one quiet line under the text: **Copy**
     (quiet small buttons with the `copy` icon; "Copied" with `check` for two seconds; it copies the answer's plain
     words) and **Try again** (a new run of the same request; the answer stays until it is put away). Dismiss and
@@ -2564,6 +2568,17 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses
   Flux lists, and citation marks that point at nothing Flux supplied (`[8]`, `[S2]`, `【3†source】`). A link
   card is drawn only for an address the list does not already hold, so each address shows once.
+- **The sources are one quiet line** (founder check, Hubert 2026-11-17: the full addresses under "Searched the web for", "Found on
+  the web", "Read on the web" and "Requested, not read" spilled down the message). Under the answer's words Flux's list is one
+  closed disclosure, **Sources (N)** (the quiet small `Button` with `chevron-right` / `chevron-down` and `aria-expanded`, its padding
+  taken back so its icon stands on the words' edge), N the addresses. Open, in `--fs-md`: "Searched for “…”" in `--t3`, then each
+  address once, read, cited or only asked, as **its site › the last words of its path** ("commons.wikimedia.org › Coffee mugs":
+  decoded, `_` and `-` as spaces, no extension, no wiki `Category:` prefix), the site in `--t1`, the rest in `--t2`, a link that
+  opens in a new tab with the full address as its title, on one line cut with an ellipsis, never a raw address wrapping over lines.
+  An address asked for and not read stays in the same list with "not read · site error" (or "redirected", "not public", "too
+  slow", "not a page") in `--t3`. A defanged address stays as written and is no link. It is the same in the private answer, an
+  answer shown to everyone, the agent's chat, a task's report and the end line of a run without an answer; the stored text keeps
+  the full list for Copy, notifications and what an agent reads.
 - **An answer cites what it used from Flux as the same numbered chips** (#1381, [C-62](../../product/decisions.md), founder decision, Hubert, 2026-11-13). A Wiki page,
   a section of a page, a task, a decision or a message the agent read with its tools is the small `[n]` chip of any other source, in the one list, in the order the answer
   cites them, each object once; nothing new is drawn. The chip's label says what it opens ("Source 2: Wiki page “Calibration”, section “Install”"), and it opens exactly that:

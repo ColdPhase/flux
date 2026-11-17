@@ -1,4 +1,4 @@
-import { WEB_SOURCES_HEADINGS, webSourcesStart } from '@flux/contracts';
+import { WEB_NOT_READ, WEB_SOURCES_HEADINGS, webSourcesStart } from '@flux/contracts';
 import { addressesIn, defangedAddresses } from './web-addresses.js';
 import { withoutOwnSources } from './answer-marks.js';
 import type { PersonalRunPorts, RunRecord } from './ports.js';
@@ -24,18 +24,8 @@ export const webSourcesAt = webSourcesStart;
 /** The most queries and cited addresses one block lists. The pages a run read are all listed: there is no limit on how many it reads (#1113), and each is a source (AG-8). */
 const LISTED = 20;
 
-const NOT_READ: Record<Exclude<WebReadOutcome, 'read'>, string> = {
-  asked: 'the request was sent; no answer was recorded',
-  redirected: 'it sent the request on to another address',
-  blocked: 'refused: not a public address',
-  unreachable: 'not reached',
-  timeout: 'took too long',
-  status: 'the site answered with an error',
-  type: 'not a web page or a text page',
-  redirects: 'too many redirects',
-  invalid: 'not a web address',
-  empty: 'no text on the page',
-};
+/** Why each address was not read, in the words the block says it (shared with the reader's list of sources, which shortens them). */
+const NOT_READ: Record<Exclude<WebReadOutcome, 'read'>, string> = Object.fromEntries(Object.entries(WEB_NOT_READ).map(([outcome, words]) => [outcome, words.says])) as Record<Exclude<WebReadOutcome, 'read'>, string>;
 
 /**
  * "Searched the web for:" with the run's queries and "Found on the web:" with the addresses its answers cite (#954), then "Read on the

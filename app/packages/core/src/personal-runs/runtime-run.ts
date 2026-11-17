@@ -393,8 +393,12 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       const onEvent = (event: PersonalRuntimeEvent) => {
         if (event.kind === 'init') { if (localToolInInit(event, grant.tools, webSearch)) stop('local_tool'); return; }
         if (event.kind === 'text') { shown?.turn(event.turn); shown?.push(event.text); return; }
+        // Words before a tool call are a working note, never the answer (founder check, Hubert 2026-11-17): the asker's view drops them and
+        // its working line says the step ("Searching…", "Reading a web page…").
+        if (event.kind === 'note') { shown?.note(event.turn); return; }
         if (event.kind === 'search' || event.kind === 'found') {
           if (!webSearch) return;
+          shown?.note();
           searched = true;
           if (event.kind === 'search') {
             const query = boundedWebSearch({ queries: [event.query], results: [], cited: [] }).queries[0] ?? '';
@@ -408,6 +412,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           }
           return;
         }
+        shown?.note();
         shown?.step(event.name);
         // Owner-only progress: one more Flux tool call (O-008 §4; the audience is the owner alone).
         void uow.run((ports) => ports.events.record({ kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id,

@@ -6,9 +6,12 @@ import type { AddressInfo } from 'node:net';
 // script (call a tool, answer, or refuse with a status and body) and is recorded with its credential headers, the tools it offered and the
 // tool results it carried. Nothing here reaches a provider.
 
-/** A tool step's args may name `{{gatewayToken}}`: the credential the request came with (a run trying to send its own token out, #1441). */
+/**
+ * A tool step's args may name `{{gatewayToken}}`: the credential the request came with (a run trying to send its own token out, #1441). Its
+ * `note` is text the model writes before the call in the same message ("Need a direct image"), as models do.
+ */
 export type GatewayStep =
-  | { tool: string; args: Record<string, unknown> }
+  | { tool: string; args: Record<string, unknown>; note?: string; notePauseMs?: number }
   | { text: string }
   | { status: number; body: unknown };
 
@@ -45,9 +48,13 @@ function read(request: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
-function sse(response: ServerResponse, events: string[]) {
+/** The events, in order; with `pause`, the first `pause.after` of them, then a wait of `pause.ms`, then the rest (a model that writes slowly). */
+async function sse(response: ServerResponse, events: string[], pause?: { after: number; ms: number }) {
   response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-  for (const event of events) response.write(event);
+  for (const [index, event] of events.entries()) {
+    if (pause && index === pause.after) await new Promise((resolve) => setTimeout(resolve, pause.ms));
+    response.write(event);
+  }
   response.end();
 }
 
@@ -83,20 +90,29 @@ export async function startFakeGateway(): Promise<FakeGateway> {
         const usage = { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
         const block = 'tool' in step ? { type: 'tool_use', id: `toolu_${n}`, name: step.tool, input: {} } : { type: 'text', text: '' };
         const delta = 'tool' in step ? { type: 'input_json_delta', partial_json: JSON.stringify(step.args) } : { type: 'text_delta', text: step.text };
-        sse(response, [
+        const note = 'tool' in step && step.note ? step.note : '';
+        const at = note ? 1 : 0;
+        const pause = 'tool' in step && step.notePauseMs ? { after: 2 + note.split(/(?<= )/).length, ms: step.notePauseMs } : undefined;
+        await sse(response, [
           event('message_start', { type: 'message_start', message: { id, type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, usage } }),
-          event('content_block_start', { type: 'content_block_start', index: 0, content_block: block }),
-          event('content_block_delta', { type: 'content_block_delta', index: 0, delta }),
-          event('content_block_stop', { type: 'content_block_stop', index: 0 }),
+          ...(note ? [
+            event('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+            ...note.split(/(?<= )/).map((piece) => event('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: piece } })),
+            event('content_block_stop', { type: 'content_block_stop', index: 0 }),
+          ] : []),
+          event('content_block_start', { type: 'content_block_start', index: at, content_block: block }),
+          event('content_block_delta', { type: 'content_block_delta', index: at, delta }),
+          event('content_block_stop', { type: 'content_block_stop', index: at }),
           event('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool' in step ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 10 } }),
           event('message_stop', { type: 'message_stop' }),
-        ]);
+        ], pause);
         return;
       }
       const chunk = (delta: unknown, finish: string | null, usage?: unknown) => `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: 0, model: body.model,
         choices: finish === 'usage' ? [] : [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) })}\n\n`;
-      sse(response, [
+      await sse(response, [
         chunk({ role: 'assistant', content: '' }, null),
+        ...('tool' in step && step.note ? [chunk({ content: step.note }, null)] : []),
         'tool' in step ? chunk({ tool_calls: [{ index: 0, id: `call_${n}`, type: 'function', function: { name: step.tool, arguments: JSON.stringify(step.args) } }] }, null) : chunk({ content: step.text }, null),
         chunk({}, 'tool' in step ? 'tool_calls' : 'stop'),
         chunk({}, 'usage', { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 }),

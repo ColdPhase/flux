@@ -1,11 +1,12 @@
 import { Fragment, isValidElement, useMemo, type ReactNode } from 'react';
 import { useInRouterContext } from 'react-router';
-import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, type MessageInline, type ProjectPerson } from '@flux/contracts';
+import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, webSourcesStart, type MessageInline, type ProjectPerson } from '@flux/contracts';
 import { Icon, Kreska, initials } from '../ui';
 import { CodeBlock } from './CodeBlock';
 import { useLinkPreviews } from './linkPreviews';
 import { ThoughtChip, thoughtLink } from './thoughtLinks';
 import { RefChipOpen } from './refChips';
+import { WebSources } from './WebSources';
 import '../composer/attachments.css';
 import './message-format.css';
 
@@ -74,7 +75,10 @@ const mark = <T extends object>(element: T): T => { gluable.add(element); return
 export function MessageText({ body, linked = true, people = null, cite }: { body: string; linked?: boolean; people?: readonly NamedPerson[] | null; cite?: (index: number) => ReactNode | null }) {
   const opens = useInRouterContext() && linked;
   const names = [...(people ?? [])].sort((a, b) => b.name.length - a.name.length);
-  const blocks = useMemo(() => parseMessage(body), [body]);
+  // The list Flux appended to an agent's web answer is its own quiet "Sources (N)" disclosure, never raw addresses under the words
+  // (founder check, Hubert 2026-11-17).
+  const sourcesAt = useMemo(() => webSourcesStart(body), [body]);
+  const blocks = useMemo(() => parseMessage(sourcesAt < body.length ? body.slice(0, sourcesAt) : body), [body, sourcesAt]);
   const reference = tokens(names.map((person) => person.name), cite !== undefined);
   /** A run of plain text: the references in it as chips and links. */
   const chips = (text: string, keyPrefix: string): ReactNode[] => {
@@ -139,7 +143,7 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       }
       case 'code': return <CodeBlock key={`c${index}`} code={block.text} lang={block.lang} />;
     }
-  })}</>;
+  })}{sourcesAt < body.length ? <WebSources block={body.slice(sourcesAt)} linked={linked} /> : null}</>;
 }
 
 /** A readable title from a web address alone: the reader's browser fetches no page. */

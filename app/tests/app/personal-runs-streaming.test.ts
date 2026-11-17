@@ -98,6 +98,33 @@ describe('an answer appears as it is written (#1248)', () => {
     await Promise.all([mine, otherTab, theirs, owner].map((client) => client.close()));
   });
 
+  test('founder check 2026-11-17: the words a model writes before a tool call are a working note, never shown as the answer; the step is', async () => {
+    const mine = await StreamClient.connect(hubert.browser);
+    await mine.ready();
+    const call = { tool: 'mcp__flux__flux_get_conversation', args: { projectId: lamp.id, id: thread.id } };
+    // A note sent at once with its call, and one the model keeps writing for a while before the call (its words reach the asker first).
+    pi.gateway.script([{ ...call, note: 'Need a direct image link. ' }, { ...call, note: 'Let me check the thread again. ', notePauseMs: 700 },
+      { text: 'Here are the mugs I found. ' }]);
+    const started = await ask('find a photo of mugs on the internet and send it');
+    assert.equal(await work(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    await mine.until(() => shown(mine.messages, started.run.id).text === 'Here are the mugs I found. ', 8000, 'the answer\'s words');
+    // What the asker saw of each message as the next thing came: a step, or the next message's words. Never a note.
+    const seen: string[] = [];
+    let turn = 0; let text = '';
+    for (const message of mine.messages) {
+      if (message.type !== 'run_text' || (message as StreamRunText).runId !== started.run.id) continue;
+      const piece = message as StreamRunText;
+      if ('step' in piece) { seen.push(`step ${piece.step}: "${text}"`); continue; }
+      if (piece.turn > turn) { if (turn) seen.push(`turn ${turn}: "${text}"`); turn = piece.turn; text = ''; }
+      text = text.slice(0, piece.at) + piece.text;
+    }
+    assert.deepEqual(seen.filter((line) => /Need a direct|Let me check/.test(line)), [], `no note stayed on screen: ${seen.join(' | ')}`);
+    assert.ok(mine.messages.some((message) => JSON.stringify(message).includes('Let me check')), 'the slow note did reach the asker, then went');
+    assert.deepEqual(stepsOf(mine, started.run.id), ['flux_get_conversation', 'flux_get_conversation'], 'the working line says each step');
+    assert.equal((await read(started.run.id)).answer?.body, 'Here are the mugs I found.');
+    await mine.close();
+  });
+
   test('Stop while pi works posts nothing: a stop before any words keeps nothing', async () => {
     pi.gateway.script([{ tool: 'bash', args: { command: 'sleep 30' } }, { text: 'Too late.' }]);
     const early = await ask('Another question');
