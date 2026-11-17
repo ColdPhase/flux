@@ -346,6 +346,28 @@ class ArrivalFocus(unittest.TestCase):
         self.assertGreaterEqual(outline[1], 2)
         shot(page, "arrival-focus-thread-closed")
 
+    def test_09_arrival_focus_never_takes_focus_the_person_moved(self) -> None:
+        """F-026 §4: the composer's arrival focus applies only while focus is nowhere or where it was. A keyboard user who Tabs on right after Back
+        keeps their place (train 37 follow-up: the composer took the focus back from a chip a moment later)."""
+        page = self.page()
+        page.goto(f"/projects/{self.ids['long']}")
+        expect(page.locator("#project-composer")).to_be_focused()
+        # Away to the space's Tasks inside the app, and Back: the conversation arrives again (a new arrival, not a page load).
+        page.locator(f"a[href='/projects/{self.ids['long']}/tasks']").first.click()
+        page.wait_for_url(re.compile(r"/tasks$"))
+        page.go_back(wait_until="commit")
+        # Within 100 ms of the arrival, Tab on to the first link.
+        for _ in range(15):
+            page.keyboard.press("Tab")
+            if page.evaluate("() => document.activeElement?.matches('a[href]') ?? false"):
+                break
+        marked = page.evaluate("() => { const el = document.activeElement; if (!el?.matches('a[href]')) return null; el.dataset.tabbedTo = '1'; return el.outerHTML.slice(0, 120); }")
+        self.assertIsNotNone(marked, "Tab reached a link")
+        page.wait_for_timeout(1000)
+        expect(page.locator("#project-composer")).to_be_visible()
+        still = page.evaluate("() => document.activeElement?.dataset?.tabbedTo === '1'")
+        self.assertTrue(still, f"focus stayed on the link Tab reached ({marked}), now on {page.evaluate('() => document.activeElement?.outerHTML?.slice(0, 120)')}")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -333,14 +333,10 @@ class MessageFormatting(unittest.TestCase):
         page.go_back()
         wiki = page.locator(".message-body", has_text="Wiring first").first.locator(".ref-chip[data-ref=wiki]")
         expect(wiki).to_have_text("Probe wiring")
-        # Back on the conversation, the cursor goes to its composer while the feed settles (F-026 §4), more than once on a long feed: a focus given
-        # to the chip in that moment goes back to the composer before Enter. The keyboard reaches the chip once the page keeps it focused.
-        expect(page.locator("#project-composer")).to_be_focused()
-        for _ in range(20):
-            wiki.focus()
-            page.wait_for_timeout(250)
-            if wiki.evaluate("el => document.activeElement === el"):
-                break
+        # The keyboard reaches the chip once the conversation shows its messages after Back (they are drawn hidden until their reads settle, #155),
+        # and the conversation's arrival focus never takes it back (F-026 §4).
+        expect(wiki).to_be_visible()
+        wiki.focus()
         expect(wiki).to_be_focused()
         page.keyboard.press("Enter")
         page.wait_for_url(re.compile(rf"/projects/{project}/docs/{doc.json()['id']}$"))
