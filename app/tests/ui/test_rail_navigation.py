@@ -100,6 +100,9 @@ class RailNavigation(unittest.TestCase):
                     my_map.press("Enter")
                     expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))  # My map opens at its own address (#866)
                     expect(my_map).to_have_attribute("aria-current", "page")
+                    # The map has drawn its page: while it still loads (`.sk-page--center`) nothing after the rail can take focus, so a Tab
+                    # from the face leaves the document and Shift+Tab comes back to the page's last control, not to the face.
+                    expect(page.locator(".sk-page--map")).to_be_visible()
                     # The face is the one way to Settings, on the rail as in the sidebar (#1419): there is no gear beside it.
                     settings = rail.get_by_role("link", name=re.compile(r"^Ada Kowalska, Settings$"))
                     self.assertEqual(settings.count(), 1, "the rail must preserve Settings")
