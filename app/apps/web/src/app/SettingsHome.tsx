@@ -45,7 +45,8 @@ const isGuest = (workspace: { role?: string | null } | null | undefined) => work
  * there is nothing of the company to connect AI to or to hear about (round 14: both still offered their choices). Company says where they stand.
  */
 const goneFrom = ({ workspace, removedFrom }: { workspace: unknown; removedFrom: string | null }) => (!workspace && removedFrom ? removedFrom : null);
-const COMPANY_ONLY = /^\/settings\/(notifications|agents|assistant|background-compute|ai-connections)(\/|$)/;
+// Company too (round 15, daily P3-6): it said so in a small grey line while every other page shows the heading and Go to Home.
+const COMPANY_ONLY = /^\/settings\/(notifications|agents|assistant|background-compute|ai-connections|company)(\/|$)/;
 
 /** The section list beside every Settings page on the computer; the phone leads from the Settings page instead. */
 export function SettingsLayout() {
@@ -66,7 +67,7 @@ export function SettingsLayout() {
           ))}
         </nav>
       )}
-      {/* Someone no longer in the company reaching AI or Notifications by their address is told what Home tells them (round 14). */}
+      {/* Someone no longer in the company reaching Company, AI or Notifications is told what Home tells them, in its one look (rounds 14 and 15). */}
       <div className="sset__page">{gone && COMPANY_ONLY.test(pathname) ? <NoLongerIn company={gone} /> : <Outlet />}</div>
     </div>
   );

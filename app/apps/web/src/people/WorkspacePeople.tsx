@@ -15,11 +15,12 @@ import { SpaceFace } from '../ui/SpaceFace';
 import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { listCompanyEncryptedSpaces } from '../encryption/api';
-import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, makeResetLink, problemText, removeMember, renameCompany,
+import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, joinNames, listRemovedPeople, restorePerson, listInvites, listMembers, makeResetLink, problemText, removeMember, renameCompany,
   keepPlaces, peopleOrder, revokeInvite } from './api';
 import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { InviteLinkList } from './SomeoneNew';
+import { PeoplePicker } from './PeoplePicker';
 import './people.css';
 import { awaitField, focusField } from '../ui/keys';
 
@@ -52,10 +53,10 @@ async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Ro
  * Being in the company opens Everyone; other spaces show only to the people added to them (#44).
  */
 export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspaceId: string; onBack: () => void; page?: boolean }) {
-  const { me } = useShellData();
+  const { me, workspace: company } = useShellData();
   const [roster, setRoster] = useState<Roster | null>(null);
   // The order the rows were drawn in: a row keeps its place while the page is open (personas-33: Admin chosen for someone moved their row
-  // under the pointer). Someone who joins meanwhile comes after them; the next visit sorts by role again.
+  // under the pointer). Someone who joins or is restored meanwhile takes their sorted place among them (round 15); the next visit sorts by role again.
   const [drawn, setDrawn] = useState<{ members: WorkspaceMember[] | null; order: string[] }>({ members: null, order: [] });
   const [failed, setFailed] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
@@ -66,6 +67,9 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   // Home's first steps lead here with `?invite=1` (Invite people) or `?name=1` (Name your company), #1438.
   const [params, setParams] = useSearchParams();
   const [inviting, setInviting] = useState(() => params.get('invite') === '1');
+  // An encrypted space's Add people (round 15, daily P2-2): the company's people ticked in the list Space settings uses.
+  const [adding, setAdding] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
   const inviteRef = useRef<HTMLButtonElement>(null);
   // With single sign-on as the way in, people join on their first sign-in and nobody is invited (F-037). While the provider
   // is only being prepared, password accounts still need an invite, so it counts as no provider. Undefined until it is known;
@@ -178,10 +182,14 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     if (params.has('invite')) setParams((current) => { const next = new URLSearchParams(current); next.delete('invite'); return next; }, { replace: true });
   };
   const onAdded = (member: WorkspaceMember) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false);
-  // #1438: the company's page has one invite form; an encrypted space's panel adds people of the company by email, never by a link (C-24).
+  // #1438: the company's page has one invite form. An encrypted space's panel adds people of the company, never by a link (C-24), with the
+  // same Add people as Space settings: the company's people ticked in one list (round 15, daily P2-2: it was an Email and Role form).
+  const closeAdding = () => { setAdding(false); requestAnimationFrame(() => addRef.current?.focus()); };
   const addPerson = canAdd && members ? (page
     ? <InviteForm workspace={workspace} members={members} myRole={myRole} links={links} onAdded={onAdded} onClose={closeInvite} />
-    : <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={onAdded} />) : null;
+    : adding && company && company.id !== workspace.id ? <AddPeople workspace={workspace} members={members} companyId={company.id} companyName={company.name}
+      onAdded={(names) => { setAdding(false); changed(`${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} now in ${workspace.name}.`, false); requestAnimationFrame(() => addRef.current?.focus()); }}
+      onClose={closeAdding} /> : null) : null;
   return (
     <div className={`details people${page ? ' people--page' : ''}`}>
       {page ? (
@@ -192,14 +200,13 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
         </>
       ) : null}
 
-      {!page && canAdd ? addPerson : null}
-
       <section className="details__sec" aria-labelledby="people-here">
         <div className="access__head">
           <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? <>People <span className="people__count">{ordered.length}</span></> : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
           {page && canAdd ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => { if (inviting) { closeInvite(); return; } if (!window.matchMedia('(hover: none)').matches) awaitField(); setInviting(true); }}>Invite</Button> : null}
+          {!page && canAdd && company && company.id !== workspace.id ? <Button ref={addRef} variant="quiet" icon="plus" className="access__invite" aria-expanded={adding} onClick={() => { if (adding) { closeAdding(); return; } setDone(''); setAdding(true); }}>Add people</Button> : null}
         </div>
-        {page && inviting ? addPerson : null}
+        {(page && inviting) || (!page && adding) ? addPerson : null}
         {/* On the company's page the people are one card, as Settings draws its cards: the single sign-on line first, then each person. */}
         <div className={page ? 'sset-card people__card' : undefined}>
         {page && sso ? (
@@ -438,54 +445,64 @@ function CompanyName({ workspace, manager, startEditing = false, onChanged, onCl
   );
 }
 
-/** An encrypted space's panel (C-24): someone of the company is added by the address of their account; nobody joins it by a link. */
-function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
-  onAdded: (member: WorkspaceMember) => void }) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<WorkspaceRole>('member');
+/**
+ * An encrypted space's Add people (C-24: someone of the company, never by a link), the same list Space settings opens (round 15, daily P2-2): the
+ * company's people who are not in it yet, ticked and added as members together; a role is then chosen on the person's row like anywhere else.
+ */
+function AddPeople({ workspace, members, companyId, companyName, onAdded, onClose }: {
+  workspace: Workspace; members: WorkspaceMember[]; companyId: string; companyName: string; onAdded: (names: string[]) => void; onClose: () => void;
+}) {
+  const [company, setCompany] = useState<WorkspaceMember[] | null>(null);
+  const [chosen, setChosen] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
-  const emailRef = useRef<HTMLInputElement>(null);
-  const roleId = useId();
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (busy) return;
-    const address = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+$/.test(address)) { setProblem('Enter the email address of their Flux account.'); emailRef.current?.focus(); return; }
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    listMembers(companyId, controller.signal).then(setCompany, (error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setCompany([]); setProblem(problemText(error, { workspace: companyName }));
+    });
+    return () => controller.abort();
+  }, [companyId, companyName]);
+  // It opens on its search or first person, as Space settings' (F-026 §4).
+  useEffect(() => { if (company) root.current?.querySelector<HTMLElement>('.pick__list input:not([disabled])')?.focus(); }, [company]);
+  const candidates = (company ?? []).filter((person) => !members.some((member) => member.userId === person.userId));
+  async function add() {
+    if (busy || !chosen.length) return;
     setBusy(true); setProblem('');
+    const added: string[] = [];
     try {
-      const member = await addMember(workspace.id, address, role, keys.current.for(`${address}:${role}`));
-      keys.current.done();
-      setEmail(''); setRole('member');
-      onAdded(member);
+      for (const id of chosen) {
+        const person = candidates.find((candidate) => candidate.userId === id);
+        if (!person) continue;
+        await addMember(workspace.id, person.email, 'member', keys.current.for(`${person.email}:member`));
+        keys.current.done();
+        added.push(firstName(person.name));
+      }
+      onAdded(added);
     } catch (error) {
-      const known = error instanceof ApiError && error.code === 'ALREADY_MEMBER' ? members.find((member) => member.email.toLowerCase() === address)?.name : undefined;
-      setProblem(problemText(error, { workspace: workspace.name, email: address, who: known }));
-      emailRef.current?.focus();
-    } finally { setBusy(false); }
+      keys.current.done();
+      if (added.length) onAdded(added);
+      else { setProblem(problemText(error, { workspace: workspace.name })); setBusy(false); }
+    }
   }
-
   return (
-    <section className="details__sec" aria-labelledby="people-add">
-      <h4 id="people-add">Add someone</h4>
-      <form className="people__add" onSubmit={(event) => void submit(event)} noValidate>
-        <Input ref={emailRef} id="people-add-email" label="Email" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
-          aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'people-add-problem people-add-email-hint' : 'people-add-email-hint'}
-          onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
-          hint="The address of their Flux account in the company." />
-        <div className="people__field">
-          <label htmlFor={roleId}>Role</label>
-          <Select id={roleId} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${roleId}-hint`}>
-            {assignable(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
-          </Select>
-          <p className="people__hint" id={`${roleId}-hint`}>{ROLE_HINT[role]}</p>
-        </div>
-        {problem ? <p className="people__notice" id="people-add-problem" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-        <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Add to {workspace.name}</Button></div>
-      </form>
-    </section>
+    <div className="spset__add people__addpeople" role="group" aria-label="Add people" ref={root}
+      onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
+      {company ? <PeoplePicker listOnly candidates={candidates} value={chosen} onChange={setChosen} disabled={busy} companyName={companyName}
+        none={company.length > 1 ? `Everyone in ${companyName} is already in ${workspace.name}.` : undefined} />
+        : <p className="pick__none" role="status">Loading people…</p>}
+      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
+      {/* No dead control: Add and Cancel while someone is ticked, otherwise one Close, as Space settings' (#1424). */}
+      <div className="newspace__foot">
+        {chosen.length ? <>
+          <Button variant="primary" busy={busy} onClick={() => void add()}>{`Add ${chosen.length === 1 ? '1 person' : `${chosen.length} people`}`}</Button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        </> : <Button variant="secondary" onClick={onClose}>Close</Button>}
+      </div>
+    </div>
   );
 }
 
@@ -496,17 +513,17 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
   editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean, editorClosed?: boolean) => void;
 }) {
   const editId = useId();
-  const changeRef = useRef<HTMLButtonElement>(null);
   const removeRef = useRef<HTMLButtonElement>(null);
   const resetRef = useRef<HTMLButtonElement>(null);
-  const close = () => { onEdit(false); changeRef.current?.focus(); };
   // On the company's page Reset link and Remove are on the row (founder decision 2026-11-14, #1424), as Space settings shows Remove; the role
-  // button opens only the role. An encrypted space's panel keeps its one Change, whose editor holds Remove.
+  // is the menu of roles. An encrypted space's panel has the same row (round 15, daily P2-2: its Change opened a Role form with Save role and
+  // Remove inside it): the role chosen at once, Remove on the row; a key holder's demotion or removal asks first under the row.
+  const inline = page || !!workspace.encryption;
   const [open, setOpen] = useState<'reset' | 'remove' | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const confirmRef = useRef<HTMLDivElement>(null);
-  const removable = page && editable && !self;
+  const removable = inline && editable && !self;
   const holder = !!workspace.encryption && isManagerRole(member.role);
   const first = firstName(member.name);
   // On the company's page the role is a menu, as in Space settings (#1424: the look matches what it does): a role chosen is saved at once, and
@@ -554,6 +571,9 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
     void applyRole(next);
   };
   const keepRole = () => { setDemoteTo(null); requestAnimationFrame(() => roleRef.current?.focus()); };
+  // An ask opens on its safe answer (round 15, daily P3-3), as Remove's Keep.
+  const keepRoleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (demoteTo) keepRoleRef.current?.focus(); }, [demoteTo]);
   useEffect(() => { if (open === 'remove') confirmRef.current?.querySelector<HTMLButtonElement>('button:last-child')?.focus(); }, [open]);
   const shut = (back: RefObject<HTMLButtonElement | null>) => { setOpen(null); setProblem(''); requestAnimationFrame(() => back.current?.focus()); };
   const toggle = (what: 'reset' | 'remove') => { setProblem(''); onEdit(false); setDemoteTo(null); setOpen((current) => (current === what ? null : what)); };
@@ -574,7 +594,7 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
         <Avatar name={member.name} id={member.userId} size="md" tone={self ? 'me' : 'neutral'} />
         <span className="people__who"><b>{member.name}{self ? <span className="people__you"> (you)</span> : null}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
         {/* On the company's page the role is the control: "Admin ▾" is the menu of roles, and choosing one changes it (#1424). */}
-        {page && editable ? (
+        {inline && editable ? (
           <span className="people__rolecell">
             <Select ref={roleRef} className="people__rolesel" aria-label={self ? 'Your role' : `Role of ${member.name}`} value={demoteTo ?? member.role} disabled={busy}
               onChange={(next) => pickRole(next as WorkspaceRole)}>
@@ -582,12 +602,7 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
             </Select>
           </span>
         ) : <span className="people__role">{ROLE_LABEL[member.role]}</span>}
-        {!page && editable ? (
-          <Button ref={changeRef} variant="quiet" size="sm" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
-            Change<span className="ui-vh"> {self ? 'your role' : member.name}</span>
-          </Button>
-        ) : null}
-        {page && (resettable || removable) ? (
+        {inline && (resettable || removable) ? (
           <span className="people__acts">
             {/* While Remove asks on the row, its Remove / Keep take the column alone (round 14: beside Reset link they pushed the role 55 px left). */}
             {resettable && !(open === 'remove' && !holder) ? <Button ref={resetRef} variant="quiet" size="sm" className="people__act" aria-expanded={open === 'reset'} aria-label={`Reset link for ${member.name}`}
@@ -596,12 +611,12 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
               <span className="people__confirmrow" role="group" aria-label={`Remove ${member.name}`} ref={confirmRef}
                 onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); shut(removeRef); } }}>
                 <Button variant="danger" size="sm" busy={busy} onClick={() => void remove()}>Remove</Button>
-                <Button variant="quiet" size="sm" onClick={() => shut(removeRef)}>Keep</Button>
+                <Button variant="secondary" size="sm" onClick={() => shut(removeRef)}>Keep</Button>
               </span>
             ) : <Button ref={removeRef} variant="quiet" size="sm" className="people__act" aria-expanded={open === 'remove'} aria-label={`Remove ${member.name} from ${workspace.name}`}
               onClick={() => toggle('remove')}>Remove</Button>) : null}
           </span>
-        ) : page && column ? <span className="people__acts" aria-hidden="true" /> : null}
+        ) : inline && column ? <span className="people__acts" aria-hidden="true" /> : null}
       </div>
       {/* F-030 (#655): an owner or admin of an encrypted company who stops being one changes its key, which is said before it happens. */}
       {demoteTo ? (
@@ -611,7 +626,7 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
           <p>{rotationText(workspace, first)}</p>
           <div className="details__actions">
             <Button variant="primary" busy={busy} onClick={() => void applyRole(demoteTo)}>Make {first} {article(demoteTo)} {ROLE_LABEL[demoteTo].toLowerCase()}</Button>
-            <Button variant="quiet" onClick={keepRole}>Keep {first} {article(member.role)} {ROLE_LABEL[member.role].toLowerCase()}</Button>
+            <Button ref={keepRoleRef} variant="secondary" onClick={keepRole}>Keep {first} {article(member.role)} {ROLE_LABEL[member.role].toLowerCase()}</Button>
           </div>
         </div>
       ) : null}
@@ -624,7 +639,7 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
           <p>{rotationText(workspace, first)}</p>
           <div className="details__actions">
             <Button variant="danger" busy={busy} onClick={() => void remove()}>Remove {first}</Button>
-            <Button variant="quiet" onClick={() => shut(removeRef)}>Keep {first}</Button>
+            <Button variant="secondary" onClick={() => shut(removeRef)}>Keep {first}</Button>
           </div>
         </div>
       ) : null}
@@ -634,7 +649,6 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
           <ResetLinkGroup id={editId} member={member} workspace={workspace} onClose={() => shut(resetRef)} />
         </div>
       ) : null}
-      {editing && !page ? <MemberEditor id={editId} member={member} self={self} workspace={workspace} myRole={myRole} withRemove={!page} onClose={close} onChanged={onChanged} /> : null}
     </li>
   );
 }
@@ -648,99 +662,6 @@ const removalWords = (first: string, company: string) =>
 
 /** What removing or demoting an owner or admin of an encrypted workspace does to its key (F-030, #655). */
 const rotationText = (workspace: Workspace, first: string) => `${workspace.name} gets a new key, and everything in it is encrypted again in the background. When that finishes, ${first}’s unlock password opens nothing made from then on. The recovery code stops working, and an owner makes a new one. A copy ${first} may already have, such as an old backup, still opens with their old password.`;
-
-/** One member's role and removal; mounted fresh each time it opens, so nothing stale carries over. */
-function MemberEditor({ id, member, self, workspace, myRole, withRemove, onClose, onChanged }: {
-  id: string; member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; withRemove: boolean;
-  onClose: () => void; onChanged: (message: string, holderLeft?: boolean) => void;
-}) {
-  const [role, setRole] = useState<WorkspaceRole>(member.role);
-  const [confirm, setConfirm] = useState<'remove' | 'demote' | null>(null);
-  const [busy, setBusy] = useState<'role' | 'remove' | null>(null);
-  const [problem, setProblem] = useState('');
-  const keys = useRef(attemptKeys());
-  const selectRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { selectRef.current?.focus(); }, []);
-  // F-030 (#655): an owner or admin who stops being one (removed, demoted, leaving) changes the key of an encrypted space: its content
-  // is encrypted again in the background, and what that person may have kept (a backup) still opens with their old password.
-  const holder = !!workspace.encryption && isManagerRole(member.role);
-  const demoting = holder && !isManagerRole(role);
-  const first = firstName(member.name);
-
-  async function saveRole() {
-    if (busy || role === member.role) return;
-    setConfirm(null);
-    setBusy('role'); setProblem('');
-    try {
-      await changeRole(workspace.id, member.userId, role, keys.current.for(`${member.userId}:${role}`));
-      keys.current.done();
-      onChanged(self ? `You’re now ${article(role)} ${ROLE_LABEL[role].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(role)} ${ROLE_LABEL[role].toLowerCase()}.`, demoting);
-    } catch (error) {
-      setProblem(problemText(error, { workspace: workspace.name, who: self ? 'You' : member.name }));
-      setBusy(null);
-    }
-  }
-
-  async function remove() {
-    if (busy) return;
-    setBusy('remove'); setProblem('');
-    try {
-      await removeMember(workspace.id, member.userId);
-      onChanged(`${member.name} is no longer in ${workspace.name}.`, holder);
-    } catch (error) {
-      setProblem(problemText(error, { workspace: workspace.name, who: member.name }));
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div className="people__edit" id={id} role="group" aria-label={self ? 'Change your role' : `Change ${member.name}`}
-      onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
-      <div className="people__field">
-        <label htmlFor={`${id}-role`}>Role</label>
-        <Select ref={selectRef} id={`${id}-role`} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${id}-hint`}>
-          {assignable(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
-        </Select>
-        <p className="people__hint" id={`${id}-hint`}>{ROLE_HINT[role]}</p>
-      </div>
-      <div className="details__actions">
-        <Button variant={confirm === 'demote' ? 'secondary' : 'primary'} busy={busy === 'role'} disabled={role === member.role} onClick={() => (demoting ? setConfirm('demote') : void saveRole())}>Save role</Button>
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      </div>
-      {confirm === 'demote' ? (
-        <div className="details__confirm people__confirm" role="group" aria-label={`Make ${first} ${article(role)} ${ROLE_LABEL[role].toLowerCase()}`} data-rotation-confirm="demote">
-          <p><b>Make {first} {article(role)} {ROLE_LABEL[role].toLowerCase()}?</b></p>
-          <p>{rotationText(workspace, first)}</p>
-          <div className="details__actions">
-            <Button variant="primary" busy={busy === 'role'} onClick={() => void saveRole()}>Make {first} {article(role)} {ROLE_LABEL[role].toLowerCase()}</Button>
-            <Button variant="quiet" onClick={() => setConfirm(null)}>Keep {first} {article(member.role)} {ROLE_LABEL[member.role].toLowerCase()}</Button>
-          </div>
-        </div>
-      ) : null}
-      {withRemove && !self ? (confirm === 'remove' ? (
-        holder ? (
-          <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`} data-rotation-confirm="remove">
-            <p><b>Remove {first} from {workspace.name}?</b></p>
-            <p>{rotationText(workspace, first)}</p>
-            <div className="details__actions">
-              <Button variant="danger" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
-              <Button variant="quiet" onClick={() => setConfirm(null)}>Keep {first}</Button>
-            </div>
-          </div>
-        ) : (
-          <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`}>
-            <p>{removalWords(first, workspace.name)}</p>
-            <div className="details__actions">
-              <Button variant="danger" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
-              <Button variant="secondary" onClick={() => setConfirm(null)}>Keep</Button>
-            </div>
-          </div>
-        )
-      ) : <Button variant="quiet" className="details__leave people__remove" onClick={() => setConfirm('remove')}>Remove from {workspace.name}</Button>) : null}
-      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-    </div>
-  );
-}
 
 /**
  * A one-time password reset link for this person (#1471), made and copied as a new invite link is: Flux sends it nowhere. It is shown
@@ -804,14 +725,16 @@ async function copyText(text: string): Promise<boolean> {
 type InviteLinks = {
   invites: WorkspaceInvite[] | null; setInvites: (update: (list: WorkspaceInvite[] | null) => WorkspaceInvite[] | null) => void;
   fresh: WorkspaceInvite | null; setFresh: (invite: WorkspaceInvite | null) => void;
-  status: string; setStatus: (status: string) => void; linkRef: RefObject<HTMLInputElement | null>;
+  /** What was said, and the link it is about (null: none listed, as one revoked): a line about a link is drawn in its row (round 15). */
+  status: string; about: string | null; setStatus: (status: string, about?: string | null) => void; linkRef: RefObject<HTMLInputElement | null>;
 };
 
 /** Reads the links once there is someone to show them to, and again when someone joined or a link was made or revoked elsewhere (`seen`). */
 function useInviteLinks(workspaceId: string, enabled: boolean, seen: number, onJoined: () => void): InviteLinks {
   const [invites, setInvites] = useState<WorkspaceInvite[] | null>(null);
   const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
-  const [status, setStatus] = useState('');
+  const [said, setSaid] = useState<{ text: string; about: string | null }>({ text: '', about: null });
+  const setStatus = (text: string, about: string | null = null) => setSaid({ text, about });
   const linkRef = useRef<HTMLInputElement>(null);
   const freshRef = useRef(fresh);
   useEffect(() => { freshRef.current = fresh; });
@@ -831,7 +754,7 @@ function useInviteLinks(workspaceId: string, enabled: boolean, seen: number, onJ
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `seen` is the trigger; `onJoined` reloads the roster.
   }, [workspaceId, enabled, seen]);
-  return { invites, setInvites, fresh, setFresh, status, setStatus, linkRef };
+  return { invites, setInvites, fresh, setFresh, status: said.text, about: said.about, setStatus, linkRef };
 }
 
 /**
@@ -878,9 +801,14 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
     links.setFresh(invite);
     links.setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
     setEmail('');
-    links.setStatus(madeSentence(await copyText(invite.link), days));
-    // The link is in its row of the list under the people: bring it into view.
-    requestAnimationFrame(() => { links.linkRef.current?.scrollIntoView({ block: 'nearest' }); links.linkRef.current?.select(); });
+    links.setStatus(madeSentence(await copyText(invite.link), days), invite.id);
+    // The link is in its row of the list under the people, with its sentence under it: the whole row comes into view (round 15, new P3-i: the
+    // field stood on the pane's bottom edge and the sentence below the fold), and the link is selected.
+    requestAnimationFrame(() => {
+      const field = links.linkRef.current;
+      field?.closest('li')?.scrollIntoView({ block: 'nearest' });
+      field?.focus({ preventScroll: true }); field?.select();
+    });
   }
 
   async function submit(event: FormEvent) {
@@ -956,13 +884,13 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
  * Copy link and Revoke. The link just made shows once, in its own row, with the one sentence about it.
  */
 function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRole: WorkspaceRole; links: InviteLinks }) {
-  const { invites, setInvites, fresh, setFresh, status, setStatus, linkRef } = links;
+  const { invites, setInvites, fresh, setFresh, status, about, setStatus, linkRef } = links;
   const meId = useShellData().me.user.id;
   const [problem, setProblem] = useState('');
 
   async function copy(invite: WorkspaceInvite) {
     const copied = await copyText(invite.link);
-    setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.');
+    setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.', invite.id);
     // Where the browser refuses, the link is shown in its row to be selected by hand.
     if (!copied) setFresh(invite);
   }
@@ -980,7 +908,7 @@ function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRo
   }
 
   const where = (invite: WorkspaceInvite) => (invite.space ? ` · ${invite.space.name}` : '');
-  const statusLine = <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>;
+  const statusLine = <p className="people__invite-status" role="status">{status && about === null ? <><Icon name="check" size={13} />{status}</> : null}</p>;
   // With nothing waiting, only what just happened stays (the last link revoked).
   if (!invites?.length) return <div className="people__waiting-none">{statusLine}{problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}</div>;
   return (
@@ -988,7 +916,8 @@ function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRo
       {/* The same list as Space settings' (round 14): the link just made is shown once, in its own row, whose Copy link is the only one (#1424). */}
       <InviteLinkList headingId="people-invites-pending" links={invites} shown={(invite) => fresh?.id === invite.id} linkId={() => 'people-invite-link'} linkRef={linkRef}
         meta={(invite) => `${ROLE_LABEL[invite.role]}${where(invite)} · until ${until.format(new Date(invite.expiresAt))} · by ${youLabel(invite.createdBy.name, invite.createdBy.id === meId)}`}
-        canRevoke={(invite) => invite.role !== 'admin' || myRole === 'owner'} onCopy={(invite) => void copy(invite)} onRevoke={(invite) => void revoke(invite)} />
+        canRevoke={(invite) => invite.role !== 'admin' || myRole === 'owner'} onCopy={(invite) => void copy(invite)} onRevoke={(invite) => void revoke(invite)}
+        note={about && status ? { about, line: <p className="people__invite-status" role="status"><Icon name="check" size={13} />{status}</p> } : null} />
       {statusLine}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>

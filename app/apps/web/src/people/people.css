@@ -147,8 +147,8 @@
 /* The role is the menu of roles, drawn as Space settings' (#1424): a quiet "Admin ▾" that opens the roles, its chevron beside the word, in a
    right-aligned column as wide as Space settings' (persona round 6: one look on both pages). */
 .people__rolecell { flex: none; min-width: 96px; text-align: right; }
-/* A role that cannot be changed (the owner's, read by an admin) ends where a menu's word ends, as in Space settings (round 14). */
-.people--page .people__row > .people__role { min-width: 96px; padding-right: calc(6px + 14px + 4px); text-align: right; }
+/* A role that cannot be changed (the owner's, read by an admin) ends where a menu's chevron ends, as in Space settings (round 15). */
+.people--page .people__row > .people__role { min-width: 96px; padding-right: 6px; text-align: right; }
 .people__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
   color: var(--t2); font-size: var(--fs-sm); font-weight: 500; line-height: 1.2; transition: var(--tr); }
 .people__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
@@ -179,6 +179,8 @@
    the address stood on the card's edge): its rows, the link just made and Revoke's ask keep the card's 18 px inset, as the people above them. */
 .people__waiting .people__row { min-height: 56px; padding: 8px 18px; }
 .people__waiting :is(.people__link, .people__edit) { margin: 0 18px 14px; }
+/* What was said about a link stands in its row, under its field (round 15), at the row's inset. */
+.people__waiting .people__item > .people__invite-status { margin: -4px 18px 0; padding-bottom: 14px; }
 .people__removing, .people__rownote { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
 /* What Remove ends starts under the name, not under the face (round 14): the card's 18 px, the 26 px face and the row's 10 px gap. */
 .people--page .people__removing, .people--page .people__rownote { margin-inline: calc(18px + 26px + 10px) 18px; }
@@ -194,3 +196,13 @@
   .people--page .people__item[data-person] > .people__row > .people__role { min-width: 0; margin-left: 36px; padding-right: 0; text-align: left; }
   .people--page .people__acts { margin-left: auto; min-width: 0; }
 }
+
+/* An encrypted space's People and encryption panel is narrow: its rows are the company's rows (round 15, daily P2-2), stacked as the company's
+   page stacks them under 37.5 rem: the name and address keep the first line, the role menu and Remove go under them. */
+.people:not(.people--page) .people__item[data-person] > .people__row { flex-wrap: wrap; row-gap: 4px; }
+.people:not(.people--page) .people__item[data-person] .people__who { flex: 1 1 calc(100% - 52px); }
+.people:not(.people--page) .people__item[data-person] .people__rolecell { min-width: 0; margin-left: 26px; text-align: left; }
+.people:not(.people--page) .people__item[data-person] > .people__row > .people__role { min-width: 0; margin-left: 36px; text-align: left; }
+.people:not(.people--page) .people__item[data-person] .people__acts { margin-left: auto; }
+.people:not(.people--page) .people__item[data-person] .people__acts:empty { display: none; }
+.people__addpeople { margin: 4px 0 12px; }

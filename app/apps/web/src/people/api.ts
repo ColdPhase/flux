@@ -97,12 +97,19 @@ export function peopleOrder<T extends { userId: string; name: string }>(meId: st
 }
 
 /**
- * `sorted` with each person already drawn in the place they had (`drawn`, their ids in order), newcomers after them: a role changed on the
- * page moves no row under the pointer (personas-33). The next visit sorts by role again.
+ * `sorted` with each person already drawn in the place they had (`drawn`, their ids in order): a role changed on the page moves no row under the
+ * pointer (personas-33). Someone new to the list (restored, joined, added) takes their sorted place among them, after the person sorted just
+ * before them (round 15: a restored Tomek went to the end of People). The next visit sorts by role again.
  */
 export function keepPlaces<T extends { userId: string }>(drawn: readonly string[], sorted: T[]): T[] {
   const at = new Map(drawn.map((id, index) => [id, index]));
-  return [...sorted].sort((a, b) => (at.get(a.userId) ?? Number.MAX_SAFE_INTEGER) - (at.get(b.userId) ?? Number.MAX_SAFE_INTEGER));
+  const out = sorted.filter((person) => at.has(person.userId)).sort((a, b) => at.get(a.userId)! - at.get(b.userId)!);
+  sorted.forEach((person, index) => {
+    if (at.has(person.userId)) return;
+    const before = sorted.slice(0, index).reverse().find((other) => out.includes(other));
+    out.splice(before ? out.indexOf(before) + 1 : 0, 0, person);
+  });
+  return out;
 }
 
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';

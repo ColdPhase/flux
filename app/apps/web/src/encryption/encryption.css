@@ -92,7 +92,8 @@
 .details__sec.people__enc h4 { margin-bottom: 8px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
 /* Two lines are always reserved, so the buttons under the line stay where they are when the line changes ("Unlocked by Ada at 09:12" / "Waiting to be unlocked"). */
 .people__enc-line { min-height: calc(2 * 1.6em); margin: 0; }
-.people__enc-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 8px 0 0 -8px; }
+/* One column, each action starting at one edge (round 15, look-3 P3-f): in the narrow panel a wrapped row left "New recovery code" alone and ragged. */
+.people__enc-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 8px 0 0 -8px; }
 .people__enc-button.ui-btn { color: var(--t2); }
 .people__enc-button.ui-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .people__enc-button.ui-btn.is-dim { opacity: .45; cursor: default; }

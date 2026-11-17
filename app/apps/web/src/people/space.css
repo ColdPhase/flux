@@ -50,6 +50,8 @@
 /* Its rows are as tall as their content (`max-content`): an `auto` row shrinks to the room left, and the card holding AI, Encrypted and the password (it clips what
    overflows it) was squeezed on a short phone, with "Suggest six random words" and the recovery code cut off inside it. The body scrolls instead (#1419). */
 .newspace--pinned .newspace__body { display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; flex: 1 1 auto; min-height: 0; padding: 16px 24px; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 8px; }
+/* Name is a heading of the window as People is, as drawn (round 15, daily P2-5: a small grey field label 4 px under the head's hairline). */
+.newspace__body > .ui-field .ui-field__label { font-size: var(--fs-base); font-weight: 600; line-height: 20px; color: var(--t1); }
 .newspace--pinned .newspace__foot { flex: none; padding: 12px 24px 18px; border-top: 1px solid var(--line); }
 .newspace__why { align-self: center; margin: 0 auto 0 0; font-size: var(--fs-sm); color: var(--t2); }
 .newspace__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -94,7 +96,8 @@
 .spset__emoji-b.is-on .spset__tile { box-shadow: inset 0 0 0 1px var(--t1); }
 .spset__emoji-b:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .spset__seclead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
-.spset__seclead .sset-sec { margin: 0; }
+/* Only its block margins go: its inline ones stay, so People starts where Name and AI start (round 15, daily P3-1: 520 against 522). */
+.spset__seclead .sset-sec { margin-block: 0; }
 .spset__seclead .spset__addbtn.ui-btn { margin-right: 0; }
 /* The same quiet count as Company › People, "People 6", and read as "People 6" (personas-27). */
 .spset__count { margin-left: 2px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
@@ -104,9 +107,10 @@
 .spset__you { font-weight: 400; color: var(--t3); }
 /* One role control (release audit ffcb07c): a role is the same quiet "Member ▾" as on Settings › Company's rows, and a role that cannot be
    changed is the same plain word there (.people__role); never an outlined field in one place and a quiet button in the other. */
-/* A role that cannot be changed ends where a menu's word ends (round 14: "Owner" stood 8 px right of "Member ⌄"'s chevron and 30 px right of its
-   word): the menu's 6 px end padding, its 14 px chevron and the 4 px between them are kept free, so every role word ends on one line. */
-.spset__role { flex: none; min-width: 96px; padding-right: calc(6px + 14px + 4px); font-size: var(--fs-sm); color: var(--t2); text-align: right; }
+/* One right edge for the role column (round 15, new P3-b and daily P3-1): a role that cannot be changed ends where a menu's chevron ends, the
+   menu's 6 px end padding kept, as every word of Settings › Company's column ends there. Round 14 ended it with the menu's word, and "Owner"
+   still stood 16 px short of "Member ⌄" in a column whose edge is the chevrons. */
+.spset__role { flex: none; min-width: 96px; padding-right: 6px; font-size: var(--fs-sm); color: var(--t2); text-align: right; }
 .spset__role.ui-select, .spset__roleselect { flex: none; }
 .spset__rolecell { flex: none; min-width: 96px; text-align: right; }
 .spset__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
@@ -158,7 +162,7 @@
   .newspace, .delspace { padding: 18px 16px 22px; }
   .newspace--pinned { padding: 0; }
   .newspace--pinned .newspace__head { padding: 18px 16px 10px; }
-  .newspace--pinned .newspace__body { padding: 4px 16px 14px; }
+  .newspace--pinned .newspace__body { padding: 14px 16px; }
   .newspace--pinned .newspace__foot { padding: 10px 16px 14px; flex-wrap: wrap; }
   .newspace__why { flex: 1 0 100%; }
   .newspace__foot .ui-btn, .delspace .newspace__foot .ui-btn { flex: 1; min-height: 44px; }
