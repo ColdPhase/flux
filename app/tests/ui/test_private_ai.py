@@ -309,8 +309,8 @@ class PrivateAiJourney(unittest.TestCase):
             if held:
                 break
             page.wait_for_timeout(100)
-        page.unroute("**/api/v1/projects/*/conversations")
         held[0].continue_()
+        page.unroute("**/api/v1/projects/*/conversations")
         expect(page.locator(".project-convo__message").filter(has_text="Seeds from last year")).to_be_visible()
         expect(start).to_have_count(0)
 

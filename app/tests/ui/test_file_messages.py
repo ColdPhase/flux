@@ -716,7 +716,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                     scope = page.locator(selector)
                     scope.scroll_into_view_if_needed()
                     self.assert_one_unit(scope)
-                    if name != "others":
+                    if name not in ("others", "own"):  # one photo has its name and size on it; the two in a space have none
                         self.assert_meta_under_photo(scope)
                     if name == "direct message, own" and not phone:
                         opener = scope.get_by_role("button", name="Open photo dm-hedge.png")
