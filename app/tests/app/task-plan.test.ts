@@ -524,10 +524,12 @@ test('the reader is direct, distinct, ascending, lock-free and bounded; the star
 });
 
 /**
- * The rows the graph test builds (2,072 tasks and 2,050 edges) are not what it measures. Each task row runs its triggers (its number, its
- * search document with the BM25 index), about a second for a thousand on an idle machine and past the pool's 2 s read timeout on a loaded
- * one, where four full checks failed on this setup alone ("Query read timeout" at `insertTasks`). Setup gets a read timeout of its own;
- * the reads and writes under test keep the pool's.
+ * The rows the graph test builds (2,072 tasks and 2,050 edges) are not what it measures. Each task row runs its row triggers (its number,
+ * its search document into the BM25 index): 770-800 ms for one INSERT of a thousand tasks on a fresh stack, 15 ms for the same rows with the
+ * triggers off (measured 2026-11-17). The reads under test are bounded and fast: 4 ms for the 1,000 direct prerequisites, 183 ms for the
+ * whole cycle walk over 1,001 tasks (1,000 small statements). After half an hour of the full suite on a loaded host, the setup INSERT alone
+ * passed the pool's 2 s read timeout four times ("Query read timeout" at `insertTasks`). So setup gets a read timeout of its own, and the
+ * reads and writes under test keep the pool's 2 s.
  */
 const SETUP_TIMEOUT_MS = 60_000;
 const setupQuery = (text: string, values: unknown[]) => pool.query({ text, values, query_timeout: SETUP_TIMEOUT_MS } as { text: string; values: unknown[] });
