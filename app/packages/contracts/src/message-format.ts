@@ -256,11 +256,22 @@ export function withoutCiteMarks(text: string): string {
 }
 
 /**
- * Words for a plain one-line place (an Inbox preview, a card's reason, a change line, a notification): what `plainMessageText` gives, a Wiki page
- * `[[Title]]` as its title, and no cite mark.
+ * Words for a plain place (Copy text, a preview): what `plainMessageText` gives, a Wiki page `[[Title]]` as its title, and no cite mark.
  */
 export function plainPreviewText(body: string): string {
   return plainMessageText(withoutCiteMarks(body)).replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').trim();
+}
+
+/**
+ * Words for a one-line place (an Inbox row, a message preview, a notification, a change line): `plainPreviewText` on one line, where a list
+ * reads as words, not marks (train 37 row 22: "Reasons: - Setup time…"): its items one after another, "; " between two where the first ends
+ * without its own stop.
+ */
+export function oneLinePreviewText(body: string): string {
+  return parseMessage(withoutCiteMarks(body)).map((block) => (block.kind !== 'list' ? blockText(block)
+    : block.items.map((item) => inlineText(item).trim()).filter(Boolean)
+      .reduce((line, item) => (!line ? item : `${line}${/[.!?;:…]$/.test(line) ? ' ' : '; '}${item}`), '')))
+    .join(' ').replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -268,12 +279,15 @@ export function plainPreviewText(body: string): string {
  * its attribution line, a list keeps "- " and "1. ". Previews, notifications and Copy text use it; nothing is added to the words.
  */
 export function plainMessageText(body: string): string {
-  return parseMessage(body).map((block) => {
-    switch (block.kind) {
-      case 'text': return inlineText(block.inline);
-      case 'quote': return [block.author === null ? null : `${block.author}:`, inlineText(block.inline)].filter((line) => line !== null).join('\n');
-      case 'list': return block.items.map((entry, index) => `${block.ordered ? `${block.start + index}.` : '-'} ${inlineText(entry)}`).join('\n');
-      case 'code': return block.text;
-    }
-  }).join('\n');
+  return parseMessage(body).map(blockText).join('\n');
+}
+
+/** One block as plain text, its list marks kept. */
+function blockText(block: MessageBlock): string {
+  switch (block.kind) {
+    case 'text': return inlineText(block.inline);
+    case 'quote': return [block.author === null ? null : `${block.author}:`, inlineText(block.inline)].filter((line) => line !== null).join('\n');
+    case 'list': return block.items.map((entry, index) => `${block.ordered ? `${block.start + index}.` : '-'} ${inlineText(entry)}`).join('\n');
+    case 'code': return block.text;
+  }
 }

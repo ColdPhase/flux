@@ -22,6 +22,7 @@ import time
 import unittest
 import urllib.request
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, TimeoutError as PlaywrightTimeout, expect, sync_playwright
 
@@ -617,6 +618,20 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(bar).to_contain_text("Not enough left of your API key’s $5.00 daily budget. A request now starts", timeout=10000)
         expect(bar.get_by_role("button", name=re.compile("raise|switch|another|instead", re.I))).to_have_count(0)
         shot(jo, "assistant-1440-capped")
+        # Train 37 row 36: a request that waits for the key's next day is never "getting ready" or "Working on #…" on the working card; it says
+        # the truth, when it starts again and where the budget is raised. The waiting run is stubbed like the status above (wording only).
+        template = next(item for item in self.own_runs(jo) if item["projectId"])
+        tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+        waiting = {**template, "id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "status": "queued", "endReason": "budget", "resumesAt": tomorrow,
+                   "stopRequested": False, "stopAcknowledged": False, "answer": None, "task": None, "prompt": "what is still open?"}
+        jo.route("**/api/v1/assistant-runs?*", lambda route: route.fulfill(status=200, content_type="application/json",
+                 body=json.dumps({"items": [waiting], "total": 1, "limit": 10, "offset": 0})) if route.request.method == "GET" else route.continue_())
+        jo.reload()
+        card = jo.locator('[data-ai-surface="working-assistant"]:not(.agentlive--compact)').first
+        expect(card).to_contain_text("Waiting: today’s AI budget is used up", timeout=10000)
+        expect(card).not_to_contain_text("getting ready")
+        expect(card).to_have_attribute("aria-label", re.compile(r"Waiting: today’s AI budget is used up\. It starts again .+, or raise the budget in Settings › AI\."))
+        jo.unroute("**/api/v1/assistant-runs?*")
         # Human work is never blocked by the budget.
         kai = self.conversation("kai")
         self.composer(kai).fill("Noted, thanks.")

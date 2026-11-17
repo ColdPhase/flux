@@ -1,6 +1,7 @@
 import type { AssistantJobSchedule } from '@flux/contracts';
 import type { RunRecord } from '../personal-runs/ports.js';
 import { scheduleWords, shortClock } from './schedule.js';
+import { withoutCitationMarks } from '../personal-runs/answer-marks.js';
 
 // The plain words of a schedule's history line (F-027 AST-7 "Output", "Failures", "Missed runs"): pure.
 
@@ -51,4 +52,15 @@ const NOTHING = /^\W*(done\W*)?nothing (to report|new|to change)\W*$/i;
 export function nothingToReport(answer: string | null): boolean {
   const text = (answer ?? '').trim();
   return !text || text === '(No answer text.)' || NOTHING.test(text);
+}
+
+/**
+ * What a firing leaves in the agent's conversation: the answer of a run that ended well, what happened otherwise. Nothing to report says nothing.
+ * The words are the result alone: the schedule's name and times are the line's own (`chatSchedule`).
+ */
+export function chatBody(state: 'done' | 'skipped' | 'failed', line: string, run: Pick<RunRecord, 'answerBody' | 'answerSources'>): string | null {
+  const answer = run.answerBody;
+  // The line keeps no sources to list, so the bare `[1]` marks of the answer's go, as in a report's line (AG-7; train 37 row 28).
+  if (state === 'done') return nothingToReport(answer) ? null : withoutCitationMarks((answer ?? '').trim(), run.answerSources.length);
+  return line;
 }

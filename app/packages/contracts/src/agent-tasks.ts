@@ -21,6 +21,8 @@ export interface TaskAgentState {
   text: string;
   /** With `paused_by_limit`. */
   resumesAt: string | null;
+  /** With `paused_by_limit`: it waits for the API key's next day, not a plan's limit, so the line says where the budget is raised (train 37 row 36). */
+  budget?: true;
   stoppedBy: { id: string; name: string } | null;
   /** Whether this reader may press Stop, Try again, or Take it back (the owner's own Owner field does the last). */
   canStop: boolean;

@@ -229,6 +229,9 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         # also what it answered in this test class's real runs since the time the chat was last read.
         expect(self.pill(feed)).to_have_text(re.compile(r"^\d+ new$"))
         opened = int(self.pill(feed).inner_text().split()[0])
+        # No words of the feed are under the line (train 37 row 18): it stands below the feed's visible part, not over it.
+        overlap = self.pill(feed).evaluate("(el, feed) => feed.getBoundingClientRect().bottom - el.getBoundingClientRect().top", feed.element_handle())
+        self.assertLessEqual(overlap, 0.5, f"{label}: the line covers {overlap}px of the feed")
         if surface.get("starts"):
             self.assertGreaterEqual(opened, NEW, f"{label}: all that is new is counted on opening")
         else:
@@ -417,7 +420,11 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", replies[0]), f"{label}: the divider is right above the first reply")
             self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a thread never opened opens at its root")
             expect(feed.locator(".thread__root")).to_be_in_viewport()
-            expect(page.locator(f"#message-{replies[0]}")).to_be_in_viewport()
+            expect(divider).to_be_in_viewport()
+            if not phone:
+                expect(page.locator(f"#message-{replies[0]}")).to_be_in_viewport()
+            # On the phone's half sheet the "N new" line takes its own room under the divider (train 37 row 18: it covered the first reply there),
+            # so the first reply starts just below it rather than under it.
             # "↓ N new" counts the 20 replies below from the start, then what arrives, and leads to the end.
             pill = self.pill(feed)
             expect(pill).to_have_text("20 new")

@@ -130,6 +130,9 @@ class AgentChatFiles(unittest.TestCase):
         expect(jo.get_by_role("list", name="Files in your draft")).to_have_count(0)
         mine = jo.locator("[data-chat-me]").filter(has_text="What is in these?")
         expect(mine.locator(".photo-grid__tile[data-photo-state='ready']")).to_have_count(1)
+        # The photo shows whole, in its own shape, not cut to a 4:3 tile (train 37 row 31).
+        drawn = mine.locator(".photo-grid__tile img").evaluate("el => ({ box: el.clientWidth / el.clientHeight, own: el.naturalWidth / el.naturalHeight })")
+        self.assertAlmostEqual(drawn["box"], drawn["own"], delta=0.02, msg=f"the photo is drawn in its own shape: {drawn}")
         expect(mine.get_by_role("link", name="Download notes.txt")).to_have_attribute("href", re.compile(r"^/api/v1/files/[0-9a-f-]{36}$"))
         answer = jo.locator("[data-chat-agent]").filter(has_text="water on Mondays")
         expect(answer).to_be_visible(timeout=20000)

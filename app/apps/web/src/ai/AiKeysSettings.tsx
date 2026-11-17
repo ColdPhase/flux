@@ -9,7 +9,7 @@ import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { BUDGET_PROBLEM, budgetCents, keyFailure, money } from './AddKeyForm';
 import { ConnectAiWindow } from './ConnectAiWindow';
-import { priceSourceText, priceText } from './ConnectionFields';
+import { plainPrice, priceSourceText } from './ConnectionFields';
 import './background.css';
 
 /** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget. A key is added in the Connect AI window, the one way (#1438 point 9). */
@@ -124,7 +124,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
             <div><dt>Model</dt><dd>{item.modelName}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
-              ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>
+              ? <>{plainPrice(item.price)} · {priceSourceText(item.price, item.provider)}</>
               : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
           </dl>

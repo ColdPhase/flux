@@ -61,10 +61,16 @@ export const planLimitLine = (plan: string, resetsAt: string | null | undefined)
 /** A request that ended at the plan's limit and will not start again by itself: it may have changed things (#854). */
 const planEndedLine = (plan: string, resetsAt: string | null | undefined) =>
   resetsAt ? `${plan} limit reached until ${resumeWords(resetsAt).replace(/^at /, '')}.` : `${plan} limit reached.`;
+/** The short words of a run that waits for the API key's next day (train 37 row 36): what the working card says, where a sentence does not fit. */
+export const BUDGET_WAITING = 'Waiting: today’s AI budget is used up';
+/** The whole truth of that wait, for its owner: when it starts again and where the budget is raised (#854, train 37 rows 36-37). */
+export const budgetWaitText = (resumesAt: string) => `${BUDGET_WAITING}. It starts again ${resumeWords(resumesAt)}, or raise the budget in Settings › AI.`;
+/** A run that waits, queued, for the key's next day: never "getting ready" or "working" (train 37 row 36). */
+export const waitsForBudget = (run: Pick<AssistantRun, 'status' | 'endReason' | 'resumesAt'>) => run.status === 'queued' && run.endReason === 'budget' && !!run.resumesAt;
 /** The line of a request paused by its connection's limit, waiting to start again by itself (#854). */
 export function pausedLine(run: Pick<AssistantRun, 'endReason' | 'resumesAt' | 'planLimitResetsAt' | 'runtimeClient'>): string | null {
   if (!run.resumesAt) return null;
-  if (run.endReason === 'budget') return `Not enough left of your API key’s daily budget, resumes ${resumeWords(run.resumesAt)}`;
+  if (run.endReason === 'budget') return budgetWaitText(run.resumesAt);
   // Without a time from the plan the line has none: Flux tries again later, and that is not the plan's reset.
   return planLimitLine(runtimeNames(run.runtimeClient ?? 'claude_code').plan, run.planLimitResetsAt);
 }
@@ -125,7 +131,7 @@ function endedWords(run: AssistantRun): string | null {
   if (run.endReason === 'ai_off') return 'AI was turned off in this space, so your assistant stopped.';
   if (run.endReason === 'mcp_results_too_large') return 'This needed more reading than one request can carry. Nothing was posted.';
   // When it comes back and what the owner can do (v0.2.1 release gate, J34): the day's budget starts again tomorrow, and Connect AI raises it.
-  if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget, so nothing more was sent today. It starts again tomorrow, or raise the daily budget in Settings › AI › Connect AI.';
+  if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget, so nothing more was sent today. It starts again tomorrow, or raise the budget in Settings › AI.';
   if (run.endReason === 'credits') return 'API credits used up. API requests stop until your next monthly credits arrive.';
   if (onRuntime(run)) {
     const words = runtimeEndedText(run);

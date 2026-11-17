@@ -168,3 +168,18 @@ export function withoutOwnSources(answer: string, listed: ReadonlySet<string>): 
   }
   return answer;
 }
+
+/**
+ * The `[1]` marks pointed at sources only the asker's card could open: posted as a message they mean nothing. Only a mark of a source the
+ * answer has is taken out (after a space, after punctuation, or at the start of a line), and none in code (`items[0]`, a literal "[1]").
+ */
+export function withoutCitationMarks(body: string, sources: number): string {
+  const valid = (number: string) => Number(number) >= 1 && Number(number) <= sources;
+  const taken = (gap: string) => body.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, index) => (index % 2 ? part : part
+    .replace(/[ \t]\[(\d{1,3})\]/g, (mark, number: string) => (valid(number) ? gap : mark))
+    .replace(/(^|\n)\[(\d{1,3})\][ \t]?/g, (mark, before: string, number: string) => (valid(number) ? before : mark))
+    .replace(/([.,;:!?…"”’])\[(\d{1,3})\]/g, (mark, before: string, number: string) => (valid(number) ? `${before}${gap}` : mark)))).join('').trim();
+  // A mark taken out never joins the text on its sides into a web address that was not there (#1149): then a space stands in its place.
+  const plain = taken('');
+  return (joinsAddress(body, plain) ? taken(' ') : plain) || body;
+}

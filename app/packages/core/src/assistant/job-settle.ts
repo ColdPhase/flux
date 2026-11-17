@@ -2,7 +2,7 @@ import { ASSISTANT_JOB_LIMITS } from '@flux/contracts';
 import { announce } from '../personal-runs/progress.js';
 import type { RunRecord } from '../personal-runs/ports.js';
 import { postToAgentChat } from '../personal-runs/agent-chat.js';
-import { chatSchedule, clockIn, nothingToReport, resultOf } from './job-result.js';
+import { chatBody, chatSchedule, clockIn, resultOf } from './job-result.js';
 import type { AssistantJobPorts } from './jobs-ports.js';
 
 // Closing a schedule's firing once its run has ended (F-036 AG-9, #858): its words in the history, and the result in the agent's
@@ -11,14 +11,6 @@ import type { AssistantJobPorts } from './jobs-ports.js';
 
 const IN_FLIGHT = new Set<RunRecord['status']>(['queued', 'reading', 'dispatching']);
 
-/**
- * What a firing leaves in the agent's conversation: the answer of a run that ended well, what happened otherwise. Nothing to report says nothing.
- * The words are the result alone: the schedule's name and times are the line's own (`chatSchedule`).
- */
-function chatBody(state: 'done' | 'skipped' | 'failed', line: string, answer: string | null): string | null {
-  if (state === 'done') return nothingToReport(answer) ? null : (answer ?? '').trim();
-  return line;
-}
 
 /** Whether a firing whose run has not ended has to wait: it is working, or queued within the missed-run window. */
 const waiting = (run: RunRecord, firedAt: Date, now: Date) =>
@@ -53,7 +45,7 @@ export async function settleOne(ports: AssistantJobPorts, jobRunId: string, now:
   }
   const result = resultOf(run, job.timeZone, now);
   await finish(result.state, result.line);
-  const body = chatBody(result.state, result.line, run.answerBody);
+  const body = chatBody(result.state, result.line, run);
   if (body) await postToAgentChat(ports, { agentId: job.agentId, runId: run.id, key: `job:${firing.id}`, body, schedule: chatSchedule(job, result.state !== 'done') });
   await ports.jobs.trimRuns(job.id, ASSISTANT_JOB_LIMITS.history);
   return true;

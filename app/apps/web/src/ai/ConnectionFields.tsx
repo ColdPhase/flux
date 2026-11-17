@@ -45,9 +45,7 @@ export function priceSourceText(price: AiPrice, provider?: AiProviderKind) {
   return price.checkedOn ? `${list} of ${checkedDay(price.checkedOn)}` : list;
 }
 
-export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
-  `${perMillion(price.inputMicrosPerMTok)} input · ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens`;
-/** The form's price in plain words (#1424): "$4.00 for what you send and $20.00 for what it writes, per million tokens". */
+/** A price in plain words (#1424), in the form and on the key's page alike (train 37 row 5): "$4.00 for what you send and $20.00 for what it writes, per million tokens". */
 export const plainPrice = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
   `${perMillion(price.inputMicrosPerMTok)} for what you send and ${perMillion(price.outputMicrosPerMTok)} for what it writes, per million tokens`;
 

@@ -253,6 +253,11 @@ export interface PersonalRunRepository {
    * first and then oldest first: the next starts when the one before it ends.
    */
   startableQueued(limit: number, keys?: boolean): Promise<string[]>;
+  /**
+   * The owner's requests on this key that wait, queued, for its next day (#854): what raising its budget starts again (train 37 row 37). Absent: none
+   * is looked up.
+   */
+  waitingForBudget?(ownerUserId: string, connectionId: string): Promise<string[]>;
   insertRun(run: NewRun): Promise<RunRecord>;
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
   /**

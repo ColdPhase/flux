@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { hasInvisibleFormat, myAgentPath, withoutInvisibleFormat, type Agent, type MyAgent, type SearchResponse } from '@flux/contracts';
+import { hasInvisibleFormat, myAgentPath, removedName, viaName, withoutInvisibleFormat, type Agent, type MyAgent, type SearchResponse } from '@flux/contracts';
 import { profileFromClaims } from '../../apps/server/src/identity/claim-profile.js';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
@@ -87,4 +87,10 @@ test('a name from an identity provider is cleaned, never refused, so single sign
   assert.deepEqual(profile, { ok: true, subject: 'sub-9', email: 'ada@example.test', name: 'Ada TNATSISSA' });
   const only = profileFromClaims(issuer, { iss: issuer, sub: 'sub-10', email: 'bo@example.test', email_verified: true, name: '\u202e\u200b' });
   assert.deepEqual(only, { ok: true, subject: 'sub-10', email: 'bo@example.test', name: null }, 'a name of nothing visible is no name');
+});
+
+test('an answer a removed person showed everyone is named with the mark, "Marek Zieliński (removed)\'s Assistant" (train 37 row 33, C-56)', () => {
+  assert.equal(viaName('Marek Zieliński', 'Assistant', true), 'Marek\'s Assistant', 'a member: their first name');
+  assert.equal(viaName(removedName('Marek Zieliński'), 'Assistant', true), 'Marek Zieliński (removed)\'s Assistant', 'a removed person: the whole marked name');
+  assert.equal(viaName(removedName('Marek Zieliński'), 'Claude Code'), 'Marek Zieliński (removed) · via Claude Code', 'a local client\'s post keeps its form');
 });

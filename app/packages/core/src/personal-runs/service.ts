@@ -1,4 +1,4 @@
-import { joinsAddress } from './web-addresses.js';
+import { withoutCitationMarks } from './answer-marks.js';
 import { budgetLine } from '../assistant/job-result.js';
 import type { AgentSetup } from '../assistant/ports.js';
 import { randomUUID } from 'node:crypto';
@@ -189,19 +189,21 @@ async function webSourcesOf(ports: PersonalRunPorts, record: RunRecord): Promise
   return line ? { webSources: line } : {};
 }
 
+
 /**
- * The `[1]` marks pointed at sources only the asker's card could open: posted as a message they mean nothing. Only a mark of a source the
- * answer has is taken out (after a space, after punctuation, or at the start of a line), and none in code (`items[0]`, a literal "[1]").
+ * The owner raised a key's daily budget (train 37 row 37): the requests that wait on it for its next day are offered to the worker again now, as if
+ * the day had turned. A request the budget still cannot hold waits again when it is claimed, with the same words. Inside the budget's transaction.
  */
-export function withoutCitationMarks(body: string, sources: number): string {
-  const valid = (number: string) => Number(number) >= 1 && Number(number) <= sources;
-  const taken = (gap: string) => body.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, index) => (index % 2 ? part : part
-    .replace(/[ \t]\[(\d{1,3})\]/g, (mark, number: string) => (valid(number) ? gap : mark))
-    .replace(/(^|\n)\[(\d{1,3})\][ \t]?/g, (mark, before: string, number: string) => (valid(number) ? before : mark))
-    .replace(/([.,;:!?…"”’])\[(\d{1,3})\]/g, (mark, before: string, number: string) => (valid(number) ? `${before}${gap}` : mark)))).join('').trim();
-  // A mark taken out never joins the text on its sides into a web address that was not there (#1149): then a space stands in its place.
-  const plain = taken('');
-  return (joinsAddress(body, plain) ? taken(' ') : plain) || body;
+export async function resumeBudgetWaits(ports: PersonalRunPorts, ownerUserId: string, connectionId: string): Promise<number> {
+  let resumed = 0;
+  for (const id of await ports.runs.waitingForBudget?.(ownerUserId, connectionId) ?? []) {
+    const run = await ports.runs.findRun(id, { lock: true });
+    if (!run || run.status !== 'queued' || run.endReason !== 'budget' || !run.resumeAt) continue;
+    await updateAndAnnounce(ports, id, { resumeAt: null, endReason: null });
+    await ports.queue.enqueue(id);
+    resumed++;
+  }
+  return resumed;
 }
 
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {

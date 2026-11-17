@@ -139,7 +139,9 @@ MCP). That includes a local client's own work on a task: a line in a task's disc
 task, claiming, pausing (releasing), finishing, declining or handing over a co-work unit. Two things do not wait: **a question to
 the owner alone** (asking the owner is how the agent gets its OK; a question to anyone else waits), and **renewing a claim** the owner
 let it make. What an agent runs in its own sandbox or on its owner's computer (commands, files, builds) is not a Flux change and is
-not governed by this switch.
+not governed by this switch. A server agent's report in its task's discussion is its answer, which Flux puts there when the run ends (AG-4 "No drafts for
+other people", AG-7): it is not a change under this switch, posts with Ask me first on as well, and notifies nobody but its owner; the
+owner may delete it, like every line of the run (v0.2.1 real-model gate, train 37 row 17: recorded, not changed).
 
 The switch replaced the three-way "What it may do" (Only read / Do it and tell me / Ask me first).
 "Only read" added little: deleting and other people's things always wait, and an agent that should
@@ -216,7 +218,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **`/ai` everywhere.** In every conversation the person can write in (a space's conversation,
   threads, a task's thread and DMs), `/ai` asks their Assistant. Only the asker sees the answer, as
   a card in the conversation with Dismiss and Show everyone. Show everyone posts it as the asker's
-  message (they stay its author), labelled "Ada's Assistant" (their first name and the agent's own name)
+  message (they stay its author), labelled "Ada's Assistant" (their first name and the agent's own name; someone who left the company
+  or was removed, by their whole marked name, "Stefan Kowal (removed)'s Assistant", train 37 row 33)
   with the agent's Kreska, in the agent's message style, for every reader including the asker (#1232,
   [the design](../design/final/README.md)). The agent may use the conversation as context, for
   example to summarise it. A guest has no `/ai`. The places, what each may use and what Show everyone
@@ -297,7 +300,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   shows one line per task event.
 - **One state line** in the task panel: waiting for room on the server, working, waiting for
   your OK, paused by the provider's limit (with when it resumes), failed (with Try again or Take
-  it back), stopped (by whom), done, or handed back.
+  it back), stopped (by whom), done, or handed back. A run that waits for its owner's API key's next day says so wherever it shows: "Waiting: today's AI
+  budget is used up. It starts again at 0:00, or raise the budget in Settings › AI." on the line and the working card, and the
+  agent's first words in the task are that it waits, never "I'm on it" (train 37 row 36).
 - **Finishing** follows the agent's Ask me first switch: off, it marks the task Done and tells
   the owner, with Undo; on, it hands the task back, "Ready for you to check". **One exception:** a task that is Blocked when
   the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
@@ -442,7 +447,10 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
 
 - The owner makes a schedule by telling an agent in its private conversation, for example
   "Every weekday at 9 summarise new tasks for me". The agent answers in plain words with what it
-  prepared and the owner confirms it there with one tap. Nothing else makes a schedule: not `/ai`
+  prepared and the owner confirms it there with one tap. Its answer, the schedule's name and its instruction are in the language the owner
+  asked in, the same rule as `/ai`, never one guessed from a name or a time zone, and every run of it reports in that language; the card
+  shows the instruction in plain words, without tool names or the run's cite marks (v0.2.1 real-model gate, train 37 rows 16, 25-26). A
+  schedule's result in the chat drops the bare `[1]` numbers of sources it cannot list, as a report does (AG-7). Nothing else makes a schedule: not `/ai`
   in a space, and not a run of a schedule.
 - Schedules are listed in that conversation: its header has one line ("Every weekday 9:00 ·
   Garden summary · 1 schedule"), on the computer and the phone, that opens the one list, where the

@@ -19,6 +19,8 @@ interface Options {
   afterConnect?: (ownerUserId: string) => Promise<void>;
   /** Called after a key was removed: with one connection left, the agents whose key it was go on it (#1424). */
   afterRemove?: (ownerUserId: string) => Promise<void>;
+  /** Called after a key's daily budget was changed: the requests waiting on it for its next day start again (train 37 row 37). */
+  afterBudget?: (ownerUserId: string, connectionId: string) => Promise<void>;
   /** Asks the worker to read a stored key's models again (#1218); absent: Try again answers from what is stored. */
   refresh?: ModelListRefresh;
 }
@@ -26,7 +28,7 @@ interface Options {
 const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
 const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, maximum: API_KEY_DAILY_BUDGET_CENTS.max };
 
-export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, afterRemove, refresh }: Options) {
+export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, afterRemove, afterBudget, refresh }: Options) {
   const keys = personalConnectionLookup(db);
   const listing = onePerPerson<AiModelList>();
   // The price lists (#1465), as last stored. OpenRouter's is what an OpenRouter key pays: it is read from OpenRouter's model list when a
@@ -90,7 +92,12 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
   app.patch<{ Params: { connectionId: string }; Body: UpdateBackgroundComputeConnectionCommand }>('/api/v1/background-compute-connections/:connectionId', {
     schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
       name: { type: 'string', minLength: 1, maxLength: 80 }, dailyBudgetCents: dailyBudget } } },
-  }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
+  }, async (request) => {
+    const { principal } = await sessions.requirePrincipal(request);
+    const changed = await connections.update(principal, request.params.connectionId, request.body);
+    if (request.body.dailyBudgetCents !== undefined) await afterBudget?.(principal.id, changed.id);
+    return changed;
+  });
   // A provider's models, listed by this server through the endpoint guard (PROV-1): OpenRouter and an endpoint with the key the person has
   // typed, or without one when none is typed; Anthropic, OpenAI and Gemini with the key being added, which is its test (CA-2, #1218). The key
   // is never stored, logged or echoed here.

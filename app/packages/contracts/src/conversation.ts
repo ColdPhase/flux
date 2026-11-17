@@ -1,3 +1,4 @@
+import { ownerInLabel } from './names.js';
 import type { SearchTarget } from './search.js';
 import type { AgentColour } from './agents.js';
 
@@ -82,7 +83,8 @@ export interface MessageReference { kind: MessageReferenceKind; id: string }
  */
 export function viaName(author: string, via?: string | null, viaAgent = false): string {
   if (!via) return author;
-  return viaAgent ? `${author.trim().split(/\s+/)[0] || author}'s ${via}` : `${author} · via ${via}`;
+  // The person as an agent's label names its owner: first name, or the whole marked name of someone removed (C-56, #1424, train 37 row 33).
+  return viaAgent ? `${ownerInLabel(author)}'s ${via}` : `${author} · via ${via}`;
 }
 
 export const MESSAGE_REFERENCE_LIMIT = 4;

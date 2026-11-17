@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, personalRunWebReadRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { plainPreviewText } from '@flux/contracts';
-import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, withoutCitationMarks, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId, endedSourcesLine,
+import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, withoutCitationMarks, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takenWords, takeAsk, taskRunClientId, endedSourcesLine,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
@@ -47,6 +47,8 @@ export interface AgentTaskDrain {
 
 /** The step was refused by the start itself, and the savepoint holding the agent's first words is rolled back with it. */
 class Refused extends Error { constructor(readonly line: string) { super(line); } }
+/** The run started, but not as the words said: it waits for the key's next day. Its start is made again with these words. */
+class Reworded extends Error { constructor(readonly words: string) { super(words); } }
 
 export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactory, composition: Omit<PersonalRunComposition, 'queue'>,
   log: { warn(object: unknown, message: string): void; error?(object: unknown, message: string): void } = { warn: () => undefined }): AgentTaskDrain {
@@ -231,10 +233,11 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     // The agent says it is on it first: that is what opens the task's discussion, where its run is anchored. No model is called for it.
     // If the start is then refused, the words are taken back with it, so the discussion opens with the refusal and not with a promise.
     let refusal: string | null = null;
-    try {
-      await tx.transaction(async (inner) => {
+    // A run admitted while the key's day has nothing left waits for its next day (#854): "I'm on it" would be untrue, so the start is taken back
+    // and made again with the words that say it waits (train 37 row 36), which open the discussion the same way.
+    const start = (words: string, check = true) => tx.transaction(async (inner) => {
         const { ports, runs } = useCases(inner);
-        await say(inner, work, holder.id, TAKEN_WORDS, `taken:${event.id}`);
+        await say(inner, work, holder.id, words, `taken:${event.id}`);
         const place = await taskDiscussionUseCases(inner as unknown as Database).getDiscussionRoot(human(ownerId), work.id).catch(() => null);
         const started: TaskStart = place
           ? await runs.startTask(ports, { ownerUserId: ownerId, agentId: holder.id, workId: work.id, projectId: work.projectId, conversationId: place.conversationId,
@@ -242,7 +245,14 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
             clientRunId: taskRunClientId(event.id) })
           : { started: false, line: 'I can\'t start: this task has no discussion yet.' };
         if (!started.started) throw new Refused(started.line);
+        const said = takenWords(started.run);
+        if (check && said !== words) throw new Reworded(said);
       });
+    try {
+      try { await start(TAKEN_WORDS); } catch (error) {
+        if (!(error instanceof Reworded)) throw error;
+        await start(error.words, false);
+      }
     } catch (error) {
       if (!(error instanceof Refused)) throw error;
       refusal = error.line;

@@ -254,7 +254,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   request on a model that runs on the key (its own, and the one the assistant uses on it) is
   refused when it is saved, and so is choosing a model whose one request costs more than the
   budget. When less than one request is left, the agent pauses until the next day in the key's
-  time zone. Background work on the key
+  time zone, and says so: "Waiting: today's AI budget is used up. It starts again at 0:00, or raise the budget in Settings › AI."
+  Raising the budget starts the requests that wait on the key at once; one the new budget still cannot hold waits again (train 37 rows
+  36-37). Background work on the key
   shares that one budget; there is no second allowance. A provider-reported cost only reconciles the charge. A
   response whose cost cannot be known counts what the run had spent and the most that one request
   could have cost.
@@ -268,7 +270,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   ([#1441](https://github.com/ColdPhase/flux/issues/1441), [RT-4](ai-modes.md#the-model-gateway-1441)), with the same prices and
   cache rules: each request holds the most it can cost against what is left of the key's day before it is sent, and is charged
   the provider's reported usage after it. One whose usage is missing, malformed or beyond its bounds keeps all it held; a complete
-  error answer of the provider costs nothing. A request the day cannot hold is refused, and the run ends with "budget".
+  error answer of the provider costs nothing. A stream cut because its run was stopped (by its owner, an admin or Flux) counts what it
+  used so far: the input its first event reported and, as its output, every byte it streamed plus 1,024 tokens the provider may have
+  written after the last one; a cut stream whose input was not yet reported, or one lost while nobody stopped its run, keeps all it held
+  (#854; train 37 row 20: two Stops at 6 s counted $0.31 and $0.23, their whole holds). A request the day cannot hold is refused, and the run ends with "budget".
 
 ## CA-4 — Key custody and endpoints
 

@@ -207,6 +207,12 @@ describe('the brief of every run (#1064)', () => {
     const privateText = briefPrivateText(dmFour);
     for (const words of ['Jonas Berg', 'The camera fails below 5 lux.', 'north.csv', 'Help me answer Kai politely in German.']) assert.ok(privateText.includes(words), `${words}: private text for the redaction of what the run says`);
     assert.match(buildBrief(chat).system, /<schedule>/, 'the private chat may prepare a schedule');
+    // Train 37 rows 25-26: a schedule asked for in English came out Polish, guessed from the owner's name and time zone. Its sentence, title and
+    // text are in the language of the owner's message, and the text is plain words, with no tool names or cite marks for the card to show.
+    const schedules = buildBrief(chat).system.split('\nSchedules\n')[1]!.split('\n\n')[0]!;
+    assert.ok(schedules.includes('Your sentence, the title and the text are in the language of Ada Nowak\'s message, never one guessed from a name, a place or a time zone; the text names a language only when Ada Nowak asked for one.'),
+      'a schedule keeps the language its owner asked in');
+    assert.match(schedules, /no tool names, cite marks or formatting rules/, 'the card shows plain words');
     assert.ok(!/<schedule>/.test(buildBrief(base).system) && !/<schedule>/.test(buildBrief(dm).system) && !/<schedule>/.test(buildBrief(scheduled).system),
       'nowhere else (AG-9: not /ai in a space or a DM, and a schedule never makes one)');
     assert.match(buildBrief(scheduled).system, /reply exactly: Nothing to report/);
