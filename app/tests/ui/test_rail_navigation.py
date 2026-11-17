@@ -377,39 +377,44 @@ class RailNavigation(unittest.TestCase):
                 self.assert_discussion_room(sheet, "phone, large text", long=True, lines=1)
                 shot(sheet, f"p3b-decision-room-phone-large-{engine}")
 
-    def test_09_at_200_percent_no_place_in_the_rail_is_half_under_search(self):
-        """personas-36 P3 5: on a space page at 200 % the rail's middle band scrolled to the space and Home stood half under Search. The band
-        rests with a whole place or tile at its top, unfaded, after the page brings the space into view and after the person scrolls it."""
+    def test_09_at_200_percent_the_places_stay_pinned_and_the_open_space_is_in_view(self):
+        """Round 14 P2 (look-a A11, round-37 admin V6): at 200 % (1440×900 is 720×450) the rail scrolled as one band, so on a space page Home was
+        above the window and Search's neighbour was cut. Home, Inbox, My tasks and My map stay pinned under Search, whole and in the window; only
+        the spaces and messages scroll, and they bring the open space into view (personas-36: nothing half under Search)."""
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page, ids = self.setup_owner(engine, many=True, zoom=2)
-                check = """() => { const band = document.querySelector('.side--rail .side__rail-middle'); const b = band.getBoundingClientRect();
-                  const top = b.top + band.clientTop; const fade = parseFloat(getComputedStyle(band).getPropertyValue('--fade-top')) || 0; const found = [];
-                  for (const el of band.querySelectorAll('a[href], button')) { const r = el.getBoundingClientRect(); if (!r.height) continue;
-                    if (r.top < top - 0.5 && r.bottom > top + 0.5) found.push(`${el.getAttribute('aria-label')} cut by the band's top`);
-                    else if (fade && r.top < top + fade && r.bottom > top) found.push(`${el.getAttribute('aria-label')} under the top fade`); }
-                  const search = document.querySelector('.side--rail button[aria-label="Search"]').getBoundingClientRect();
-                  if (search.bottom > top + 0.5) found.push('Search reaches into the band');
-                  return { found, scrolled: band.scrollTop }; }"""
+                check = """() => { const rail = document.querySelector('.side--rail'); const search = rail.querySelector('button[aria-label="Search"]').getBoundingClientRect();
+                  const found = []; const places = rail.querySelector('nav[aria-label="Places"]');
+                  for (const el of places.querySelectorAll('a[href]')) { const r = el.getBoundingClientRect();
+                    if (r.top < search.bottom - 0.5 || r.bottom > innerHeight + 0.5 || r.top < 0) found.push(`${el.getAttribute('aria-label')} is not whole under Search (${Math.round(r.top)}..${Math.round(r.bottom)})`);
+                    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); if (!el.contains(hit)) found.push(`${el.getAttribute('aria-label')} is covered`); }
+                  const band = rail.querySelector('.side__rail-middle');
+                  return { found, band: band.scrollTop, list: rail.querySelector('.side__rail-scroll').scrollTop }; }"""
                 for index in (len(ids["projects"]) - 1, len(ids["projects"]) // 2):
                     page.goto(f"/projects/{ids['projects'][index]['id']}")
                     expect(page.locator(".side--rail .side__rail-project.is-open")).to_be_visible()
                     page.wait_for_timeout(700)
                     seen = page.evaluate(check)
-                    self.assertGreater(seen["scrolled"], 0, "the band brought the space into view")
-                    self.assertEqual(seen["found"], [], f"nothing in the rail is half out of view on the space page: {seen}")
+                    self.assertEqual(seen["found"], [], f"Home, Inbox, My tasks and My map are whole under Search on the space page: {seen}")
+                    self.assertEqual(seen["band"], 0, f"the places do not scroll away: {seen}")
+                    self.assertGreater(seen["list"], 0, f"the spaces' list brought the open space into view: {seen}")
                     shown = page.locator(".side--rail .side__rail-project.is-open").evaluate(
                         "el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
                     self.assertTrue(shown, "the open space is in view")
-                band = page.locator(".side--rail .side__rail-middle")
-                box = band.bounding_box()
+                # Space settings, the page the round saw Home gone on, and the person's own scroll of the spaces leave the places where they are.
+                page.goto(f"/projects/{ids['projects'][-1]['id']}/settings")
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                page.wait_for_timeout(700)
+                self.assertEqual(page.evaluate(check)["found"], [], "the places are whole on Space settings")
+                box = page.locator(".side--rail .side__rail-scroll").bounding_box()
                 for delta in (-23, 37, -61):
                     page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
                     page.mouse.wheel(0, delta)
-                    page.wait_for_timeout(900)
+                    page.wait_for_timeout(500)
                     seen = page.evaluate(check)
-                    self.assertEqual(seen["found"], [], f"nothing in the rail is half out of view after a scroll of {delta}: {seen}")
-                shot(page, f"p3b-rail-200-band-{engine}")
+                    self.assertEqual(seen["found"], [], f"the places stay whole after a scroll of {delta}: {seen}")
+                shot(page, f"round14-rail-200-pinned-{engine}")
 
 
 if __name__ == "__main__":

@@ -13,12 +13,16 @@ export function PersonLine({ email, lastActiveAt }: { email?: string | null; las
   return (
     <span className="lastactive-line">
       {email}
-      {email && words ? <span className="lastactive-sep" aria-hidden="true"> · </span> : null}
+      {/* The dot goes with the words after it, so a line never ends on "·" (round 14, the narrow People and encryption panel). */}
+      {email && words ? ' ' : null}
       {words ? (
-        <span className="lastactive" data-last-active={words.now ? 'now' : 'earlier'}>
-          {words.now ? <span className="lastactive__now" aria-hidden="true" /> : null}
-          {words.bare ? <span className="ui-vh">Last active </span> : null}
-          {words.text}
+        <span className="lastactive-tail">
+          {email ? <span className="lastactive-sep" aria-hidden="true">·{'\u00a0'}</span> : null}
+          <span className="lastactive" data-last-active={words.now ? 'now' : 'earlier'}>
+            {words.now ? <span className="lastactive__now" aria-hidden="true" /> : null}
+            {words.bare ? <span className="ui-vh">Last active </span> : null}
+            {words.text}
+          </span>
         </span>
       ) : null}
     </span>

@@ -19,7 +19,7 @@ import { useDmUnread } from '../dm/dmUnread';
 import type { SpaceIcon } from '@flux/contracts';
 import { SpaceFace } from '../ui/SpaceFace';
 import { useLiveSpaces } from '../live/spaces';
-import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
+import { lockedLine, useEncryptedWorkspaceIds, useLockedPlace, useLockedWorkspaces } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { isTyping } from '../ui/keys';
 import { startsConversations } from '../people/api';
@@ -122,6 +122,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   const location = useLocation();
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const lockedHere = useLockedPlace();
+  const lockedOpen = (workspaceId: string) => location.pathname.startsWith(`/spaces/${workspaceId}`) || lockedHere === workspaceId;
   // The person's own order (#1250): Everyone first, then the spaces they moved, then the rest as they were made.
   const projects = useOrderedProjects();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
@@ -187,9 +189,11 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   useScrollEdges(scroller, lists);
   useScrollEdges(railScroll, lists);
   useScrollEdges(railMiddle, lists);
-  useCurrentInView(scroller, location.pathname, lists);
-  useCurrentInView(railScroll, location.pathname, lists);
-  useCurrentInView(railMiddle, location.pathname, lists);
+  // A locked space is known to be the open place a moment after its page (the route's boundary says so): its tile comes into view then too.
+  const here = `${location.pathname}|${lockedHere ?? ''}`;
+  useCurrentInView(scroller, here, lists);
+  useCurrentInView(railScroll, here, lists);
+  useCurrentInView(railMiddle, here, lists);
   const railProjects = useRef<HTMLElement>(null);
   const railGlide = useRef<HTMLSpanElement>(null);
   const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
@@ -256,9 +260,12 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
             </NavLink>
           ))}
           {locked.map((space) => (
-            <NavLink key={space.id} to={`/spaces/${space.id}`} end={false} className="side__rail-project side__rail-locked" aria-label={`${space.name}, ${lockedLine(space).toLowerCase()}`} title={`${space.name} · ${lockedLine(space)}`}>
+            // A locked space is the open place on its own address and on its project's (round 14: on /projects/… its tile was not marked, so the
+            // rail never brought it into view).
+            <Link key={space.id} to={`/spaces/${space.id}`} className={`side__rail-project side__rail-locked${lockedOpen(space.id) ? ' is-open' : ''}`} aria-current={lockedOpen(space.id) ? 'page' : undefined}
+              aria-label={`${space.name}, ${lockedLine(space).toLowerCase()}`} title={`${space.name} · ${lockedLine(space)}`}>
               <LockTile size={28} />
-            </NavLink>
+            </Link>
           ))}
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
@@ -295,8 +302,9 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
       </div>
       <div className="side__actions">
         {company ? <NewMenu onNew={onNew} /> : null}
-        <button type="button" className="side__search" aria-label="Search" aria-keyshortcuts={searchKeys} title={mac ? 'Search (⌘K)' : 'Search (Ctrl K)'} onClick={() => { onClose?.(); openSearch(); }}>
-          <Icon name="search" size={16} />
+        {/* Without New (no company: never invited, or removed) Search is the row's one button and says its name (round 14: a lone square). */}
+        <button type="button" className={`side__search${company ? '' : ' side__search--wide'}`} aria-label="Search" aria-keyshortcuts={searchKeys} title={mac ? 'Search (⌘K)' : 'Search (Ctrl K)'} onClick={() => { onClose?.(); openSearch(); }}>
+          <Icon name="search" size={16} />{company ? null : <span aria-hidden="true">Search</span>}
         </button>
       </div>
       <div className="side__scroll" ref={scroller}>
@@ -357,13 +365,13 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
               })}
               {locked.map((space) => (
                 <li key={space.id}>
-                  <NavLink to={`/spaces/${space.id}`} end={false} className="side__item side__locked" onClick={navigate} title={`${space.name} · ${lockedLine(space)}`} data-locked-space={space.id}>
+                  <Link to={`/spaces/${space.id}`} className="side__item side__locked" aria-current={lockedOpen(space.id) ? 'page' : undefined} onClick={navigate} title={`${space.name} · ${lockedLine(space)}`} data-locked-space={space.id}>
                     <LockTile />
                     <span className="side__names">
                       <span className="side__label">{space.name}</span>
                       <span className="side__sub">{lockedLine(space)}</span>
                     </span>
-                  </NavLink>
+                  </Link>
                 </li>
               ))}
             </ul>

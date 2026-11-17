@@ -95,6 +95,7 @@ body:has(.app) { background: var(--side); }
   border-radius: 5px; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); font: 500 var(--fs-glyph)/1 var(--mono); color: var(--t2);
 }
 .side__search { width: var(--ctl); padding: 0; flex: none; }
+.side__search.side__search--wide { flex: 1; width: auto; justify-content: flex-start; padding: 0 12px; }
 .newmenu { position: relative; display: flex; flex: 1; }
 .newmenu--compact { flex: none; margin: 10px 0 6px; }
 .newmenu--compact .side__new { width: var(--ctl); height: var(--ctl); padding: 0; justify-content: center; }
@@ -229,6 +230,10 @@ body:has(.app) { background: var(--side); }
 @media (max-height: 480px) {
   .side--rail { padding-top: max(8px, env(safe-area-inset-top)); }
   .side--rail, .side__rail-places, .side__rail-middle { gap: 2px; }
+}
+/* Home, Inbox, My tasks and My map stay pinned while there is room for them and a few tiles (round 14 P2, 200 % zoom on a 900 px screen, 450 px:
+   the band scrolled the open space into view and took Home off the top); only a window too short for that (a phone on its side) scrolls them too. */
+@media (max-height: 419px) {
   .side__rail-middle { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0; }
   .side__rail-middle::-webkit-scrollbar { width: 4px; }
   .side__rail-middle > .side__rail-scroll { flex: none; overflow: visible; }
@@ -597,7 +602,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (pointer: coarse) {
   .side__item { min-height: 44px; }
   .side__new, .side__search { min-height: 44px; }
-  .side__search { width: 44px; }
+  .side__search:not(.side__search--wide) { width: 44px; }
   .side__ib, .side__rail-project, .side__rail-dm, .newmenu--compact .side__new, .me--compact .me__btn { width: 44px; height: 44px; min-height: 44px; }
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */

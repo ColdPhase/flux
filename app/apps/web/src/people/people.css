@@ -12,7 +12,7 @@
 .people__row .ui-avatar { flex: none; font-size: var(--fs-face-lg); color: var(--t2); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
-.people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
+.people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; text-wrap: pretty; }
 /* A removed owner's row for an admin: no Restore (only an owner gives the owner role), one quiet line in its place (#1424 F). */
 .people__removed-note { flex: none; max-width: 40%; font-size: var(--fs-sm); color: var(--t3); text-align: right; }
 /* A person's row on the company's page reads as Space settings' (persona round 6): the name in 600, "(you)" and the line under it quieter. */
@@ -41,6 +41,14 @@
 .people__add, .sset-card.people__add { display: grid; gap: 14px; }
 /* #1438: the invite form keeps the role and the expiry under a quiet More. */
 .people__add > .people__more { justify-self: start; }
+/* Its More starts where the field above it starts: a text button that starts a line under text takes its padding back (round 14: 12 px in). */
+.people__add > .people__more.ui-btn { margin-inline-start: -12px; }
+/* The company's invite form is a card of its own between People's heading and the people's card, 16 px above it (round 14 P2: Create invite link
+   and Close touched the card under them). */
+.sset-card.people__inviteform { padding: 16px 18px 18px; }
+/* A form drawn as a card is one block: no hairline between its parts (the card's rows rule drew one over its buttons and on More's corner). */
+.sset-card.people__add > * + * { border-top: 0; }
+.people--page .details__sec.people__invite { margin-bottom: 16px; }
 .people__more-fields { display: grid; gap: 14px; }
 .people__notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.45; overflow-wrap: anywhere; }
 .people__notice svg { flex: none; margin-top: 2px; color: var(--t3); }
@@ -105,6 +113,8 @@
 .people__ai-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
 .people__ai-status:empty { display: none; }
 .people__ai-status svg { flex: none; margin-top: 2px; color: var(--t1); }
+/* The encrypted space's panel starts with its first section under the panel's header: it has no title of its own (round 14). */
+.details.people:not(.people--page) > .details__sec:first-child { margin-top: 4px; }
 /* People as a Settings page (#763 PE-1): the panel's content in the page column. */
 .people--page { padding: 0; }
 /* #763 FT-1: Allow and Decline for an agent's request sit at the row's end. */
@@ -136,6 +146,8 @@
 /* The role is the menu of roles, drawn as Space settings' (#1424): a quiet "Admin ▾" that opens the roles, its chevron beside the word, in a
    right-aligned column as wide as Space settings' (persona round 6: one look on both pages). */
 .people__rolecell { flex: none; min-width: 96px; text-align: right; }
+/* A role that cannot be changed (the owner's, read by an admin) ends where a menu's word ends, as in Space settings (round 14). */
+.people--page .people__row > .people__role { min-width: 96px; padding-right: calc(6px + 14px + 4px); text-align: right; }
 .people__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
   color: var(--t2); font-size: var(--fs-sm); font-weight: 500; line-height: 1.2; transition: var(--tr); }
 .people__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
@@ -162,8 +174,13 @@
 .people__act[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 /* Remove and Keep asking on a row, here and in Space settings: 8 px apart, never touching (visual review 2026-11-17 V8). */
 .people__confirmrow, .spset__confirm { display: inline-flex; flex: none; gap: 8px; }
+/* The links waiting to be used are one list on Settings › Company and Space settings (round 14 P2: in Space settings its rows had no inset, so
+   the address stood on the card's edge): its rows, the link just made and Revoke's ask keep the card's 18 px inset, as the people above them. */
+.people__waiting .people__row { min-height: 56px; padding: 8px 18px; }
+.people__waiting :is(.people__link, .people__edit) { margin: 0 18px 14px; }
 .people__removing, .people__rownote { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
-.people--page .people__removing, .people--page .people__rownote { margin-inline: 18px; }
+/* What Remove ends starts under the name, not under the face (round 14): the card's 18 px, the 26 px face and the row's 10 px gap. */
+.people--page .people__removing, .people--page .people__rownote { margin-inline: calc(18px + 26px + 10px) 18px; }
 @media (pointer: coarse) { .people__act.ui-btn, .people__confirmrow .ui-btn { min-height: 44px; } }
 /* A row measures the page it is in, not the window (final design L1659–1662, as Settings › AI): under 37.5 rem — a phone, and a portrait
    tablet's or a 1024 px window's page beside the section list (about 440 px) — the name and address keep the whole first line and the role,
@@ -173,6 +190,6 @@
   .people--page .people__item[data-person] .people__who { flex: 1 1 calc(100% - 52px); }
   /* The role's word starts under the name (the button's 10 px padding is taken off). */
   .people--page .people__item[data-person] .people__rolecell { min-width: 0; margin-left: 26px; text-align: left; }
-  .people--page .people__item[data-person] > .people__row > .people__role { margin-left: 36px; }
+  .people--page .people__item[data-person] > .people__row > .people__role { min-width: 0; margin-left: 36px; padding-right: 0; text-align: left; }
   .people--page .people__acts { margin-left: auto; min-width: 0; }
 }

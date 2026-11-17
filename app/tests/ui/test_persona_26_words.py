@@ -214,7 +214,7 @@ class PersonaRound26Words(unittest.TestCase):
         composer = page.locator("#project-composer")
         composer.fill("/ai ")
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("You haven’t set up your assistant.")
+        expect(bar).to_contain_text("Not set up yet.")
         composer.fill("Thank you, I can start at six")
         # Send is not silently dead: it opens the one Connect AI window, and the words wait in the box.
         send = page.get_by_role("button", name="Send to your assistant")

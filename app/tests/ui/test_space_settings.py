@@ -845,7 +845,7 @@ class SpaceSettings(unittest.TestCase):
         page.goto(f"/projects/{pid}/settings")
         expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
         links = page.locator("[data-space-links]")
-        expect(links.get_by_role("heading", name=re.compile(r"^Invited with a link"))).to_contain_text("1")
+        expect(links.get_by_role("heading", name=re.compile(r"^Waiting to be used"))).to_contain_text("1")
         expect(links.get_by_role("listitem").filter(has_text=elsewhere)).to_contain_text("by Ada Kowalska (you)")
         page.get_by_role("button", name="Add people", exact=True).click()
         add = page.get_by_role("group", name="Add people")

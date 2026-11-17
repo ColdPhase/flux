@@ -93,6 +93,7 @@
 .spset__emoji-b:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .spset__seclead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
 .spset__seclead .sset-sec { margin: 0; }
+.spset__seclead .spset__addbtn.ui-btn { margin-right: 0; }
 /* The same quiet count as Company › People, "People 6", and read as "People 6" (personas-27). */
 .spset__count { margin-left: 2px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
 .spset__who { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.35; }
@@ -101,7 +102,9 @@
 .spset__you { font-weight: 400; color: var(--t3); }
 /* One role control (release audit ffcb07c): a role is the same quiet "Member ▾" as on Settings › Company's rows, and a role that cannot be
    changed is the same plain word there (.people__role); never an outlined field in one place and a quiet button in the other. */
-.spset__role { flex: none; min-width: 96px; font-size: var(--fs-sm); color: var(--t2); text-align: right; }
+/* A role that cannot be changed ends where a menu's word ends (round 14: "Owner" stood 8 px right of "Member ⌄"'s chevron and 30 px right of its
+   word): the menu's 6 px end padding, its 14 px chevron and the 4 px between them are kept free, so every role word ends on one line. */
+.spset__role { flex: none; min-width: 96px; padding-right: calc(6px + 14px + 4px); font-size: var(--fs-sm); color: var(--t2); text-align: right; }
 .spset__role.ui-select, .spset__roleselect { flex: none; }
 .spset__rolecell { flex: none; min-width: 96px; text-align: right; }
 .spset__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
@@ -115,8 +118,18 @@
 /* The row's last column holds Remove, or Remove and Keep while it asks: as wide as both, so the role beside it stays put (visual review
    2026-11-17 V8: "Member ▾" jumped 53 px left). A row without Remove keeps the column empty, so every role sits in one line. */
 .spset__acts { display: inline-flex; flex: none; justify-content: flex-end; min-width: 8.5rem; }
+/* What Remove ends, under the person's row and starting under the name (round 14), in the line style of Settings › Company's: no rule above it. */
+.sset-card > li.spset__removing { margin: -4px 0 0; padding: 0 18px 12px calc(18px + 26px + 12px); border-top: 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
+@media (max-width: 640px) { .sset-card > li.spset__removing { padding-inline: calc(16px + 26px + 12px) 16px; } }
 .spset__add { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+/* Add people open is one box (round 14: the card, then a framed box, then the search field): in Space settings the picker lies in the card itself,
+   its search field the only frame inside it. */
+.spset__add .pick:has(> .pick__list) { border-radius: 0; background: none; box-shadow: none; }
+.spset__add .pick:has(> .pick__list) > .pick__list { padding: 0; overflow-x: visible; }
+.spset__add .pick__filter { margin: 0 0 4px; }
 .spset__add .newspace__foot { justify-content: flex-start; }
+/* A lone Close starts where the fields above it start (round 14: 14 px right of them): a text button that starts a line takes its padding back. */
+.spset__add .newspace__foot > .ui-btn--secondary:only-child { margin-inline-start: -14px; }
 /* #1438: "Someone new?" under the company's people: an email and Invite on one row; its link and status under them. */
 .spset__new { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .spset__newform { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
@@ -127,6 +140,8 @@
 .spset__status:empty { display: none; }
 .spset__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .spset__actions .ui-btn { min-height: 32px; }
+/* Leave space starts where the cards above it start: a text button that starts a line takes its padding back (round 14, as Close above). */
+.spset__actions > .ui-btn--secondary:first-child { margin-inline-start: -14px; }
 /* Delete is destructive, and keeps a clear style: a 1 px outline, never the inverted fill (Prostota, quiet buttons). */
 .ui-btn--danger.spset__delete { color: var(--t1); }
 
@@ -157,7 +172,7 @@
   .spset .sset-row[data-person] { flex-wrap: wrap; row-gap: 6px; }
   .spset__who { flex: 1 1 calc(100% - 52px); }
   /* The role's word starts under the name, as on the company's rows (the quiet control's 10 px padding is taken off). */
-  .spset__role, .spset__rolecell { min-width: 0; margin-left: 38px; text-align: left; }
+  .spset__role, .spset__rolecell { min-width: 0; margin-left: 38px; padding-right: 0; text-align: left; }
   .spset__rolecell { margin-left: 28px; }
   .spset__acts { min-width: 0; margin-left: auto; }
   .spset__acts--none { display: none; }

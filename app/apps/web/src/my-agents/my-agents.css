@@ -4,9 +4,11 @@
    tests/app/settings-style-order.test.ts holds every stylesheet to it. */
 
 /* Your agents (mockup Main) */
-.agl__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 22px 2px 8px; }
-.agl__title { display: flex; flex: 1 1 15rem; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+/* The section's heading is Settings' one heading, as Account's and Company's, with its line under it, not beside it (round 14, round-37 V11). */
+.agl__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 26px 2px 10px; }
+.agl__title { display: flex; flex: 1 1 15rem; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .sset-sub.agl__h { margin: 0; }
+@media (max-width: 640px) { .agl__head { margin: 22px 4px 8px; } }
 .agl__head > .ui-btn { margin-left: auto; }
 .agl__lead { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .sset-card.agl__new { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; margin-bottom: 8px; }

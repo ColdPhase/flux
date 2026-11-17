@@ -43,10 +43,12 @@
 .sset-sub { margin: 22px 2px 4px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 /* One section heading on every page of Settings and Space settings, as drawn (visual review 2026-11-17 V11: three styles, 13, 14 and 16 px): 14 px
    semibold in --t1 on the computer, the phone's grouped-list label (13 px, 500, --t3) on the phone. `.sset-sub` is the same heading. */
-.sset-sec, .sset-sub { margin: 26px 2px 10px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
-@media (max-width: 640px) { .sset-sub { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); } }
+.sset-sec, .sset-sub, .spset__links > h4 { margin: 26px 2px 10px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
+@media (max-width: 640px) { .sset-sub, .spset__links > h4 { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); } }
 .sset-note { margin: 10px 2px 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .sset-note--sub { margin: 0 2px 10px; }
+/* A text button that starts a line under a card (Sign out all other devices) starts where the card does: it takes its padding back (round 14). */
+.ui-btn--secondary.sset-hang { margin-inline-start: -14px; }
 .sset-card {
   display: block; list-style: none; margin: 0; padding: 0; border-radius: 18px; background: var(--el);
   box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12); overflow: hidden;

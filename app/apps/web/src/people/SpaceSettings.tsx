@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
 import { INVITE_CREATED_EVENT, INVITE_REVOKED_EVENT, type Project, type ProjectGrant, type ProjectPerson, type WorkspaceInvite, type WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -285,7 +285,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
 
         <div className="spset__seclead">
           <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <> <span className="spset__count">{rows.length}</span></> : null}</h3>
-          {manager && !everyone ? <Button variant="secondary" size="sm" icon="plus" aria-expanded={adding} disabled={!roster} onClick={() => { if (!adding && !window.matchMedia('(hover: none)').matches) awaitField(); setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
+          {/* The same quiet "+ Add people" as the company's "+ Invite" above its people (round 14: 12 px here, 14 px there). */}
+          {manager && !everyone ? <Button variant="quiet" icon="plus" className="access__invite spset__addbtn" aria-expanded={adding} disabled={!roster} onClick={() => { if (!adding && !window.matchMedia('(hover: none)').matches) awaitField(); setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
         </div>
         {manager && adding && roster ? (
           <div className="spset__add" role="group" aria-label="Add people" onKeyDown={onEscape(() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); })}>
@@ -311,8 +312,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
             </span></li></ul>
         ) : (
           <ul className="sset-card" aria-label={`People in ${project.name}`} aria-busy={manager && !roster ? true : undefined}>
-            {rows.map((row) => (
-              <li className="sset-row" key={row.userId} data-person={row.userId}>
+            {rows.map((row) => (<Fragment key={row.userId}>
+              <li className="sset-row" data-person={row.userId}>
                 <Avatar name={row.name} id={row.userId} size="md" tone={row.userId === meId ? 'me' : 'neutral'} />
                 <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> (you)</span> : null}</b><PersonLine email={row.email} lastActiveAt={row.userId === meId ? undefined : row.lastActiveAt} /></span>
                 {/* A guest is never a space's admin, so their row has no choice to make: it says Guest, as everywhere (#1424). */}
@@ -336,8 +337,9 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
                   </span>
                 ) : <span className="spset__acts spset__acts--none" aria-hidden="true" />) : null}
               </li>
-            ))}
-            {manager && removing ? <li className="sset-row spset__removing" role="status"><span className="sset-row__s">{firstName(rows.find((row) => row.userId === removing)?.name ?? 'They')} stops seeing {project.name} at once, not even its name.</span></li> : null}
+              {/* What Remove ends is said under the person's row, as Settings › Company says it (round 14: it stood at the card's foot). */}
+              {manager && removing === row.userId ? <li className="spset__removing" role="status">{firstName(row.name)} stops seeing {project.name} at once, not even its name.</li> : null}
+            </Fragment>))}
           </ul>
         )}
         {listsLinks ? <SpaceLinks workspaceId={project.workspaceId} companyName={companyName} links={links} fresh={freshLink} meId={meId}
@@ -473,7 +475,8 @@ function AiCard({ project, manager, onChanged }: { project: Project; manager: bo
   return (
     <>
       <div className="sset-card" data-ai-switch={on ? 'on' : 'off'}>
-        <SwitchRow label="AI" detail="Let AI agents help in this space" checked={on} disabled={!manager} onChange={(next) => void change(next)} />
+        {/* Under the section's "AI" heading the row says what the switch does, not "AI" a second time (round 14). */}
+        <SwitchRow label="Let AI agents help in this space" checked={on} disabled={!manager} onChange={(next) => void change(next)} />
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </>

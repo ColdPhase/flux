@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject, type SyntheticEvent } from 'react';
 import type { WorkspaceInvite, WorkspaceMember } from '@flux/contracts';
 import { Button, Icon, Input } from '../ui';
 import { attemptKeys, createInvite, problemText, revokeInvite } from './api';
@@ -97,18 +97,70 @@ export function SomeoneNew({ workspaceId, spaceId, spaceName, companyName, membe
 }
 
 /**
+ * The links waiting to be used, one list on both pages that show them (round 14: Settings › Company said "Copy" and "Waiting to be used", Space
+ * settings "Copy link" and "Invited with a link" for the same links): the heading "Waiting to be used · N", each row the address, a line of what
+ * it gives, **Copy link** and **Revoke**. Revoke asks once, in place, with the focus on Keep it, the safe answer, as Remove's Keep (round 14).
+ * The link just made (or one the browser refused to copy) shows once in its row, in a read-only field to read or select.
+ */
+export function InviteLinkList({ headingId, links, meta, shown, linkId, linkRef, canRevoke = () => true, onCopy, onRevoke }: {
+  headingId: string; links: WorkspaceInvite[]; meta: (invite: WorkspaceInvite) => string;
+  /** The link shown in its row: the one just made, or one the browser refused to copy. */
+  shown: (invite: WorkspaceInvite) => boolean; linkId: (invite: WorkspaceInvite) => string; linkRef?: RefObject<HTMLInputElement | null>;
+  canRevoke?: (invite: WorkspaceInvite) => boolean; onCopy: (invite: WorkspaceInvite) => void; onRevoke: (invite: WorkspaceInvite) => void;
+}) {
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const askRef = useRef<HTMLDivElement>(null);
+  const who = (invite: WorkspaceInvite) => invite.email ?? 'Anyone with the link';
+  useEffect(() => { if (revoking) askRef.current?.querySelector<HTMLButtonElement>('button:last-child')?.focus(); }, [revoking]);
+  const keep = (invite: WorkspaceInvite) => { setRevoking(null); requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-invite="${CSS.escape(invite.id)}"] [data-revoke]`)?.focus()); };
+  return (
+    <>
+      <h4 id={headingId}>Waiting to be used <span className="people__count">{links.length}</span></h4>
+      <ul className="people__list sset-card people__waiting" aria-label={`Waiting to be used · ${links.length}`}>
+        {links.map((invite) => (
+          <li className="people__item" key={invite.id} data-invite={invite.id}>
+            <div className="people__row">
+              <span className="people__who"><b>{who(invite)}</b><span>{meta(invite)}</span></span>
+              <span className="people__acts">
+                <Button variant="quiet" size="sm" className="people__act" onClick={() => onCopy(invite)}>Copy link<span className="ui-vh"> for {who(invite)}</span></Button>
+                {canRevoke(invite) ? <Button variant="quiet" size="sm" className="people__act" data-revoke="" aria-expanded={revoking === invite.id}
+                  onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
+              </span>
+            </div>
+            {shown(invite) ? (
+              <div className="people__link" role="group" aria-label="New invite link">
+                <Input ref={linkRef} id={linkId(invite)} label={`Link for ${invite.email ?? 'anyone'}`} readOnly value={invite.link} onFocus={(event) => event.currentTarget.select()} onKeyDown={keepWindow} />
+              </div>
+            ) : null}
+            {/* A revoked link can't come back, so Revoke asks once, in place (#763 FT-13). */}
+            {revoking === invite.id ? (
+              <div className="people__edit" role="group" aria-label={`Revoke link for ${who(invite)}`} ref={askRef}
+                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); keep(invite); } }}>
+                <p className="access__preview">The link stops working at once and can’t be restored. You can make a new one.</p>
+                <div className="details__actions">
+                  <Button variant="danger" onClick={() => { setRevoking(null); onRevoke(invite); }}>Revoke link</Button>
+                  <Button variant="secondary" onClick={() => keep(invite)}>Keep it</Button>
+                </div>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
  * The links Someone new? made for a space, as Space settings lists them (personas-36): read from the server, so they are there when Add people
- * is folded and after a reload, also those made in New space, each with Copy link and Revoke as Settings › Company has them. The link just
- * made shows once in its row, in a read-only field to read or select. A link used, revoked or expired leaves the list.
+ * is folded and after a reload, also those made in New space, in the same list as Settings › Company's (`InviteLinkList`). A link used, revoked
+ * or expired leaves the list.
  */
 export function SpaceLinks({ workspaceId, companyName, links, fresh, meId, onRevoked }: {
   workspaceId: string; companyName: string; links: WorkspaceInvite[]; fresh: string | null; meId: string; onRevoked: (id: string) => void;
 }) {
-  const [revoking, setRevoking] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [problem, setProblem] = useState('');
   const [shown, setShown] = useState<string | null>(null);
-  const who = (invite: WorkspaceInvite) => invite.email ?? 'Anyone with the link';
   async function copy(invite: WorkspaceInvite) {
     const copied = await copyText(invite.link);
     setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.');
@@ -129,33 +181,9 @@ export function SpaceLinks({ workspaceId, companyName, links, fresh, meId, onRev
   if (!links.length) return <div className="people__waiting-none">{statusLine}{problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}</div>;
   return (
     <section className="details__sec spset__links" aria-labelledby="spset-links-h" data-space-links="">
-      <h4 id="spset-links-h">Invited with a link <span className="people__count">{links.length}</span></h4>
-      <ul className="people__list sset-card people__waiting" aria-label={`Invited with a link · ${links.length}`}>
-        {links.map((invite) => (
-          <li className="people__item" key={invite.id} data-invite={invite.id}>
-            <div className="people__row">
-              <span className="people__who"><b>{who(invite)}</b><span>Member · until {until.format(new Date(invite.expiresAt))} · by {youLabel(invite.createdBy.name, invite.createdBy.id === meId)}</span></span>
-              <Button variant="quiet" size="sm" className="people__change" onClick={() => void copy(invite)}>Copy link<span className="ui-vh"> for {who(invite)}</span></Button>
-              <Button variant="quiet" size="sm" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button>
-            </div>
-            {fresh === invite.id || shown === invite.id ? (
-              <div className="people__link" role="group" aria-label="New invite link">
-                <Input id={`spset-link-${invite.id}`} label={`Link for ${invite.email ?? 'anyone'}`} readOnly value={invite.link} onFocus={(event) => event.currentTarget.select()} onKeyDown={keepWindow} />
-              </div>
-            ) : null}
-            {/* A revoked link can't come back, so Revoke asks once, in place, as in Settings › Company (#763 FT-13). */}
-            {revoking === invite.id ? (
-              <div className="people__edit" role="group" aria-label={`Revoke link for ${who(invite)}`} onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setRevoking(null); } }}>
-                <p className="access__preview">The link stops working at once and can’t be restored. You can make a new one.</p>
-                <div className="details__actions">
-                  <Button variant="danger" onClick={() => { setRevoking(null); void revoke(invite); }}>Revoke link</Button>
-                  <Button variant="secondary" onClick={() => setRevoking(null)}>Keep it</Button>
-                </div>
-              </div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      <InviteLinkList headingId="spset-links-h" links={links} shown={(invite) => fresh === invite.id || shown === invite.id} linkId={(invite) => `spset-link-${invite.id}`}
+        meta={(invite) => `Member · until ${until.format(new Date(invite.expiresAt))} · by ${youLabel(invite.createdBy.name, invite.createdBy.id === meId)}`}
+        onCopy={(invite) => void copy(invite)} onRevoke={(invite) => void revoke(invite)} />
       {statusLine}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>
