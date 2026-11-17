@@ -267,9 +267,9 @@ body:has(.app) { background: var(--side); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
 /* The rail's Inbox count sits beside the icon's corner, on the rail's own colour, never on the icon's lines (personas-33/34, 200 %). */
 /* It is pinned to the Inbox button's top-right corner, inside the button's own height, so it reads as the Inbox's and never floats in the gap
-   towards Home (visual review 2026-11-17, core 12); the glyph's lines stay clear (it starts where the 18 px icon ends). */
-.side__count--rail { position: absolute; top: -1px; right: -10px; margin: 0; min-width: 18px; height: 16px; padding: 0 4px; line-height: 16px; background: var(--side); box-shadow: 0 0 0 2px var(--side); }
-@media (pointer: coarse) { .side__count--rail { right: -9px; } }
+   towards Home (visual review 2026-11-17, core 12); it starts 1 px past the 18 px icon's right edge, so the glyph's lines stay clear
+   whatever the number's width (personas-33/34, 200 %). */
+.side__count--rail { position: absolute; top: -1px; left: calc(50% + 10px); right: auto; margin: 0; min-width: 18px; height: 16px; padding: 0 4px; line-height: 16px; background: var(--side); box-shadow: 0 0 0 2px var(--side); }
 /* A space tile's dot for what needs you sits on its corner, as on a person's face in the rail. */
 .side__rail-project .side__dot { position: absolute; top: 1px; right: 1px; box-shadow: 0 0 0 2px var(--side); }
 .side__rail-project { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: 10px; text-decoration: none; }
