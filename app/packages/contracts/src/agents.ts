@@ -1,5 +1,6 @@
 import type { AgentMayDo } from './agent-proposals.js';
 import type { AssistantModelPick } from './assistant-model.js';
+import { ownerInLabel } from './names.js';
 
 // A person's agents (F-036 AG-1, #857): everything is an agent. Each has a name, saved instructions in plain text, its own
 // model from any of the person's Connect AI connections, a memory of only what its owner told it to remember, its own calm
@@ -109,10 +110,11 @@ export function nextAgentColour(inUse: readonly string[]): AgentColour {
 }
 
 /**
- * An agent's one label in words (principle 5, #1364), as `AgentIdentity` draws it: "Planner · Ada's agent", its owner by first name. An
- * agent whose owner is gone is "Planner · a former member's agent". Used where the label is text (Search, a notice, a push, Home's lines).
+ * An agent's one label in words (principle 5, #1364), as `AgentIdentity` draws it: "Planner · Ada's agent", its owner by first name, and
+ * "Planner · Stefan Kowal (removed)'s agent" when the owner left the company or was removed (`ownerInLabel`, #1424). An agent whose owner
+ * the reader cannot be told is "Planner · a former member's agent". Used where the label is text (Search, a notice, a push, Home's lines).
  */
 export function agentWords(name: string, ownerName: string | null | undefined): string {
   const owner = ownerName?.trim();
-  return `${name} · ${owner ? `${owner.split(/\s+/)[0]}'s agent` : 'a former member\'s agent'}`;
+  return `${name} · ${owner ? `${ownerInLabel(owner)}'s agent` : 'a former member\'s agent'}`;
 }

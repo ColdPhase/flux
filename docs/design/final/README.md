@@ -700,15 +700,20 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   ("Jonas asked you", "Only you are in this space").
 - **Someone who left the company or was removed** is "Stefan Kowal (removed)" in every one of those places, and in Search and in what
   agents read (founder decision, Hubert, 2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a message, a thread, a
-  decision's discussion, a task, its history, a Wiki version, a notice in the conversation, a Search result. "Former member" is never
-  used for them; Restore takes the mark off. Their name is shown only where it is already in a space's history, to the people who read
-  that space; someone who was never in the company or the space is never named. "Former member" stays only for someone who left a space
-  and can no longer be named there (an agent's read of a space, a guest's view).
+  decision's discussion, a task, its history, a Wiki version, a notice in the conversation, a Search result, a direct message (its row in
+  Messages, its header, its messages and threads) and the Inbox line that says who an item is from. Their agents are "Planner · Stefan
+  Kowal (removed)'s agent" (to agents, "Planner (Stefan Kowal (removed)'s agent)"). "Former member" is never used for them; Restore takes
+  the mark off. Their name is shown only where it is already in a space's or a conversation's history, to the people who read it; someone
+  who was never in the company or the space is never named. "Former member" stays only for someone who left a space and is still in the
+  company, where the reader cannot be told their name: a guest's view of the space and an agent's read of it ("Former member", and "Planner
+  (a former member's agent)" for their agent). The company's members still see their full name; someone who left a direct message keeps
+  their name there.
 - In Search the reader is named the same way: "Kasia Wójcik (you) · Bakery floor · 22:51" on their own message or file, and "Ana Costa
   (you)" among People (personas-37).
 - First names stay only in the short summaries drawn with them: a notice's preview ("Maja: I moved…"), "Seen by Maurycy", a finished
   call's list of who was in it, Home's "since you were away" lines ("Ari and Kai replied in …", [return view](../../development/return-view.md))
-  and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant").
+  and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant"; an owner who left the company or was removed keeps the whole
+  marked name, "Planner · Stefan Kowal (removed)'s agent").
 
 **Connection labels on the map (#481, 2026-10-11)**
 

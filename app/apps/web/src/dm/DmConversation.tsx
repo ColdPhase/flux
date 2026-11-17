@@ -8,6 +8,7 @@ import { useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParam
 import { NavigateWithNote } from '../app/NavigateWithNote';
 import { NotAvailable } from '../app/NotAvailable';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
+import { youLabel } from '../docs/youLabel';
 import { ApiError } from '../api/client';
 import { dmReaders, dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
 import { ComposerBox } from '../composer/ComposerBox';
@@ -155,7 +156,9 @@ function DmContent({ initial }: { initial: Dm }) {
   const title = dmTitle(dm, me.user.id);
   const audience = audienceLine(dm, me.user.id);
   const others = othersIn(dm, me.user.id);
-  const nameOf = (id: string) => id === me.user.id ? 'You' : people.get(id)?.name ?? 'Former participant';
+  // An author is named by their full name, the reader "Ada Kowalska (you)", never "You" alone (design §5 "Naming people"); someone who left the
+  // company or was removed is "Stefan Kowal (removed)", as the server names them in `people` (#1424, 2026-11-17).
+  const nameOf = (id: string) => id === me.user.id ? youLabel(me.user.name, true) : people.get(id)?.name ?? 'Former participant';
 
   const learn = useCallback((list: DmPerson[]) => setPeople((current) => {
     const next = new Map(current);

@@ -1,5 +1,6 @@
 import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { removedName } from '@flux/contracts';
 import { assignmentNotificationActive, assignmentNotificationsReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
 import { hiddenNotice, notificationHiddenWhileAiOff } from './space-ai.js';
@@ -95,14 +96,14 @@ type Sender = { kind: 'human' | 'agent'; id: string; name: string };
  * event it was made from; with the id the Inbox draws a face from. Three reads however long the page; a notification made directly, or whose
  * sender is gone, has none.
  */
-async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'id' | 'eventId' | 'fromActor'>[]): Promise<Map<string, Sender>> {
+async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'id' | 'eventId' | 'fromActor' | 'workspaceId'>[]): Promise<Map<string, Sender>> {
   const found = new Map<string, Sender>();
   const eventIds = [...new Set(rows.flatMap((row) => !row.fromActor && row.eventId ? [row.eventId] : []))];
   const actorOf = new Map(eventIds.length ? (await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events)
     .where(inArray(schema.events.id, eventIds))).map((event) => [event.id, event.actorId]) : []);
   const actors = rows.flatMap((row) => {
     const principal = row.fromActor ?? (row.eventId ? actorOf.get(row.eventId) : undefined);
-    return principal ? [{ row: row.id, kind: principal.slice(0, principal.indexOf(':')), id: principal.slice(principal.indexOf(':') + 1) }] : [];
+    return principal ? [{ row: row.id, workspaceId: row.workspaceId, kind: principal.slice(0, principal.indexOf(':')), id: principal.slice(principal.indexOf(':') + 1) }] : [];
   });
   if (!actors.length) return found;
   const humans = [...new Set(actors.filter((actor) => actor.kind === 'human' && actor.id).map((actor) => actor.id))];
@@ -110,9 +111,17 @@ async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'i
   const agents = [...new Set(actors.filter((actor) => actor.kind === 'agent' && /^[0-9a-f-]{36}$/i.test(actor.id)).map((actor) => actor.id))];
   const userNames = new Map(humans.length ? (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, humans))).map((row) => [row.id, row.name]) : []);
   const agentNames = new Map(agents.length ? (await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents))).map((row) => [row.id, row.name]) : []);
+  // Someone who left the notification's company or was removed, and has not come back, is "Stefan Kowal (removed)" (founder decision, Hubert,
+  // 2026-11-17, #1424), as the conversation it came from names them; the same rule as `formerMembers`.
+  const spaces = [...new Set(actors.filter((actor) => actor.kind === 'human').map((actor) => actor.workspaceId))];
+  const gone = humans.length && spaces.length ? new Set(((await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
+    JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(humans)}::text[])`)).rows as { workspace_id: string; user_id: string }[])
+    .map((row) => `${row.workspace_id}:${row.user_id}`)) : new Set<string>();
   for (const actor of actors) {
     const name = actor.kind === 'human' ? userNames.get(actor.id) : actor.kind === 'agent' ? agentNames.get(actor.id) : undefined;
-    if (name && (actor.kind === 'human' || actor.kind === 'agent')) found.set(actor.row, { kind: actor.kind, id: actor.id, name });
+    if (name && (actor.kind === 'human' || actor.kind === 'agent'))
+      found.set(actor.row, { kind: actor.kind, id: actor.id, name: actor.kind === 'human' && gone.has(`${actor.workspaceId}:${actor.id}`) ? removedName(name) : name });
   }
   return found;
 }

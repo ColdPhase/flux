@@ -106,7 +106,7 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
     assert.ok(first!.prompt.includes(`your own messages have author.id ${scene.agentId}`), 'and its own id');
   });
 
-  test('a task\'s discussion and its tasks name an agent with whose it is; an agent whose owner left is a former member\'s', async () => {
+  test('a task\'s discussion and its tasks name an agent with whose it is; an agent whose owner left the space is a former member\'s, one whose owner was removed "Rafa Ruiz (removed)\'s"', async () => {
     const task = await scene.task(scene.owner, 'Prepare the contract');
     const jonas = await agentConnection(pool, scene.peer.browser, jonasAgent, [scene.place.id]);
     const envelope = (client: typeof jonas) => ({ projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [] });
@@ -122,6 +122,20 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
     const kais = await agentConnection(pool, kai.browser, kaiAgent, [scene.place.id]);
     toolValue(await kais.tool('flux_discuss_task', { ...envelope(kais), taskId: task.id, body: 'The stamp is ordered.' }));
     await removeFromSpace(scene.lead, scene.place.id, kai);
+    // Rafa's agent wrote too, and then Rafa was removed from the company: his agent is "Asystent (Rafa Ruiz (removed)'s agent)" (founder decision,
+    // Hubert, 2026-11-17, #1424), as the space's people read it ("Asystent · Rafa Ruiz (removed)'s agent", `projectOwner.removedName`).
+    const rafa = await person('names-rafa');
+    await rename(rafa, 'Rafa Ruiz');
+    await addMember(scene.lead, scene.ws.id, rafa, 'member');
+    await grant(scene.lead, scene.place.id, rafa, 'contributor');
+    const rafaAgent = (expectStatus(await rafa.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Asystent', owner: 'self' } }), 201) as { id: string }).id;
+    const rafas = await agentConnection(pool, rafa.browser, rafaAgent, [scene.place.id]);
+    toolValue(await rafas.tool('flux_discuss_task', { ...envelope(rafas), taskId: task.id, body: 'The courier is booked.' }));
+    await removeMember(scene.lead, scene.ws.id, rafa);
+    const forPeople = expectStatus(await scene.owner.browser.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as { messages: { author?: { id: string; projectOwner?: unknown } }[] };
+    assert.deepEqual(forPeople.messages.find((message) => message.author?.id === rafaAgent)?.author?.projectOwner, { kind: 'human', id: rafa.id, removedName: 'Rafa Ruiz' },
+      'the space\'s people read the agent of a removed owner with that owner\'s name');
+    assert.equal(forPeople.messages.find((message) => message.author?.id === kaiAgent)?.author?.projectOwner, undefined, 'an owner who left only the space is not given');
     // #1163: Ada Kowalska's first agent is called Asystent too, like Ada Nowak's.
     const kowalskaAgent = (expectStatus(await scene.viewer.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Asystent', owner: 'self' } }), 201) as { id: string }).id;
     const kowalska = await agentConnection(pool, scene.viewer.browser, kowalskaAgent, [scene.place.id]);
@@ -131,7 +145,7 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
     const discussion = value((await run.raw('tools/call', { name: 'flux_get_task_discussion', arguments: { taskId: task.id } })).message) as { root: Read; messages: Read[]; conversationId: string };
     assert.deepEqual(discussion.root.author, { kind: 'agent', id: jonasAgent, name: 'Asystent (Jonas\'s agent)' });
     assert.deepEqual(discussion.messages.map((message) => message.author.name), ['Asystent (Jonas\'s agent)', 'Ada Nowak', 'Asystent (a former member\'s agent)',
-      'Asystent (Ada Kowalska\'s agent)']);
+      'Asystent (Rafa Ruiz (removed)\'s agent)', 'Asystent (Ada Kowalska\'s agent)']);
     // The CLI engines' path: the reader's own agent is "Asystent (Ada Nowak's agent)" in the tools and in its brief, which gives its id to compare.
     const mine = value((await run.call('flux_create_task', { task: { title: 'Read clause 7' } })).message) as { workId: string };
     assert.equal((value((await run.call('flux_get_work', { projectId: scene.place.id, id: mine.workId })).message) as { createdBy: Author }).createdBy.name, 'Asystent (Ada Nowak\'s agent)');

@@ -150,8 +150,11 @@ export interface DmRepository {
    * their own newest root and their "Mark all as read" mark; at most 99. A DM with nothing unread is absent.
    */
   unread(dmIds: string[], viewerId: string): Promise<Map<string, number>>;
-  /** Display names of these people. */
-  names(userIds: string[]): Promise<DmPerson[]>;
+  /**
+   * Display names of these people, as the DM's workspace names them: someone who left the company or was removed, and has not come back, is
+   * "Stefan Kowal (removed)" (`removedName`, founder decision 2026-11-17, #1424).
+   */
+  names(workspaceId: string, userIds: string[]): Promise<DmPerson[]>;
 }
 
 export type DmEventKind = 'dm.created.v1' | 'dm.message_sent.v1' | 'dm.message_edited.v1' | 'dm.message_removed.v1' | 'dm.changed.v1' | 'dm.observed.v1';

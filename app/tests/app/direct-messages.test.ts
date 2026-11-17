@@ -294,6 +294,41 @@ describe('direct messages', () => {
     assert.deepEqual(new Set(last.rows.map((row) => row.recipient)), new Set([`human:${lee.id}`, `human:${max.id}`]));
   });
 
+  test('someone removed from the company is "Full Name (removed)" in the list, the header, their messages, a thread and the Inbox; Restore takes the mark off (#1424)', async () => {
+    // Founder decision (Hubert, 2026-11-17, #1424): a person removed from the company is "Full Name (removed)" everywhere their name is already
+    // in a conversation's history. Before it, a 1:1 kept the plain name and the client fell back to "Former participant".
+    const rhea = await person('dm-rhea');
+    await pool.query('UPDATE auth_users SET name = $1 WHERE id = $2', ['Rhea Stone', rhea.id]);
+    await addMember(ada, ws.id, rhea, 'member');
+    const { dm: pair } = await openDm(rhea, ws.id, [lee]);
+    const { dm: group } = await openDm(rhea, ws.id, [lee, kai], { title: 'Kiln rota' });
+    const asked = expectStatus(await say(rhea, pair.id, 'Can you fire the kiln on Friday?'), 201) as { id: string };
+    const root = expectStatus(await say(rhea, group.id, 'The rota is in the shed.'), 201) as { id: string };
+    expectStatus(await lee.browser.request('POST', `/api/v1/dms/${group.id}/threads/${root.id}/replies`, { body: { body: 'Thanks', clientMessageId: randomUUID() } }), 201);
+    expectStatus(await rhea.browser.request('POST', `/api/v1/dms/${group.id}/threads/${root.id}/replies`, { body: { body: 'And the key is under the pot.', clientMessageId: randomUUID() } }), 201);
+    const inboxFrom = async () => (await waitFor(async () => (expectStatus(await lee.browser.request('GET', '/api/v1/needs-you'), 200) as { items: { url: string; from: { id: string; name: string } | null }[] })
+      .items.find((item) => item.url === `/dm/${pair.id}#message-${asked.id}`), 'the question reaches Lee\'s Inbox')).from;
+    assert.deepEqual([(await inboxFrom())?.id, (await inboxFrom())?.name], [rhea.id, 'Rhea Stone']);
+    await removeMember(ada, ws.id, rhea);
+
+    const named = 'Rhea Stone (removed)';
+    const listed = (await list(lee, ws.id)).items.find((item) => item.id === pair.id)!;
+    assert.deepEqual(listed.counterpart, { id: rhea.id, name: named }, 'the list names the other person of the 1:1 so');
+    const opened = expectStatus(await read(lee, pair.id), 200) as Dm;
+    assert.deepEqual([opened.counterpart?.name, opened.counterpartGone], [named, 'company'], 'and its header');
+    assert.equal(opened.people.find((person) => person.id === rhea.id)?.name, named, 'and her messages');
+    const inGroup = expectStatus(await read(lee, group.id), 200) as Dm;
+    assert.equal(inGroup.people.find((person) => person.id === rhea.id)?.name, named, 'a group names her messages so');
+    assert.ok(!inGroup.participants.some((person) => person.id === rhea.id), 'she is no longer in the group');
+    const thread = expectStatus(await lee.browser.request('GET', `/api/v1/dms/${group.id}/threads/${root.id}`), 200) as { people: { id: string; name: string }[] };
+    assert.equal(thread.people.find((person) => person.id === rhea.id)?.name, named, 'and a thread');
+    assert.equal((await inboxFrom())?.name, named, 'the Inbox says the question is from "Rhea Stone (removed)"');
+
+    expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/removed-people/${rhea.id}/restore`), 201, 'restore');
+    assert.equal((expectStatus(await read(lee, pair.id), 200) as Dm).counterpart?.name, 'Rhea Stone', 'Restore takes the mark off');
+    assert.equal((await inboxFrom())?.name, 'Rhea Stone');
+  });
+
   test('removal from the workspace ends DM access at once and is not undone by rejoining', async () => {
     const nia = await person('dm-nia');
     await addMember(ada, ws.id, nia, 'member');

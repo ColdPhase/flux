@@ -163,11 +163,14 @@ async function found(ports: DmPorts, dmId: string): Promise<DmRecord> {
   return record;
 }
 
-/** The DM with a message window. Former participants who wrote in the window keep their names. */
+/**
+ * The DM with a message window. Former participants who wrote in the window keep their names, and someone who left the company or was removed
+ * is "Stefan Kowal (removed)" (founder decision, Hubert, 2026-11-17, #1424).
+ */
 async function peopleOf(ports: DmPorts, record: DmRecord, messages: DmMessageRecord[]): Promise<DmPerson[]> {
   const known = new Map<string, DmPerson>(record.participants.map((p) => [p.id, p]));
   const missing = [...new Set(messages.map((m) => m.authorId).filter((id) => !known.has(id)))];
-  for (const extra of missing.length ? await ports.dms.names(missing) : []) known.set(extra.id, extra);
+  for (const extra of missing.length ? await ports.dms.names(record.workspaceId, missing) : []) known.set(extra.id, extra);
   return [...known.values()];
 }
 

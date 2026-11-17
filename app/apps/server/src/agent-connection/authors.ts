@@ -14,7 +14,7 @@ import { projectAuthorOwners } from '../conversation/author-owners.js';
 /** How the conversation reads and the search tools name who wrote each message (#1160): as people see it, so a person's posted answer is never taken for the reader's own. */
 export const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Stefan Kowal (removed)" once they left the company or were removed, '
   + '"Former member" once they can no longer read this space otherwise); '
-  + 'an agent with whose it is, "Assistant (Ada\'s agent)"; "Ada\'s Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
+  + 'an agent with whose it is, "Assistant (Ada\'s agent)", "Assistant (Stefan Kowal (removed)\'s agent)" once its owner left the company or was removed; "Ada\'s Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
   + 'not yours; and "Ada Nowak · via Claude Code" for what her local client posted for her. author.id is the person\'s or the agent\'s id.';
 
 /** The agent a read names (a message's author, a task's owner or creator, a conversation's starter): `{kind: 'agent', id, name}`. */
@@ -72,7 +72,8 @@ export async function spaceAuthorsNamed(db: Executor, projectId: string, ids: It
 /**
  * Every agent a read names, named as Flux labels it: "Assistant (Ada's agent)", so that two people's agents of the same name, and another
  * person's agent and the reader itself, are never mistaken for each other (#1160); "Assistant (Ada Nowak's agent)" when someone else who can
- * read the space is called Ada too (#1163), as the reader's brief names its own. An agent whose owner cannot read the space now is
+ * read the space is called Ada too (#1163), as the reader's brief names its own. An agent whose owner left the company or was removed is
+ * "Assistant (Stefan Kowal (removed)'s agent)" (#1424, 2026-11-17); one whose owner is still in the company and cannot read the space now is
  * "Assistant (a former member's agent)".
  */
 export async function withAgentLabels<T>(db: Executor, projectId: string, workspaceId: string, value: T): Promise<T> {
@@ -80,17 +81,22 @@ export async function withAgentLabels<T>(db: Executor, projectId: string, worksp
   if (!agents.size) return value;
   const ids = [...agents.keys()];
   const owners = new Map<string, string>();
+  // An owner who left the company or was removed: "Assistant (Stefan Kowal (removed)'s agent)" (#1424, 2026-11-17), never a namesake.
+  const removedOwners = new Map<string, string>();
   // `projectAuthorOwners` reads a bounded window of authors at a time.
   for (let start = 0; start < ids.length; start += 100)
-    for (const [agentId, owner] of await projectAuthorOwners(db, projectId, workspaceId, ids.slice(start, start + 100))) owners.set(agentId, owner.id);
+    for (const [agentId, owner] of await projectAuthorOwners(db, projectId, workspaceId, ids.slice(start, start + 100))) {
+      if (owner.removedName !== undefined) removedOwners.set(agentId, removedName(owner.removedName));
+      else owners.set(agentId, owner.id);
+    }
   const names = await userNames(db, [...owners.values()]);
   // Who else that can read the space shares an owner's first name (#1163), the rule the brief's `namesakesIn` follows.
   const readers = [];
   for (const person of await personalRunRows(db).namesakes(workspaceId, [...names.values()].map(firstName)))
     if ((await evaluateProject({ kind: 'human', id: person.id }, 'project.read', projectId, accessReader(db))).allowed) readers.push(person);
   const full = sharedFirstNames([...new Map([...[...names].map(([id, name]) => ({ id, name })), ...readers].map((person) => [person.id, person])).values()]);
-  const labels = new Map([...agents].map(([id, name]) => [id, authorLabel({ kind: 'agent', name, ownerName: names.get(owners.get(id) ?? '') ?? null,
-    full: full.has(owners.get(id) ?? '') })]));
+  const labels = new Map([...agents].map(([id, name]) => [id, authorLabel({ kind: 'agent', name,
+    ownerName: removedOwners.get(id) ?? names.get(owners.get(id) ?? '') ?? null, full: full.has(owners.get(id) ?? '') })]));
   return relabelled(value, labels) as T;
 }
 

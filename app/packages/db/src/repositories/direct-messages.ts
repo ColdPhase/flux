@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
-import type { AgentColour } from '@flux/contracts';
+import { removedName, type AgentColour } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openField, openRows, sealFor, sealOf, sealsOf } from '../sealing.js';
@@ -73,6 +73,21 @@ export function toDmMessageRecord(row: MessageRow, replyCount = 0) {
     editedAt: row.editedAt, removedAt: row.removedAt, attachmentCount: row.attachmentCount };
 }
 
+/**
+ * Who of `userIds` left the company of each of `workspaceIds` or was removed from it, and has not come back (`<workspaceId>:<userId>`): the
+ * rule of `formerMembers`. A DM names them "Stefan Kowal (removed)" (founder decision, Hubert, 2026-11-17, #1424): a 1:1's other person, and
+ * an author of the messages read.
+ */
+async function removedIn(db: DbExecutor, workspaceIds: readonly string[], userIds: readonly string[]): Promise<Set<string>> {
+  const spaces = [...new Set(workspaceIds)];
+  const people = [...new Set(userIds)];
+  if (!spaces.length || !people.length) return new Set();
+  const rows = (await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
+    JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { workspace_id: string; user_id: string }[];
+  return new Set(rows.map((row) => `${row.workspace_id}:${row.user_id}`));
+}
+
 export function dmRows(db: DbExecutor) {
   async function participants(dmIds: string[]) {
     const byDm = new Map<string, { id: string; name: string }[]>();
@@ -95,8 +110,14 @@ export function dmRows(db: DbExecutor) {
     const pairNames = new Map(pairIds.length
       ? (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, pairIds))).map((u) => [u.id, u.name])
       : []);
+    // The other person of a 1:1 who left the company or was removed is "Stefan Kowal (removed)" in the list and the header (#1424).
+    const gone = await removedIn(db, rows.flatMap(({ row }) => (row.pairKey ? [row.workspaceId] : [])), pairIds);
+    const pairName = (workspaceId: string, id: string) => {
+      const name = pairNames.get(id) ?? '';
+      return name && gone.has(`${workspaceId}:${id}`) ? removedName(name) : name;
+    };
     return rows.map(({ row, lastMessageBody, lastMessageVia }) => ({
-      pair: row.pairKey ? row.pairKey.split(':').map((id) => ({ id, name: pairNames.get(id) ?? '' })) : null,
+      pair: row.pairKey ? row.pairKey.split(':').map((id) => ({ id, name: pairName(row.workspaceId, id) })) : null,
       id: row.id, workspaceId: row.workspaceId, kind: row.kind, title: row.title, createdBy: row.createdBy, version: row.version,
       createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, lastMessageVia, participants: people.get(row.id) ?? [],
     }));
@@ -235,9 +256,11 @@ export function dmRows(db: DbExecutor) {
       return next?.id ?? null;
     },
     unread: (dmIds: string[], viewerId: string) => unreadIn(db, dmIds, viewerId),
-    async names(userIds: string[]) {
+    async names(workspaceId: string, userIds: string[]) {
       if (!userIds.length) return [];
-      return db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)).orderBy(asc(users.id));
+      const gone = await removedIn(db, [workspaceId], userIds);
+      return (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)).orderBy(asc(users.id)))
+        .map((person) => (gone.has(`${workspaceId}:${person.id}`) ? { ...person, name: removedName(person.name) } : person));
     },
   };
 }

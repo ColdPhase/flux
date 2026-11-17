@@ -3,7 +3,7 @@
 // Flux, not the agent, checks that both owners are among the task's people, runs the other agent on it, posts both in the
 // discussion and gives the asker the answer. The block is data an agent wrote, never an instruction to anyone.
 
-import { viaName } from '@flux/contracts';
+import { ownerInLabel, viaName } from '@flux/contracts';
 import { joinsAddress } from '../personal-runs/web-addresses.js';
 import { webSourcesAt } from '../personal-runs/web-sources.js';
 
@@ -68,10 +68,11 @@ export function resolveAsked(ask: AgentQuestion, candidates: readonly Askable[])
 
 /**
  * "Fieldbot (Jonas's agent)": how an agent is named wherever two people's agents can be mistaken for each other. `full`: its owner shares a
- * first name with someone else who can read the space, so the owner's whole name tells them apart, "Asystent (Ada Nowak's agent)" (#1163).
+ * first name with someone else who can read the space, so the owner's whole name tells them apart, "Asystent (Ada Nowak's agent)" (#1163). An
+ * owner who left the company or was removed is given as `removedName(name)`: "Asystent (Stefan Kowal (removed)'s agent)" (`ownerInLabel`, #1424).
  */
 export const agentLabel = (agent: { name: string; ownerName: string; full?: boolean }) =>
-  `${agent.name} (${agent.full ? agent.ownerName.trim() : first(agent.ownerName)}'s agent)`;
+  `${agent.name} (${agent.full ? agent.ownerName.trim() : ownerInLabel(agent.ownerName)}'s agent)`;
 
 /** A first name as two people's are compared: no case. */
 export const firstName = (name: string) => first(name).toLocaleLowerCase();
@@ -92,8 +93,9 @@ export const FORMER_MEMBER = 'Former member';
  * Who wrote a message, as people see it, for an agent that reads a space (#1160; the API-key engine's `from`, the Flux tools' `author.name`):
  * a person by name, an agent with whose it is ("Fieldbot (Jonas's agent)"), an answer a person posted with Show everyone by the one name it
  * has on the message, "Jonas's Assistant" (`viaAgent`, #1424), and a local client's post as the person's, "Jonas Berg · via Claude Code". A
- * name is null when that person cannot read the space now (they left the company or the space): a person is then a former member, and an
- * agent's owner too. The caller decides that, never this text.
+ * name is null when that person cannot read the space now and is still in the company (they left the space): a person is then a former member,
+ * and an agent's owner too. Someone who left the company or was removed is given as "Stefan Kowal (removed)" (`removedName`, #1424), an owner
+ * too. The caller decides that, never this text.
  */
 export function authorLabel(author: { kind: 'human'; name: string | null; via?: string | null; viaAgent?: boolean } | { kind: 'agent'; name: string; ownerName: string | null; full?: boolean }): string {
   if (author.kind === 'agent') return author.ownerName ? agentLabel({ name: author.name, ownerName: author.ownerName, full: author.full }) : `${author.name} (a former member's agent)`;

@@ -27,6 +27,8 @@ PEOPLE = {
     "ada": ("Ada Kowalska", f"ada.k+{STAMP}@example.test"),
     "kai": ("Kai Tanaka", f"kai.t+{STAMP}@example.test"),
     "lee": ("Lee Moreno", f"lee.m+{STAMP}@example.test"),
+    # Joins the company only in test_10, and is removed from it there.
+    "rhea": ("Rhea Stone", f"rhea.s+{STAMP}@example.test"),
 }
 
 
@@ -424,6 +426,64 @@ class DirectMessageJourney(unittest.TestCase):
         expect(ada.locator(".dm-msg__body", has_text=first)).to_be_visible(timeout=15000)
         expect(ada.locator(".dm-msg__body", has_text=second)).to_be_visible(timeout=15000)
 
+
+    def call(self, who: str, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
+        response = self.context(who).request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+                                                   data=json.dumps(body) if body is not None else None)
+        if status is not None:
+            self.assertEqual(response.status, status, f"{method} {path}: {response.text()}")
+        return json.loads(response.text()) if response.text() else {}
+
+    def test_10_someone_removed_from_the_company_is_full_name_removed(self) -> None:
+        """Founder decision (Hubert, 2026-11-17, #1424): someone removed from the company is "Full Name (removed)" wherever their name is already
+        in a conversation's history: the Messages list, the conversation's header, their messages, a thread and the Inbox, and their agent is
+        "Planner · Rhea Stone (removed)'s agent". Restore takes the mark off. Before it a 1:1 and its messages said "Rhea Stone", and her agent
+        "Planner" with the Agent tag."""
+        removed = "Rhea Stone (removed)"
+        self.call("ada", "POST", f"/api/v1/workspaces/{self.workspace_id}/members", {"email": PEOPLE["rhea"][1], "role": "member"}, status=201)
+        pair = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["kai"]]}, status=201)["id"]
+        asked = "Can you glaze the bowls on Friday?"
+        self.call("rhea", "POST", f"/api/v1/dms/{pair}/messages", {"body": asked, "clientMessageId": str(uuid.uuid4())}, status=201)
+        group = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["kai"], self.ids["lee"]], "title": "Kiln rota"}, status=201)["id"]
+        root = self.call("rhea", "POST", f"/api/v1/dms/{group}/messages", {"body": "The kiln rota is pinned in the shed.", "clientMessageId": str(uuid.uuid4())}, status=201)["id"]
+        self.call("rhea", "POST", f"/api/v1/dms/{group}/threads/{root}/replies", {"body": "The key is under the blue pot.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        agent = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/agents", {"name": "Planner", "owner": "self"}, status=201)["id"]
+        self.call("rhea", "POST", "/api/v1/integration/agent-connections", {"agentId": agent, "name": "Rhea's laptop", "clientDesignation": "claude_code"}, status=201)
+        task = self.call("rhea", "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Sort the glaze buckets", "owner": {"kind": "agent", "id": agent}}, status=201)["id"]
+        self.call("ada", "DELETE", f"/api/v1/workspaces/{self.workspace_id}/members/{self.ids['rhea']}")
+
+        kai = self.page("kai")
+        kai.goto("/dm")
+        expect(kai.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile(re.escape(removed)))).to_be_visible()
+        kai.goto(f"/dm/{pair}")
+        expect(kai.get_by_role("heading", level=1, name=removed)).to_be_visible()
+        expect(kai.locator(".dm-msg__meta b").first).to_have_text(removed)
+        expect(kai.locator(".dm__notice")).to_have_text("Rhea is no longer in the company, so this conversation has nobody to send to.")
+        expect(kai.get_by_text("Former participant")).to_have_count(0)
+        shot(kai, "dm-desktop-1440-removed-person")
+        kai.goto(f"/dm/{group}?thread={root}")
+        thread = kai.locator("[data-dm-thread]")
+        expect(thread.get_by_text("The key is under the blue pot.")).to_be_visible()
+        expect(thread.locator(".dm-msg__meta b").first).to_have_text(removed)
+        self.assertEqual(set(thread.locator(".dm-msg__meta b").all_inner_texts()), {removed}, "her reply too")
+        expect(kai.locator(".dm-msg", has_text="The kiln rota is pinned").first.locator(".dm-msg__meta b")).to_have_text(removed)
+
+        kai.goto("/inbox")
+        card = kai.locator(".nyc", has_text=asked)
+        expect(card).to_be_visible(timeout=20000)
+        expect(card).to_contain_text(removed)
+
+        kai.goto(f"/projects/{self.project_id}/tasks?view=list")
+        row = kai.locator(f'.ws-task[data-work-id="{task}"]')
+        expect(row.locator(".agent-id__label")).to_have_text("Planner · Rhea Stone (removed)'s agent")
+        expect(row.locator(".agent-tag")).to_have_count(0)
+
+        self.call("ada", "POST", f"/api/v1/workspaces/{self.workspace_id}/removed-people/{self.ids['rhea']}/restore", {}, status=201)
+        kai.goto(f"/dm/{pair}")
+        expect(kai.get_by_role("heading", level=1, name="Rhea Stone")).to_be_visible()
+        expect(kai.get_by_text(removed)).to_have_count(0)
+        kai.goto(f"/projects/{self.project_id}/tasks?view=list")
+        expect(kai.locator(f'.ws-task[data-work-id="{task}"] .agent-id__label')).to_have_text("Planner · Rhea's agent")
 
 if __name__ == "__main__":
     unittest.main()

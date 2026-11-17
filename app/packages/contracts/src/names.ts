@@ -18,9 +18,20 @@ export const hasInvisibleFormat = (text: string): boolean => ANY_INVISIBLE_FORMA
 /** The text without its direction-control and invisible format characters. */
 export const withoutInvisibleFormat = (text: string): string => text.replace(INVISIBLE_FORMAT, '');
 
+const REMOVED = ' (removed)';
 /**
  * How a person who left the company or was removed from it, and has not come back, is named wherever their name is already in a space's
  * history (founder decision, Hubert, 2026-11-17, #1424): "Stefan Kowal (removed)", for people and agents alike, in messages, threads, a
  * decision's discussion, a task and its history, Search and People. Restore takes the mark off. One helper for every reader of it.
  */
-export const removedName = (name: string): string => `${name} (removed)`;
+export const removedName = (name: string): string => `${name}${REMOVED}`;
+
+/**
+ * How an agent's one label names its owner: by first name, "Planner · Ada's agent"; and an owner who left the company or was removed by the
+ * whole marked name, "Planner · Stefan Kowal (removed)'s agent" (founder decision, Hubert, 2026-11-17, #1424), as their messages name them.
+ * The caller gives such an owner as `removedName(name)`. One rule for the app's label, its text form and what agents read.
+ */
+export function ownerInLabel(ownerName: string): string {
+  const name = ownerName.trim();
+  return name.endsWith(REMOVED) ? name : name.split(/\s+/)[0] || name;
+}
