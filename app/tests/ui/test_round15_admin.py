@@ -177,7 +177,10 @@ class Round15Admin(unittest.TestCase):
         page = self.page()
         self.space_settings(page)
         page.get_by_role("button", name="Add people").click()
+        # Add people opens on its search (F-026 §4); the person then clicks Someone new? as a person would, so nothing typed goes to the search.
+        expect(page.get_by_role("searchbox", name="Search people")).to_be_focused()
         email = page.locator("#spset-new-email")
+        email.click()
         older = f"older.{uuid.uuid4().hex[:6]}@example.test"
         email.fill(older)
         email.press("Enter")
