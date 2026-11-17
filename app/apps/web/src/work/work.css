@@ -39,6 +39,8 @@
 .ws-list > li + li { border-top: 1px solid var(--line); }
 .ws-item { display: flex; align-items: center; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 10px 8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 @media (hover: hover) { .ws-item:hover { background: var(--hov); } }
+/* The task open in the panel, as its Board card (round 15 look-3 e). */
+.ws-task .ws-item[aria-current="true"] { background: var(--hov); }
 .ws-item__st { display: grid; place-items: center; width: 16px; flex: none; color: var(--t3); }
 .ws-item__st.ws-need { color: var(--t1); }
 .ws-item__st.ws-neg { color: var(--t2); }
@@ -104,6 +106,8 @@ button.ws-task__glyph:active { background: var(--hov); }
   content: ""; position: absolute; left: 0; right: 0; top: calc(100% + 1px); height: 20px; background: linear-gradient(var(--panel-bg, var(--el)), transparent); pointer-events: none;
 }
 .ui-sheet .wd-decision-identity { top: -18px; }
+/* The reason starts a step under the title's hairline, never 4 px under it (round 15 daily P3-8), in the panel and the sheet. */
+.wd-decision-identity + .wd-reasons { margin-top: var(--s-3); }
 /* "Proposed" and "Accepted by" are the task panel's rows (.wd-rows), a step under the lead. */
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
 .wd-decide + .wd-decision-rows { margin-top: 0; }
@@ -112,6 +116,8 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
 .wd-form .ui-select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
+/* The blocked card stands under the title (round 15 look-1 P2-1): the rows follow it a step down. */
+.wd-blocker + .wd-rows { margin-top: var(--s-3); }
 
 /* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Activity ---------- */
 .wd .wd-title { margin: 6px 0 12px; }
@@ -141,6 +147,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 /* One line, like every other value; the full title is one tap away. */
 .wd-row .wd-from .wd-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd-value { display: inline-flex; align-items: center; gap: 8px; }
+.wd-by { flex-wrap: wrap; gap: 0 .3em; min-width: 0; }
 .wd-menu { position: relative; }
 .wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
 /* Hover only where a pointer hovers: a touch screen kept the fill on the control under the tap that opened the sheet (WebKit's "Blocked"
@@ -322,9 +329,12 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 /* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
 .wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }
-/* In the panel the line floats over the scroll's foot, never under the field (a feed's own line took its room in the flow in train 37,
-   which put the panel's pill half under the field, where it could not be clicked). */
-.wd-newbelow > .convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; padding: 0; }
+/* In the panel the line stands at the scroll's foot, never under the field (a feed's own line took its room in the flow in train 37,
+   which put the panel's pill half under the field, where it could not be clicked), on a band of the panel's own surface that fades in
+   above it: what scrolls under it passes under the band, so the pill never lies over a card's words (round 15 ai P3: "2 new" over
+   "Waits for your OK" and Approve). */
+.wd-newbelow:has(.convo-newbelow__b) { height: auto; padding-top: 14px; background: linear-gradient(transparent, var(--panel-bg, var(--el)) 14px); }
+.wd-newbelow > .convo-newbelow { padding: 0 0 6px; }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
 .wd-row dd .ui-avatar { flex: none; }

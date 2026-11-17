@@ -4,10 +4,10 @@ import { MapCursors, MapPeople } from './MapPresence';
 import { DockRow } from './DockRow';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Link } from 'react-router';
-import { Icon, IconButton, Sheet } from '../ui';
+import { Icon, IconButton, PersonName, Sheet } from '../ui';
 import { projectMessageHref } from '../conversations/api';
 import { linkPath, PAD, placeLabels, PLANE_MARGIN, project, rectOf, type Rect } from './geometry';
-import { provenance, quote } from './format';
+import { provenance, provenanceParts, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
 import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
@@ -372,6 +372,14 @@ export function SketchMap(props: SketchMapProps) {
         else if (between + bounds.height <= own.top + 10 && free(bounds.left + dx, between)) dy = between - bounds.top;
         else if (free(bounds.left + dx, lifted)) dy = lifted - bounds.top;
         else if (free(bounds.left + dx, below)) dy = below - bounds.top;
+      }
+      // Never under the floating header either (round 15 look-3 F4: at 200 % the actions of a thought near the top lay under the map's title
+      // and Map / List, hiding Edit and Connect): where they would, they stand under their own thought, still inside the view.
+      if (own && above) {
+        const top = bounds.top + dy;
+        const covered = top < view.top + 8 || floating.some((r) => r.width && meets(r, bounds.left + dx, top));
+        const under = own.bottom + 14;
+        if (covered && under + bounds.height <= view.bottom - 8) dy = under - bounds.top;
       }
       bar.style.marginLeft = `${dx / zoom}px`;
       bar.style.marginTop = `${dy / zoom}px`;
@@ -1191,7 +1199,9 @@ export function SketchMap(props: SketchMapProps) {
               {plus ? <button type="button" className="sk-edit-btn" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'thought'} onClick={(event) => {
                 event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('thought'); setPhoneMenuOpen(true);
               }}><Icon name="more" size={16} />Thought actions</button> : null}
-              {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
+              {/* Undo is its icon here, as on the computer's toolbar, so the selection's actions, Undo and Thought fit one row of a 390 px phone
+                  (round 15 look-3 b: Thought wrapped onto a row of its own under them). */}
+              {props.bar.canUndo ? <button type="button" className="sk-undo sk-undo--icon" aria-label="Undo" title="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} /></button> : null}
             </div>
             <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Thought</button>
           </div>
@@ -1395,6 +1405,12 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
   );
 });
 
+/** "From Ada Kowalska (you) · 14:22" on one line: the name gives way with "…", its mark and the time stay whole (`provenanceParts`). */
+function Provenance({ thought, meId }: { thought: Pick<Thought, 'source' | 'version' | 'createdBy' | 'createdAt'>; meId: string }) {
+  const { lead, name, mark, tail } = provenanceParts(thought, meId);
+  return <span className="sk-p" title={provenance(thought, meId)}><span className="sk-p__w">{lead}</span><PersonName name={name} mark={mark} /><span className="sk-p__w">{tail}</span></span>;
+}
+
 /** Preview coordinates and lease sequences change every movement; the native content does not.
  * Explicit content props let React's ordinary memo comparison keep the body while the button's
  * geometry, live attributes and input handlers continue to use the current thought. */
@@ -1408,7 +1424,7 @@ const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' 
     {meta ? <span className="sk-k"><Icon name="link" size={12} />{meta}</span> : null}
     {file ? <ThoughtImage className="sk-img" fileId={file.id} name={file.name} style={{ maxHeight: Math.max(48, height - 64) }} /> : null}
     <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
-    <span className="sk-p">{provenance(props, meId)}</span>
+    <Provenance thought={props} meId={meId} />
     {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
     {/* Room for the count, which is its own button beside this one: a thought's one indicator of its tasks (UI116-4; the line that
         repeated its first task beside the count is gone, founder direction 2026-11-17 visual review). */}

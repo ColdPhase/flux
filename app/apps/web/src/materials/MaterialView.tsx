@@ -1,5 +1,5 @@
 import { Link, Navigate, useLoaderData, useLocation } from 'react-router';
-import type { MaterialOrDoc, MaterialVersion, ProjectPerson } from '@flux/contracts';
+import type { MaterialOrDoc, MaterialVersion, Project, ProjectPerson } from '@flux/contracts';
 import type { materialLoader } from './loader';
 import { useShellData } from '../app/data';
 import { agentAuthorLabel, personName, youLabel } from '../docs/format';
@@ -10,12 +10,12 @@ export function MaterialView() {
   const data = useLoaderData() as Awaited<ReturnType<typeof materialLoader>>;
   const location = useLocation();
   if ('redirectTo' in data) return <Navigate to={data.redirectTo} replace state={location.state} />;
-  return <MaterialPage material={data.material} version={data.version} people={data.people} />;
+  return <MaterialPage material={data.material} version={data.version} people={data.people} project={data.project} />;
 }
 const saved = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 /** A page of the space's Wiki by its own address, in the app's type scale: its title, who saved which version when, then its words on a card (#1371). */
-function MaterialPage({ material, version, people }: { material: MaterialOrDoc; version: MaterialVersion; people: ProjectPerson[] | null }) {
+function MaterialPage({ material, version, people, project }: { material: MaterialOrDoc; version: MaterialVersion; people: ProjectPerson[] | null; project: Project | null }) {
   const { me } = useShellData();
   // Plain materials are person-written; an agent author (only possible on docs, #152) is named as an agent.
   const author = version.authorId === null ? agentAuthorLabel(version.author)
@@ -25,7 +25,8 @@ function MaterialPage({ material, version, people }: { material: MaterialOrDoc; 
     <div className="pane-scroll"><article className="pane-in material-view">
       {/* The Wiki's way back, "‹ Back to the page", in its quiet button (founder direction 2026-11-17 visual review). */}
       <Link className="ui-btn ui-btn--quiet material-view__back" to={`/projects/${material.projectId}`}><Icon name="chevron-left" size={14} />Back to the conversation</Link>
-      <p className="material-view__meta">Version {version.version}{earlier ? ' · An earlier version' : ''}</p>
+      {/* Which space's Wiki it is a page of, a way to its other pages (round 15 look-3 F5). */}
+      <p className="material-view__meta">{project ? <><Link className="ui-link" to={`/projects/${material.projectId}/docs`}>{project.name} · Wiki</Link> · </> : null}Version {version.version}{earlier ? ' · An earlier version' : ''}</p>
       <h2>{version.title}</h2>
       <p className="material-view__meta">{author} · Saved {saved.format(new Date(version.createdAt))}</p>
       {version.body ? <p className="material-view__body">{version.body}</p> : null}

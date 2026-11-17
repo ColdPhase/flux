@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { Link, Navigate, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Doc, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon } from '../ui';
@@ -7,7 +7,6 @@ import { Select, Option } from '../ui/Select';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { docUrl, getDoc, getLiveDoc, getVersion, listVersions } from './api';
-import { diffDocs, diffStats, readableRefs } from './diff';
 import { authorLabel, longDate, shortDate } from './format';
 import { DocProse } from './DocProse';
 import { NoPages, PageFrame, scrollPage, useReferenceClicks } from './WikiParts';
@@ -95,12 +94,16 @@ export function VersionPage() {
   useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
     { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: `doc · earlier version ${shown.version}` });
   const earlier = shown.version !== doc.version;
+  const location = useLocation();
+  // The current version is the page itself (round 15 new P2-4: Search's Wiki result opened "/versions/4", "You are reading a saved
+  // version", although version 4 was the page): it opens the page, keeping where it was followed from.
+  if (!earlier) return <Navigate to={base} replace state={location.state} />;
   return (
     <ReadPage doc={doc} shown={shown} notice={(
-      <p className="doc-notice doc-notice--version"><Icon name="undo" size={14} /><span>{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.</span>
+      <p className="doc-notice doc-notice--version"><Icon name="undo" size={14} /><span>You are reading an earlier version. It stays as it was written.</span>
         {/* The ways on are a row of their own under the sentence, at its edge (founder direction 2026-11-17 visual review). */}
         <span className="doc-notice__links"><Link to={base}>Open the current version</Link>
-          {earlier ? <Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link> : null}</span></p>
+          <Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></span></p>
     )} />
   );
 }
@@ -162,16 +165,18 @@ export async function docHistoryLoader({ params, request }: LoaderFunctionArgs):
   return { doc, versions, from, to };
 }
 
+const words = (count: number) => `${count} ${count === 1 ? 'word' : 'words'}`;
+/** "2 words added, 1 removed", "3 words removed": what the comparison marks, in words. */
+const wordChanges = ({ added, removed }: { added: number; removed: number }) =>
+  added && removed ? `${words(added)} added, ${removed} removed` : added ? `${words(added)} added` : `${words(removed)} removed`;
+
 /** What changed between two versions, as the page reads (#511 AC-1). There is no Markdown view: history shows the rendered version only (Hubert, 2026-11-13, #1376). */
 function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   const meId = useShellData().me.user.id;
   const onClick = useReferenceClicks();
-  const rows = useMemo(() => {
-    const titles = new Map([...(from?.mentions ?? []), ...to.mentions].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title]));
-    return diffDocs(readableRefs(from?.body ?? '', titles), readableRefs(to.body, titles));
-  }, [from, to]);
+  // The counts are the words the comparison below marks (round 15 daily P3-7: a line count read "+1 −1" over one added word and nothing struck).
   const page = useMemo(() => blockDiff(from?.html ?? '', to.html), [from, to.html]);
-  const stats = diffStats(rows);
+  const stats = page.words;
   // The first version has nothing before it to compare with (round 14 new d, daily 9: "+0 −0 · The text is the same in both versions." under a
   // lone v1, and a first version all underlined as "added"): it is shown as it was written, or says it started with no text.
   const first = !from;
@@ -180,7 +185,7 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
       <header className="doc-changes__top">
         <h3 id="doc-changes-h">
           {from ? <>v{from.version} → v{to.version}</> : <>Version {to.version}, the first</>}
-          {first ? null : <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>}
+          {first || !page.changed ? null : <span className="doc-changes__stat"> · {wordChanges(stats)}</span>}
         </h3>
       </header>
       {/* Each version is named by who made it, the reader as "Jonas Berg (you)" (personas-36), so the sentence says "by", not a possessive. */}

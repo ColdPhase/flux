@@ -398,7 +398,11 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(prose.locator("img:not(.cm-widgetBuffer), script, iframe, [onerror]").count(), 0)
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
         expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
-        # The saved version reads as the server sanitized it, and says which link leads nowhere.
+        # The saved version reads as the server sanitized it, and says which link leads nowhere. Version 1 is an earlier version once the page
+        # has a second one (the current version opens the page itself).
+        current = self.api(page, "GET", f"/api/v1/docs/{doc['id']}", status=200)
+        self.api(page, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": current["body"] + "\n\nForwarded on Monday.\n"}, status=200,
+                 headers={"if-match": f'"{current["version"]}"', "idempotency-key": str(uuid.uuid4())})
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/versions/1")
         prose = page.locator(".doc-prose")
         expect(prose).to_contain_text("<script>alert('script')</script>")

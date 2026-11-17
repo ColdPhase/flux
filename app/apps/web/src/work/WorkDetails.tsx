@@ -449,7 +449,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // Empty sections are hidden (#868): a task without a source has no "From" row. While the relationships have more pages
   // than the one shown, the row stays, so paging never adds or takes rows away.
   const cameFrom = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.role === 'source') || !!item.planIntent || !relations.complete;
-  // On the phone's sheet it opens at its top, with a blocked task's "Waiting for" card whole (round 14 look-a A3).
+  // On the phone's sheet and a short panel it opens at its top, with a blocked task's "Waiting for" card whole (round 14 look-a A3).
   const scrollRef = useRef<HTMLDivElement>(null);
   usePanelOpening(scrollRef, item.id, '.wd-blocker');
   useNewestOnWrite(scrollRef);
@@ -459,10 +459,42 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
       <div className="wd__scroll" ref={scrollRef}>
         {/* "#4 · Rain barrel monitor" above the title, as drawn (§7 Tasks): the task's number and the space it belongs to (#1364). */}
-        <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> ·</span><span className="ui-vh"> in</span>{' '}{context.project.name}</p>
+        <p className="wd__ref" data-panel-head=""><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> ·</span><span className="ui-vh"> in</span>{' '}{context.project.name}</p>
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
+        {item.status === 'blocked' ? (
+          <section className="wd-blocker" aria-label="Blocker" data-panel-head="">
+            {/* Status already says Blocked: the card is what it waits for, then Edit and Unblock (or Done) under the words (round 14 look-b P8).
+                It stands under the title, as a decision's answer stands under its reason, so a phone's half sheet shows what the task is and what
+                it waits for without scrolling the title away (round 15 look-1 P2-1, look-3 F2). */}
+            <div className="wd-blocker__head">
+              <p className="wd-blocker__text">
+                {item.waitingFor ? <>Waiting for <b>{named(item.waitingFor, me.user.id)}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
+                  : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>
+                    : blockedLine(item, me.user.id)}
+              </p>
+              {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
+                {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
+                {waitedOnMe ? <Button variant="secondary" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void waitingDone()}>Done</Button>
+                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => {
+                    // The button goes with the blocker: focus goes to Status, which says what changed and where Z puts it back (F-026 §4).
+                    void setState('in_progress').then(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('#details .wd-state[aria-label="Status"]')?.focus({ preventScroll: true })));
+                  }}>Unblock</Button>}
+              </div> : null}
+            </div>
+            {writable && editingBlocker ? (
+              <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
+                {/* One field (#1438 point 12): the reason as words, or a person, a decision or a task picked from its list. */}
+                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus maxLength={2000}
+                  onChoice={chooseWait} onText={(value) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(value); }} />
+                {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || NO_BLOCK_REASON}</p> : null}
+                <div className="wd-blocker__form-acts">
+                  <Button variant="secondary" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
+                  <Button type="submit" variant="secondary" size="sm" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
+                </div>
+              </form>
+            ) : null}
 
         <dl className="wd-rows">
           <div className="wd-row">
@@ -491,36 +523,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         </dl>
         {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {named(reverted.revertedBy, me.user.id)} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
 
-        {item.status === 'blocked' ? (
-          <section className="wd-blocker" aria-label="Blocker">
-            {/* Status already says Blocked: the card is what it waits for, then Edit and Unblock (or Done) under the words (round 14 look-b P8). */}
-            <div className="wd-blocker__head">
-              <p className="wd-blocker__text">
-                {item.waitingFor ? <>Waiting for <b>{named(item.waitingFor, me.user.id)}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
-                  : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>
-                    : blockedLine(item, me.user.id)}
-              </p>
-              {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
-                {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
-                {waitedOnMe ? <Button variant="secondary" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void waitingDone()}>Done</Button>
-                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => {
-                    // The button goes with the blocker: focus goes to Status, which says what changed and where Z puts it back (F-026 §4).
-                    void setState('in_progress').then(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('#details .wd-state[aria-label="Status"]')?.focus({ preventScroll: true })));
-                  }}>Unblock</Button>}
-              </div> : null}
-            </div>
-            {writable && editingBlocker ? (
-              <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
-                {/* One field (#1438 point 12): the reason as words, or a person, a decision or a task picked from its list. */}
-                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus maxLength={2000}
-                  onChoice={chooseWait} onText={(value) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(value); }} />
-                {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || NO_BLOCK_REASON}</p> : null}
-                <div className="wd-blocker__form-acts">
-                  <Button variant="secondary" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
-                  <Button type="submit" variant="secondary" size="sm" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
-                </div>
-              </form>
-            ) : null}
           </section>
         ) : null}
         {error ? <p className="wd-error" role="alert">{error}</p> : null}
@@ -838,7 +840,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
   // whose earlier one is named below does not also say "replaces an earlier decision" in its top line: it is said once (#1058).
   const earlierDay = earlierObject ? ` (${shortDate(earlierObject.decidedAt ?? earlierObject.createdAt)})` : '';
-  // On the phone's sheet it opens at its top, with the answer's row whole (round 14 new P2-3).
+  // On the phone's sheet and a short panel it opens at its top, with the answer's row whole (round 14 new P2-3, round 15 look-1 P2-2).
   const scrollRef = useRef<HTMLDivElement>(null);
   usePanelOpening(scrollRef, decision.id, '.wd-decide');
   useNewestOnWrite(scrollRef);
@@ -846,7 +848,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   return (
     <div className="details wd wd--decision" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd__scroll" ref={scrollRef}>
-      <div className="wd-decision-identity" ref={identityRef}>
+      <div className="wd-decision-identity" ref={identityRef} data-panel-head="">
         <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
@@ -860,7 +862,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       ) : null}
       <span ref={decideMark} hidden />
       {decision.status === 'proposed' ? (
-        <section className="wd-decide" aria-label="Your answer" ref={answerRef}>
+        <section className="wd-decide" aria-label="Your answer" ref={answerRef} data-panel-head="">
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
               <Button ref={acceptButton} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
@@ -873,9 +875,10 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
-        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : youOr(decision.proposedBy)} · {shortDate(decision.createdAt)}</span></dd></div>
+        {/* Who and when as two items of one centred row, so "· today" stands on the label's line beside an agent's Kreska (ai P3, round 15). */}
+        <div className="wd-row"><dt>Proposed</dt><dd><span className="wd-value wd-by">{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : <span>{youOr(decision.proposedBy)}</span>}{' '}<span>· {shortDate(decision.createdAt)}</span></span></dd></div>
         {/* The card's words (personas-30): "Accepted by Ola Nowicka · today", never a second word for the same thing. */}
-        {decision.decidedBy ? <div className="wd-row"><dt>Accepted by</dt><dd><span>{youOr(decision.decidedBy)} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
+        {decision.decidedBy ? <div className="wd-row"><dt>Accepted by</dt><dd><span className="wd-value wd-by"><span>{youOr(decision.decidedBy)}</span>{' '}<span>· {shortDate(decision.decidedAt!)}</span></span></dd></div> : null}
       </dl>
 
       {earlier ? (

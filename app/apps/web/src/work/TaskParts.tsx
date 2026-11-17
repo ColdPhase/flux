@@ -142,9 +142,9 @@ export function TitleField({ title, editable, onEdit, onDraftChange, onSave }: {
     setDraft(title);
     leave();
   }
-  if (!editable) return <h3 className="details__title">{title}</h3>;
+  if (!editable) return <h3 className="details__title" data-panel-head="">{title}</h3>;
   return (
-    <h3 className="details__title wd-title">
+    <h3 className="details__title wd-title" data-panel-head="">
       {editing ? (
         <>
           <span className="ui-vh" id={labelId}>Task title</span>

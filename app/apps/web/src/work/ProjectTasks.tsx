@@ -46,7 +46,8 @@ function Group({ id, title, count, children }: { id: string; title: string; coun
  * the Inbox, not here (F-026 S1); the old `needs`, `rules`
  * and `results` views are not groups any more and their links lead to the Inbox or to All.
  */
-const GROUPS = ['in_progress', 'blocked', 'open', 'finished'] as const;
+// The Board's order, To do, Doing, Blocked, Done (round 15 look-3 e: the List read Doing first, so one task changed place between the views).
+const GROUPS = ['open', 'in_progress', 'blocked', 'finished'] as const;
 type GroupId = typeof GROUPS[number];
 const GROUP_LABEL: Record<GroupId, string> = {
   // "Done", the board's word for the same tasks (#763 C5); the URL keeps `finished`.
@@ -121,7 +122,8 @@ function keepCursor(key: string, cursor: string | null) {
 export function ProjectTasks() {
   const { project } = useLoaderData() as TasksData;
   const owners = useAgentOwners(project);
-  const { openDetails, openCreate } = useShellActions();
+  const { openDetails, openCreate, shownObject } = useShellActions();
+  const shownWork = shownObject?.kind === 'work' ? shownObject.id : null;
   const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
   const { me } = useShellData();
@@ -261,7 +263,8 @@ export function ProjectTasks() {
   const groupCount = (id: GroupId, visible: number) => needle ? visible : visible ? counts?.[id] ?? 0 : 0;
   // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
+  // The row of the task open in the panel is marked, as its card is on the Board (round 15 look-3 e).
+  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} open={shownWork === item.id} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
@@ -298,9 +301,9 @@ export function ProjectTasks() {
           {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status]}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status] : 'this view'} right now.`}{' '}
           <Button variant="link" size="sm" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</Button>
         </p> : null}
+        <Group id="open" title={GROUP_LABEL.open} count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
         <Group id="progress" title={GROUP_LABEL.in_progress} count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
         <Group id="blocked" title={GROUP_LABEL.blocked} count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
-        <Group id="open" title={GROUP_LABEL.open} count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
         <Group id="finished" title={GROUP_LABEL.finished} count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
       </div>
       )}

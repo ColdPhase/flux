@@ -102,7 +102,8 @@
 .sk-k { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .sk-k svg { flex: none; }
 .sk-t { font-size: var(--fs-base); font-weight: 600; color: var(--t1); line-height: var(--lh); overflow-wrap: anywhere; white-space: pre-line; }
-.sk-p { margin-top: 3px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
+.sk-p { display: flex; min-width: 0; margin-top: 3px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
+.sk-p__w { flex: none; white-space: pre; }
 .sk-resize { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 50%, var(--t3) 50%, var(--t3) 60%, transparent 60%, transparent 72%, var(--t3) 72%, var(--t3) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0;
   opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
@@ -350,6 +351,10 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock > .sk-line > .sk-hint[data-over-card] { opacity: 0; visibility: hidden; transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
 .sk-hint, .sk--map .sk-status { margin: 0; padding: 0; flex: none; max-width: min(640px, 100%); font-size: var(--fs-sm); color: var(--t3); text-align: center; white-space: normal; overflow: visible; }
 .sk--map .sk-status:empty { display: none; }
+/* The map's status line ("Added … · Saved") is a small raised pill like the phone's, on the computer too, so it never prints its words over a
+   thought's at 200 % (round 15 look-3 F4); what is selected is said to a screen reader only, as on the phone: the outline shows it. */
+.sk--map .sk-dock .sk-status:not(.sk-status--readonly) { background: var(--el); padding: 4px 12px; border-radius: var(--r-pill); box-shadow: var(--sh-card); pointer-events: auto; }
+.sk-dock .sk-line:has(.sk-status--selection) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk-dock .sk-tools { gap: 4px; flex-wrap: wrap; justify-content: center; flex: 0 1 auto; min-width: 0; }
 .sk-dock__row { flex-wrap: wrap; justify-content: center; }
 .sk-dock__row > *, .sk-dock .sk-tools > * { flex: none; }
@@ -427,6 +432,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-undo { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--el); color: var(--t1);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); font-weight: 500; }
 .sk-undo svg { color: var(--t2); }
+.sk-undo--icon { width: 44px; padding: 0; justify-content: center; }
 /* #509 AC-3/AC-4: the zoom controls sit at the bottom right with the minimap above them. Where the
    pane is too narrow for them beside the centred tools, they rise above the tools instead, so the
    tools never move and nothing overlaps. */
