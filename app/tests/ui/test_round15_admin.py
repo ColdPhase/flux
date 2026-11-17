@@ -183,7 +183,7 @@ class Round15Admin(unittest.TestCase):
         older = f"older.{uuid.uuid4().hex[:6]}@example.test"
         email.fill(older)
         email.press("Enter")
-        expect(page.get_by_role("list", name=re.compile(r"^Waiting to be used · ")).get_by_text(older)).to_be_visible()
+        expect(page.get_by_role("list", name=re.compile(r"^Waiting to be used · ")).locator("li").first).to_contain_text(older)
         newer = f"newer.{uuid.uuid4().hex[:6]}@example.test"
         email.fill(newer)
         email.press("Enter")
@@ -223,12 +223,7 @@ class Round15Encrypted(Base):
         self.open_people(page)
         section = self.section(page)
         section.get_by_role("button", name="Lock now").click()
-        ask = section.get_by_role("group", name=f"Lock {A_NAME}")
-        # Daily P3-3: the ask opens on its safe answer, drawn as every Keep (secondary), its action as every action that ends access (danger).
-        expect(ask.get_by_role("button", name="Keep it unlocked")).to_be_focused()
-        self.assertIn("ui-btn--secondary", ask.get_by_role("button", name="Keep it unlocked").get_attribute("class") or "")
-        self.assertIn("ui-btn--danger", ask.get_by_role("button", name=f"Lock {A_NAME}").get_attribute("class") or "")
-        ask.get_by_role("button", name=f"Lock {A_NAME}").click()
+        section.get_by_role("group", name=f"Lock {A_NAME}").get_by_role("button", name=f"Lock {A_NAME}").click()
         expect(section.get_by_role("status")).to_have_text(f"{A_NAME} is locked.")
         card = page.locator(".locked__card")
         card.get_by_label("Your unlock password").fill(UNLOCK_PASSWORD)
@@ -236,6 +231,26 @@ class Round15Encrypted(Base):
         expect(section.locator(".people__enc-line")).to_contain_text("Unlocked by Ada Kowalska")
         expect(section.get_by_text(f"{A_NAME} is locked.")).to_have_count(0)
         shot(page, f"round15-unlocked-from-card-{UI_BROWSER}")
+
+    def test_12_every_ask_opens_on_its_safe_answer_drawn_the_same(self) -> None:
+        """Daily P3-3: Remove showed "Remove | Keep" with a grey Keep, Revoke "Revoke link | Keep it", and Lock focused "Lock Board minutes" while
+        the others focused Keep."""
+        world = self.make_world()
+        page = self.page(world, "ada")
+        self.open_people(page)
+        section = self.section(page)
+        section.get_by_role("button", name="Lock now").click()
+        ask = section.get_by_role("group", name=f"Lock {A_NAME}")
+        expect(ask.get_by_role("button", name="Keep it unlocked")).to_be_focused()
+        self.assertIn("ui-btn--secondary", ask.get_by_role("button", name="Keep it unlocked").get_attribute("class") or "")
+        self.assertIn("ui-btn--danger", ask.get_by_role("button", name=f"Lock {A_NAME}").get_attribute("class") or "")
+        page.keyboard.press("Escape")
+        # A row's Remove asks with the same answer: Keep, secondary and focused.
+        row = page.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Cy Moreno")
+        row.get_by_role("button", name=f"Remove Cy Moreno from {A_NAME}").click()
+        keep = row.get_by_role("group", name="Remove Cy Moreno").get_by_role("button", name="Keep", exact=True)
+        expect(keep).to_be_focused()
+        self.assertIn("ui-btn--secondary", keep.get_attribute("class") or "")
 
     def test_11_an_encrypted_spaces_people_are_the_rows_of_every_list_listed_once(self) -> None:
         """Daily P2-2: the panel repeated the page's people with "Change", whose form had Owner/Admin/Member/Guest with the company's words, Save

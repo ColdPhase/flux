@@ -122,11 +122,21 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   const [links, setLinks] = useState<WorkspaceInvite[]>([]);
   const [freshLink, setFreshLink] = useState<string | null>(null);
   const [linksSeen, setLinksSeen] = useState(0);
-  // A link made in Someone new? is listed under the people, far below the field the cursor stays in for the next address (personas-36): its row
-  // comes into view, and the field keeps the focus, so the next address typed brings it back (round 15, new P3-i: the link was out of view).
+  // A link made in Someone new? is listed under the people, below the field the cursor stays in for the next address (personas-36): the page
+  // scrolls towards the link's row as far as the field stays in view, so both show where they fit (round 15, new P3-i: the link was out of view).
   useEffect(() => {
     if (!freshLink) return undefined;
-    const frame = requestAnimationFrame(() => document.getElementById(`spset-link-${freshLink}`)?.closest('li')?.scrollIntoView({ block: 'nearest' }));
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(`spset-link-${freshLink}`)?.closest('li');
+      const field = document.getElementById('spset-new-email');
+      const pane = row?.closest<HTMLElement>('.pane-scroll');
+      if (!row || !pane) return;
+      const view = pane.getBoundingClientRect();
+      const below = row.getBoundingClientRect().bottom + 16 - view.bottom;
+      const room = field ? field.getBoundingClientRect().top - 16 - view.top : below;
+      const by = Math.min(below, room);
+      if (by > 0) pane.scrollBy({ top: by });
+    });
     return () => cancelAnimationFrame(frame);
   }, [freshLink]);
   // Someone joined with a link made here, was added or removed elsewhere, or their role changed: the people listed are read again at once (#1424).
