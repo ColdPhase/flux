@@ -124,15 +124,6 @@ export function useToast() {
 const hovers = () => !window.matchMedia('(hover: none)').matches;
 
 /**
- * Where the last press was. A toast that appears under the pointer of that press (the next toast after Undo, "#4 back to To do", stands where
- * Undo stood) is not hovered: the pointer never moved onto it. WebKit reports a touch screen's tap as a hovering pointer that stays there,
- * and a mouse that clicked Undo stays there too, so that toast was held for as long as nobody moved (test_tasks_board 09, WebKit).
- */
-const lastPress = { x: Number.NaN, y: Number.NaN };
-if (typeof document !== 'undefined') document.addEventListener('pointerdown', (event) => { lastPress.x = event.clientX; lastPress.y = event.clientY; }, { capture: true, passive: true });
-const movedOnto = (event: { clientX: number; clientY: number }) => !(Math.abs(event.clientX - lastPress.x) < 2 && Math.abs(event.clientY - lastPress.y) < 2);
-
-/**
  * Undo toasts leave now, as when the address changes: a window that lists what they would undo (the Inbox's "for later" and "done today")
  * has its own way back, and a toast over it covered its rows on a phone (personas-30).
  */
@@ -223,8 +214,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
   }, [leaving, toast, onDone, onLeaving]);
 
   return (
-    <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={(event) => { if (!hovers() || !movedOnto(event)) return; held.current.pointer = true; disarm(); }}
-      onMouseMove={(event) => { if (held.current.pointer || !hovers() || !movedOnto(event)) return; held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
+    <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { if (!hovers()) return; held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
       onFocus={() => { held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
       {/* One look for every toast that says what was done (round 14, daily P3-10: Done in the Inbox had no mark, a role change a ✓): no
           mark beside the words. Only Kreska's Wink for a closed task, and the alert of what failed, stand there. */}
