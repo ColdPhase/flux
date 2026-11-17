@@ -238,7 +238,7 @@ describe('answers whose cost is not known, and the provider\'s error answers', (
     // wrote (every streamed byte as a token at most, and the margin the provider may have written after the last byte).
     const body = { model: 'claude-sonnet-5', max_tokens: 8_000, stream: true, messages: [{ role: 'user', content: 'Write the whole run sheet' }] };
     const hold = holdOf({ provider: 'anthropic', operation: 'anthropic_messages', pathModel: null, pathStream: null }, body, 'claude-sonnet-5');
-    const events = [{ type: 'message_start', message: { usage: { input_tokens: 1_200, output_tokens: 1 } } }, { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Fair day: 8:00 set up' } }];
+    const events = [{ type: 'message_start', message: { usage: { input_tokens: 800, output_tokens: 1 } } }, { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Fair day: 8:00 set up' } }];
     const streamedBytes = events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0);
     const cutAfter = (stop: string | null): Script => (_req, _body, res) => {
       void (async () => {
@@ -251,10 +251,10 @@ describe('answers whose cost is not known, and the provider\'s error answers', (
     const stopped = await runOn('anthropic', 'claude-sonnet-5');
     script = cutAfter(stopped.id);
     await call('/anthropic/v1/messages', stopped.token, body);
-    const used = maxRequestMicros(PRICE, 1_200, streamedBytes + CUT_OUTPUT_MARGIN);
+    const used = maxRequestMicros(PRICE, 800, streamedBytes + CUT_OUTPUT_MARGIN);
     const after = await row(stopped.id);
     assert.ok(used < hold / 2, `what the stop used (${used}) is well below the hold (${hold})`);
-    assert.deepEqual([after.charged_micros, after.reserved_micros, after.input_tokens, after.output_tokens], [used, used, 1_200, streamedBytes + CUT_OUTPUT_MARGIN],
+    assert.deepEqual([after.charged_micros, after.reserved_micros, after.input_tokens, after.output_tokens], [used, used, 800, streamedBytes + CUT_OUTPUT_MARGIN],
       'the stop counts what it read and wrote, not its whole hold');
     assert.deepEqual(await gateway.close(stopped.id), { requests: 1, chargedMicros: used, unknown: 0, stopped: null }, 'its cost is known, so the run is not "unknown"');
     const lost = await runOn('anthropic', 'claude-sonnet-5');
