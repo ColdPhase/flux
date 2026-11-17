@@ -16,7 +16,8 @@ export function showWhole(scroller: HTMLElement, target: HTMLElement | null | un
   const room = scroller.getBoundingClientRect();
   const box = target.getBoundingClientRect();
   const over = box.bottom - (room.bottom - FADE);
-  if (over > 0) scroller.scrollTop += Math.min(over, Math.max(0, box.top - room.top));
+  // Whole pixels up: WebKit keeps `scrollTop` whole, so a fraction would leave the target half a pixel under the fade.
+  if (over > 0) scroller.scrollTop += Math.ceil(Math.min(over, Math.max(0, box.top - room.top)));
 }
 
 /**
