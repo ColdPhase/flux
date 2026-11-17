@@ -568,6 +568,9 @@ class ReturnToOrigin(unittest.TestCase):
                 card.click()
                 places["wiki card"] = self.box(self.origin_back(page, "Conversation"))
                 page.go_back()
+                # The source page's header names its space too (round 15 look-3 F5): the title is read once the conversation is back.
+                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+                expect(self.origin_back(page)).to_have_count(0)
                 # A search result carries none (#1424): it would move the header's name and tabs. The entry has no origin; Back returns.
                 heading = page.get_by_role("heading", name="Night lamp", level=1)
                 title = heading.bounding_box()
