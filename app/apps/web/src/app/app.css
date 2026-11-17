@@ -199,6 +199,8 @@ body:has(.app) { background: var(--side); }
 /* An agent's row keeps the pin where it is: the unread dot sits in its own slot at the end of the row, so neither moves the other. */
 .side__agent { position: relative; }
 .side__agent .side__pin { margin-right: 16px; }
+/* A conversation's face and name start where a space's tile and name start (round 14, look-b P19: names at x 52 against 48). */
+.side__dm { gap: 8px; padding-inline: 8px 6px; }
 .side__agent .side__dot { position: absolute; right: 10px; top: 50%; margin: -3px 0 0; }
 
 /* A working agent with Stop (S13): only while a real run executes. */
