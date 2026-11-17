@@ -245,7 +245,7 @@ class PrivateAiJourney(unittest.TestCase):
         The key's hosted search (#954) is Flux's `flux_web_search`, which this stack cannot run: the API's searcher opens the key of a stored connection and
         the fixture key is none, so a search would end "not available for this key". Its offer is checked here; the search itself and its listing are in
         tests/app/agent-runtime-pi-search.test.ts."""
-        page = "http://public.test/ferry"
+        page = "http://public.test/wiki/Winter_ferry_timetable"
         missing = "http://public.test/wiki/Category:Winter_ferry_timetables"
         mock("/__script", {"reset": True, "text": "The winter timetable starts on 3 November.",
                            "tool": [{"name": "flux_read_web", "input": {"url": page}}, {"name": "flux_read_web", "input": {"url": missing}}]})
@@ -264,7 +264,7 @@ class PrivateAiJourney(unittest.TestCase):
         toggle.click()
         expect(toggle).to_have_attribute("aria-expanded", "true")
         # Open: each address once, as its site and the last words of its path, a link on one line; the one not read says why, short.
-        read = sources.get_by_role("link", name="public.test › ferry")
+        read = sources.get_by_role("link", name="public.test › Winter ferry timetable", exact=True)
         expect(read).to_have_attribute("href", page)
         expect(read).to_have_attribute("target", "_blank")
         unread = sources.locator("li").filter(has_text="Winter ferry timetables")
