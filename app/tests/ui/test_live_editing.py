@@ -274,9 +274,14 @@ class LiveEditingJourney(LiveFixture):
         self.assertGreaterEqual(saved["version"], 2)
         immutable = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
         self.assertEqual(immutable["body"], original["body"])
+        current = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}")
         await kai.goto(self.doc_url + f"/versions/{saved['version']}")
-        await expect(kai.locator(".doc-prose")).to_contain_text("Kai’s independent observation.")
-        await expect(kai.locator('.cm-content')).to_have_count(0)
+        if saved["version"] == current["version"]:
+            # The current version is the page itself (round 15 new P2-4): its address opens the page.
+            await expect(kai).to_have_url(re.compile(re.escape(self.doc_url) + r"$"))
+        else:
+            await expect(kai.locator(".doc-prose")).to_contain_text("Kai’s independent observation.")
+            await expect(kai.locator('.cm-content')).to_have_count(0)
         self.assertTrue(any(row["header"].get("operation") == "text" for row in self.frames["ada"]), "Real Yjs transport used")
 
     async def test_02_a_person_who_only_reads_sees_typing_and_publishes_no_caret(self):
@@ -289,8 +294,9 @@ class LiveEditingJourney(LiveFixture):
         # One bold span can be drawn in pieces (the writer's underline marks part of it), so its pieces are read together.
         await kai.wait_for_function("() => [...document.querySelectorAll('.wiki-editor .cm-md-strong')].map((el) => el.textContent).join('') === 'as it is typed'")
         await expect(kai.get_by_role("status").filter(has_text="Ada is here too")).to_be_visible()
-        await kai.goto(self.doc_url + "/versions/1")
-        await expect(kai.locator(".doc-prose")).not_to_contain_text("Reader sees this")
+        # The saved version 1 does not hold what is being typed (the current version by its address opens the page itself, round 15).
+        saved = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
+        self.assertNotIn("Reader sees this", saved["body"])
         self.assertFalse(any(row["direction"] == "sent" and row["header"].get("type") == "cursor" for row in self.frames["kai"]),
                          "A page open without writing publishes no caret")
 

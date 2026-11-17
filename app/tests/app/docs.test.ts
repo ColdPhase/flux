@@ -43,6 +43,11 @@ describe('project docs with immutable versions, links and backlinks', () => {
       { body: 'The PIR sensor misses slow hand movements.', clientMessageId: randomUUID() }), 201);
   });
 
+  test('a line written on its own line reads on its own line in every saved version (round 15 new P3-e)', async () => {
+    const doc = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Opening checklist', body: 'Turn on oven 1 and oven 2.\nPut the bread on the shelves.\n' }), 201);
+    assert.match(doc.html, /^<p>Turn on oven 1 and oven 2\.<br ?\/?>\n?Put the bread on the shelves\.<\/p>\n$/);
+  });
+
   test('a doc keeps immutable versions with author, time and reason; old citations stay', async () => {
     const created = await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'How the lamp senses gestures', body: 'We use a **PIR** sensor.' });
     const doc = json<Doc>(created, 201);

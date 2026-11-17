@@ -8,6 +8,7 @@ import { useShellData } from '../app/data';
 import { Button, EmptyState, Icon, prefersReducedMotion, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
+import { listProjectSources } from '../materials/api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
@@ -141,6 +142,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   // The pages read when the switcher opened; until then (and after it closes) the Wiki's own list.
   const [fresh, setFresh] = useState<DocSummary[] | null>(null);
   const docs = fresh ?? loaded;
+  // The space's saved sources are Wiki pages by their own address (#1419 item 20): listed here too, opening at their page (round 15 look-3 F5).
+  const [sources, setSources] = useState<{ id: string; title: string }[]>([]);
   const button = useRef<HTMLButtonElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
@@ -157,6 +160,7 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
     const controller = new AbortController();
     reading.current = controller;
     listProjectDocs(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setFresh(items); }, () => undefined);
+    listProjectSources(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setSources(items.map((item) => ({ id: item.materialId, title: item.title }))); }, () => undefined);
   }, [project.id]);
   useEffect(() => {
     if (!open) return;
@@ -166,7 +170,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   }, [open, read]);
   // A page deleted while the list is open leaves it at once (#1021): the event names the space, so the list is read again.
   useStreamEvents(userId, (event) => { if (open && event.kind === 'project.doc_deleted.v1' && event.objectId === project.id) read(); });
-  const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
+  const pages = useMemo(() => [...docs.map((doc) => ({ id: doc.id, title: doc.title, to: docUrl(project.id, doc.id) })),
+    ...sources.map((source) => ({ id: source.id, title: source.title, to: `/materials/${source.id}` }))].sort((a, b) => collator.compare(a.title, b.title)), [docs, sources, project.id]);
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(doc.title).includes(needle)) : pages;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -191,12 +196,12 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
             <Icon name="search" size={15} />
             <input ref={findRef} type="text" placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query}
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(docUrl(project.id, shown[0].id)); } }} />
+              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(shown[0].to); } }} />
           </label>
           <ul className="wiki-menu__list" aria-label="Pages">
             {shown.map((doc) => (
               <li key={doc.id}>
-                <Link className="wiki-menu__row" to={docUrl(project.id, doc.id)} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
+                <Link className="wiki-menu__row" to={doc.to} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
                   onClick={() => close(false)}>
                   <span className="wiki-menu__t">{doc.title}</span>
                   {doc.id === docId ? <Icon name="check" size={15} /> : null}

@@ -210,9 +210,28 @@ function diffBlocks(before: Element[], after: Element[]): Element[] {
   return out;
 }
 
-/** What changed between two versions, as the page reads. */
-export function blockDiff(fromHtml: string, toHtml: string): { html: string; changed: boolean } {
+const wordCount = (text: string | null | undefined) => (text ?? '').split(/\s+/).filter(Boolean).length;
+
+/** The words the comparison marks: inside <ins> and <del>, and in whole blocks marked added or removed. */
+function markedWords(blocks: Element[]) {
+  let added = 0;
+  let removed = 0;
+  for (const block of blocks) {
+    const whole = (kind: string) => [...(block.matches(`.wiki-chg--${kind}`) ? [block] : []), ...block.querySelectorAll(`.wiki-chg--${kind}`)];
+    const addedBlocks = whole('added');
+    const removedBlocks = whole('removed');
+    added += addedBlocks.reduce((sum, node) => sum + wordCount(node.textContent), 0);
+    removed += removedBlocks.reduce((sum, node) => sum + wordCount(node.textContent), 0);
+    const inside = (node: Element) => addedBlocks.some((outer) => outer.contains(node)) || removedBlocks.some((outer) => outer.contains(node));
+    for (const node of block.querySelectorAll('ins')) if (!inside(node)) added += wordCount(node.textContent);
+    for (const node of block.querySelectorAll('del')) if (!inside(node)) removed += wordCount(node.textContent);
+  }
+  return { added, removed };
+}
+
+/** What changed between two versions, as the page reads, with the number of words it marks added and removed. */
+export function blockDiff(fromHtml: string, toHtml: string): { html: string; changed: boolean; words: { added: number; removed: number } } {
   const blocks = diffBlocks(childrenOf(fromHtml), childrenOf(toHtml));
   const html = blocks.map((block) => block.outerHTML).join('');
-  return { html, changed: /<(ins|del)[\s>]|wiki-chg--/.test(html) };
+  return { html, changed: /<(ins|del)[\s>]|wiki-chg--/.test(html), words: markedWords(blocks) };
 }

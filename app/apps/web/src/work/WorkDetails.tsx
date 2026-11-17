@@ -449,7 +449,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // Empty sections are hidden (#868): a task without a source has no "From" row. While the relationships have more pages
   // than the one shown, the row stays, so paging never adds or takes rows away.
   const cameFrom = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.role === 'source') || !!item.planIntent || !relations.complete;
-  // On the phone's sheet it opens at its top, with a blocked task's "Waiting for" card whole (round 14 look-a A3).
+  // On the phone's sheet and a short panel it opens at its top, with a blocked task's "Waiting for" card whole (round 14 look-a A3).
   const scrollRef = useRef<HTMLDivElement>(null);
   usePanelOpening(scrollRef, item.id, '.wd-blocker');
   useNewestOnWrite(scrollRef);
@@ -463,37 +463,11 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
-
-        <dl className="wd-rows">
-          <div className="wd-row">
-            <dt>Status</dt>
-            <dd>{writable ? <StatusControl status={item.status} dropped={item.dropped} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Undone · read-only history' : statusPhrase(item)}</span></span>}</dd>
-          </div>
-          <div className="wd-row">
-            <dt>Owner</dt>
-            <dd>{writable
-              ? <>
-                <PropertyMenu label="Owner" value={shownOwner} options={ownerOptions} disabled={busy} onOpen={() => { ownerBase.current ??= item.version; }}
-                  onClose={() => { if (ownerDraft === null) ownerBase.current = null; }} onChoose={(value) => { setOwnerDraft(value); void saveOwner(value); }}>{ownerView}</PropertyMenu>
-                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner ? named(item.owner, me.user.id) : NO_OWNER}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
-              </>
-              : <span className="wd-value">{item.owner ? ownerView : <span className="wd-muted">{NO_OWNER}</span>}</span>}</dd>
-          </div>
-          <TaskPeople workId={item.id} revision={`${detail.observedAt}:${activity.lines.length}`} />
-          {cameFrom ? <div className="wd-row">
-            <dt>From</dt>
-            <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, '')} /></dd>
-          </div> : null}
-          {writable || item.dueOn ? <div className="wd-row">
-            <dt>Due</dt>
-            <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
-          </div> : null}
-        </dl>
-        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {named(reverted.revertedBy, me.user.id)} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
-
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
-            {/* Status already says Blocked: the card is what it waits for, then Edit and Unblock (or Done) under the words (round 14 look-b P8). */}
+            {/* Status already says Blocked: the card is what it waits for, then Edit and Unblock (or Done) under the words (round 14 look-b P8).
+                It stands under the title, as a decision's answer stands under its reason, so a phone's half sheet shows what the task is and what
+                it waits for without scrolling the title away (round 15 look-1 P2-1, look-3 F2). */}
             <div className="wd-blocker__head">
               <p className="wd-blocker__text">
                 {item.waitingFor ? <>Waiting for <b>{named(item.waitingFor, me.user.id)}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
@@ -523,6 +497,33 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             ) : null}
           </section>
         ) : null}
+
+        <dl className="wd-rows">
+          <div className="wd-row">
+            <dt>Status</dt>
+            <dd>{writable ? <StatusControl status={item.status} dropped={item.dropped} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Undone · read-only history' : statusPhrase(item)}</span></span>}</dd>
+          </div>
+          <div className="wd-row">
+            <dt>Owner</dt>
+            <dd>{writable
+              ? <>
+                <PropertyMenu label="Owner" value={shownOwner} options={ownerOptions} disabled={busy} onOpen={() => { ownerBase.current ??= item.version; }}
+                  onClose={() => { if (ownerDraft === null) ownerBase.current = null; }} onChoose={(value) => { setOwnerDraft(value); void saveOwner(value); }}>{ownerView}</PropertyMenu>
+                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner ? named(item.owner, me.user.id) : NO_OWNER}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
+              </>
+              : <span className="wd-value">{item.owner ? ownerView : <span className="wd-muted">{NO_OWNER}</span>}</span>}</dd>
+          </div>
+          <TaskPeople workId={item.id} revision={`${detail.observedAt}:${activity.lines.length}`} />
+          {cameFrom ? <div className="wd-row">
+            <dt>From</dt>
+            <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, '')} /></dd>
+          </div> : null}
+          {writable || item.dueOn ? <div className="wd-row">
+            <dt>Due</dt>
+            <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
+          </div> : null}
+        </dl>
+        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {named(reverted.revertedBy, me.user.id)} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
         {error ? <p className="wd-error" role="alert">{error}</p> : null}
 
         {writable ? (
@@ -838,7 +839,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
   // whose earlier one is named below does not also say "replaces an earlier decision" in its top line: it is said once (#1058).
   const earlierDay = earlierObject ? ` (${shortDate(earlierObject.decidedAt ?? earlierObject.createdAt)})` : '';
-  // On the phone's sheet it opens at its top, with the answer's row whole (round 14 new P2-3).
+  // On the phone's sheet and a short panel it opens at its top, with the answer's row whole (round 14 new P2-3, round 15 look-1 P2-2).
   const scrollRef = useRef<HTMLDivElement>(null);
   usePanelOpening(scrollRef, decision.id, '.wd-decide');
   useNewestOnWrite(scrollRef);
@@ -873,9 +874,10 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
-        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : youOr(decision.proposedBy)} · {shortDate(decision.createdAt)}</span></dd></div>
+        {/* Who and when as two items of one centred row, so "· today" stands on the label's line beside an agent's Kreska (ai P3, round 15). */}
+        <div className="wd-row"><dt>Proposed</dt><dd><span className="wd-value wd-by">{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : <span>{youOr(decision.proposedBy)}</span>}{' '}<span>· {shortDate(decision.createdAt)}</span></span></dd></div>
         {/* The card's words (personas-30): "Accepted by Ola Nowicka · today", never a second word for the same thing. */}
-        {decision.decidedBy ? <div className="wd-row"><dt>Accepted by</dt><dd><span>{youOr(decision.decidedBy)} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
+        {decision.decidedBy ? <div className="wd-row"><dt>Accepted by</dt><dd><span className="wd-value wd-by"><span>{youOr(decision.decidedBy)}</span>{' '}<span>· {shortDate(decision.decidedAt!)}</span></span></dd></div> : null}
       </dl>
 
       {earlier ? (

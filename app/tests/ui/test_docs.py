@@ -398,7 +398,11 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(prose.locator("img:not(.cm-widgetBuffer), script, iframe, [onerror]").count(), 0)
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
         expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
-        # The saved version reads as the server sanitized it, and says which link leads nowhere.
+        # The saved version reads as the server sanitized it, and says which link leads nowhere. Version 1 is an earlier version once the page
+        # has a second one (the current version opens the page itself).
+        current = self.api(page, "GET", f"/api/v1/docs/{doc['id']}", status=200)
+        self.api(page, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": current["body"] + "\n\nForwarded on Monday.\n"}, status=200,
+                 headers={"if-match": f'"{current["version"]}"', "idempotency-key": str(uuid.uuid4())})
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/versions/1")
         prose = page.locator(".doc-prose")
         expect(prose).to_contain_text("<script>alert('script')</script>")
@@ -424,13 +428,14 @@ class DocsJourney(unittest.TestCase):
         page.get_by_role("button", name="Page actions").click()
         page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="History").click()
 
-        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · +N −M".
+        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · 9 words added, 2 removed" (round 15
+        # daily P3-7: the count is the words the comparison marks).
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
         expect(versions.first).to_contain_text("Edited the text")
         expect(versions.first).to_contain_text(f"v2 · {OWNER['name']}")
         expect(versions.last).to_contain_text("v1 · ")
-        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+$"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \d+ words? (added(, \d+ removed)?|removed)$"))).to_be_visible()
         expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Edited the text")
 
         # AC-1: the changes are the page itself, in its typography: headings, a list, a table.

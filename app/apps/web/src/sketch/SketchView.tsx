@@ -822,7 +822,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   const clientChanges = taskProjectId ? <ClientChanges key={sketchId} projectId={taskProjectId} kind="map" id={sketchId} refreshKey={sketch.version} /> : null;
   const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
   const statusLine = (
-    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${phone && status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
+    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
       {sayLine}
       {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
     </p>

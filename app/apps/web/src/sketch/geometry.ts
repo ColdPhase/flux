@@ -80,8 +80,13 @@ export function rectOf(thought: Thought, heights: Map<string, number>): Rect {
 export function freeSpot(rects: Rect[], from: Rect | null, size: { w: number; h: number }, columnsOnly = false): { x: number; y: number } {
   const hits = (x: number, y: number) => rects.some((r) => x < r.x + r.w + 16 && x + size.w + 16 > r.x && y < r.y + r.h + 16 + TASK_LINE_ROOM && y + size.h + 16 > r.y);
   if (!from) {
-    for (let y = PAD; y < PAD + 4000; y += 40) for (let x = PAD; x < PAD + (columnsOnly ? 1 : 1200); x += 40) if (!hits(x, y)) return { x, y };
-    return { x: PAD, y: PAD };
+    // On the phone's columns the first free place is counted from the map's own top left, not the plane's: a thought made on a computer
+    // may stand far from the plane's corner, and the columns keep vertical gaps, so a new one there landed a screen or more below it and
+    // the view went with it (round 15 new P3-f: the existing thought went off screen after Save).
+    const x0 = columnsOnly && rects.length ? Math.min(...rects.map((r) => r.x)) : PAD;
+    const y0 = columnsOnly && rects.length ? Math.min(...rects.map((r) => r.y)) : PAD;
+    for (let y = y0; y < y0 + 4000; y += 40) for (let x = x0; x < x0 + (columnsOnly ? 1 : 1200); x += 40) if (!hits(x, y)) return { x, y };
+    return { x: x0, y: y0 };
   }
   const tries = columnsOnly
     ? [[0, from.h + 32], [0, from.h + 140], [0, from.h + 250]]

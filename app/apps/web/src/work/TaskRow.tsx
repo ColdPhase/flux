@@ -5,7 +5,7 @@ import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { useAgentHue, type ColouredAgent } from '../agents/hues';
 import type { AgentHue } from '../ui';
 import { named } from '../docs/format';
-import { STATUS_LABEL, blockedLine, isFinished, statusPhrase, taskNumber } from './format';
+import { STATUS_LABEL, blockedLine, dueShort, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
 // A task row as drawn (F-026 S-P-Tasks): the state glyph (one tap changes the state), the title, "#number" and
@@ -24,6 +24,8 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (
       ? <AgentIdentity icon={false} name={owner.name} owner={agentAuthorOwner(owner, owners)} hue={hue(owner)} />
       : named(owner, meId);
   const rest = [
+    // Its due day in the card's words, "Due 21 Nov" (round 15 look-3 e: the List showed none).
+    item.dueOn ? dueShort(item.dueOn) : null,
     // What it waits for, in the words the board, the panel, Home and the Inbox use (personas-28).
     item.status === 'blocked' ? blockedLine(item, meId) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
@@ -47,11 +49,13 @@ export interface TaskRowProps {
   owners: AgentOwners;
   writable: boolean;
   muted?: boolean;
+  /** The task is the one open in the panel. */
+  open?: boolean;
   onOpen: () => void;
   onChange: (item: StateTarget, status: WorkStatus) => void;
 }
 
-export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange }: TaskRowProps) {
+export function TaskRow({ item, meId, owners, writable, muted, open: shown, onOpen, onChange }: TaskRowProps) {
   const hue = useAgentHue();
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -132,7 +136,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
             <StatusGlyph status={item.status} changeKey={item.id} />
           </button>
         ) : <span className="ws-task__glyph ws-task__glyph--still" role="img" aria-label={word}><StatusGlyph status={item.status} changeKey={item.id} /></span>}
-        <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>
+        <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} aria-current={shown ? 'true' : undefined} onClick={click}>
           <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners, hue)}</span></span>
           <span className="ws-item__r">
             {item.owner?.kind === 'agent' ? <Kreska size={20} hue={hue(item.owner)} />

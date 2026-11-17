@@ -211,22 +211,31 @@ looks ugly"):
 - **A menu's rows lead with their icon**, and a line sets the destructive row apart (the Wiki's ⋯, as the maps' switcher).
 - **The Wiki's prose is one prose:** the editor, the history and an old version hang a list's "•" (`--t1`) at the column's edge with the
   words 1.5em in, in `--t2`; the line under a heading is a short step, not a whole empty line. A version's banner puts its links in a row
-  of their own under the sentence. The title's chevron follows its last word.
+  of their own under the sentence. The title's chevron follows its last word. **A line is a line** (round 15 new P3-e): the page is written
+  line by line where it is read, so a saved version, History's comparison and an old version's reader keep each line on its own line (the
+  server renders a line break as a break), never "Turn on oven 2. Put the bread…" run together.
 - **The map:** a label sits on a free part of its own line, never on another label or under a thought; a line with no free part (two
   thoughts side by side) keeps its label at its middle, raised over the thoughts' edges, never hidden; the selection's actions never lie
-  over another thought (they slide beside it, or rise above it); an edit's **Save** and **Cancel** are that toolbar beside the thought
+  over another thought (they slide beside it, or rise above it) and never under the map's floating header: where they would lie under it
+  (a thought near the top at 200 %), they stand under their own thought (round 15 look-3 F4); an edit's **Save** and **Cancel** are that toolbar beside the thought
   (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
   with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
   minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden, down to
   a 640 px pane (200 % text on a 1440 px window). In the map's List the canvas tools (Select, Move around) are not drawn and keep their room,
   so Thought and Undo stay where they are, never two greyed tools that do nothing (round 14 look-b P13). The phone's map has one bottom row:
   the selection's Thought actions (or an edit's Save and Cancel), Undo and **Thought** side by side, with the once-said computer line above
-  it (round 14 look-b P14). A connection's label tries every point of its line, nearest the middle first, before it gives way (P11). A
+  it (round 14 look-b P14); Undo there is its icon, as on the computer's toolbar, so the three fit one row of a 390 px phone (round 15
+  look-3 b). The map's status line ("Added … · Saved") is a small raised pill on the computer as on the phone, never words printed over a
+  thought; what is selected is said to a screen reader only, as the outline shows it (round 15 look-3 F4). A thought's byline is one line,
+  "From Ada Kowal… (you) · 14:22": the name gives way with "…", its mark and the time stay whole (`PersonName`; round 15 look-3 a). A connection's label tries every point of its line, nearest the middle first, before it gives way (P11). A
   thought's tasks show once, as its quiet count (UI116-4); the line that repeated its first task beside the count is gone. The phone's
   **Thought** is the soft fill of the phone's floating "+". In the map's List a connection's label stays the tag before the title (#510),
   in a slot of one width right against the title, so labelled siblings' titles start at one edge; the tree's ticks reach their rows.
 - **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
-  an ellipsis); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
+  an ellipsis); where the number, a due day and the owner's face, mark and a few letters do not fit one line (a column beside the open
+  panel), the owner takes the line under them, at the right, never shrinking to "AK (you)" with "(you)" past the card (round 15 look-3 F1);
+  a List row's line says its due day as the card does ("Due 25 Nov"), and the row of the task open in the panel is marked as its card is
+  (round 15 look-3 e); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
   in a 10 px gutter of `--bg`; the blocked card's words take the card's whole width and Edit and Unblock (or Done) take the line under
   them, starting where the words start, on the computer and the phone; a multi-line
   value keeps its label on its first line; the thought chooser scrolls into view when it opens. **A name keeps its mark:** where a row is
@@ -1894,8 +1903,14 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   the field, the panel's bottom padding included, so no fade lies on it. **The phone's sheet opens at its top** (round 14 new P2-3, look-b B3,
   look-a A3: its half height opened on the newest lines, with no title, no Why and no state, and Marta saw only Accept): what the task or
   the decision is comes first, scrolled only as far as needed to show whole what it asks of the reader (a proposed decision's Accept row, a
-  blocked task's "Waiting for" card). The cursor put in its field (Discuss, `R`, a tap) brings the newest line into view, as a conversation's
-  composer does; what arrives or is sent after that stays in view as everywhere. The discussion has no heading ("Activity" is
+  blocked task's "Waiting for" card), never past its title. **A short panel opens the same way** (round 15 look-1 P2-2, look-3 F3): a panel
+  with less than 25 rem of scrolling room (200 % text on a computer) would leave the title out of view at the newest line, so it opens at
+  its top too. **A blocked task's "Waiting for" card stands under its title**, as a decision's answer
+  stands under its reason, so the half sheet shows what the task is and what it waits for without scrolling the title under its header
+  (round 15 look-1 P2-1, look-3 F2). A decision's reason starts a step (12 px) under the title's hairline, and its "Proposed" row keeps
+  "· today" on the line of an agent's label (round 15 daily P3-8, ai). A task's "↓ N new" stands at the scroll's foot on a band of the panel's
+  surface, so it never lies over a card's words (round 15 ai). The cursor put in its field (Discuss, `R`, a tap) brings the newest line into
+  view, as a conversation's composer does; what arrives or is sent after that stays in view as everywhere. The discussion has no heading ("Activity" is
   removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
@@ -1929,7 +1944,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **History** (⋯ › History) lists the versions on the left as a timeline: one continuous mid-grey line from dot to dot,
   the chosen version's dot filled. The chosen row says in words what can be done with it, under its line: **Read this version** (**Open
   the page** for the current one) and Restore this version; the other rows are only chosen (round 14 daily 9: a "Read" on every row was
-  unclear). **The first version** has nothing before it: "Version 1, the first" with no "+N −M", the page as it was written with nothing
+  unclear). The heading's count is the words the comparison marks, "v2 → v3 · 1 word added" or "· 4 words added, 2 removed", never a count of
+  lines that says "−1" over nothing struck (round 15 daily P3-7). **The current version by its address** (`/versions/N` of the page's own
+  version, as Search links a match) opens the page itself, never "You are reading a saved version" (round 15 new P2-4); only an earlier
+  version has the reader. **The first version** has nothing before it: "Version 1, the first" with no "+N −M", the page as it was written with nothing
   underlined, or "The page started with no text." (round 14 new d). In the comparison, added text is underlined only (no fill, no grey bar under a
   heading) and removed text is struck through in `--t3`. **Restore lives in one place** (founder question and coordinator decision, Hubert
   2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): the chosen version's row in that list carries
@@ -2752,7 +2770,8 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
   the company, so this conversation has nobody to send to.", with no offer to reopen it.
 - **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
   is only Home's own, and Home has no header row on the computer.
-- **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
+- **A Wiki page by its address** (the old "material") is a card on the page: its back link, its space's Wiki as a link with "Version 1"
+  ("Community garden sensors · Wiki · Version 1", round 15 look-3 F5), and the space's Wiki page switcher lists it with the space's pages, the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
 - **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
 
 ### Setup and accounts from a link

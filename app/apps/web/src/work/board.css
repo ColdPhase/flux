@@ -93,14 +93,17 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card__open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .tb-card__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; }
 .tb-card__blocker { margin-top: 0; padding-left: 9px; border-left: 2px solid var(--t2); font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
-/* One line: a long owner's name ends in an ellipsis beside the number, so cards keep one height (founder direction 2026-11-17 visual review). */
-.tb-card__foot { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: var(--fs-sm); }
+/* One line: a long owner's name ends in an ellipsis beside the number, so cards keep one height (founder direction 2026-11-17 visual review).
+   The owner counts as its face, its mark and a few letters (80 px) when the line is laid out: where the number, the due day and that much do
+   not fit (a narrow column beside the open panel), the owner takes the line under them, right-aligned, rather than shrink to "AK (you)" and
+   spill "(you)" past the card's edge (round 15 look-3 F1). */
+.tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: var(--fs-sm); }
 .tb-card__foot > :not(.tb-card__owner) { flex: none; }
-/* An agent's one label (#1364) keeps its whole words and takes the next line when it must. */
-.tb-card__foot:has(.tb-card__owner--agent) { flex-wrap: wrap; }
 .tb-card__due { color: var(--t2); font-size: var(--fs-sm); }
 .tb-card__foot > .tb-card__owner { margin-left: auto; }
-.tb-card__owner { display: inline-flex; align-items: center; gap: 7px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.tb-card__owner { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; flex: 1 1 80px; min-width: 0; max-width: max-content; }
+/* An agent's one label (#1364) keeps its whole words and takes the next line when it must. */
+.tb-card__owner--agent { flex-basis: auto; }
 .tb-card__name { color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {

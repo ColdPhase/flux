@@ -20,7 +20,9 @@ function parseRef(href: string): DocReference | null {
 }
 
 function engine() {
-  const md = new MarkdownIt('default', { html: false, linkify: true, typographer: false, breaks: false });
+  // A line break is a line (round 15 new P3-e): the Wiki is written where it is read, line by line, so a saved version, History's comparison
+  // and the old version's reader keep each line on its own line as the page showed it, never running "oven 2. Put the bread…" together.
+  const md = new MarkdownIt('default', { html: false, linkify: true, typographer: false, breaks: true });
   md.disable(['image']);
   md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
   // Checked after markdown-it decodes entities and escapes, so `java&#115;cript:` is caught too.

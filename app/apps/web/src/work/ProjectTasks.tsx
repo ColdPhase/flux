@@ -121,7 +121,8 @@ function keepCursor(key: string, cursor: string | null) {
 export function ProjectTasks() {
   const { project } = useLoaderData() as TasksData;
   const owners = useAgentOwners(project);
-  const { openDetails, openCreate } = useShellActions();
+  const { openDetails, openCreate, shownObject } = useShellActions();
+  const shownWork = shownObject?.kind === 'work' ? shownObject.id : null;
   const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
   const { me } = useShellData();
@@ -261,7 +262,8 @@ export function ProjectTasks() {
   const groupCount = (id: GroupId, visible: number) => needle ? visible : visible ? counts?.[id] ?? 0 : 0;
   // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
+  // The row of the task open in the panel is marked, as its card is on the Board (round 15 look-3 e).
+  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} open={shownWork === item.id} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
