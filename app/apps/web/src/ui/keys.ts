@@ -30,6 +30,11 @@ let typed = '';
 let keptUntil = 0;
 /** An Enter typed after the kept letters, pressed in the field once they are in it. */
 let enterKept = false;
+/**
+ * The field the press that asked for another field was made in, which still has focus while that field is on its way (`/decide …` and Tab or
+ * Enter in a composer, personas-37 P3-1): what is typed there meanwhile belongs to the field that comes, never to the one being left.
+ */
+let leavingField: Element | null = null;
 
 const fieldOnItsWay = () => fieldDue > performance.now();
 
@@ -58,10 +63,11 @@ function typeInto(field: EventTarget | null, text: string) {
  * in the Inbox (#1424). What is typed meanwhile is kept and goes into the field when it has focus, so no letter is lost. The wait ends when a
  * field takes focus, when the person presses somewhere (what was kept is dropped), or after a few seconds.
  */
-export function awaitField(ms = FIELD_WAIT_MS) {
+export function awaitField(ms = FIELD_WAIT_MS, leaving: Element | null = null) {
   typed = '';
   enterKept = false;
   waitForField(ms);
+  leavingField = leaving;
 }
 
 /** A field that was asked for will not come (opening the conversation failed): keys are shortcuts again, and what was kept is dropped. */
@@ -69,6 +75,7 @@ export function stopAwaitingField() {
   fieldDue = 0;
   typed = '';
   enterKept = false;
+  leavingField = null;
 }
 
 /**
@@ -87,7 +94,7 @@ export function waitForField(ms = FIELD_WAIT_MS) {
   window.addEventListener('keydown', (event) => {
     // Letters typed on a composer's button are kept too (personas-36: `/decide …`, Tab to Send, Space, and the rest of the sentence while
     // the window opened was lost on Send).
-    if (!fieldOnItsWay() || writesHere(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!fieldOnItsWay() || (writesHere(event.target) && event.target !== leavingField) || event.metaKey || event.ctrlKey || event.altKey) return;
     // Enter after a sentence typed on the way sends it once it is in the field ("Message Piotr", then "can I swap…" and Enter, persona round
     // 28): it is kept too, never a press on the button that still has focus.
     if (event.key === 'Enter' && !event.shiftKey && typed) { event.preventDefault(); enterKept = true; return; }
@@ -96,7 +103,8 @@ export function waitForField(ms = FIELD_WAIT_MS) {
     typed += event.key;
   }, true);
   document.addEventListener('focusin', (event) => {
-    if (!inField(event.target)) return;
+    if (!inField(event.target) || event.target === leavingField) return;
+    leavingField = null;
     const text = fieldOnItsWay() ? typed : '';
     const enter = text && enterKept;
     fieldDue = 0;
@@ -109,7 +117,7 @@ export function waitForField(ms = FIELD_WAIT_MS) {
       if (document.activeElement === field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
     }));
   }, true);
-  document.addEventListener('pointerdown', () => { fieldDue = 0; typed = ''; enterKept = false; }, true);
+  document.addEventListener('pointerdown', () => { fieldDue = 0; typed = ''; enterKept = false; leavingField = null; }, true);
 }
 
 /**
