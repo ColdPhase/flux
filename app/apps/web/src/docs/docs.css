@@ -54,8 +54,7 @@
 .wiki-switch:hover, .wiki-switch[aria-expanded="true"] { background: var(--sub); }
 .wiki-switch__t { min-width: 0; overflow-wrap: anywhere; }
 .wiki-switch svg { flex: none; color: var(--t3); }
-.wiki-switch__go { display: inline-block; margin-left: 8px; white-space: nowrap; vertical-align: -3px; }
-.wiki-switch__go svg { display: block; }
+.wiki-switch__go { display: inline-flex; margin-left: 8px; vertical-align: -2px; }
 .wiki-rename { display: block; }
 .wiki-rename__field { display: block; width: 100%; height: 44px; margin: 0 0 0 -10px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--sub); color: var(--t1); font: inherit; letter-spacing: inherit; }
 .wiki-rename__field:focus { outline: 2px solid var(--ring); outline-offset: 0; }

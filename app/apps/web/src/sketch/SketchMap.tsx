@@ -349,21 +349,25 @@ export function SketchMap(props: SketchMapProps) {
         const right = blocked.right + 8 - bounds.left;
         if (bounds.left + right + bounds.width <= view.right - 8 && !hit(bounds.left + right)) dx = right;
       }
-      // Never over another thought's words (founder direction 2026-11-17 visual review): the actions slide beside it where there is room,
-      // and otherwise rise above it, still above their own thought.
+      // Never over another thought's words (founder direction 2026-11-17 visual review). In order: where it is; slid sideways while it
+      // still stands over its own thought; raised above the thought in the way; under its own thought. Each place must be inside the
+      // view and clear of every other thought and of the floating header.
       let dy = 0;
+      const own = canvas.querySelector<HTMLElement>('.sk-node[aria-pressed="true"]')?.getBoundingClientRect();
       const others = [...canvas.querySelectorAll<HTMLElement>('.sk-node:not([aria-pressed="true"])')].map((el) => el.getBoundingClientRect());
-      const under = (left: number, top: number) => others.filter((r) => r.right > left && r.left < left + bounds.width && r.bottom > top && r.top < top + bounds.height);
-      if (under(bounds.left + dx, bounds.top).length) {
-        const fits = (shift: number) => bounds.left + shift >= view.left + 8 && bounds.left + shift + bounds.width <= view.right - 8
-          && !under(bounds.left + shift, bounds.top).length && !hit(bounds.left + shift);
-        const beside = others.flatMap((r) => [r.left - 8 - bounds.width - bounds.left, r.right + 8 - bounds.left]).filter(fits)
-          .sort((a, b) => Math.abs(a - dx) - Math.abs(b - dx))[0];
-        if (beside !== undefined) dx = beside;
-        else if (above) {
-          const top = Math.min(...under(bounds.left + dx, bounds.top).map((r) => r.top)) - 8 - bounds.height;
-          if (top >= view.top + 8) dy = top - bounds.top;
-        }
+      const meets = (r: DOMRect, left: number, top: number) => r.right > left && r.left < left + bounds.width && r.bottom > top && r.top < top + bounds.height;
+      const free = (left: number, top: number) => left >= view.left + 8 && left + bounds.width <= view.right - 8 && top >= view.top + 8 && top + bounds.height <= view.bottom - 8
+        && !others.some((r) => meets(r, left, top)) && !floating.some((r) => r.width && meets(r, left, top));
+      if (own && others.some((r) => meets(r, bounds.left + dx, bounds.top))) {
+        const overOwn = (shift: number) => Math.min(own.right, bounds.left + shift + bounds.width) - Math.max(own.left, bounds.left + shift) >= Math.min(40, own.width);
+        const slides = others.flatMap((r) => [r.left - 8 - bounds.width - bounds.left, r.right + 8 - bounds.left])
+          .filter((shift) => overOwn(shift) && free(bounds.left + shift, bounds.top)).sort((a, b) => Math.abs(a - dx) - Math.abs(b - dx));
+        const blocking = others.filter((r) => meets(r, bounds.left + dx, bounds.top));
+        const lifted = Math.min(...blocking.map((r) => r.top)) - 8 - bounds.height;
+        const below = own.bottom + 14;
+        if (slides.length) dx = slides[0]!;
+        else if (free(bounds.left + dx, lifted)) dy = lifted - bounds.top;
+        else if (free(bounds.left + dx, below)) dy = below - bounds.top;
       }
       bar.style.marginLeft = `${dx / zoom}px`;
       bar.style.marginTop = `${dy / zoom}px`;
@@ -1090,16 +1094,16 @@ export function SketchMap(props: SketchMapProps) {
                 if (!link.label && !(editable && (selection.includes(link.fromId) || selection.includes(link.toId)))) return [];
                 const path = linkPath({ ...a, ...place(a) }, { ...b, ...place(b) });
                 const text = link.label ?? '+ Label';
-                return [{ link, path, w: Math.min(editable ? 180 : 400, text.length * 6.4 + (editable ? 18 : 10)), h: editable ? Math.max(18, (coarse ? 44 : 28) / zoom) : 18 }];
+                return [{ link, path, w: Math.min(editable ? 180 : 400, text.length * 7.2 + (editable ? 20 : 12)), h: editable ? Math.max(18, (coarse ? 44 : 28) / zoom) : 18 }];
               });
               const cards = [...rects.values()].map((r) => ({ ...r, ...place(r) }));
               const spots = placeLabels(shownLinks.map(({ link, path, w, h }) => ({ id: link.id, at: path.at, w, h })), cards);
               return shownLinks.map(({ link, path }) => {
               const on = highlighted(link.fromId) || highlighted(link.toId);
               const spot = spots.get(link.id);
-              // A label every point of which lies under a thought is not drawn, unless its line is the one in use.
-              if (!spot && !on && link.label) return null;
-              const mid = spot ?? path.mid;
+              // A label every point of which lies under a thought is not drawn: a card would show only a piece of it.
+              if (!spot) return null;
+              const mid = spot;
               const style = { transform: `translate(${mid.x}px, ${mid.y}px) translate(-50%, -50%)`, minHeight: editable ? (coarse ? 44 : 28) / zoom : undefined, minWidth: editable && coarse ? 44 / zoom : undefined };
               return editable ? <button key={link.id} type="button" className={`sk-el sk-el--edit${on ? ' is-on' : ''}`} style={style}
                 data-link-id={link.id} title={link.label ?? 'Add label'}

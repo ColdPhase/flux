@@ -182,7 +182,7 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
         <button ref={button} type="button" className="wiki-switch" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
           onClick={() => (open ? close() : setOpen(true))}>
           {/* The chevron follows the last word, also when the title takes two lines (founder direction 2026-11-17 visual review). */}
-          <span className="wiki-switch__t">{title}<span className="wiki-switch__go">{'\u2060'}<Icon name="chevron-down" size={20} /></span></span>
+          <span className="wiki-switch__t">{title}{'\u2060'}<span className="wiki-switch__go"><Icon name="chevron-down" size={20} /></span></span>
         </button>
       </h2>
       {pop.mounted ? (

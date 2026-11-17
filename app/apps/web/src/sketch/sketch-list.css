@@ -14,6 +14,8 @@
 .sk-outline-list li { position: relative; }
 /* The tick runs from the branch line to its row, so it ends at something (founder direction 2026-11-17 visual review). */
 .sk-outline-list ul > li::before { content: ''; position: absolute; left: -22px; top: 20px; width: 22px; height: 1px; background: var(--line2); pointer-events: none; }
+/* A leaf has no toggle in its slot: the tick runs on through the empty slot to 10 px before the title. */
+.sk-outline-list ul > li:has(> .sk-outline-row > .sk-outline-leaf)::before { width: 48px; }
 /* A row is one 32 px line (40 px with its 4 px padding): the toggle or leaf slot, the title and the row's end are each a 32 px box centred on it, so
    a one-line row's title and actions share a centre line; a longer title wraps under its first line and the end stays beside that line (#1237). */
 .sk-outline-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 10px; min-width: 0; min-height: 40px; padding: 4px 10px 4px 6px; border-radius: var(--r-sm); cursor: default; transition: var(--tr); }
@@ -57,6 +59,7 @@
 @media (max-width: 640px) {
   .sk-outline-list ul { margin-left: 11px; padding-left: 12px; }
   .sk-outline-list ul > li::before { left: -12px; width: 12px; }
+  .sk-outline-list ul > li:has(> .sk-outline-row > .sk-outline-leaf)::before { width: 46px; }
   /* Deep branches stop indenting after three steps; the row's level is still announced. */
   .sk-outline-list ul ul ul ul { margin-left: 0; padding-left: 0; border-left: 0; }
   .sk-outline-list ul ul ul ul > li::before { display: none; }

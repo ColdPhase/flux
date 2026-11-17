@@ -90,6 +90,8 @@
   /* Moved thoughts follow the pointer on their own layers, not by repainting the plane each frame. */
   will-change: transform; }
 .sk-node.is-editing .sk-t { visibility: hidden; }
+/* While its text is written the field's one ring marks it; the card keeps its plain edge, so the two never make a double frame. */
+.sk-node.is-editing[aria-pressed="true"] { box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk-node.is-new { animation: sk-in var(--dur-in) var(--ease-out) both; }
 @keyframes sk-in { from { opacity: 0; } to { opacity: 1; } }
 .sk-node--pill { border-radius: var(--r-pill); padding-left: 18px; padding-right: 18px; }
@@ -117,7 +119,8 @@
 .sk-work { position: relative; display: inline-flex; align-items: center; gap: 5px; border-radius: var(--r-sm); color: var(--t2);
   font-size: var(--fs-xs); font-weight: 500; line-height: 1; white-space: nowrap; transition: var(--tr); }
 .sk-work svg { flex: none; color: var(--t3); }
-.sk-work:hover, .sk-work[aria-expanded="true"] { background: var(--hov); color: var(--t1); }
+.sk-work[aria-expanded="true"] { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .sk-work:hover { background: var(--hov); color: var(--t1); } }
 .sk-work--map { position: absolute; left: 7px; bottom: 10px; max-width: calc(100% - 14px); height: var(--sk-work-h); padding: 0 6px 0 5px; pointer-events: auto; }
 .sk-work__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sk-work-slot--pill .sk-work--map { left: 13px; }
