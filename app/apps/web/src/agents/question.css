@@ -4,7 +4,7 @@
 .qcard__options { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .qcard__own { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
 .qcard__own input { flex: 1 1 200px; min-width: 0; height: 36px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font: inherit; }
-.qcard__own input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.qcard__own input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .qcard__answer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-base); color: var(--t1); overflow-wrap: anywhere; }
 .qcard__by { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
 .qcard__offered { margin: 0; padding-left: 1.4em; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }

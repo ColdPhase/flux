@@ -19,7 +19,7 @@
   background: transparent; color: var(--t3); cursor: pointer;
 }
 .ui-pick__btn:disabled { cursor: default; }
-.ui-pick__btn:focus-visible { outline: 2px solid var(--t1); outline-offset: -3px; }
+.ui-pick__btn:focus-visible { outline: 2px solid var(--ring); outline-offset: -3px; }
 .ui-pick__chev { transition: transform var(--dur-1) var(--ease-out); }
 .ui-pick[data-open] .ui-pick__chev { transform: rotate(180deg); }
 /* The soft field focus of the select and the other inputs (--t1 hairline inside, --sub halo), on the whole frame. */
@@ -55,8 +55,8 @@
 .ui-cal__day[data-today] { box-shadow: inset 0 0 0 1px var(--t2); }
 .ui-cal__day[data-selected] { background: var(--inv); color: var(--oninv); box-shadow: none; font-weight: 500; }
 @media (hover: hover) { .ui-cal__day:hover:not(:disabled, [data-selected]) { background: var(--sub); } }
-.ui-cal__day:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
-.ui-cal__day[data-selected]:focus-visible { outline-color: var(--oninv); }
+.ui-cal__day:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.ui-cal__day[data-selected]:focus-visible { outline-color: var(--ring-inv); }
 .ui-cal__foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 .ui-cal__clear { margin-left: auto; }
 @media (pointer: coarse) { .ui-cal__day { height: 44px; } .ui-cal__nav { width: 44px; height: 44px; } .ui-cal-pop { width: 340px; } }

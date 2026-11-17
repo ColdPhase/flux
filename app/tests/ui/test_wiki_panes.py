@@ -506,9 +506,9 @@ class WikiPanesJourney(unittest.TestCase):
         first = self.api(page, "GET", f"/api/v1/docs/{self.ids['lamp']}/versions/1", status=200)
         self.assertEqual((restored["version"], restored["reason"], restored["body"]), (3, "Restored version 1", first["body"]))
         expect(existing_text(page)).not_to_contain_text("The image stays on the device")
-        # And back, from History's own Restore.
+        # And back, from History: the chosen version's row carries Restore (founder direction, Hubert 2026-11-17, #1424).
         page.goto(self.url("lamp", "/history?to=2"))
-        page.get_by_role("button", name="Restore version 2").click()
+        page.locator(".doc-versions > li", has=page.locator(".doc-version[aria-current='true']")).get_by_role("button", name="Restore this version").click()
         expect(page.get_by_text("Version 2 is the page again.")).to_be_visible(timeout=15000)
         self.assertIn("Privacy", self.doc(page, self.ids["lamp"])["body"])
 

@@ -7,7 +7,7 @@
 /* A space in Settings › Company is a whole row that opens it, as Settings' rows do (L203–204), never an underlined name; 56 px tall, so a touch target. */
 .people__row--link { color: inherit; text-decoration: none; transition: var(--tr); }
 .people__row--link:hover { background: var(--hov); }
-.people__row--link:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.people__row--link:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .people__go { flex: none; color: var(--t3); }
 .people__row .ui-avatar { flex: none; font-size: var(--fs-face-lg); color: var(--t2); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
@@ -82,7 +82,7 @@
 .access__seg-b input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .access__seg-b:has(input:checked) { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
 @media (forced-colors: active) { .access__seg-b:has(input:checked) { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
-.access__seg-b:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: 1px; }
+.access__seg-b:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 @media (pointer: coarse) {
   .access__change.ui-btn { min-height: 44px; display: inline-flex; align-items: center; }
@@ -135,7 +135,7 @@
 .people__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .people__rolecell .ui-select[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .people__rolecell .ui-select .ui-select__chev { color: inherit; }
-.people__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--t1); outline-offset: 1px; }
+.people__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--ring); outline-offset: 1px; }
 @media (pointer: coarse) { .people__rolecell .ui-select { min-height: 44px; font-size: var(--fs-sm); } }
 /* On the narrowest phone a row gives its side padding to the address, so a usual one stays whole beside the role (#1374). */
 @container sset (max-width: 19rem) {

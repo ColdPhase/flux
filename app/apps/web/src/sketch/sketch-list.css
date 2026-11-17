@@ -20,7 +20,7 @@
 /* The selection is quiet, as the other lists': a filled row of the ordinary radius, no outline, so the connector and the guide meet it plainly. */
 .sk-outline-row.is-selected { background: var(--el); }
 .sk-outline-row:focus { outline: none; }
-.sk-outline-row:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.sk-outline-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; height: 32px; margin: 0 -4px 0 0; border-radius: var(--r-sm); color: var(--t2); }
 .sk-outline-toggle:hover { background: var(--hov); color: var(--t1); }
 .sk-outline-tag { flex: none; margin-block: 6px; padding: 0 7px; border-radius: 7px; background: var(--sub); color: var(--t2); font-size: var(--fs-xs); line-height: 20px; white-space: nowrap; }

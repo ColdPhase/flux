@@ -54,7 +54,7 @@
 .wiki-switch svg { flex: none; color: var(--t3); }
 .wiki-rename { display: block; }
 .wiki-rename__field { display: block; width: 100%; height: 44px; margin: 0 0 0 -10px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--sub); color: var(--t1); font: inherit; letter-spacing: inherit; }
-.wiki-rename__field:focus { outline: 2px solid var(--t1); outline-offset: 0; }
+.wiki-rename__field:focus { outline: 2px solid var(--ring); outline-offset: 0; }
 .wiki-rename__error { display: block; margin-top: 6px; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--t1); }
 
 /* Menus of the page (the switcher, Contents and ⋯): one surface, rows of one height. */
@@ -70,7 +70,7 @@
   color: var(--t1); font: inherit; text-align: left; text-decoration: none; transition: var(--tr-fill);
 }
 .wiki-menu__row:hover { background: var(--hov); }
-.wiki-menu__row:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.wiki-menu__row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .wiki-menu__row[aria-current="page"] { background: var(--sub); font-weight: 500; }
 .wiki-menu__row > svg { flex: none; margin-left: auto; }
 .wiki-menu__new > svg { margin-left: 0; color: var(--t2); }
@@ -135,7 +135,7 @@
 .doc-prose hr { border: 0; border-top: 1px solid var(--line); margin: 29px 0; }
 /* A table is a card in its own scrolling region: a quiet header row, then rows under hairlines; a wide table scrolls inside the card. */
 .doc-table { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); }
-.doc-table:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.doc-table:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .doc-prose table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); line-height: 1.5; }
 .doc-prose th, .doc-prose td { min-width: 6.5rem; padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; color: var(--t1); overflow-wrap: break-word; }
 /* On a small phone a three-column table fits the card, so its last column is not cut at the edge (#1374). */
@@ -183,15 +183,20 @@
 /* ---------- History and diff ---------- */
 .doc-history__grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 32px; align-items: start; }
 .doc-versions { list-style: none; margin: 0; padding: 0; }
-.doc-versions li { display: flex; align-items: stretch; gap: 2px; border-radius: var(--r); }
+/* A row is the version's button and Read; the chosen version, when it is not the page, adds Restore this version under its words
+   (founder direction, Hubert 2026-11-17, #1424: restore lives in one place). */
+.doc-versions li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; column-gap: 2px; border-radius: var(--r); }
 .doc-versions li:has([aria-current="true"]) { background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); }
 .doc-versions li:has([aria-current="true"]) .doc-version { background: none; }
-/* A timeline (#511, AC-2): a dot per version on a hairline, the chosen one filled. */
-.doc-version { position: relative; flex: 1; min-width: 0; display: flex; gap: 12px; padding: 10px 8px 10px 10px; border-radius: var(--r); text-align: left; transition: var(--tr); }
+/* A timeline (#511, AC-2): a dot per version on one continuous hairline, the chosen one filled. The line belongs to the row and runs
+   from this dot's centre to the next row's dot centre (each dot's centre is 20.5 px under its row's top), so it meets every dot
+   whatever a row holds; the dots are drawn over it. A mid-grey, so it reads on the chosen row's --sub fill as well as on the page. */
+.doc-version { position: relative; min-width: 0; display: flex; gap: 12px; padding: 10px 8px 10px 10px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 .doc-version:hover { background: var(--hov); }
-.doc-version__dot { flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t3); background: var(--bg); z-index: 1; }
+.doc-version__dot { position: relative; z-index: 2; flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t3); background: var(--bg); }
 .doc-version[aria-current="true"] .doc-version__dot { background: var(--t1); box-shadow: none; }
-.doc-versions li:not(:last-child) .doc-version::before { content: ""; position: absolute; left: 14px; top: 26px; bottom: -12px; width: 1px; background: var(--line2); }
+.doc-versions li:not(:last-child)::before { content: ""; position: absolute; z-index: 1; left: 14px; top: 20.5px; bottom: -20.5px; width: 1px; background: color-mix(in srgb, var(--t3) 55%, transparent); pointer-events: none; }
+.doc-version__restore { grid-column: 1 / -1; justify-self: start; margin: -2px 0 10px 31px; }
 .doc-version__b { min-width: 0; }
 .doc-version__t { display: block; font-size: var(--fs-md); color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; }
 .doc-version__s { display: block; font-size: var(--fs-xs); color: var(--t3); line-height: 1.5; }
@@ -229,13 +234,14 @@
 .doc-changes__stat { font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
 .doc-changes__page { margin-top: 16px; padding: 4px 0 24px; }
 .doc-changes__page .doc-prose { max-width: 720px; }
-.doc-changes__page ins { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; background: color-mix(in srgb, var(--t1) 9%, transparent); border-radius: 3px; }
+/* Added is an underline only, never a fill or a grey bar (coordinator review, #1424 look round); removed is struck through in --t3. */
+.doc-changes__page ins { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .doc-changes__page del { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 .doc-changes__key { display: flex; gap: 6px; align-items: baseline; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
-.doc-changes__key ins { text-decoration: underline; text-underline-offset: 3px; background: color-mix(in srgb, var(--t1) 9%, transparent); border-radius: 3px; color: var(--t1); padding: 0 2px; }
+.doc-changes__key ins { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; color: var(--t1); }
 .doc-changes__key del { text-decoration: line-through; color: var(--t3); }
 /* Monochrome: an added block gets a soft fill and an underline, a removed one is struck through in --t3. */
-.doc-changes__page .wiki-chg--added { background: color-mix(in srgb, var(--t1) 8%, transparent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; border-radius: 4px; }
+.doc-changes__page .wiki-chg--added { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .doc-changes__page .wiki-chg--removed, .doc-changes__page .wiki-chg--removed :is(td, th, li, strong, a, h1, h2, h3, h4) { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 
 .doc-prose :is(h1, h2, h3):focus { outline: none; }

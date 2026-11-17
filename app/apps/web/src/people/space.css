@@ -10,14 +10,14 @@
 .pick__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick__x { display: grid; place-items: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
 .pick__x:hover { background: var(--hov); color: var(--t1); }
-.pick__x:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.pick__x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .pick__list { display: grid; gap: 4px; padding: 6px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); max-height: 260px; overflow-y: auto; }
 .pick__list ul { margin: 0; padding: 0; list-style: none; }
 .pick__filter { margin: 2px 2px 4px; }
 .pick__row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px; border-radius: var(--r-sm); cursor: pointer; transition: var(--tr-fill); }
 .pick__row:hover { background: var(--hov); }
 .pick__row input { flex: none; width: 16px; height: 16px; accent-color: var(--t1); }
-.pick__row:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: -2px; }
+.pick__row:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
 .pick__row .ui-avatar { flex: none; }
 .pick__who { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .pick__who b { font-size: var(--fs-base); font-weight: 500; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -46,7 +46,7 @@
 .newspace__head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; color: var(--t1); }
 .newspace__x { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-btn); background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
 .newspace__x:hover { background: var(--hov); color: var(--t1); }
-.newspace__x:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.newspace__x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .newspace__field { display: grid; gap: 6px; }
 .newspace__label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 .newspace__label span { font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
@@ -80,7 +80,7 @@
 .spset__emoji-b:hover { background: var(--hov); }
 .spset__emoji-b.is-on { background: var(--hov); }
 .spset__emoji-b.is-on .spset__tile { box-shadow: inset 0 0 0 1px var(--t1); }
-.spset__emoji-b:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.spset__emoji-b:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .spset__seclead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
 .spset__seclead .sset-sec { margin: 0; }
 /* The same quiet count as Company › People, "People 6", and read as "People 6" (personas-27). */
@@ -99,7 +99,7 @@
 .spset__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .spset__rolecell .ui-select[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .spset__rolecell .ui-select .ui-select__chev { color: inherit; }
-.spset__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--t1); outline-offset: 1px; }
+.spset__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--ring); outline-offset: 1px; }
 @media (pointer: coarse) { .spset__rolecell .ui-select { min-height: 44px; font-size: var(--fs-sm); } }
 .spset__remove.ui-btn { flex: none; min-width: 72px; color: var(--t2); }
 .spset__remove-gap { flex: none; width: 72px; }
@@ -153,7 +153,7 @@
 /* Compound with .sset-card so its margin wins over the card's `margin: 0` whatever order the stylesheets load in. */
 .sset-card.spset__keys { display: block; width: 100%; margin-top: 12px; padding: 0; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .spset__keys:hover { background: var(--hov); }
-.spset__keys:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.spset__keys:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .spset__keys .sset-row { display: flex; align-items: center; gap: 12px; }
 .spset__keys .sset-row__b { flex: 1; min-width: 0; }
 /* On touch the window's footer buttons are 44 px high at every width, a tablet's included (#1361). */

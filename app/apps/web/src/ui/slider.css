@@ -23,8 +23,8 @@
 }
 .ui-slider__r::-moz-range-thumb { box-sizing: border-box; width: var(--thumb); height: var(--thumb); border: 2px solid var(--el); border-radius: 50%; background: var(--inv); }
 .ui-slider__r:focus { outline: none; }
-.ui-slider__r:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--t1); outline-offset: 2px; }
-.ui-slider__r:focus-visible::-moz-range-thumb { outline: 2px solid var(--t1); outline-offset: 2px; }
+.ui-slider__r:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--ring); outline-offset: 2px; }
+.ui-slider__r:focus-visible::-moz-range-thumb { outline: 2px solid var(--ring); outline-offset: 2px; }
 .ui-slider__r:disabled { cursor: default; opacity: .45; }
 /* Touch: a 24 px thumb in a 44 px target. */
 @media (pointer: coarse) {

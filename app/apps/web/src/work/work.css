@@ -60,7 +60,7 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; font-size: var(--fs-sm); font-weight: 600;
   background: var(--inv); color: var(--oninv);
 }
-.ws-task__done:focus-visible { outline-color: var(--oninv); outline-offset: -3px; }
+.ws-task__done:focus-visible { outline-color: var(--ring-inv); outline-offset: -3px; }
 .ws-task__glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin: 0 2px 0 -8px; border-radius: 50%; transition: background-color var(--dur-1) var(--ease-out); }
 button.ws-task__glyph:hover, button.ws-task__glyph:focus-visible { background: var(--sub); }
 button.ws-task__glyph:active { background: var(--hov); }
@@ -210,7 +210,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* A wider task or decision chip under a short bubble does not widen the message either: the chips take
    the message's own width (at least a readable 200px) and shorten their titles. */
 .msg-touch .ws-attach { contain: inline-size; align-self: stretch; min-width: min(100%, 200px); }
-.ws-none__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.ws-none__b:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .ws-only { margin: 14px 0 0; font-size: var(--fs-sm); color: var(--t2); }
 .ws-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--t2); cursor: pointer; }
 .ws-mine input { width: 16px; height: 16px; margin: 0; accent-color: var(--t1); }

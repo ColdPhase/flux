@@ -10,7 +10,7 @@
 .connection-labels__list li + li { border-top: 1px solid var(--line); }
 .connection-labels__list button { display: flex; gap: 16px; align-items: center; width: 100%; min-height: 52px; padding: 12px 4px; text-align: left; border-radius: var(--r-sm); color: var(--t1); }
 .connection-labels__list button:hover { background: var(--hov); }
-.connection-labels__list button:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.connection-labels__list button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .connection-labels__list button > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .connection-labels__list strong { font-size: var(--fs-base); font-weight: 500; }
 .connection-labels__saved { display: block; margin-top: 4px; color: var(--t2); font-size: var(--fs-sm); }

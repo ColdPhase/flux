@@ -31,7 +31,7 @@
 .msg-acts__b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--t2); transition: var(--tr); }
 .msg-acts__b:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .msg-acts__b:disabled { opacity: .5; cursor: progress; }
-.msg-acts__b:focus-visible, .msg-menu__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.msg-acts__b:focus-visible, .msg-menu__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 /* The tooltip of a small control opens below it, which would cover the pill's neighbours: keep it above. */
 .msg-acts [data-tip]::after { top: auto; bottom: calc(100% + 6px); }
 

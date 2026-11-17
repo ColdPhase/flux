@@ -3,7 +3,7 @@
 .nyq-aside__line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; }
 .nyq-aside__open { padding: 4px 2px; border: 0; border-radius: var(--r-sm, 6px); background: none; color: var(--t2); font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; transition: var(--tr-fill); }
 .nyq-aside__open:hover { color: var(--t1); text-decoration-color: currentColor; }
-.nyq-aside__open:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.nyq-aside__open:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .nyq__clear .nyq-aside__line { justify-content: center; }
 
 .ui-overlay--center .nyq-aside-win { top: 14vh; width: min(520px, calc(100% - 32px)); max-height: 72vh; }

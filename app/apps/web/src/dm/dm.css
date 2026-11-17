@@ -55,14 +55,14 @@
 .dm-new__space { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: var(--fs-sm); color: var(--t2); }
 .dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); }
 .dm-new__search { width: 100%; }
-.dm-new__search:focus-visible, .dm-new__title input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.dm-new__search:focus-visible, .dm-new__title input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .dm-new__note, .dm-new__opening { margin: 12px 2px; font-size: var(--fs-sm); color: var(--t3); }
 .dm-new__people { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(52vh, 440px); overflow-y: auto; }
 .dm-new__person { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; margin: 0 -10px; border-radius: var(--r); cursor: pointer; transition: var(--tr); }
 .dm-new__person:hover { background: var(--hov); }
 .dm-new__person.is-on { background: var(--sub); }
 .dm-new__person input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.dm-new__person:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: -2px; }
+.dm-new__person:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
 .dm-new__name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .dm-new__name b { font-size: var(--fs-md); font-weight: 500; }
 .dm-new__name span { font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -88,7 +88,7 @@
 }
 .dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--t1); border-radius: 2px; }
 .dm-msg:focus { outline: none; }
-.dm-msg:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.dm-msg:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Own messages on the right, the other people's on the left (#132/#136), in the pane's width. */
 .dm__in { max-width: var(--dm-w); }
@@ -178,7 +178,7 @@
 
 /* "Ada used AI here (Claude)" (#842, F-036 AG-4): one quiet line for both people of a conversation in which `/ai` was used. */
 .dm-notice { list-style: none; display: flex; flex-direction: column; align-items: center; margin: 10px 0; }
-.dm-notice:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.dm-notice:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .dm-notice__line { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .dm-msg__via { color: var(--t3); font-weight: 400; }
 .dm-msg__meta b + .dm-msg__via::before { content: "· "; }

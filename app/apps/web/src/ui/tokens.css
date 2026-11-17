@@ -37,9 +37,14 @@
   --t1: #18181b;
   --t2: #4a4a4a;
   --t3: #636363;
-  /* Inverted: the one primary button of a screen or region, chosen chips, toasts */
+  /* Inverted: the one primary button of a screen or region, chosen chips */
   --inv: #18181b;
   --oninv: #ffffff;
+  /* The keyboard focus ring (founder direction, Hubert 2026-11-17, #1424): 2 px of the mid-grey --t3 everywhere, never a black
+     frame, at least 3:1 on every surface in both themes and never the selection's fill. --ring-inv is the same ring inside an
+     inverted fill. Both are transparent after a tap or a click (ui.css, data-input on <html>), so only the keyboard draws them. */
+  --ring: var(--t3);
+  --ring-inv: var(--oninv);
   --scrim: rgba(0, 0, 0, .28);
   --dot: #d4d4d8;
   /* Volume: layers get lighter as they rise */
@@ -49,7 +54,8 @@
   --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .06);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
-  /* Inverted surfaces that are not buttons (own bubbles, toasts, chosen chips). Buttons are flat (direction C, #763). */
+  /* An inverted surface that is not a button. Nothing draws it now: own bubbles are --own, chosen chips flat --inv, and a toast is a raised
+     --el card (founder direction, Hubert 2026-11-17, #1424). Buttons are flat (direction C, #763). */
   --grad-inv: linear-gradient(#3b3b3f, #18181b);
   /* Buttons, direction C "quiet, one accent per screen" (founder, 2026-10-31, #763): flat, no shadow, radius 10.
      --choice is the 1 px outline of an option button (an agent's ready answers, a pick among a few). */
