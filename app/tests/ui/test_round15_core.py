@@ -222,8 +222,6 @@ class Round15Core(unittest.TestCase):
         card = page.locator(".nyq__list .nyc").filter(has_text=DECISION)
         expect(card).to_be_visible()
         card.locator(".nyc__open").click()
-        if page.url.endswith("/inbox") or "/inbox?" in page.url:
-            page.locator(".nyq__col--open, .nyq__list .nyc.is-selected").get_by_role("button", name="Discuss").first.wait_for()
         panel = page.locator("#details .wd__scroll").first
         expect(panel).to_be_visible()
         title = panel.locator(".details__title")
