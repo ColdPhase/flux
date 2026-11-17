@@ -169,7 +169,7 @@ class AnswersAndUnreadMessages(unittest.TestCase):
         expect(row).to_have_class(BOLD)
         row.click()
         expect(marta).to_have_url(re.compile(f"/dm/{self.dm}"))
-        expect(marta.get_by_text("It is on the wall now.")).to_be_visible()
+        expect(marta.locator(".dm-msg__body", has_text="It is on the wall now.")).to_be_visible()
         self.until(self.unread, 0)
         marta.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         expect(marta).to_have_url(re.compile(r"/$"))
