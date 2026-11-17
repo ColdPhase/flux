@@ -4,7 +4,8 @@
  * ring shows). ui.css makes every focus ring (`--ring`) transparent while it is `pointer`, so a script that moves the focus after a tap
  * (the phone Inbox's expanded title, a window's first field, the composer of a conversation just opened) frames nothing, and the next
  * key or a click in that field brings the ring back where the focus is (visual review 2026-11-17: every conversation opened framed).
- * Before the first event there is no attribute and rings show as the browser decides.
+ * Before the first event a touch screen starts as `pointer` (a phone opened straight on the Inbox framed its open title in its first
+ * frame, founder screenshot 2026-11-17); a computer has no attribute until the first event and rings show as the browser decides.
  */
 const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'Fn', 'FnLock', 'Hyper', 'Super', 'OS']);
 const FIELD = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"], [type="image"])';
@@ -22,6 +23,7 @@ function pressedOn(target: EventTarget | null, field: Element | null): boolean {
 }
 
 export function installInputMode() {
+  if (typeof matchMedia === 'function' && matchMedia('(hover: none)').matches) set('pointer');
   let pressed: EventTarget | null = null;
   // Capture on the window, before any handler can stop the event or move the focus in answer to it.
   window.addEventListener('pointerdown', (event) => {
