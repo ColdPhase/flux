@@ -117,11 +117,15 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const unlockedLine = `Unlocked${enc.unlockedBy ? ` by ${enc.unlockedBy.name}` : ''}${enc.unlockedAt ? ` ${when(enc.unlockedAt)}` : ''}.`;
   // The trigger takes the focus at once, before the open group goes, so it never falls to the page: a lock or unlock turns the space's page
   // into the locked panel or back into Space settings, and each takes a free focus for itself as it opens (test_encrypted_workspaces 22). The
-  // next frame puts it there again in case the trigger was drawn anew.
+  // next frame puts it there again only if it was lost meanwhile (the trigger drawn anew): a key pressed since (Enter opening the group
+  // again) keeps what it focused.
   const closeTo = (key: string) => {
     triggers.current[key]?.focus({ preventScroll: true });
     setPanel(null);
-    requestAnimationFrame(() => triggers.current[key]?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body || !active.isConnected) triggers.current[key]?.focus({ preventScroll: true });
+    });
   };
   const toggle = (next: Panel) => {
     setStatus('');
