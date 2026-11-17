@@ -962,6 +962,40 @@ class FocusModel(unittest.TestCase):
             where = page.evaluate(in_view)
             self.assertTrue(where and where["inside"], f"the focused card is in view after {wait} ms: {where}")
 
+    def test_39c_esc_after_create_keeps_the_card_when_the_place_was_arrived_at_to_write(self) -> None:
+        """personas-37 N13-17 (Chromium, 4/4): New, a title, Enter, then Esc focused the new task's card, and 31-69 ms later the composer took
+        it. Esc goes Back to the entry before the task's `?open=`; that entry was the one a join (or Home's "Write your first message") leaves,
+        which asks for the composer, and the Back ran that request again. Here the entry carries the same request."""
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        expect(page.locator("#project-composer")).to_be_focused()
+        page.evaluate("() => history.replaceState({ ...history.state, usr: { ...(history.state?.usr ?? {}), focusComposer: true } }, '')")
+        page.reload()
+        expect(page.locator("#project-composer")).to_be_focused()
+        page.wait_for_timeout(800)
+        page.get_by_role("button", name="New", exact=True).click()
+        window = page.get_by_role("dialog", name="New task")
+        expect(window).to_be_visible()
+        title = f"Clean the proofing baskets {uuid.uuid4().hex[:4]}"
+        page.keyboard.type(title)
+        page.keyboard.press("Enter")
+        panel = page.locator("#details")
+        expect(panel.get_by_role("heading", name=title)).to_be_visible()
+        page.wait_for_timeout(400)
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+        selector = f"#content [data-native-ref^='work:'][aria-label$='{title}']"
+        held = """(selector) => { const card = document.querySelector(selector); const active = document.activeElement; const feed = document.querySelector('.project-convo__feed');
+          if (!card || !active || !feed) return null; const a = active.getBoundingClientRect(), f = feed.getBoundingClientRect();
+          return { card: active === card || (!!active.matches('.convo-fold__b') && !!active.closest('.convo-fold')?.contains(card)), tag: active.tagName,
+                   label: (active.getAttribute('aria-label') ?? '').slice(0, 60), inView: a.top >= f.top - 1 && a.bottom <= f.bottom + 1 }; }"""
+        page.wait_for_function(f"(selector) => ({held})(selector)?.card", arg=selector, timeout=10000)
+        # The composer does not take it a moment later, and the card stays in view.
+        for wait in (60, 150, 1500):
+            page.wait_for_timeout(wait)
+            where = page.evaluate(held, selector)
+            self.assertTrue(where and where["card"] and where["inView"], f"the new task's card keeps the focus, in view, after {wait} ms: {where}")
+
 
 if __name__ == "__main__":
     unittest.main()
