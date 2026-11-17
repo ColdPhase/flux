@@ -213,6 +213,24 @@ describe('the report of a run on a task (#919)', () => {
     assert.match(bodies, /Made the two print tasks and closed this one\./, 'the report is posted in the task, without the bare [1]');
   });
 
+  test('the agent closed its task with its own tool: the run\'s Undo gives the task back to its owner, in Doing (pre-review P2-5)', async () => {
+    await scene.setMayDo('act');
+    const { task, run } = await started('Label the spare fuses');
+    const live = await scene.liveOf(run.id);
+    const current = await waitFor(async () => { const row = await scene.taskRow(task.id); return row.status === 'in_progress' ? row : null; }, 'the task in Doing');
+    const closed = await live.call('flux_update_task', { workId: task.id, expectedVersion: current.version, changes: { status: 'done' } });
+    assert.equal((await scene.taskRow(task.id)).status, 'done', text(closed.message));
+    await complete(run.id, 'Labelled them and closed this one.');
+    assert.equal((await reportOf(run.id)).body, `Done: #${task.number} Label the spare fuses`);
+    const undone = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(run.id, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+    assert.equal(undone.undone, 1, undone.message);
+    // Not left in Doing with the agent and no run: back with the person whose agent it is, as the finish's own Undo leaves it.
+    const back = (await pool.query('SELECT status, owner_user_id, owner_agent_id FROM project_work_items WHERE id = $1', [task.id])).rows[0];
+    assert.deepEqual(back, { status: 'in_progress', owner_user_id: scene.owner.id, owner_agent_id: null });
+    assert.equal(undone.back, task.number);
+    assert.equal(undone.message, `Undid 1 change. #${task.number} is back with you`);
+  });
+
   test('a person\'s stop reports who stopped it; the system giving up, and a run that is not on a task, report nothing', async () => {
     const { task, run } = await started('Compare the last readings');
     await scene.runs.stop(human(scene.owner), run.id);

@@ -60,7 +60,7 @@ const WORD = /[\p{L}\p{N}]+/gu;
 const wordsOf = (text: string) => text.toLowerCase().match(WORD) ?? [];
 /** A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). */
 const HYPHENATED = /[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
-const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
+export const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
 
 /** Trigrams of `text` in order, with duplicates, as pg_trgm pads each word: two spaces before, one after. */
 function trigramsOf(text: string): string[] {

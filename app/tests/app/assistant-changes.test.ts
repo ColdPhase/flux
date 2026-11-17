@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import * as Y from 'yjs';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, decisionDiscussionPath, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, personalRunTokenPath, projectExportPath,
   type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
@@ -617,6 +617,21 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const [citedRow] = await changesOf(cited.runId);
     assert.equal((await undoOne(citedRow!.id)).message, 'Used since. Open it');
     assert.equal(await count('project_decisions', pinned.decisionId), 1);
+  });
+
+  test('a proposal people discussed stays: the run\'s Undo says so and their discussion keeps its decision (pre-review P2-2)', async () => {
+    const run = await liveRun();
+    const proposed = value(await run.call('flux_propose_decision', { decision: { title: 'Meet at 15:00', rationale: 'Everyone is free then' } }));
+    await complete(run.runId);
+    const asked = expectStatus(await peer.browser.request('POST', decisionDiscussionPath(proposed.decisionId), { body: { body: 'Why 15:00?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 0, undone.message);
+    const [row] = await changesOf(run.runId);
+    assert.equal((await undoOne(row!.id)).message, 'Replies since. Open it');
+    assert.equal(await count('project_decisions', proposed.decisionId), 1, 'the decision stays');
+    assert.equal((await pool.query('SELECT conversation_id FROM project_decision_discussions WHERE decision_id = $1', [proposed.decisionId])).rows[0]?.conversation_id, asked.conversationId,
+      'its discussion is still its own, not a stray thread of the space');
+    assert.equal((await stateOf(row!.id)).state, 'applied');
   });
 
   test('#868 a task whose creation was undone holds nothing: Undo of the run still removes the decision it waited for', async () => {
