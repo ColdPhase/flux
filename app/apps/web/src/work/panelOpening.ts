@@ -58,6 +58,18 @@ export function usePanelOpening(scrollRef: RefObject<HTMLElement | null>, object
   }, [objectKey]);
 }
 
+/**
+ * Where the panel opened at its top (`opensAtTop`), a discussion drawn for the first time still shows its newest line when the person already
+ * asked for it before the lines arrived: the cursor is in the panel's field (`R`, Discuss: `useNewestOnWrite` had nothing to show yet), or
+ * they had read to the panel's end, where the discussion now begins (personas-36 at 200 %: R, or reading on, showed not one line of it).
+ */
+export function wantsNewest(section: HTMLElement | null | undefined) {
+  const scroller = section?.closest<HTMLElement>('.wd__scroll');
+  if (!section || !scroller) return false;
+  if (scroller.closest('.wd')?.querySelector('.wd__foot')?.contains(document.activeElement)) return true;
+  return scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - section.offsetHeight - 2;
+}
+
 /** Where the panel opened at its top (`opensAtTop`), the newest line comes into view when the cursor goes into the panel's field at its foot. */
 export function useNewestOnWrite(scrollRef: RefObject<HTMLElement | null>) {
   const newest = () => [...(scrollRef.current?.querySelectorAll<HTMLElement>('.wd-act') ?? [])].at(-1)?.lastElementChild as HTMLElement | null | undefined;

@@ -17,7 +17,7 @@ import { TypingNotice } from '../typing/TypingNotice';
 import { useObservation } from '../app/receipts';
 import { observeProjectMessages } from '../conversations/api';
 import { DECISION_COMPOSER } from './discuss';
-import { opensAtTop } from './panelOpening';
+import { opensAtTop, wantsNewest } from './panelOpening';
 
 
 const MESSAGES = 50;
@@ -104,13 +104,13 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   const list = useRef<HTMLOListElement>(null);
   // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
   const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;
-  // The phone's sheet and a short panel open at their top, the decision first (`opensAtTop`, round 14 new P2-3, round 15 look-1 P2-2); what
-  // arrives or is sent later shows there too.
+  // The phone's sheet and a short panel open at their top, the decision first (`opensAtTop`, round 14 new P2-3, round 15 look-1 P2-2), unless
+  // the person already asked for the newest (`wantsNewest`); what arrives or is sent later shows there too.
   const drawn = useRef(false);
   useLayoutEffect(() => {
     const first = !drawn.current && messages.length > 0;
     if (messages.length) drawn.current = true;
-    if (first && opensAtTop(list.current)) return;
+    if (first && opensAtTop(list.current) && !wantsNewest(list.current?.closest<HTMLElement>('.wd-discussion'))) return;
     list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [last]);
