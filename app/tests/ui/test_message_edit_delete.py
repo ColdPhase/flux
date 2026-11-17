@@ -114,6 +114,8 @@ class MessageEditDelete(unittest.TestCase):
 
     def menu_of(self, page: Page, message) -> list[str]:
         """Opens a message's ⋯ menu on a computer and lists its items."""
+        # A menu closed with Esc stays a moment, inert, while it leaves: the next one is opened once it has gone, or two answer to the name.
+        expect(page.get_by_role("menu", name="Message actions")).to_have_count(0)
         message.hover()
         message.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
