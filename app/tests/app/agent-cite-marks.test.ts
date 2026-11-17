@@ -42,11 +42,11 @@ describe('cite marks in what an agent writes (C-62, v0.2.1 real-model gate)', ()
     assert.equal(decision.title, `Print 200 flyers #${task.number}`);
     assert.equal(decision.rationale, readable);
     assert.doesNotMatch(`${decision.title} ${decision.rationale}`, ID);
-    // The Inbox's one line of the reasons is plain words: no `[[`, no id.
+    // The Inbox's one line of the reasons is plain words: no `[[`, no id, and a list read as sentences (b5a6a2261).
     const inbox = expectStatus(await scene.owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
     const item = inbox.items.find((entry) => entry.key === `decision:${made.decisionId}`);
     assert.ok(item, 'the agent\'s decision waits for its owner');
-    assert.equal(item.detail, `Why 200: - It fits the budget and #${task.number} is the order. - Fair contacts names it. - Not as “Shop opens at 6:30” said. - Elsewhere.`);
+    assert.equal(item.detail, `Why 200: It fits the budget and #${task.number} is the order. Fair contacts names it. Not as “Shop opens at 6:30” said. Elsewhere.`);
   });
 
   test('a mark inside a web address names nothing there: no title of the space goes into an address (C-30)', async () => {
