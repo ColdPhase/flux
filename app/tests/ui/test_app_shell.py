@@ -659,8 +659,9 @@ class AppShellJourney(unittest.TestCase):
                     # a rounding tolerance, not a smaller target.
                     self.assertTrue(all(height >= 43.95 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
                 if device == "desktop":
-                    self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
-                    self.assertTrue(all(height > 32 for height in geometry["hintedHeights"]), f"the hint line makes its row taller: {geometry}")
+                    # ⋯ menus have the message menu's rows: 14 px words and 40 px rows (design guide, round 15 look-2 P3-6).
+                    self.assertTrue(all(abs(height - 40) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 40px: {geometry}")
+                    self.assertTrue(all(height > 40 for height in geometry["hintedHeights"]), f"the hint line makes its row taller: {geometry}")
                 mode = "tablet-820x900-dpr1" if device == "tablet" else "desktop-1440x900-dpr1"
                 scheme = "dark" if dark else "light"
                 shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
