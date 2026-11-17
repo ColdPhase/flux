@@ -4,11 +4,10 @@ import { MapCursors, MapPeople } from './MapPresence';
 import { DockRow } from './DockRow';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Link } from 'react-router';
-import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
+import { Icon, IconButton, Sheet } from '../ui';
 import { projectMessageHref } from '../conversations/api';
-import { STATUS_LABEL, taskNumber } from '../work/format';
-import { linkPath, PAD, PLANE_MARGIN, project, rectOf, type Rect } from './geometry';
-import { provenance, quote, who } from './format';
+import { linkPath, PAD, placeLabels, PLANE_MARGIN, project, rectOf, type Rect } from './geometry';
+import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
 import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
@@ -32,6 +31,8 @@ export interface SketchMapProps {
   /** The floating toolbar at the bottom (computer) and the line above it: hint or status. */
   dock: ReactNode;
   hint: ReactNode;
+  /** Save and Cancel of the thought being edited: beside it on the map, in the phone's bottom row (founder direction 2026-11-17 visual review). */
+  editControls?: ReactNode;
   /** What a local client changed on this map, with its change line and Undo (#868): in the dock, whose height the map reserves, so it never covers a thought. */
   changes?: ReactNode;
   /** The phone's one-time line "Connect and arrange on a computer" (S15): shown until this is called, which remembers that it was seen; null once it was. */
@@ -333,6 +334,7 @@ export function SketchMap(props: SketchMapProps) {
     const placeBar = () => {
       bar.style.maxWidth = `${Math.max(0, canvas.clientWidth - 16)}px`;
       bar.style.marginLeft = '0px';
+      bar.style.marginTop = '0px';
       const { above } = bar.dataset;
       const view = canvas.getBoundingClientRect();
       const bounds = bar.getBoundingClientRect();
@@ -347,7 +349,32 @@ export function SketchMap(props: SketchMapProps) {
         const right = blocked.right + 8 - bounds.left;
         if (bounds.left + right + bounds.width <= view.right - 8 && !hit(bounds.left + right)) dx = right;
       }
+      // Never over another thought's words (founder direction 2026-11-17 visual review). In order: where it is; slid sideways while it
+      // still stands over its own thought; in the gap above its own thought; raised above the thought in the way; under its own thought. Each place must be inside the
+      // view and clear of every other thought and of the floating header.
+      let dy = 0;
+      const own = canvas.querySelector<HTMLElement>('.sk-node[aria-pressed="true"]')?.getBoundingClientRect();
+      const others = [...canvas.querySelectorAll<HTMLElement>('.sk-node:not([aria-pressed="true"])')].map((el) => el.getBoundingClientRect());
+      // A touch of up to 8 px at the top or bottom is no cover: a card has 12 px of padding above and below its words.
+      const meets = (r: DOMRect, left: number, top: number) => r.right > left && r.left < left + bounds.width && r.bottom > top + 8 && r.top < top + bounds.height - 8;
+      const free = (left: number, top: number) => left >= view.left + 8 && left + bounds.width <= view.right - 8 && top >= view.top + 8 && top + bounds.height <= view.bottom - 8
+        && !others.some((r) => meets(r, left, top)) && !floating.some((r) => r.width && meets(r, left, top));
+      if (own && others.some((r) => meets(r, bounds.left + dx, bounds.top))) {
+        const overOwn = (shift: number) => Math.min(own.right, bounds.left + shift + bounds.width) - Math.max(own.left, bounds.left + shift) >= Math.min(40, own.width);
+        const slides = others.flatMap((r) => [r.left - 8 - bounds.width - bounds.left, r.right + 8 - bounds.left])
+          .filter((shift) => overOwn(shift) && free(bounds.left + shift, bounds.top)).sort((a, b) => Math.abs(a - dx) - Math.abs(b - dx));
+        const blocking = others.filter((r) => meets(r, bounds.left + dx, bounds.top));
+        const lifted = Math.min(...blocking.map((r) => r.top)) - 8 - bounds.height;
+        const below = own.bottom + 14;
+        // Or in the gap between the thought in the way and its own, touching at most its own top padding.
+        const between = Math.max(...blocking.map((r) => r.bottom)) + 2;
+        if (slides.length) dx = slides[0]!;
+        else if (between + bounds.height <= own.top + 10 && free(bounds.left + dx, between)) dy = between - bounds.top;
+        else if (free(bounds.left + dx, lifted)) dy = lifted - bounds.top;
+        else if (free(bounds.left + dx, below)) dy = below - bounds.top;
+      }
       bar.style.marginLeft = `${dx / zoom}px`;
+      bar.style.marginTop = `${dy / zoom}px`;
     };
     placeBar();
     const observer = new ResizeObserver(placeBar);
@@ -403,7 +430,8 @@ export function SketchMap(props: SketchMapProps) {
       if (compact) { setCompositionHeight(Math.ceil(editor.getBoundingClientRect().height) + 20); return; }
       const pane = wrap.getBoundingClientRect();
       const box = editor.getBoundingClientRect();
-      const gap = 12;
+      // The editor stands right against its draft's dashed box, so the two read as one (founder direction 2026-11-17 visual review).
+      const gap = 6;
       const maxX = Math.max(14, pane.width - box.width - 14);
       const maxY = Math.max(14, pane.height - box.height - 14);
       const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-wires .sk-wire, .sk-head, .sk-dock__row, .sk-dock .sk-line, .sk-dock .client-changes, .sk-dock > .sk-hint')]
@@ -1060,14 +1088,26 @@ export function SketchMap(props: SketchMapProps) {
             {draftFrom && props.draft ? <path className="sk-wire" d={linkPath({ ...draftFrom, ...place(draftFrom) }, { ...ghost(props.draft.x, props.draft.y), x: props.draft.x - origin.x, y: props.draft.y - origin.y }).d} /> : null}
           </svg>
           <div className="sk-labels">
-            {sketch.links.map((link) => {
-              const a = rects.get(link.fromId);
-              const b = rects.get(link.toId);
-              if (!a || !b) return null;
+            {(() => {
+              // Each label on a free part of its own line: never on another label, never under a thought (founder direction 2026-11-17 visual review).
               const editable = canWrite && !compact;
-              if (!link.label && !(editable && (selection.includes(link.fromId) || selection.includes(link.toId)))) return null;
-              const { mid } = linkPath({ ...a, ...place(a) }, { ...b, ...place(b) });
+              const shownLinks = sketch.links.flatMap((link) => {
+                const a = rects.get(link.fromId);
+                const b = rects.get(link.toId);
+                if (!a || !b) return [];
+                if (!link.label && !(editable && (selection.includes(link.fromId) || selection.includes(link.toId)))) return [];
+                const path = linkPath({ ...a, ...place(a) }, { ...b, ...place(b) });
+                const text = link.label ?? '+ Label';
+                return [{ link, path, w: Math.min(editable ? 180 : 400, text.length * 7.2 + (editable ? 20 : 12)), h: editable ? Math.max(18, (coarse ? 44 : 28) / zoom) : 18 }];
+              });
+              const cards = [...rects.values()].map((r) => ({ ...r, ...place(r) }));
+              const spots = placeLabels(shownLinks.map(({ link, path, w, h }) => ({ id: link.id, at: path.at, w, h })), cards);
+              return shownLinks.map(({ link }) => {
               const on = highlighted(link.fromId) || highlighted(link.toId);
+              const spot = spots.get(link.id);
+              // A label every point of which lies under a thought is not drawn: a card would show only a piece of it.
+              if (!spot) return null;
+              const mid = spot;
               const style = { transform: `translate(${mid.x}px, ${mid.y}px) translate(-50%, -50%)`, minHeight: editable ? (coarse ? 44 : 28) / zoom : undefined, minWidth: editable && coarse ? 44 / zoom : undefined };
               return editable ? <button key={link.id} type="button" className={`sk-el sk-el--edit${on ? ' is-on' : ''}`} style={style}
                 data-link-id={link.id} title={link.label ?? 'Add label'}
@@ -1080,7 +1120,8 @@ export function SketchMap(props: SketchMapProps) {
                 }}>
                 {link.label ?? '+ Label'}
               </button> : <span key={link.id} className={`sk-el${on ? ' is-on' : ''}`} style={style}>{link.label}</span>;
-            })}
+              });
+            })()}
           </div>
           {thoughtNodes}
           {props.presenceStore ? <MapCursors source={props.presenceStore} origin={origin} zoom={zoom} rects={rects} plane={{ x: origin.x, y: origin.y, w: width, h: height }} /> : null}
@@ -1101,11 +1142,20 @@ export function SketchMap(props: SketchMapProps) {
           {props.draft && !columns ? (
             <div className="sk-ghost sk-ghost--draft" aria-hidden="true" style={{ transform: `translate(${props.draft.x - origin.x}px, ${props.draft.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>{props.draft.label}</div>
           ) : null}
-          {editing && editingRect && editingThought && canWrite ? (
-            <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}
-              style={{ transform: `translate(${place(editingRect).x + 6}px, ${place(editingRect).y + 6}px)`, width: editingRect.w - 12 }}
-              onDone={props.onFinishEdit} />
-          ) : null}
+          {editing && editingRect && editingThought && canWrite ? (() => {
+            const at = place(editingRect);
+            // A circle's text sits in the square inside it, so the field never reaches past the round edge.
+            const inset = editingThought.shape === 'circle' ? Math.round(editingRect.w * (1 - Math.SQRT1_2) / 2) : 6;
+            const keep = `scale(${1 / zoom})`;
+            const x = at.x + editingRect.w / 2;
+            return <>
+              <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}
+                style={{ transform: `translate(${at.x + inset}px, ${at.y + inset}px)`, width: editingRect.w - inset * 2 }}
+                onDone={props.onFinishEdit} />
+              {!compact && props.editControls ? <div className="sk-actions sk-actions--edit" style={{ transform: at.y < 56
+                ? `translate(${x}px, ${at.y + editingRect.h + 8}px) ${keep} translateX(-50%)` : `translate(${x}px, ${at.y - 8}px) ${keep} translate(-50%, -100%)` }}>{props.editControls}</div> : null}
+            </>;
+          })() : null}
         </div>
       </div>
     </div>
@@ -1131,6 +1181,7 @@ export function SketchMap(props: SketchMapProps) {
           {props.hint}
           {canWrite ? <>
           <div className="sk-phone__secondary">
+            {editing && props.editControls ? <div className="sk-actions sk-actions--edit">{props.editControls}</div> : null}
             {plus ? <button type="button" className="sk-edit-btn" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'thought'} onClick={(event) => {
               event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('thought'); setPhoneMenuOpen(true);
             }}><Icon name="more" size={16} />Thought actions</button> : null}
@@ -1353,9 +1404,9 @@ const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' 
     {file ? <ThoughtImage className="sk-img" fileId={file.id} name={file.name} style={{ maxHeight: Math.max(48, height - 64) }} /> : null}
     <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
     <span className="sk-p">{provenance(props, meId)}</span>
-    {linked?.tasks[0] ? <span className="sk-taskline"><StatusGlyph status={linked.tasks[0].status} size={14} /><span>{taskNumber(linked.tasks[0])} {STATUS_LABEL[linked.tasks[0].status]}{linked.tasks[0].owner ? ` · ${who(linked.tasks[0].owner, meId)}` : ''}</span></span> : null}
     {mover ? <span className="sk-live-mover">{mover} is moving</span> : null}
-    {/* Room for the count, which is its own button beside this one. */}
+    {/* Room for the count, which is its own button beside this one: a thought's one indicator of its tasks (UI116-4; the line that
+        repeated its first task beside the count is gone, founder direction 2026-11-17 visual review). */}
     {linked?.count ? <span className="sk-work-gap" aria-hidden="true" /> : null}
   </>;
 });

@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Button, Icon, prefersReducedMotion, usePop, useToast } from '../ui';
+import { Button, EmptyState, Icon, prefersReducedMotion, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
@@ -181,7 +181,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
       <h2 className="wiki-title__h" id={titleId}>
         <button ref={button} type="button" className="wiki-switch" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
           onClick={() => (open ? close() : setOpen(true))}>
-          <span className="wiki-switch__t">{title}</span><Icon name="chevron-down" size={20} />
+          {/* The chevron follows the last word, also when the title takes two lines (founder direction 2026-11-17 visual review). */}
+          <span className="wiki-switch__t">{title}{'\u2060'}<span className="wiki-switch__go"><Icon name="chevron-down" size={20} /></span></span>
         </button>
       </h2>
       {pop.mounted ? (
@@ -395,15 +396,15 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
             <MenuRow label={shown.current ? 'This page as Markdown' : `Version ${shown.version} as Markdown`} run={page} />
             <MenuRow label={busy ? 'Exporting the whole space…' : 'The whole space as .tar.gz'} run={() => void wholeSpace()} busy={busy} />
           </> : <>
-            <MenuRow label="History" run={() => { close(false); navigate(historyTo); }} />
-            <MenuRow label="Copy link" run={() => void copy()} />
+            <MenuRow icon="clock" label="History" run={() => { close(false); navigate(historyTo); }} />
+            <MenuRow icon="link" label="Copy link" run={() => void copy()} />
             {/* People who manage the space can also take the whole space; everyone else gets this page at once. */}
-            <MenuRow label="Export" run={() => (project.access === 'manager' ? setExporting(true) : page())} more={project.access === 'manager'} />
-            <MenuRow label={importing ? 'Importing…' : 'Import a Markdown file'} run={() => { close(); startImport(); }} busy={importing}
+            <MenuRow icon="download" label="Export" run={() => (project.access === 'manager' ? setExporting(true) : page())} more={project.access === 'manager'} />
+            <MenuRow icon="doc" label={importing ? 'Importing…' : 'Import a Markdown file'} run={() => { close(); startImport(); }} busy={importing}
               describedBy={importError ? importErrorId : undefined} />
-            {onRename ? <MenuRow label="Rename page" run={() => { close(false); onRename(); }} /> : null}
-            {/* The menu closes onto its button first, so the dialog gives focus back to it. */}
-            {onDelete ? <MenuRow label="Delete page" run={() => { close(); onDelete(); }} /> : null}
+            {onRename ? <MenuRow icon="edit" label="Rename page" run={() => { close(false); onRename(); }} /> : null}
+            {/* The menu closes onto its button first, so the dialog gives focus back to it. A line sets the destructive row apart, as every menu does. */}
+            {onDelete ? <><div className="wiki-menu__sep" role="separator" /><MenuRow icon="trash" label="Delete page" run={() => { close(); onDelete(); }} /></> : null}
           </>}
         </div>
       ) : null}
@@ -411,10 +412,11 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
   );
 }
 
-function MenuRow({ label, run, busy, more, describedBy }: { label: string; run(): void; busy?: boolean; more?: boolean; describedBy?: string }) {
+function MenuRow({ label, run, busy, more, describedBy, icon }: { label: string; run(): void; busy?: boolean; more?: boolean; describedBy?: string; icon?: IconName }) {
+  // A menu's rows lead with their icon, as the maps' and the "…" menus' do (founder direction 2026-11-17 visual review).
   return (
-    <button type="button" role="menuitem" className="wiki-menu__row" onClick={run} aria-busy={busy || undefined} aria-haspopup={more ? 'menu' : undefined}
-      aria-describedby={describedBy}><span className="wiki-menu__t">{label}</span></button>
+    <button type="button" role="menuitem" className={`wiki-menu__row${icon ? ' wiki-menu__row--icon' : ''}`} onClick={run} aria-busy={busy || undefined} aria-haspopup={more ? 'menu' : undefined}
+      aria-describedby={describedBy}>{icon ? <Icon name={icon} size={15} /> : null}<span className="wiki-menu__t">{label}</span>{more ? <Icon name="chevron-right" size={14} /> : null}</button>
   );
 }
 
@@ -463,12 +465,11 @@ export function NoPages() {
   const { project, importing, importError, importErrorId, startImport } = useWiki();
   return (
     <div className="wiki-page wiki-empty">
-      <h2 className="wiki-empty__t">No pages yet</h2>
-      <p className="doc-muted">Write down how things work in {project.name} and what you learned. Every change keeps the earlier version.</p>
-      <div className="wiki-empty__acts">
+      {/* The one empty state of the app (founder direction 2026-11-17 visual review): its icon, title, line and the two actions. */}
+      <EmptyState icon="book" title="No pages yet" action={<div className="wiki-empty__acts">
         <NewPage primary />
         <Button variant="outline" onClick={startImport} busy={importing} aria-describedby={importError ? importErrorId : undefined}>Import a Markdown file</Button>
-      </div>
+      </div>}>Write down how things work in {project.name} and what you learned. Every change keeps the earlier version.</EmptyState>
       {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
     </div>
   );

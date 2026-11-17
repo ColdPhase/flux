@@ -228,7 +228,9 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           {row.children.length ? <button type="button" tabIndex={-1} className="sk-outline-toggle" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${quote(thought.text)}`}
             onClick={(event) => { quiet(event); view.toggle(thought.id); focus(thought.id); }}><Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} /></button>
             : <span className="sk-outline-leaf" aria-hidden="true" />}
-          {label ? <span className="sk-outline-tag" id={tagId}>{label}</span> : null}
+          {/* The connection's label is a tag before the title (#510 AC-2), in a slot of one width and right against the title, so the titles of
+              labelled siblings start at one edge however long each label is (founder direction 2026-11-17 visual review). */}
+          {label ? <span className="sk-outline-tagslot"><span className="sk-outline-tag" id={tagId}>{label}</span></span> : null}
           <span className="sk-outline-main">
             {editing?.id === thought.id && canWrite
               ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} />

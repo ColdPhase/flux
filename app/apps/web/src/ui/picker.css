@@ -22,8 +22,8 @@
 .ui-pick__btn:focus-visible { outline: 2px solid var(--ring); outline-offset: -3px; }
 .ui-pick__chev { transition: transform var(--dur-1) var(--ease-out); }
 .ui-pick[data-open] .ui-pick__chev { transform: rotate(180deg); }
-/* The soft field focus of the select and the other inputs (--t1 hairline inside, --sub halo), on the whole frame. */
-.ui-pick:focus-within { box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+/* The field focus of the other inputs, on the whole frame: the one 2 px --ring (founder direction 2026-11-17 visual review). */
+.ui-pick:focus-within { outline: 2px solid var(--ring); outline-offset: 1px; }
 /* Text that is not a day or a time: the invalid field's ring (--t1, 1.5 px), as the other fields'. */
 .ui-pick[data-invalid] { box-shadow: inset 0 0 0 1.5px var(--t1); }
 .ui-pick[data-invalid]:focus-within { box-shadow: inset 0 0 0 1.5px var(--t1), 0 0 0 3px var(--sub); }

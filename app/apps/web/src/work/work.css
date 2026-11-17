@@ -26,6 +26,11 @@
 
 /* ---------- Tasks tab ---------- */
 .ws-tasks { padding-top: 16px; }
+/* Below the very wide window (2000 px, where the row and the List are one centred column, board.css) the List starts at the toolbar's left
+   edge, so the page has one left edge with or without a panel (founder direction 2026-11-17 visual review). */
+@media (min-width: 641px) and (max-width: 1999px) {
+  .ws-tasks.pane-in { max-width: calc(var(--col) + 2 * var(--space-page)); margin-inline: 0; padding-inline: var(--space-page); }
+}
 .ws-task-controls { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flow-root; }
 .ws-group { margin-top: 24px; }
 .ws-group__h { display: flex; gap: 6px; margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
@@ -99,6 +104,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .ui-sheet .wd-decision-identity { top: -18px; }
 /* "Proposed" and "Accepted by" are the task panel's rows (.wd-rows), a step under the lead. */
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
+.wd-decide + .wd-decision-rows { margin-top: 0; }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--t1); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
@@ -114,7 +120,8 @@ button.ws-task__glyph:active { background: var(--hov); }
 }
 .wd-title__text { cursor: text; }
 .wd-title__text:hover { background: var(--hov); }
-.wd-title__field { resize: none; overflow: hidden; border: 0; background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--t1); outline: none; }
+.wd-title__field { resize: none; overflow: hidden; border: 0; background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.wd-title__field:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 .wd-rows { margin: 8px 0 0; }
 .wd-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 42px; padding: 2px 0; }
 .wd-row + .wd-row { border-top: 1px solid var(--line); }
@@ -167,7 +174,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-link b { font-weight: 500; color: var(--t3); }
 .wd-link small { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .wd-link svg { flex: none; color: var(--t3); }
-.wd-link:hover { background: var(--hov); }
+@media (hover: hover) { .wd-link:hover { background: var(--hov); } }
 /* A pressed button (thought choices, prerequisites, decisions) takes the one press (ui/press.ts); the fill also shows
    under reduced motion, where --press is 1 (HIG-16, Prostota). */
 button.wd-link:active:not(:disabled) { background: var(--sub); }
@@ -196,7 +203,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
    draws its own chevron in --t3 (no colour literal). */
 .wd-pick__field { position: relative; min-width: 0; }
 .wd-pick .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: var(--sh-field); }
-.wd-pick .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-pick .ui-select:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 .wd-pick .wd-pick__cancel { margin-top: 0; justify-content: flex-end; }
 .wd-pick .wd-links { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 /* On the phone the thought being chosen is the primary content of the chooser, so its title takes the phone body size
@@ -208,7 +215,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }
-.wd-form textarea:focus, .wd-form .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-form textarea:focus, .wd-form .ui-select:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 .wd-check { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: var(--fs-md); color: var(--t2); }
 
 @media (pointer: coarse) {
@@ -318,7 +325,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-came { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; max-width: 100%; }
 .wd-came__text { max-width: 100%; text-align: left; }
 .wd-came__text span { overflow-wrap: anywhere; }
-.wd-came__field { width: 100%; min-height: 34px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: var(--r-sm); background: var(--sub); color: var(--t1); font: inherit; box-shadow: inset 0 0 0 1.5px var(--t1); }
+.wd-came__field { width: 100%; min-height: 34px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: var(--r-sm); background: var(--el); color: var(--t1); font: inherit; box-shadow: inset 0 0 0 1px var(--line2); }
+.wd-came__field:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 .wd-came__dropped { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: var(--fs-sm); color: var(--t2); cursor: pointer; }
 .wd-menu__group { margin: 6px 10px 2px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .wd-menu__list { overflow-y: auto; overscroll-behavior: contain; }
@@ -334,9 +342,12 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 
 /* The blocker is one card: the pill, who or what it waits for, then quiet Edit and Resolve. The field shows only while editing. */
 .wd-blocker { margin-top: 14px; padding: 10px 12px 10px 14px; border-radius: var(--r-card); background: var(--sub); }
-.wd-blocker__head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wd-blocker__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .wd-blocker__head .ui-pill { flex: none; }
-.wd-blocker .wd-blocker__text { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
+/* Where the words would get less than about 12 characters a line beside the pill and the actions (a phone), Edit and Unblock take the next
+   line at the right, and the words keep the room (founder direction 2026-11-17 visual review). */
+.wd-blocker .wd-blocker__text { flex: 1 1 9em; min-width: 0; margin: 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
+.wd-blocker__acts { margin-left: auto; }
 .wd-blocker__text b { font-weight: 600; color: var(--t1); }
 .wd-blocker__acts { display: flex; flex: none; gap: 2px; }
 .wd-blocker__resolve { color: var(--t1) !important; font-weight: 600; }
@@ -347,6 +358,10 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 
 /* One row of small actions: Hand off, Result, Link thought. */
 .wd-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+/* A text button that starts a panel's line puts its icon on the panel's edge, under the field labels (founder direction 2026-11-17 visual
+   review): the button's own padding hangs outside, as a menu row's does. A filled or outlined button keeps its edge where it is. */
+.wd-acts > .ui-btn--secondary:first-child { margin-left: -12px; }
+.wd .wd-actions:not(.wd-pick__cancel) > .ui-btn--secondary:first-child:not(.ui-btn--sm) { margin-left: -14px; }
 
 /* The task's one discussion: who did what and when, newest first, with the messages in the same line of time. It has no heading (#1364). */
 .wd-activity { margin-top: 22px; }

@@ -25,18 +25,46 @@ function anchor(r: Rect, o: Rect): Anchor {
   return { x: cx, y: dy > 0 ? r.y + r.h : r.y, horizontal: false, sign: Math.sign(dy) || 1 };
 }
 
-/** A soft cubic curve between two boxes and the point where its label sits. */
+/** A soft cubic curve between two boxes and the point where its label sits; `at(t)` is any point along it (0 at `a`, 1 at `b`). */
 export function linkPath(a: Rect, b: Rect) {
   const A = anchor(a, b);
   const B = anchor(b, a);
   const k = Math.max(20, Math.hypot(B.x - A.x, B.y - A.y) * 0.35);
   const c1 = A.horizontal ? [A.x + A.sign * k, A.y] : [A.x, A.y + A.sign * k];
   const c2 = B.horizontal ? [B.x + B.sign * k, B.y] : [B.x, B.y + B.sign * k];
-  const mid = {
-    x: 0.125 * A.x + 0.375 * c1[0]! + 0.375 * c2[0]! + 0.125 * B.x,
-    y: 0.125 * A.y + 0.375 * c1[1]! + 0.375 * c2[1]! + 0.125 * B.y,
+  const at = (t: number) => {
+    const u = 1 - t;
+    return {
+      x: u * u * u * A.x + 3 * u * u * t * c1[0]! + 3 * u * t * t * c2[0]! + t * t * t * B.x,
+      y: u * u * u * A.y + 3 * u * u * t * c1[1]! + 3 * u * t * t * c2[1]! + t * t * t * B.y,
+    };
   };
-  return { d: `M${A.x},${A.y} C${c1.join(',')} ${c2.join(',')} ${B.x},${B.y}`, mid };
+  return { d: `M${A.x},${A.y} C${c1.join(',')} ${c2.join(',')} ${B.x},${B.y}`, mid: at(0.5), at };
+}
+
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/**
+ * Where each connection's label sits (founder direction 2026-11-17 visual review): on a free part of its own line, never on another label
+ * or under a thought. The middle of the line first, then points a little towards either end; a label that every point puts under a thought
+ * is not drawn there (`null`), since a card would cover it. Sizes are the labels' boxes in plane units.
+ */
+export function placeLabels(labels: { id: string; at(t: number): { x: number; y: number }; w: number; h: number }[], cards: Rect[]): Map<string, { x: number; y: number } | null> {
+  const placed: Rect[] = [];
+  const result = new Map<string, { x: number; y: number } | null>();
+  for (const label of labels) {
+    let chosen: { x: number; y: number } | null = null;
+    for (const t of [0.5, 0.6, 0.4, 0.7, 0.3, 0.8, 0.2]) {
+      const point = label.at(t);
+      const box = { x: point.x - label.w / 2 - 3, y: point.y - label.h / 2 - 2, w: label.w + 6, h: label.h + 4 };
+      if (cards.some((card) => overlaps(box, card)) || placed.some((other) => overlaps(box, other))) continue;
+      chosen = point;
+      placed.push(box);
+      break;
+    }
+    result.set(label.id, chosen);
+  }
+  return result;
 }
 
 export function rectOf(thought: Thought, heights: Map<string, number>): Rect {

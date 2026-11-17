@@ -258,6 +258,9 @@ function build(view: EditorView, hosts: RefHosts): { all: DecorationSet; atomic:
             lineClass(line.from, `cm-md-h cm-md-h${level}`);
             if (line.to >= node.to || line.number >= state.doc.lines) break;
           }
+          // The blank line after a heading is a short step, so the heading sits with its text, as the reader draws it (founder direction 2026-11-17 visual review).
+          const next = state.doc.lineAt(node.to).number + 1;
+          if (next <= state.doc.lines && !state.doc.line(next).text.trim()) lineClass(state.doc.line(next).from, 'cm-md-after-h');
           return true;
         }
         if (name === 'HeaderMark') {

@@ -412,8 +412,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true });
     setConnectFrom(null);
     setEditing(null);
-    say(!text ? (at ? 'Private connected thought draft · Enter saves, Escape cancels' : 'Private thought draft · Enter saves, Escape cancels')
-      : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard · Enter saves, Escape cancels`);
+    // The keys are said once, in the draft itself (founder direction 2026-11-17 visual review); a phone has no keys to name.
+    say(!text ? (at ? 'Private connected thought draft' : 'Private thought draft') : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard`);
   };
 
   /** The dot without a pointer: Enter or Space starts a connection from this thought; choose the other one next. */
@@ -788,16 +788,18 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     }}
     onPaste={coarse ? () => void pasteFromClipboard() : undefined}
     onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null;
+  // Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
+  // button: the editor would blur first, and leaving the field saves, even for Cancel edit.
+  const editControls = editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
+    <Button variant="primary" size="sm" aria-label="Save edit" disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save'}</Button>
+    <Button variant="secondary" size="sm" aria-label="Cancel edit" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel</Button>
+  </div> : null;
   const notices = (
     <>
         {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
 
-        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
-            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
-        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
-          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
-          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
-        </div> : null}
+        {/* On the map the edit's Save and Cancel stand beside the thought, in its toolbar (SketchMap); in the List they stay here. */}
+        {!mapMode ? editControls : null}
 
         {!mapMode ? draftForm() : null}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
@@ -871,7 +873,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {readonlyNote}
             {notices}
           </div>
-          <SketchMap {...shared} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
+          <SketchMap {...shared} editControls={editControls} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
@@ -956,12 +958,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
         {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
 
-        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
-            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
-        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
-          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
-          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
-        </div> : null}
+        {editControls}
 
         {draftForm()}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}

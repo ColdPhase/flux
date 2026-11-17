@@ -97,9 +97,10 @@ export function VersionPage() {
   const earlier = shown.version !== doc.version;
   return (
     <ReadPage doc={doc} shown={shown} notice={(
-      <p className="doc-notice"><Icon name="undo" size={14} />{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
-        <Link to={base}>Open the current version</Link>
-        {earlier ? <><RestoreButton docUrl={base} version={shown.version} quiet /><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</p>
+      <p className="doc-notice doc-notice--version"><Icon name="undo" size={14} /><span>{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.</span>
+        {/* The ways on are a row of their own under the sentence, at its edge (founder direction 2026-11-17 visual review). */}
+        <span className="doc-notice__links"><Link to={base}>Open the current version</Link>
+          {earlier ? <><RestoreButton docUrl={base} version={shown.version} quiet /><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</span></p>
     )} />
   );
 }
