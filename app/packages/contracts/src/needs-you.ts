@@ -195,6 +195,8 @@ export interface NeedsYouAsideResponse {
   later: NeedsYouAsideEntry[];
   /** Marked done or declined in the last 24 hours, newest first. */
   done: NeedsYouAsideEntry[];
+  /** F-030: the caller's encrypted workspaces locked here, whose items both lists leave out; absent when none is (a cross-workspace read). */
+  lockedWorkspaces?: LockedWorkspaceRef[];
 }
 
 /**

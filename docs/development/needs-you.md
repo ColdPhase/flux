@@ -150,6 +150,10 @@ person's own choice (204; idempotent).
   until a task is done (`untilWorkId`, the first unfinished task a decision affects or the first unfinished
   prerequisite of a blocked task; it ends when that task is done, set aside or gone) and a later time, but no screen offers them.
 - Done on a mention or question also reads its notification; Undo unreads it. Nothing is deleted.
+- **A locked encrypted space** (F-030). `GET /api/v1/needs-you` and `GET /api/v1/needs-you/aside` (the lists behind "N for later" and "N done
+  today") are cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`): they skip a locked space's items, name it in `lockedWorkspaces`, and the
+  `later` and `doneToday` counts leave its items out as their lists do. `POST` and `DELETE /api/v1/needs-you/:key` find the item the same way,
+  so a choice on another space's item still works; a change to a locked space's own task is refused with `423` by the sealing path.
 - **A call is not a question** (F-041, #1368). A call's notice (`reason: call`) and an invitation to a call (`reason: invitation`)
   are listed with `call: { projectId, sessionId }`, only while someone is in the call, and are named "Call" with Join. They leave the
   queue when the call ends, and when the person joins it: the join (`POST /api/v1/live-sessions/:id/join`) reads the person's notices

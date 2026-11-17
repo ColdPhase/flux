@@ -173,7 +173,7 @@ export interface WorkspaceEncryptionResumeJob { workspaceId: string }
  * The event stream stays open (its events carry ids only).
  */
 export const CROSS_WORKSPACE_READ_ROUTES: readonly string[] = [
-  'GET /api/v1/search', 'GET /api/v1/inbox', 'GET /api/v1/needs-you', 'GET /api/v1/return',
+  'GET /api/v1/search', 'GET /api/v1/inbox', 'GET /api/v1/needs-you', 'GET /api/v1/needs-you/aside', 'GET /api/v1/return',
 ];
 
 /**

@@ -378,9 +378,10 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
   const backAt = (entry: StoredNeedsYou) => entry.until?.getTime() ?? Number.MAX_SAFE_INTEGER;
 
   return {
-    async list(principal: Principal): Promise<NeedsYouResponse> {
+    /** `leaveOut`: items "N for later" and "N done today" do not count (a locked encrypted space's, F-030), as their lists leave them out. */
+    async list(principal: Principal, leaveOut: (item: NeedsYouItem) => boolean = () => false): Promise<NeedsYouResponse> {
       const { items, later, done, notifying } = await queue(principal);
-      return { items, count: items.length, later: later.length, doneToday: done.length, notifying };
+      return { items, count: items.length, later: later.filter((entry) => !leaveOut(entry.item)).length, doneToday: done.filter((entry) => !leaveOut(entry.item)).length, notifying };
     },
 
     /** The lists behind "2 for later" and "4 done today" (#1424 E): exactly what those counts count. */
