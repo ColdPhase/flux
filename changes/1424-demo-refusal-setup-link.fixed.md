@@ -1,0 +1,1 @@
+- `./flux demo` refused on an address that looks like a production deployment prints the setup link while no company exists, so the refusal leaves the way to set Flux up instead of nothing ([#1424](https://github.com/ColdPhase/flux/issues/1424)).

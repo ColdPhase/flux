@@ -55,7 +55,7 @@ class SetupLinkTest(unittest.TestCase):
         self.log = self.base / "docker-calls"
         self.env_file = self.checkout / "docker/.env"
 
-    def up(self, origin: str, count: str, token: str | None = TOKEN, extra: str = "") -> subprocess.CompletedProcess[str]:
+    def up(self, origin: str, count: str, token: str | None = TOKEN, extra: str = "", command: str = "up") -> subprocess.CompletedProcess[str]:
         self.env_file.write_text(
             f"FLUX_PROJECT=flux-setup-test\nFLUX_PORT=8081\nFLUX_PUBLIC_ORIGIN={origin}\nFLUX_AGENT_RUNTIME=\nFLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=\n"
             + (f"FLUX_SETUP_TOKEN={token}\n" if token is not None else "") + extra
@@ -64,7 +64,7 @@ class SetupLinkTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
         env.update(PATH=f"{self.bin_dir}:{os.environ['PATH']}", FLUX_TEST_LOG=str(self.log), FLUX_TEST_INFO=INFO_OK, FLUX_TEST_PSQL=count,
                    FLUX_WAIT_TIMEOUT="5")
-        return subprocess.run([str(self.checkout / "flux"), "up"], cwd=self.base, env=env, stdin=subprocess.DEVNULL,
+        return subprocess.run([str(self.checkout / "flux"), command], cwd=self.base, env=env, stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=60)
 
     def test_no_company_prints_the_setup_link_on_any_origin(self) -> None:
@@ -104,6 +104,23 @@ class SetupLinkTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertNotIn(TOKEN, done.stdout + done.stderr)
         self.assertNotIn(SETUP_LINE, done.stdout)
+
+    def test_a_refused_demo_prints_the_setup_link_while_no_company_exists(self) -> None:
+        """The demo refuses a production-looking address; the person is left with the way to set Flux up, not with nothing."""
+        done = self.up("https://flux.example.org", "0", command="demo")
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("demo refuses to seed https://flux.example.org", done.stderr)
+        self.assertIn(SETUP_LINE, done.stdout)
+        self.assertIn(f"  https://flux.example.org/setup#{TOKEN}\n", done.stdout)
+        self.assertNotIn(TOKEN, done.stderr, "the token goes to the terminal's output only")
+
+    def test_a_refused_demo_adds_nothing_once_the_company_exists_or_the_database_is_silent(self) -> None:
+        for count in ("1", "fail"):
+            done = self.up("https://flux.example.org", count, command="demo")
+            self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+            self.assertIn("demo refuses to seed https://flux.example.org", done.stderr)
+            self.assertNotIn(TOKEN, done.stdout + done.stderr)
+            self.assertNotIn("Sign in there", done.stdout)
 
 
 if __name__ == "__main__":
