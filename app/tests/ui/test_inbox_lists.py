@@ -212,7 +212,12 @@ class InboxLists(unittest.TestCase):
         window.get_by_role("button", name=re.compile("^Bring back now")).click()
         expect(window).to_have_count(0)
         expect(second).to_be_visible()
+        # The line drops its count at once (round 14, daily P3-12); the server has it once Bring back's request is answered.
         expect(page.locator(".nyq-aside__line")).to_have_count(0)
+        for _ in range(40):
+            if self.queue()["later"] == 0:
+                break
+            time.sleep(0.25)
         self.assertEqual(self.queue()["later"], 0)
         self.assertIsNotNone(self.task_item("second"), "brought back: in the Inbox again")
 
