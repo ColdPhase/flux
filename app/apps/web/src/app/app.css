@@ -182,6 +182,9 @@ body:has(.app) { background: var(--side); }
 .side__row:hover > .top__more, .side__row > .top__more:is(:focus-within, :has([aria-expanded="true"])) { opacity: 1; }
 .side__row:hover :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet) { opacity: 0; }
 .side__more { width: 24px; height: 24px; }
+/* While the ⋯ shows (the pointer over the row, its keyboard focus, its menu open) the name ends before it, so its "…" and the ⋯'s ring never
+   overlap ("Community garden sen…" under the ring, round 15 look-1 P3-12). */
+@media (pointer: fine) { .side__row:has(> .top__more):is(:hover, :has(> .top__more:is(:focus-within, :has([aria-expanded="true"])))) > .side__item { padding-right: 34px; } }
 .side__row:hover .side__more { background: var(--hov); }
 .side__row:has(.is-open):hover .side__more { background: var(--el); }
 @media (pointer: coarse) {
@@ -286,7 +289,10 @@ body:has(.app) { background: var(--side); }
 /* It is pinned to the Inbox button's top-right corner, inside the button's own height, so it reads as the Inbox's and never floats in the gap
    towards Home (visual review 2026-11-17, core 12); it starts 1 px past the 18 px icon's right edge, so the glyph's lines stay clear
    whatever the number's width (personas-33/34, 200 %). */
-.side__count--rail { position: absolute; top: -1px; left: calc(50% + 10px); right: auto; margin: 0; min-width: 18px; height: 16px; padding: 0 4px; line-height: 16px; background: var(--side); box-shadow: 0 0 0 2px var(--side); }
+.side__count--rail { position: absolute; top: -1px; left: calc(50% + 10px); right: auto; margin: 0; min-width: 16px; height: 16px; padding: 0 2px; line-height: 16px; background: var(--side); box-shadow: 0 0 0 2px var(--side); }
+/* Two digits stay inside the rail at every zoom (round 15 look-1 P3-2: "10" reached past the rail's edge into the panel at 200 %): the count is
+   as narrow as its figures, and the rail's tooltips start beyond the count, past the rail's own edge, so "Inbox" never touches it. */
+.side--rail .side__ib[data-tip-side="end"]::after { left: calc(100% + (var(--rail-w) - var(--ctl)) / 2 + 8px); }
 /* A space tile's dot for what needs you sits on its corner, as on a person's face in the rail. */
 .side__rail-project .side__dot { position: absolute; top: 1px; right: 1px; box-shadow: 0 0 0 2px var(--side); }
 .side__rail-project { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: 10px; text-decoration: none; }
@@ -427,8 +433,11 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 .top__more-menu { overscroll-behavior: contain; }
 .top__more-menu .newmenu__item {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
-  color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
+  color: var(--t1); font: inherit; font-size: var(--fs-base); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
 }
+/* One look for a menu (round 15 look-2 P3-6): the message menu's words (14 px) and its icon leading each row in `--t2`. */
+.top__more-menu .newmenu__item > svg { flex: none; color: var(--t2); }
+.top__more-menu .newmenu__item:has(.top__more-text) > svg { margin-top: 1px; }
 /* A row with a hint (Mute, #1249): the label and one small muted line under it, wrapping inside the menu's width. */
 .top__more-menu .newmenu__item:has(.top__more-text) { align-items: flex-start; padding-block: 6px; }
 .top__more-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: normal; }

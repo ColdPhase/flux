@@ -111,6 +111,22 @@ describe('an answer someone showed everyone has one name, also in a notification
   });
 });
 
+// Round 15 (look-1 P2-3): a long question was cut at 140 characters by the generator, so the Inbox and Home could not show it whole.
+test('a long question is kept whole in what the Inbox reads', async () => {
+  const question = `Ada, before Saturday could someone check the whole north row ${'and the drip line behind the shed '.repeat(8)}because the supplier asked?`;
+  const events = [dmEvent(1)];
+  const { ports } = harness(events, new Map());
+  const bodies: string[] = [];
+  const shown: GeneratorPorts = {
+    ...ports,
+    facts: { ...ports.facts, dmMessage: async (_dm, messageId) => ({ id: messageId, workspaceId, dmId, kind: 'pair', title: null, authorId: 'ada', body: question, participantIds: ['ada', 'kai'] }) },
+    insertNotification: async (notification) => { bodies.push(notification.body); return true; },
+  };
+  await generateNotifications({ run: <T>(work: (p: GeneratorPorts) => Promise<T>) => work(shown) }, { emailAvailable: false });
+  assert.ok(question.length > 140);
+  assert.deepEqual(bodies, [question]);
+});
+
 describe('F-030 generation failures of a sealed workspace (#712 review P3)', () => {
   test('the failure stored and logged for a sealed workspace\'s event keeps class, code and ids only; a plain one keeps its text', async () => {
     for (const sealed of [true, false]) {

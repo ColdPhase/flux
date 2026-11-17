@@ -271,10 +271,11 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
   const [saved] = useState(() => savedForm(unresolvedOf(readDraft(me.user.id, pendingContext)), prefilled ? (request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
   const [outcome, setOutcome] = useState(saved?.outcome ?? '');
-  // A task from your own message or your own `/task` words starts as yours (#1424 M); any other starts with no owner.
-  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? (prefilled && request.ownerMe ? `human:${me.user.id}` : '') });
-  // An owner belongs to one project's people: another project starts with none.
-  const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
+  // A task from your own message, your own `/task` words or made on My tasks starts as yours (#1424 M, round 15); any other starts with no owner.
+  const mine = request.ownerMe ? `human:${me.user.id}` : '';
+  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? mine });
+  // An owner belongs to one project's people: another project starts with none, or with you where the task starts as yours.
+  const owner = ownerPick.projectId === projectId ? ownerPick.value : mine;
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
   // Sources belong to the project they were picked in: another project (from any tab's picker) starts with none, rather
   // than failing on submit.

@@ -74,6 +74,8 @@ export function useMuteRow(type: MutablePlaceType, id: string | null | undefined
   return useMemo(() => !id ? null : {
     muted: on,
     label: on ? `Unmute ${noun}` : `Mute ${noun}`,
+    // The row's icon: the bell to hear it again, the quiet mark to mute it.
+    icon: on ? 'bell' as const : 'quiet' as const,
     hint: on ? 'Muted. What needs you still arrives.' : 'Quiet for ordinary messages. What needs you still arrives.',
     run: () => void set(type, id, !on),
   }, [on, noun, id, type, set]);

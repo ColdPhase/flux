@@ -338,7 +338,11 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 
 - **Inbox: only what needs you.** Approvals, tasks handed back for review and questions from an
   agent. Each agent run is one item, for example "Planner · 3 things wait for you · Approve all
-  · Open". The same requests also show in the task discussion.
+  · Open". The same requests also show in the task discussion. One thing that waits is approved with
+  **Approve**, never "Approve all" of one; each change is said with its object's title in quotes ("Add task
+  “Get three print quotes”"), never the title run into the verb. **Open** lands on the run's waiting changes
+  in their conversation (`#waiting-<run>`), with Approve and Skip in view and focused, never at the thread's
+  start above them (release gate round 15, AI P2-3 and P3).
 - **Reports** such as "Done: #4 … · 3 changes · Undo" go to the agent's private conversation and
   onto its message in the task discussion. They never go to the Inbox. The private conversation
   gets one line when a run on a task ends: "Done: #4 …", "Blocked: #4 …" (the task is waiting and stays with the agent), or "Stopped by Maja: #4 …" (a limit or AI

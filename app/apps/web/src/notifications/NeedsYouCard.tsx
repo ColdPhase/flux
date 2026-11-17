@@ -43,6 +43,17 @@ const NOTE_ICON: Record<'question' | 'mention', IconName> = { question: 'chat', 
 const waitReasons = (changes: readonly { line: string | null }[]) =>
   [...new Set(changes.map((change) => change.line).filter((line): line is string => !!line))].join(' ') || 'Deleting and other people\'s things always wait for your OK.';
 
+/** One change waits: it is approved, not "all" of one thing (round 15 AI P3). */
+const approveWord = (run: NonNullable<NeedsYouItem['assistantChanges']>) => (run.changes.length === 1 ? 'Approve' : 'Approve all');
+/**
+ * A waiting change in words: its phrase and the object's title in quotes, "Add task “Get three print quotes”", as a deletion is said, never
+ * "Add Get three print quotes" with the title run into the verb (round 15 AI P3).
+ */
+const changeWords = (change: { phrase: string; objectTitle: string }) => {
+  const phrase = change.phrase.charAt(0).toUpperCase() + change.phrase.slice(1);
+  return change.objectTitle ? `${phrase} “${change.objectTitle}”` : phrase;
+};
+
 /**
  * The keys an open item answers to are the buttons it shows (F-026 §4, #1424): R where it shows Reply, E where it shows Done, S where it
  * shows Not now. A decision shows Accept and Not now, never Done; an agent's suggestion shows Got it and Decline. The Inbox asks this
@@ -167,7 +178,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         : item.kind === 'blocked' || item.kind === 'task' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         : answers ? <Button variant="secondary" onClick={() => onSelect?.()}>Answer</Button>
         : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
-        : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+        : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>{approveWord(run)}</Button>
         : item.call ? <JoinCall call={item.call} variant="secondary" />
         : <Button variant="secondary" onClick={() => handlers.open(item, item.reason !== 'invitation')}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
     </div>
@@ -201,7 +212,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         </>
       ) : run ? (
         <>
-          <Button variant="primary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+          <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{approveWord(run)}</Button>
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         </>
       ) : item.call ? (
@@ -214,7 +225,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
       ) : (
         <ReplyButton onClick={() => handlers.open(item, true)} keyHint />
       )}
-      {!decision && !item.proposal && !touch ? <span className="nyc__quiet"><NotNowButton variant="quiet" onClick={notNow} keyHint /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done<kbd aria-hidden="true">E</kbd></Button></span> : null}
+      {/* Not now and Done are buttons on every device: on a phone the swipe is a shortcut to them, never their only way (round 15 daily P2-3). */}
+      {!decision && !item.proposal ? <span className="nyc__quiet"><NotNowButton variant="quiet" onClick={notNow} keyHint={!touch} /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done{touch ? null : <kbd aria-hidden="true">E</kbd>}</Button></span> : null}
     </div>
   );
 
@@ -248,7 +260,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         {full && run ? <ul className="nyc__waits" aria-label="What waits for you">{run.changes.map((change) => (
           <li key={change.id}>{change.waitReason === 'removal' ? <span>{`Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}`}</span>
             : (change.tells ?? []).length && change.after ? <span className="nyc__waits-words"><ClampedWords text={`${change.verb} ${change.after}`} /></span>
-              : <span>{`${change.verb} ${change.objectTitle}`.trim()}</span>}
+              : <span>{changeWords(change)}</span>}
             {/* A task for someone else names them; what would tell people names who, also when both apply (#1089). The names wrap below
                 the words when the row is narrow, so long names never squeeze the words away (#1102). */}
             {change.forPerson ? <span className="nyc__waits-for">{change.forPerson.name}</span> : null}

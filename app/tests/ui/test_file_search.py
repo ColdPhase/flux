@@ -267,6 +267,36 @@ class FileSearch(unittest.TestCase):
         # Someone who may not read the space does not find it by its name either.
         self.assertEqual([item for item in self.contexts["wera"].request.get("/api/v1/search?q=IMG_2041").json()["items"] if item["kind"] == "file"], [])
 
+    def test_06_two_files_of_one_name_found_by_what_they_say_are_told_apart(self) -> None:
+        """Round 15 (new P2-3): a text file sent twice, by two people, gave two identical rows "flour-order.txt / “…”" with no who or when."""
+        word = "quernstonia"
+        body = f"Flour order November. Wheat 550: 20 bags. Rye 720: 6 bags. The {word} mill delivers on Friday.\n".encode()
+        for who in ("ada", "jonas"):
+            upload = self.contexts[who].request.post(f"/api/v1/projects/{self.ids['project']}/files?uploadId={uuid.uuid4()}&name=flour-order.txt", data=body,
+                                                     headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
+            self.assertEqual(upload.status, 201, upload.text())
+            sent = self.contexts[who].request.post(f"/api/v1/projects/{self.ids['project']}/conversations", headers={"origin": ORIGIN},
+                                                   data={"body": "The flour order", "attachmentIds": [upload.json()["id"]], "clientMessageId": str(uuid.uuid4())})
+            self.assertEqual(sent.status, 201, sent.text())
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            found = [item for item in self.contexts["ada"].request.get(f"/api/v1/search?q={word}").json()["items"] if item["kind"] == "file" and item["snippet"]]
+            if len(found) == 2:
+                break
+            time.sleep(0.5)
+        self.assertEqual(len(found), 2, "the worker read both files")
+        page = self.page("ada")
+        page.goto("/")
+        dialog, _ = self.jump(page, word)
+        rows = dialog.get_by_role("option", name=re.compile("flour-order.txt"))
+        expect(rows).to_have_count(2)
+        names = [rows.nth(index).get_attribute("aria-label") or rows.nth(index).inner_text() for index in range(2)]
+        metas = [rows.nth(index).locator(".sr__meta").inner_text() for index in range(2)]
+        self.assertNotEqual(metas[0], metas[1], f"the two rows say who sent each file: {metas}")
+        self.assertTrue(any("Jonas Berg" in meta for meta in metas) and any("Ada Kowalska (you)" in meta for meta in metas), metas)
+        self.assertTrue(all(word in meta for meta in metas), f"each still quotes where it matched: {metas} {names}")
+        self.shot(page, "file-search-same-name")
+
     def test_99_a_removed_message_takes_its_file_out_of_search_at_once(self) -> None:
         response = self.contexts["ada"].request.delete(f"/api/v1/conversations/{self.ids['conversation:md']}/messages/{self.ids['md']}", headers={"origin": ORIGIN})
         self.assertIn(response.status, (200, 204), response.text())

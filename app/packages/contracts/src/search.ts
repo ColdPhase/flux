@@ -47,7 +47,8 @@ export function searchTargetPath(target: SearchTarget): string {
     case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
     case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
-    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
+    // A match in the page as it is now opens the page itself, where it is read and edited; only an earlier version opens as a saved one (round 15).
+    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}${target.current ? '' : `/versions/${target.version}`}`;
     // A file (C-63) opens its message with its preview open, at the page that matched for a PDF.
     case 'file': return `/projects/${target.projectId}/conversations/${target.conversationId}?file=${target.fileId}${target.page ? `&page=${target.page}` : ''}#message-${target.messageId}`;
     case 'sketch': return `/map/${target.sketchId}`;
@@ -86,8 +87,8 @@ export type SearchTarget =
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'dm_message'; dmId: string; messageId: string }
   | { type: 'material'; projectId: string; materialId: string; version: number }
-  /** A doc (#112) at the version that matched. */
-  | { type: 'doc'; projectId: string; docId: string; version: number }
+  /** A doc (#112) at the version that matched; `current` when that is the page as it is now, which then opens itself. */
+  | { type: 'doc'; projectId: string; docId: string; version: number; current?: true }
   /** A file someone sent (C-63): its message, with its preview open at `page` (a PDF's page where the match is). */
   | { type: 'file'; projectId: string; conversationId: string; messageId: string; fileId: string; page?: number }
   | { type: 'work' | 'decision'; projectId: string; id: string }

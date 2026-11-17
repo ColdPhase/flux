@@ -163,12 +163,37 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   edge only while it shows.
 - **Offline**, a page without a composer says so in the busy line's place ("You’re offline. Flux shows what it last loaded and catches up
   when you’re back."); a composer's own line says it where there is one. Back online, Home and the Inbox read again at once, and a read that
-  failed says so with Try again, never "Looking…" for ever.
+  failed says so with Try again, never "Looking…" for ever. **What the line promises is kept** (round 15 new P2-2, look-1 P2-5): offline, Home
+  shows what this tab last read (what waits, Continue, First steps, "My tasks (N)"), never "This couldn’t be loaded" over what was loaded a
+  moment ago and never "My tasks (0)" for tasks it could not read; the shell (the sidebar, the header) is the same on every page and never
+  leaves for "Flux can’t be reached"; a place read before in this tab (the newest twelve of each read) opens with what it showed then. Only a
+  place never read says it couldn’t be loaded, inside the shell. The line is a pill where a toast stands: above the phone's "+", capsule and
+  map toolbar as measured, and on the computer 24 px up, inside the panel (look-1 P2-4, P3-5).
 - **The phone's header** meets a scrolled page at a `--line` hairline. A place that is not available keeps the phone's tab bar, and its tile
   is the alert icon, not a magnifier.
 - **The sidebar and the rail**: the rail's places, its Search and both toggles name themselves in the one tooltip (`data-tip`, the item's
   own name: "Home", "My map", "Search · ⌘K"), drawn beside the rail and the toggle so it never covers New or Search; New and Search have the hover fill of the rows.
-- **No orphan word**: every text of the app wraps with `text-wrap-style: pretty`; titles of the sign-in pages also balance.
+- **No orphan word**: every text of the app wraps with `text-wrap-style: pretty`; titles of the sign-in pages also balance, and so do an
+  empty state's centred title and line ("the map." alone under a full line, round 15).
+- **Round 15** (release gate, 2026-11-17):
+  - **A read-only field** (the address an emailed invite fills in) keeps the field's `--line2` hairline on its `--sub` fill: on the phone's
+    sign-in page `--sub` is the page's own colour, and the address floated with no box.
+  - **The rail's Inbox count** is as narrow as its figures (2 px each side) and stays inside the rail at every zoom; the rail's tooltips start
+    past the rail's own edge, so "Inbox" never touches the count.
+  - **A sidebar row's ⋯**: while it shows (pointer over the row, its keyboard focus, its menu open) the name ends before it, so the name's
+    "…" and the ⋯'s ring never overlap.
+  - **Menus**: the header's and the sidebar's ⋯ menus (Move up and down, Mark all as read, Settings, Search, Mute, People) have the message
+    menu's 14 px words and lead each row with its icon in `--t2`, as "A menu's rows lead with their icon" says.
+  - **Toasts in the two-column Inbox** stand centred under the open item's column (`data-toast-home`), never across the line between the
+    columns or over the list's last card.
+  - **Home's rows** cut a long title to two lines with "…", as the Inbox's rows do; the open item reads it whole. A question or a mention
+    is kept whole up to 600 characters by the server (it was cut at 140, so its end could be read nowhere).
+  - **The empty Inbox's** Notification settings is an outline button, never bare text beside the underlined "1 for later".
+  - **For later's day** is its parts set apart by spaces ("Back Thu 19 Nov at 14:34") in every engine.
+  - **Search's failure** has Try again (the secondary button with the refresh icon), unless the server refused the search itself.
+  - **A task made on My tasks is yours**, as one made from your own message: it shows on the list it was made from.
+  - **A panel opened from the Inbox** opens as every panel does (Tasks below: a short panel and the phone's sheet open at the top, never
+    past the title), so a blocked task's sheet and a discussed decision at 200 % show what they are first.
 - **Lists of rows are cards**: My tasks' spaces are cards of rows like Home's, the glyph, the word and the chevron on the first line's middle.
   The phone's Spaces list ends a row in its dot and its ⋯, with no chevron.
 
@@ -650,7 +675,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **No swipe-left actions on messages.** Messages have no done or snooze state.
   - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
     swipe action has a visible button or menu alternative, because a gesture is never the only
-    way to an action. On the computer, hover actions are unchanged.
+    way to an action: the phone's expanded Inbox card shows Not now and Done as its quiet buttons, as the computer's open item
+    does, and the swipe is a shortcut to them (round 15 daily P2-3). On the computer, hover actions are unchanged.
   - **The visible alternative to long press is a quiet ⋯ on every message** (#763 FT-4, #1357, v0.2.1). It is a
     44 × 44 px target at the bubble's top, **beside the bubble on the side away from its author** (right of other people's
     messages, left of your own), the touch twin of the computer's pill. The layout keeps a 32 px lane free beside the bubble
@@ -1912,9 +1938,14 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
   group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
   its mono label (the one the message shows, 20 px) in the tile, the file's name as the title with
-  its matched words marked, and one line under it with what the file says where it matched, in
-  quotes with the match marked, led by "Page 3" for a PDF. A file found only by its name says
-  where it lives, who sent it and when, as a message row does. `↵` opens the file's message in its
+  its matched words marked, and one line under it: who sent it, where it lives and when, as a file found by its name says, then
+  what the file says where it matched, in quotes with the match marked, led by "Page 3" for a PDF (round 15 new P2-3: the same file
+  sent twice gave two identical rows). A file found only by its name says
+  where it lives, who sent it and when, as a message row does. A message's or a thought's matching words read as the message does: a
+  Wiki page named in it, `[[Opening checklist]]`, is its title, never the raw brackets (round 15 new k). A direct message is named as the
+  sidebar names it, "With Piotr Lis (removed)" (look-1 P3-10). A Wiki page matched in the page as it is now opens the page itself, where
+  it is read and edited; only a match in an earlier version opens that saved version (round 15 new P2-4: Search opened `/versions/4`,
+  "You are reading a saved version", on the current page). `↵` opens the file's message in its
   conversation with the file's preview open (the photo viewer's frame, F-026 §6), at the page that
   matched for a PDF (a photo opens in the photo viewer, a video in its player); closing it leaves the message in place and takes
   the preview out of the address. **Every file is found by its name** (founder decision, Hubert, 2026-11-15,

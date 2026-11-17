@@ -228,7 +228,13 @@ class Round14Work(unittest.TestCase):
         self.settled(page)
         blocker = page.evaluate(PLACE, ["#details .wd__scroll", ".wd-blocker"])
         self.assertGreaterEqual(blocker["top"], 0, f"the Waiting for card starts in view: {blocker}")
-        self.assertGreaterEqual(blocker["bottom"], FADE if blocker["fade"] else 0, f"the Waiting for card is whole above the field: {blocker}")
+        # What the task is comes first (round 15 look-1 P2-1, look-3 F2): the card is whole above the field unless that would scroll the
+        # title out of view; then the sheet stops with the title at its top and the card starts in view under it.
+        title = page.evaluate(PLACE, ["#details .wd__scroll", ".wd-title, .details__title"])
+        # Whole pixels: WebKit keeps `scrollTop` whole, so the title may sit a fraction of a pixel over the edge.
+        self.assertGreaterEqual(title["top"], -0.5, f"the task's title is in view: {title}")
+        if blocker["bottom"] < (FADE if blocker["fade"] else 0):
+            self.assertLessEqual(title["top"], 24, f"the card is cut only because the title stays at the sheet's top: {title} {blocker}")
         shot(page, f"r14-phone-blocked-open-{ENGINE}")
 
     # ---------------------------------------------------------------- look-b B1

@@ -137,7 +137,7 @@ function AccountNotificationSettings() {
   // Only the channels this server has (#763 SG-3).
   const missing = pushServerOff && !email.available ? 'Push and email aren’t set up on this Flux server, so everything waits in your Inbox.'
     : pushServerOff ? 'Push isn’t set up on this Flux server. Your inbox always works.'
-      : !email.available ? 'Email isn’t set up on this Flux server. Your inbox and push still work.' : '';
+      : !email.available ? 'Email isn’t set up on this Flux server. Your Inbox and push still work.' : '';
   // The addresses a notification email goes to: the sign-in address and each confirmed extra one that is switched on (C-49).
   const addresses = (email.accountEnabled ? 1 : 0) + email.addresses.filter((item) => item.verified && item.enabled).length;
   const switchExtra = (id: string, enabled: boolean) => {

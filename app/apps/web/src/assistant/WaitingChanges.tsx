@@ -7,6 +7,8 @@ import { useShellActions } from '../app/shellContext';
 import { applyChange, editChange, listConversationChanges, listRunChanges, skipChange, undoRunChanges } from './api';
 import { RefLink } from '../place/origin';
 import { useKeepFocus } from './useKeepFocus';
+import { waitingHash } from './waitingHash';
+import { useLocation } from 'react-router';
 import { ClampedWords } from './ClampedWords';
 import { peopleNamed } from './peopleNamed';
 
@@ -235,6 +237,20 @@ export function WaitingChanges({ changes, onChanged, meId, standalone = false, h
     finally { setBusy(''); await onChanged(); }
   });
   const settled = changes.filter(decided);
+  // Opened from the Inbox (`#waiting-<runId>`): what waits is brought into view and takes the focus once the thread shows it.
+  const sought = useLocation().hash === waitingHash(runId);
+  useEffect(() => {
+    if (!sought) return undefined;
+    let tries = 0;
+    let timer = 0;
+    const seek = () => {
+      const node = document.querySelector<HTMLElement>(`.assistant-waiting[data-run="${CSS.escape(runId)}"]`);
+      if (node && !node.closest('.is-opening')) { node.scrollIntoView({ block: 'start' }); node.focus({ preventScroll: true }); return; }
+      if (++tries < 80) timer = window.setTimeout(seek, 100);
+    };
+    seek();
+    return () => window.clearTimeout(timer);
+  }, [sought, runId]);
   return (<>
     <ChangeLine changes={changes} onChanged={onChanged} meId={meId} standalone={standalone} here={here} />
     {pending.length || settled.length || messages.length ? <section ref={home} tabIndex={-1} className="assistant-waiting" aria-label="Waiting for your OK" data-run={runId}>

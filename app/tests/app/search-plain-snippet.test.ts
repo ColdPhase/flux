@@ -40,4 +40,10 @@ describe('search snippets without Markdown', () => {
       JSON.stringify([rest('Pickup ideas '), hit('map'), rest('.')]));
     assert.equal(plain([hit('Pickup'), rest(' with the [SMS code](flux:deci')]), JSON.stringify([hit('Pickup'), rest(' with the SMS code')]));
   });
+  // Round 15 (new k): a message result in Search showed the raw "[[Opening checklist]]".
+  test('a Wiki page named in a message reads as its title, also when the slice cuts it', () => {
+    assert.equal(plain([rest('Follow the [['), hit('Opening'), rest(' checklist]] tomorrow')]), JSON.stringify([rest('Follow the '), hit('Opening'), rest(' checklist tomorrow')]));
+    assert.equal(plain([rest('[[Opening '), hit('checklist')]), JSON.stringify([rest('Opening '), hit('checklist')]));
+    assert.equal(plain([hit('Opening'), rest(' checklist]]')]), JSON.stringify([hit('Opening'), rest(' checklist')]));
+  });
 });

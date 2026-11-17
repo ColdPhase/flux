@@ -1,5 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { foldSearchWord, isSearchStopWord, type AgentColour } from '@flux/contracts';
+import { foldSearchWord, isSearchStopWord, removedName, type AgentColour } from '@flux/contracts';
+
+/** The mark after a removed person's name, " (removed)": the one helper's words. */
+const REMOVED_MARK = removedName('');
 import * as schema from '../schema.js';
 import { hybridMatched, vectorLiteral, type QueryVectors } from './search-vectors.js';
 import { cleanName } from '../display-name.js';
@@ -531,6 +534,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
   const workJoin = bm25
     ? sql`wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)`
     : sql`h.kind = 'work' AND wi.id = h.object_id::uuid`;
+  // A direct message names someone who left the company or was removed as the sidebar does, "Piotr Lis (removed)" (round 15 look-1 P3-10).
+  const removedMark = sql`CASE WHEN EXISTS (SELECT 1 FROM workspace_removed_people r WHERE r.user_id = u.id AND r.workspace_id = coalesce(w.company_workspace_id, w.id)) THEN ${REMOVED_MARK}::text ELSE '' END`;
   return sql`
     WITH ${audience},
     ${matched}
@@ -546,8 +551,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
         WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
         ELSE ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${BODY_OPTIONS}) END AS body_headline,
       CASE WHEN d.id IS NULL THEN NULL WHEN d.title IS NOT NULL THEN d.title
-        WHEN d.kind = 'pair' THEN (SELECT ${cleanName(sql`u.name`)} FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
-        ELSE (SELECT string_agg(${cleanName(sql`u.name`)}, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
+        WHEN d.kind = 'pair' THEN (SELECT ${cleanName(sql`u.name`)} || ${removedMark} FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
+        ELSE (SELECT string_agg(${cleanName(sql`u.name`)} || ${removedMark}, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
       END AS dm_name
     FROM ${page} h
     LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])
