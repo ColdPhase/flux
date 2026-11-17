@@ -356,10 +356,14 @@ export function watchLostFocus(): () => void {
     if (windowOrMenuOpen()) return;
     const kept = last;
     last = null;
-    const ancestor = kept.ancestors.find((element) => element.isConnected && element !== document.getElementById('root'));
-    const near = [...kept.next, ...kept.previous].find((element) => usable(element) && !!ancestor?.contains(element));
-    const inside = ancestor ? [...ancestor.querySelectorAll(FOCUSABLE)].find((element) => usable(element)) : undefined;
-    const target = near ?? before.find(usable) ?? inside ?? document.getElementById('content');
+    // What a toast had (its Undo) never goes to another toast's control: focus there holds that toast (#1424), unseen, so it never left
+    // ("#1 back to Doing" after a tap on Undo in WebKit, test_tasks_board 09). It goes back to the control that made the change, as said above.
+    const fromToast = kept.ancestors.some((element) => element.classList.contains('ui-toasts'));
+    const fits = (element: Element | null | undefined): element is HTMLElement => usable(element) && !(fromToast && element.closest('.ui-toasts'));
+    const ancestor = kept.ancestors.find((element) => element.isConnected && element !== document.getElementById('root') && !(fromToast && element.closest('.ui-toasts')));
+    const near = [...kept.next, ...kept.previous].find((element) => fits(element) && !!ancestor?.contains(element));
+    const inside = ancestor ? [...ancestor.querySelectorAll(FOCUSABLE)].find((element) => fits(element)) : undefined;
+    const target = near ?? before.find(fits) ?? inside ?? document.getElementById('content');
     target?.focus({ preventScroll: true });
   };
   // After the others have had their turn (a window or a panel hands focus back at once, a field asked for takes it within frames).
