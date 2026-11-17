@@ -1,0 +1,1 @@
+- A guest who can write in a space accepts its decisions there like everyone else: the decision item in their Inbox and the decision's panel offer Accept ([#1424](https://github.com/ColdPhase/flux/issues/1424) decision N).

@@ -451,6 +451,8 @@ class DirectMessageJourney(unittest.TestCase):
         agent = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/agents", {"name": "Planner", "owner": "self"}, status=201)["id"]
         self.call("rhea", "POST", "/api/v1/integration/agent-connections", {"agentId": agent, "name": "Rhea's laptop", "clientDesignation": "claude_code"}, status=201)
         task = self.call("rhea", "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Sort the glaze buckets", "owner": {"kind": "agent", "id": agent}}, status=201)["id"]
+        said = "The bisque kiln is free on Thursday."
+        self.call("rhea", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": said, "clientMessageId": str(uuid.uuid4())}, status=201)
         self.call("ada", "DELETE", f"/api/v1/workspaces/{self.workspace_id}/members/{self.ids['rhea']}", status=204)
 
         kai = self.page("kai")
@@ -469,6 +471,12 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertEqual(set(thread.locator(".dm-msg__meta b").all_inner_texts()), {removed}, "her reply too")
         expect(kai.locator(".dm-msg", has_text="The kiln rota is pinned").first.locator(".dm-msg__meta b")).to_have_text(removed)
 
+        # Her message in a space names her so too, and the name offers no direct message: it could only fail (P3 of the pre-review).
+        kai.goto(f"/projects/{self.project_id}")
+        said_by = kai.locator(".project-convo__message", has_text=said).locator(".project-convo__message-meta strong").first
+        expect(said_by).to_have_text(removed)
+        expect(said_by.locator("a")).to_have_count(0)
+
         kai.goto("/inbox")
         card = kai.locator(".nyc", has_text=asked)
         expect(card).to_be_visible(timeout=20000)
@@ -483,6 +491,9 @@ class DirectMessageJourney(unittest.TestCase):
         kai.goto(f"/dm/{pair}")
         expect(kai.get_by_role("heading", level=1, name="Rhea Stone")).to_be_visible()
         expect(kai.get_by_text(removed)).to_have_count(0)
+        kai.goto(f"/projects/{self.project_id}")
+        back = kai.locator(".project-convo__message", has_text=said).locator(".project-convo__message-meta strong").first
+        expect(back.get_by_role("link", name="Rhea Stone")).to_have_attribute("title", "Message Rhea Stone directly")
         kai.goto(f"/projects/{self.project_id}/tasks?view=list")
         expect(kai.locator(f'.ws-task[data-work-id="{task}"] .agent-id__label')).to_have_text("Planner · Rhea's agent")
 

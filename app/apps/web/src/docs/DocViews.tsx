@@ -87,7 +87,7 @@ export async function docVersionLoader({ params, request }: LoaderFunctionArgs):
   return { doc, shown };
 }
 
-/** An earlier version, read as it was written, with Restore. */
+/** An earlier version, read as it was written. Restoring it is not offered here: it lives in one place, the version's row in History (#1424, 2026-11-17). */
 export function VersionPage() {
   const { doc, shown } = useLoaderData() as VersionData;
   const { project } = useWiki();
@@ -100,7 +100,7 @@ export function VersionPage() {
       <p className="doc-notice doc-notice--version"><Icon name="undo" size={14} /><span>{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.</span>
         {/* The ways on are a row of their own under the sentence, at its edge (founder direction 2026-11-17 visual review). */}
         <span className="doc-notice__links"><Link to={base}>Open the current version</Link>
-          {earlier ? <><RestoreButton docUrl={base} version={shown.version} quiet /><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</span></p>
+          {earlier ? <Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link> : null}</span></p>
     )} />
   );
 }
@@ -206,13 +206,10 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
  * Restore is an action, not an address (#946 review): the page opens with the version to bring back in its navigation
  * state, which no link can carry, and the page makes it the next version.
  */
-function RestoreButton({ docUrl: base, version, quiet = false }: { docUrl: string; version: number; quiet?: boolean }) {
+function RestoreButton({ docUrl: base, version }: { docUrl: string; version: number }) {
   const navigate = useNavigate();
-  const restore = () => navigate(base, { state: { restore: version } });
-  // In a sentence it is a link; on the chosen version's row of History it is a button of the system (an outline, as a row's action).
-  return quiet
-    ? <button type="button" className="ui-link wiki-restore-link" onClick={restore}>Restore this version</button>
-    : <Button variant="outline" size="sm" icon="undo" className="doc-version__restore" onClick={restore}>Restore this version</Button>;
+  // On the chosen version's row of History: a button of the system (an outline, as a row's action).
+  return <Button variant="outline" size="sm" icon="undo" className="doc-version__restore" onClick={() => navigate(base, { state: { restore: version } })}>Restore this version</Button>;
 }
 
 /** History (⋯ › History): every version with who made it and when, what changed between two, and Restore. */

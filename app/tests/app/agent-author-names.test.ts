@@ -106,6 +106,27 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
     assert.ok(first!.prompt.includes(`your own messages have author.id ${scene.agentId}`), 'and its own id');
   });
 
+  test('in a direct message, one who wrote and was then removed from the company is "Kai Kowal (removed)" in every read of it: summary, search, around, the brief (pre-review P2-3)', async () => {
+    const kai = await person('names-kai-dm');
+    await rename(kai, 'Kai Kowal');
+    await addMember(scene.lead, scene.ws.id, kai, 'member');
+    const opened = await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/dms`, { body: { participantIds: [scene.peer.id, kai.id] } });
+    assert.ok(opened.status === 201 || opened.status === 200, opened.text);
+    const dmId = (opened.json as { id: string }).id;
+    const sent = expectStatus(await kai.browser.request('POST', `/api/v1/dms/${dmId}/messages`, { body: { body: 'Kalibracja wagi zrobiona.', clientMessageId: randomUUID() } }), 201) as { id: string };
+    await removeMember(scene.lead, scene.ws.id, kai);
+    const started = await scene.runs.invoke(human(scene.owner), { kind: 'dm', dmId, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Who calibrated it?' });
+    const run = await scene.liveOf(started.run.id);
+    assert.match(text((await run.call('flux_summarize', { after: '2020-01-01' })).message), /Kai Kowal \(removed\): Kalibracja wagi zrobiona/, 'the summary');
+    const found = value((await run.call('flux_search', { q: 'kalibracja' })).message) as { results: { author?: { name: string } }[] };
+    assert.deepEqual(found.results.map((hit) => hit.author?.name), ['Kai Kowal (removed)'], 'a search hit');
+    const around = value((await run.call('flux_read_around', { messageId: sent.id })).message) as { messages: Read[] };
+    assert.deepEqual(around.messages.map((message) => message.author.name), ['Kai Kowal (removed)'], 'reading around it');
+    const window = await db.transaction((tx) => personalRunPorts(tx, scene.queue.factory).runs.dmMessages(dmId, 20));
+    assert.deepEqual(window.map((message) => message.authorName), ['Kai Kowal (removed)'], 'the run\'s brief');
+    await scene.complete(run.runId);
+  });
+
   test('a task\'s discussion and its tasks name an agent with whose it is; an agent whose owner left the space is a former member\'s, one whose owner was removed "Rafa Ruiz (removed)\'s"', async () => {
     const task = await scene.task(scene.owner, 'Prepare the contract');
     const jonas = await agentConnection(pool, scene.peer.browser, jonasAgent, [scene.place.id]);

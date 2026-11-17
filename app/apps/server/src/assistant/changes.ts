@@ -148,10 +148,11 @@ const statusOf = (row: AssistantChangeRow) => {
 /**
  * A run on a task that its agent finished (AG-5, Ask me first off: "marks the task Done … with Undo"): when its owner undoes the run's changes, the
  * Done goes too, the way the task's own Done Undo does it (TaskAgentState): the task is back with the owner, in Doing, where it was while the agent
- * worked (v0.2.1 release gate, M09/M52). Only while the task is still Done and still the agent's, and only for this run, the agent's last on it.
- * Returns the task's number when it was taken back.
+ * worked (v0.2.1 release gate, M09/M52). Only while the task is still the agent's, and only for this run, the agent's last on it; and only when it
+ * is still Done, or when this Undo just took back the Done the agent marked itself (`flux_update_task`, `undidDone`): the task's status is then
+ * already what it was, and it would otherwise stay with the agent and no run (pre-review P2-5). Returns the task's number when it was taken back.
  */
-async function takeBackFinishIn(db: Database, principal: Principal, runId: string): Promise<number | null> {
+async function takeBackFinishIn(db: Database, principal: Principal, runId: string, undidDone: ReadonlySet<string> = new Set()): Promise<number | null> {
   if (principal.kind !== 'human') return null;
   const r = schema.personalRuns;
   const [run] = await db.select({ kind: r.kind, workId: r.workId, agentId: r.agentId, ownerUserId: r.ownerUserId }).from(r).where(eq(r.id, runId));
@@ -161,14 +162,15 @@ async function takeBackFinishIn(db: Database, principal: Principal, runId: strin
   if (last?.id !== runId) return null;
   const work = workUseCases(db);
   const task = await work.getWork(principal, run.workId);
-  if (task.status !== 'done' || task.owner?.kind !== 'agent' || task.owner.id !== run.agentId) return null;
-  await work.updateWork(principal, task.id, { owner: { kind: 'human', id: principal.id }, status: 'in_progress', clientCommandId: randomUUID() }, task.version);
+  if (task.owner?.kind !== 'agent' || task.owner.id !== run.agentId || (task.status !== 'done' && !undidDone.has(task.id))) return null;
+  await work.updateWork(principal, task.id, { owner: { kind: 'human', id: principal.id }, ...(task.status === 'done' ? { status: 'in_progress' as const } : {}),
+    clientCommandId: randomUUID() }, task.version);
   return task.number;
 }
 
 export function assistantChangeUseCases(db: Database, clock: () => Date = () => new Date(), github: GithubProvider | null = null) {
   const rows = () => assistantChangeRows(db as DbExecutor);
-  const takeBackFinish = (principal: Principal, runId: string) => takeBackFinishIn(db, principal, runId);
+  const takeBackFinish = (principal: Principal, runId: string, undidDone: ReadonlySet<string>) => takeBackFinishIn(db, principal, runId, undidDone);
   const owner = (principal: Principal) => {
     if (principal.kind !== 'human' || !principal.id) throw missing();
     return principal.id;
@@ -473,15 +475,18 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         // A line the run put in a task's thread is taken back at the line (#923), not with the run's other changes.
         && !isThreadLine(row)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
+      // The tasks whose Done, marked by the agent itself, this Undo took back.
+      const undidDone = new Set<string>();
       // One refusal for the whole message, before anything is undone, rather than half of it.
       for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.projectId); break; }
       for (const row of list) {
         const message = await undoOne(principal, row);
+        if (message === null && row.operation === 'work.update' && statusOf(row) === 'done' && row.objectId) undidDone.add(row.objectId);
         if (message === null) undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);
         changes.push({ change: await viewOne((await rows().find(row.id))!, principal), message });
       }
       // The report's Undo takes back the whole finish (AG-3, AG-5): with its changes, the Done its agent marked, as the task's own Done Undo does.
-      const back = list.length > 0 && undone > 0 ? await takeBackFinish(principal, runId) : null;
+      const back = list.length > 0 && undone > 0 ? await takeBackFinish(principal, runId, undidDone) : null;
       const said = undoSentence(undone, changedSince);
       return { changes, undone, changedSince, back, message: back ? `${said}. #${back} is back with you` : said };
     },

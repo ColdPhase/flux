@@ -216,7 +216,7 @@ async function namesIn(db: DbExecutor, refs: Actor[], workspaceId: string | null
     const u = schema.authUsers;
     // The outer row's id written out in full: a column inside a selected expression is rendered bare ("id"), which in the subquery would be
     // the workspace's own id.
-    const removed = workspaceId ? sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    const removed = workspaceId ? sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
       WHERE w.id = ${workspaceId}::uuid AND r.user_id = "auth_users"."id")` : sql<boolean>`false`;
     for (const row of await db.select({ id: u.id, name: u.name, removed }).from(u).where(inArray(u.id, users))) {
       names.set(`human:${row.id}`, row.name);
@@ -768,14 +768,15 @@ export function workRows(db: DbExecutor) {
 
     /**
      * Who of `userIds` is no longer in the company of each of `workspaceIds` (left or removed, and not back): `<workspaceId>:<userId>`. An
-     * encrypted space's own workspace asks its company's list too, as leaving the company ends a place there.
+     * encrypted space's own workspace asks its company's list only: someone taken out of that space alone is still in the company, so they
+     * keep their plain name there, as someone taken out of a plain space does ("(removed)" is for the company, #1424, 2026-11-17).
      */
     async formerMembers(workspaceIds: string[], userIds: string[]) {
       const spaces = [...new Set(workspaceIds)];
       const people = [...new Set(userIds)];
       if (!spaces.length || !people.length) return new Set<string>();
       const rows = (await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
-        JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+        JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
         WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { workspace_id: string; user_id: string }[];
       return new Set(rows.map((row) => `${row.workspace_id}:${row.user_id}`));
     },

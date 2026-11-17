@@ -103,6 +103,8 @@ own.
 - A guest has no agents and no AI. The server refuses a guest's API key, plan sign-in and new agent (`GUEST_NO_AI`), and a
   guest cannot sign in a local client or keep one, whatever address they open and whatever role another workspace (an encrypted
   space) gives them (#978). A guest is a person whose role in the company is guest (F-037: one company per Flux; [C-22](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  Someone who left the company or was removed, and is still signed in, is refused the same API key steps, which make the server reach a
+  provider (listing its models, saving or testing a key: `403 NOT_IN_COMPANY`).
   A member who is made a guest keeps their agents, keys, client connections, schedules and old `/ai` runs, but the server lists and
   finds none of them, and refuses every change of one (including a run's changes and Show everyone), until they are a member again
   (C-50). An old `/ai` request is not replayed to them either: the same request, in a space, a direct message or a chat and with
@@ -344,7 +346,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   the run's changes when the line is read. Undo on a "Done: #4 …" line takes back the whole finish: the
   run's changes and the Done its agent marked, so the task is back with its owner in Doing, as the task's
   own Done Undo leaves it, while it is still Done and still the agent's (v0.2.1 release gate); the line then says so,
-  "Undid 1 change. #4 is back with you". Every change a run made counts, a new page, decision or map too; only the
+  "Undid 1 change. #4 is back with you". A Done the agent marked itself with its tool is one of the run's changes: its Undo
+  puts the status back, and the task is back with its owner the same way, never left with the agent and no run (pre-review P2-5). Every change a run made counts, a new page, decision or map too; only the
   agent's own line in the task's thread does not (it is deleted at the line). An agent that marks its task Done itself
   reports the same way: its words in the task and "Done: #4 …" in its chat (v0.2.1 real-model gate). The report's
   words in the task and in the chat drop the bare `[1]` numbers of sources they cannot list, as Show everyone does.

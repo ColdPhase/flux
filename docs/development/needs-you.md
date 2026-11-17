@@ -150,6 +150,10 @@ person's own choice (204; idempotent).
   until a task is done (`untilWorkId`, the first unfinished task a decision affects or the first unfinished
   prerequisite of a blocked task; it ends when that task is done, set aside or gone) and a later time, but no screen offers them.
 - Done on a mention or question also reads its notification; Undo unreads it. Nothing is deleted.
+- **A locked encrypted space** (F-030). `GET /api/v1/needs-you` and `GET /api/v1/needs-you/aside` (the lists behind "N for later" and "N done
+  today") are cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`): they skip a locked space's items, name it in `lockedWorkspaces`, and the
+  `later` and `doneToday` counts leave its items out as their lists do. `POST` and `DELETE /api/v1/needs-you/:key` find the item the same way,
+  so a choice on another space's item still works; a change to a locked space's own task is refused with `423` by the sealing path.
 - **A call is not a question** (F-041, #1368). A call's notice (`reason: call`) and an invitation to a call (`reason: invitation`)
   are listed with `call: { projectId, sessionId }`, only while someone is in the call, and are named "Call" with Join. They leave the
   queue when the call ends, and when the person joins it: the join (`POST /api/v1/live-sessions/:id/join`) reads the person's notices
@@ -199,8 +203,8 @@ finished or let continue is counted, since Put back brings it back as it was (ab
 `until` (a time) or `untilTask` (the task it waits for); `done` the ones marked done or declined in the last 24 hours, newest first,
 with `at` the time it was done. A done mention, question or task is listed although its notification is read. **Bring back now** and
 **Put back** are `DELETE /api/v1/needs-you/:key`, the same Undo as above: the item is back in the queue at once (a done mention is
-unread again). `notifying` (#1243) counts the unread notifications among the person's
-newest 100 Inbox items that would notify them under their level; the tab title's "(N)", its favicon dot and the app
+unread again). `notifying` (#1243) counts, of the person's newest 100 unread Inbox items (however many read ones are
+newer, index `notifications_unread_idx`), those that would notify them under their level; the tab title's "(N)", its favicon dot and the app
 badge show it ([mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243)).
 
 ## The Tasks views

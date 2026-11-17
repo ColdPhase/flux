@@ -58,9 +58,13 @@ const REBUILD_AFTER_MS = 23 * 3_600_000;
 
 const WORD = /[\p{L}\p{N}]+/gu;
 const wordsOf = (text: string) => text.toLowerCase().match(WORD) ?? [];
-/** A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). */
-const HYPHENATED = /[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
-const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
+/**
+ * A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). A match starts only
+ * where a word starts: without the look-behind, a 100,000-letter word with no hyphen was tried from every letter to its end, seconds of the API's
+ * time per message (pre-review P2-1); the matches are the same, since a match from inside a word would start at that word's beginning anyway.
+ */
+const HYPHENATED = /(?<![\p{L}\p{N}])[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
+export const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
 
 /** Trigrams of `text` in order, with duplicates, as pg_trgm pads each word: two spaces before, one after. */
 function trigramsOf(text: string): string[] {
@@ -763,7 +767,7 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   const people = humans.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, ${cleanName(sql`name`)} AS name FROM auth_users WHERE id = ANY(${sql.param(humans)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   // Who of them left the company or was removed, as the SQL path reads it (#1424, 2026-11-17): named "Stefan Kowal (removed)".
   const removed = humans.length ? new Set((await get<{ user_id: string }>(sql`SELECT r.user_id FROM workspaces w JOIN workspace_removed_people r
-    ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id WHERE w.id = ${index.workspaceId}::uuid AND r.user_id = ANY(${sql.param(humans)}::text[])`)).map((r) => r.user_id)) : new Set<string>();
+    ON r.workspace_id = coalesce(w.company_workspace_id, w.id) WHERE w.id = ${index.workspaceId}::uuid AND r.user_id = ANY(${sql.param(humans)}::text[])`)).map((r) => r.user_id)) : new Set<string>();
   const agentIds = ids((doc) => (doc.author?.kind === 'agent' ? doc.author.id : null)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
   const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, ${cleanName(sql`name`)} AS name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));

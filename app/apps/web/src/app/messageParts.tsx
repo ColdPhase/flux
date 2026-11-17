@@ -204,10 +204,12 @@ export function ShownAnswerName({ shown, asker }: { shown: { agent: string; colo
 
 /**
  * A person's name over their message: it opens the direct message with them (#592), for whoever can start one. A guest cannot (F-037), so for
- * them it is the name alone, never a link to a conversation that would refuse them at the end (#1424).
+ * them it is the name alone, never a link to a conversation that would refuse them at the end (#1424); `removed` (their message carries
+ * `removedAuthorName`) is the name alone too.
  */
-export function AuthorName({ workspaceId, authorId, name }: { workspaceId: string; authorId: string; name: string }) {
+export function AuthorName({ workspaceId, authorId, name, removed = false }: { workspaceId: string; authorId: string; name: string; removed?: boolean }) {
   const { workspace } = useShellData();
-  if (!startsConversations(workspace)) return <>{name}</>;
+  // Nor for someone removed from the company, "Stefan Kowal (removed)" (#1424, 2026-11-17): no direct message can start with them.
+  if (removed || !startsConversations(workspace)) return <>{name}</>;
   return <RefLink className="project-convo__person" to={`/dm/new?workspace=${workspaceId}&with=${authorId}`} title={`Message ${name} directly`}>{name}</RefLink>;
 }

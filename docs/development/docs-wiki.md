@@ -223,7 +223,7 @@ draws it since #869: two columns only, the sidebar and the page.
   version's row (only for a version that is not the current one; there is no other Restore button on History,
   founder direction 2026-11-17, #1424), which opens the
   page and makes that version the page again (shared at once with live editing) as the next version.
-  An earlier version (`…/versions/:n`) is read as the server rendered it, with Restore.
+  An earlier version (`…/versions/:n`) is read as the server rendered it, read only: Restore lives in one place, its row in History.
 - **Import a Markdown file** (`markdown-file.ts`): one `.md`/`.markdown` file of at most 400 KB and
   100,000 characters, valid UTF-8 without NUL; anything else is refused with its reason and nothing
   is created. The title comes from a leading `# Title`, else the file name; line endings become

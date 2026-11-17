@@ -62,7 +62,7 @@ export async function spaceAuthorsNamed(db: Executor, projectId: string, ids: It
   const names = await userNames(db, visible);
   if (others.length) {
     const rows = (await db.execute(sql`SELECT u.id, u.name FROM projects p JOIN workspaces w ON w.id = p.workspace_id
-      JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id JOIN auth_users u ON u.id = r.user_id
+      JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id) JOIN auth_users u ON u.id = r.user_id
       WHERE p.id = ${projectId}::uuid AND r.user_id = ANY(${sql.param(others)}::text[])`)).rows as { id: string; name: string }[];
     for (const row of rows) names.set(row.id, removedName(row.name));
   }

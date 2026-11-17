@@ -1905,7 +1905,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page. **A match with a typo shows only when nothing matches a searched word exactly** (founder decision H, Hubert,
-  2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424); F-042): "price list" lists the price list, not a person named "Lis". no second page. A result that holds only the common words of a longer search ("the", "by" in "barrel by the shed") is not
+  2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424); F-042): "price list" lists the price list, not a person named "Lis".
+  "Exactly" is as the search counts it ([search](../../development/search.md)): a searched word found in any form the index finds it (its
+  stem, without accents), a little word such as "the" included, in any result, even one the rule below leaves out. A result that holds only the common words of a longer search ("the", "by" in "barrel by the shed") is not
   listed (persona round 6; the rule is in [search](../../development/search.md)).
 - **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
   group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
@@ -2491,7 +2493,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): for a company owner or admin the open Add people ends with the
   same Someone new? row as Space settings, the same component and flow (the link is made, copied and shown in place), and Create space
   ties each link made in the window to the new space. **A window closed without Create revokes the links it made** (Cancel, ×,
-  Escape; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
+  Escape, a tab closed or reloaded; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
   company link nobody asked for (persona round, 2026-11-15, #1424). **Several links live side by side and the window says what Cancel does
   before it is pressed** (personas-33 to 35, 2026-11-16): each Someone new? link stays listed with its own "Link for …" and Copy link (a new
   one never hides an earlier one, which still works), and under People, also with Add people folded, one quiet line lists who is waiting:

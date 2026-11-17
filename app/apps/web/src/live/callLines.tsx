@@ -31,6 +31,9 @@ export function useCallLines(projectId: string, taskId: string | null = null): L
 const minutes = (from: string, to: number) => Math.max(1, Math.round((to - Date.parse(from)) / 60_000));
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
 
+/** The reader's names for a call's people, and "Stefan Kowal (removed)" for one who left the company or was removed (#1424, 2026-11-17). */
+export const callNameOf = (line: LiveCallLine, nameOf: (userId: string) => string) => (userId: string) => line.removed?.[userId] ?? nameOf(userId);
+
 /** The words of a call's line without its starter's name (F-041): what a task's activity says after "Hubert". */
 export function callWords(line: LiveCallLine, nameOf: (userId: string) => string, now: number): { named: boolean; text: string } {
   const others = line.joinedBy.filter((userId) => userId !== line.startedBy);
@@ -39,7 +42,7 @@ export function callWords(line: LiveCallLine, nameOf: (userId: string) => string
     return { named: true, text: `started a call${count ? ` · ${count} ${count === 1 ? 'person' : 'people'}` : ''} · ${minutes(line.startedAt, now)} min` };
   }
   if (!others.length) return { named: true, text: 'called · nobody joined' };
-  const people = [...new Set([line.startedBy, ...line.joinedBy])].map((userId) => first(nameOf(userId)));
+  const people = [...new Set([line.startedBy, ...line.joinedBy])].map((userId) => line.removed?.[userId] ?? first(nameOf(userId)));
   return { named: false, text: `Call · ${minutes(line.startedAt, Date.parse(line.endedAt))} min · ${people.join(', ')}` };
 }
 
@@ -58,9 +61,10 @@ export function useNow(running: boolean) {
  * One call as a line of the conversation (F-041 point 6), in the style of a task update: "Hubert started a call · 2 people · 4 min · Join",
  * then "Call · 12 min · Hubert, Maurycy", or "Hubert called · nobody joined". It is an event, not a message: no reply, reaction or notice.
  */
-export function CallLineItem({ line, projectId, nameOf, meId, clock, title }: {
+export function CallLineItem({ line, projectId, nameOf: readerNameOf, meId, clock, title }: {
   line: LiveCallLine; projectId: string; nameOf: (userId: string) => string; meId: string; clock: (iso: string) => string; title: (iso: string) => string;
 }) {
+  const nameOf = callNameOf(line, readerNameOf);
   const live = useLive();
   const join = useJoinCall();
   const running = line.endedAt === null;

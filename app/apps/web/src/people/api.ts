@@ -52,7 +52,8 @@ export const removeMember = (workspaceId: string, userId: string) => request<nul
 export const listInvites = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceInvite[]>(workspaceInvitesPath(workspaceId), { signal });
 export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays; spaceId?: string | null }, idempotencyKey: string) =>
   request<WorkspaceInvite>(workspaceInvitesPath(workspaceId), { method: 'POST', body, headers: key(idempotencyKey) });
-export const revokeInvite = (workspaceId: string, inviteId: string) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE' });
+/** `keepalive`: the page is being left, and the link is turned off anyway. */
+export const revokeInvite = (workspaceId: string, inviteId: string, keepalive = false) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE', keepalive });
 export const previewInvite = (token: string, signal?: AbortSignal) => request<InvitePreview>(INVITE_PREVIEW_PATH, { method: 'POST', body: { token }, signal });
 export const acceptInvite = (token: string) => request<AcceptInviteResult>(INVITE_ACCEPT_PATH, { method: 'POST', body: { token } });
 /** A one-time password reset link for another person of the company (#1471), shown only in this answer. */

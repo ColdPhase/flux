@@ -117,6 +117,11 @@ export interface SearchResult {
    */
   mine?: true;
   /**
+   * Present when the author is an agent, or the result is an agent's answer its person showed everyone (#1232), also an agent with no colour
+   * (ink): its row's tile is the Kreska, never inferred from how the name reads (a person may be named "Planner · Ada's agent").
+   */
+  byAgent?: true;
+  /**
    * Present when that author is an agent, or the result is an agent's answer its person showed everyone (#1232): the agent's colour, so the
    * result's tile is its Kreska in it (#1528), as the message itself draws it. Absent for a person and for an agent without a colour (ink).
    */

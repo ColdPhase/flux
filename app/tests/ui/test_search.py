@@ -804,6 +804,28 @@ class SearchJourney(unittest.TestCase):
                 self.assertEqual(groups, self.ranked_groups(page, question))
                 shot(page, f"search-best-match-leads-{'phone-390' if phone else 'desktop-1440'}")
 
+    def test_17_a_person_named_like_an_agent_label_has_a_person_s_tile(self) -> None:
+        """Pre-review P3: Search drew an agent's Kreska for anyone whose name read "X · Ada's agent", as it guessed from the name. The result says
+        whether its author is an agent (`byAgent`), so such a person's message has the tile of a person: their initials."""
+        tag = uuid.uuid4().hex[:6]
+        name, email = "Quill · Ada's agent", f"quill.search+{STAMP}@example.test"
+        newcomer = self.page(None)
+        self.api(newcomer, "POST", "/api/auth/sign-up/email", {"name": name, "email": email, "password": PASSWORD}, status=200)
+        owner, lamp = self.page("ari"), self.ids["lamp"]
+        self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
+        quill = self.api(newcomer, "GET", "/api/v1/me", status=200)["user"]["id"]
+        self.api(owner, "POST", f"/api/v1/projects/{lamp}/grants", {"principal": {"kind": "human", "id": quill}, "role": "contributor"}, status=201)
+        word = f"quillnote{tag}"
+        self.api(newcomer, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": f"The {word} says the veneer is dry.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page("nia")
+        page.goto("/")
+        dialog, _ = self.jump(page, word)
+        row = dialog.locator("[role=option].sr").filter(has_text=word)
+        expect(row).to_have_count(1)
+        expect(row.locator(".sr__meta")).to_contain_text(name)
+        expect(row.locator(".sr__ic--person")).to_have_count(1)
+        expect(row.locator(".sr__ic--agent")).to_have_count(0)
+
 
 if __name__ == "__main__":
     unittest.main()

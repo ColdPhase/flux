@@ -33,6 +33,8 @@ export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });
 /** The lists behind "2 for later" and "4 done today" (#1424 E). */
 export const getNeedsYouAside = (signal?: AbortSignal) => request<NeedsYouAsideResponse>(NEEDS_YOU_ASIDE_PATH, { signal });
+/** The same lists for a reader that only looks something up in them: shared and kept like the queue, so opening task after task reads them once. */
+export const lookInNeedsYouAside = () => request<NeedsYouAsideResponse>(NEEDS_YOU_ASIDE_PATH, { share: true, keep: KEEP_MS });
 /** Undo of `resolveNeedsYou`: the item is back as it was. Also Bring back now and Put back (#1424 E). */
 export const restoreNeedsYou = (key: string) => request<void>(needsYouItemPath(key), { method: 'DELETE' });
 

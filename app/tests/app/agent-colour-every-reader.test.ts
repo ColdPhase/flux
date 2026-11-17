@@ -113,8 +113,14 @@ describe('every reader gets an agent in its own colour (#1528)', () => {
     const listed = (await get<InboxResponse>(reader, `${INBOX_PATH}?limit=50`)).items.find((item) => item.id === notification.id);
     if (listed?.from) assert.equal(listed.from.colour, 'plum', 'the Inbox list');
     // Search: the agent's message is its face in its colour.
+    const wrenWord = Array.from({ length: 10 }, () => String.fromCharCode(97 + randomInt(26))).join('');
+    expectStatus(await reader.browser.request('POST', `/api/v1/projects/${projectId}/conversations`, { body: { body: `Wren notes ${wrenWord}`, clientMessageId: randomUUID() } }), 201);
     const found = await waitFor(async () => (await get<SearchResponse>(reader, `${SEARCH_PATH}?q=${word}`)).items.find((item) => item.kind === 'message'), 'the remark is found');
     assert.equal(found.agentColour, 'plum', 'the search result');
+    // The row's tile is told by the result, not guessed from how its author's name reads (a person may be named "Planner · Ada's agent").
+    assert.equal(found.byAgent, true, 'the agent\'s result says it is an agent\'s');
+    const mine = await waitFor(async () => (await get<SearchResponse>(reader, `${SEARCH_PATH}?q=${wrenWord}`)).items.find((item) => item.kind === 'message'), 'Wren\'s own remark is found');
+    assert.equal(Object.hasOwn(mine, 'byAgent'), false, 'a person\'s result does not');
   });
 
   test('every reader is told whose agent it is: its created-task line, its proposed-decision line and the Inbox name its owner (v0.2.1 release gate J03/J10/M41)', async () => {

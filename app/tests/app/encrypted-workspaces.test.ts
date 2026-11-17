@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { ENCRYPTED_WORKSPACES_PATH, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath } from '@flux/contracts';
+import { ENCRYPTED_WORKSPACES_PATH, NEEDS_YOU_ASIDE_PATH, NEEDS_YOU_PATH, needsYouItemPath, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath,
+  type NeedsYouAsideResponse, type NeedsYouResponse } from '@flux/contracts';
 import { createEncryptionUseCases, type EncryptionUseCaseDeps } from '@flux/core';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { codeOf, contentCall, createSealed, fixtureBearer, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
-import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
 
 // AC-2 of F-030 (#655, S1; docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria): the lock lifecycle of an
 // encrypted workspace A (fixture-created) against the plain workspace B as the control: creation and its retry, unlock,
@@ -127,6 +128,35 @@ describe('F-030 unlock, Lock now and 423', () => {
     const repeat = await unlock(ada.browser, A, { password: 'not checked while unlocked' });
     assert.equal(repeat.status, 200, 'already unlocked: no check, so no oracle');
     await clearAttempts(A);
+  });
+
+  test('"N for later" opens while a space of the person is locked: the aside list and Done skip it and name it (pre-review P2-4)', async () => {
+    const proposal = async (workspaceId: string, title: string) => {
+      const place = await project(ada, workspaceId, `${title} space`, 'workspace');
+      const decision = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${place.id}/decisions`, { body: { title } }), 201) as { id: string };
+      return `decision:${decision.id}`;
+    };
+    const inA = await proposal(A, 'Plant the garlic in October');
+    const inB = await proposal(B, 'Read the long novel next');
+    const laterB = await proposal(B, 'Meet on Thursdays');
+    const until = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    for (const key of [inA, laterB]) expectStatus(await cy.browser.request('POST', needsYouItemPath(key), { body: { action: 'snooze', until } }), 200);
+    expectStatus(await lock(ben.browser, A), 200);
+    try {
+      const aside = await cy.browser.request('GET', NEEDS_YOU_ASIDE_PATH);
+      assert.equal(aside.status, 200, aside.text);
+      const body = aside.json as NeedsYouAsideResponse & { lockedWorkspaces?: unknown };
+      assert.deepEqual(body.later.map((entry) => entry.item.key), [laterB], 'what was put off in the locked space is left out');
+      assert.deepEqual(body.lockedWorkspaces, [{ id: A, name: 'Garden club' }]);
+      const queue = expectStatus(await cy.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
+      assert.equal(queue.later, 1, '"N for later" counts what its list shows');
+      // Done and Put back on an item of another space work while A is locked.
+      expectStatus(await cy.browser.request('POST', needsYouItemPath(inB), { body: { action: 'decline' } }), 200);
+      expectStatus(await cy.browser.request('DELETE', needsYouItemPath(inB)), 204);
+    } finally {
+      expectStatus(await unlock(ada.browser, A, { password: pw.ada }), 200);
+      await clearAttempts(A);
+    }
   });
 
   test('locked: why and by whom (Lock now names the person for all but guests), and who can unlock (S3 UI audit LK-1)', async () => {

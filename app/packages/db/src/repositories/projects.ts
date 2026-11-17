@@ -161,8 +161,9 @@ export function projectRepository(db: DbExecutor) {
       return grant ?? null;
     },
 
+    /** A role set on purpose replaces a held space admin role (migration 0095): becoming a member again does not undo a space admin's choice. */
     updateGrant(grantId: string, role: GrantRow['role'], createdBy: string): Promise<GrantWrite> {
-      return writeGrant(async () => (await db.update(schema.projectGrants).set({ role, createdBy, updatedAt: new Date() })
+      return writeGrant(async () => (await db.update(schema.projectGrants).set({ role, createdBy, adminHeld: false, updatedAt: new Date() })
         .where(eq(schema.projectGrants.id, grantId)).returning())[0]);
     },
 

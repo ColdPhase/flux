@@ -171,7 +171,8 @@ export interface NeedsYouResponse {
   doneToday: number;
   /**
    * Unread notifications that would notify you under your level (#1243): direct messages, mentions, questions, tasks, call invitations…
-   * at "Only what needs me", every reason at "Everything", none at "Nothing"; counted among your newest 100 Inbox items. The tab's
+   * at "Only what needs me", every reason at "Everything", none at "Nothing"; counted among your newest 100 unread Inbox items, however many
+   * read ones are newer. The tab's
    * title "(N)", its favicon dot and the installed app's badge show it.
    */
   notifying: number;
@@ -195,6 +196,8 @@ export interface NeedsYouAsideResponse {
   later: NeedsYouAsideEntry[];
   /** Marked done or declined in the last 24 hours, newest first. */
   done: NeedsYouAsideEntry[];
+  /** F-030: the caller's encrypted workspaces locked here, whose items both lists leave out; absent when none is (a cross-workspace read). */
+  lockedWorkspaces?: LockedWorkspaceRef[];
 }
 
 /**

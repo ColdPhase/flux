@@ -83,10 +83,25 @@ async function removedIn(db: DbExecutor, workspaceIds: readonly string[], userId
   const people = [...new Set(userIds)];
   if (!spaces.length || !people.length) return new Set();
   const rows = (await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
-    JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+    JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
     WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { workspace_id: string; user_id: string }[];
   return new Set(rows.map((row) => `${row.workspace_id}:${row.user_id}`));
 }
+
+/**
+ * Who of `userIds` left the company of the direct message's workspace or was removed from it, and has not come back: what an agent reads of a
+ * direct message names them "Stefan Kowal (removed)" as its people see them (founder decision, Hubert, 2026-11-17, #1424: "and in what agents read").
+ */
+export async function removedInDm(db: DbExecutor, dmId: string, userIds: readonly string[]): Promise<Set<string>> {
+  const people = [...new Set(userIds)];
+  if (!people.length) return new Set();
+  const rows = (await db.execute(sql`SELECT r.user_id FROM dms d JOIN workspaces w ON w.id = d.workspace_id
+    JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+    WHERE d.id = ${dmId}::uuid AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { user_id: string }[];
+  return new Set(rows.map((row) => row.user_id));
+}
+/** A DM author's name as its people see it: marked once they left the company or were removed (`removedInDm`). */
+export const dmAuthorName = (name: string, removed: ReadonlySet<string>, userId: string): string => (removed.has(userId) ? removedName(name) : name);
 
 export function dmRows(db: DbExecutor) {
   async function participants(dmIds: string[]) {

@@ -64,10 +64,11 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     };
   }, [soon]);
+  // A reconnect that could not replay what it missed (a message may have come in the conversation just left) leaves it to the list, as an arrival does.
   useStreamEvents(identity, (event) => {
     if (event.objectType === 'dm' && event.kind === 'dm.message_sent.v1') setJustRead((current) => (current === event.objectId ? null : current));
     if (event.objectType === 'dm' && EVENTS.has(event.kind) && known.current.has(event.objectId) && document.visibilityState === 'visible') soon();
-  }, () => soon(0));
+  }, () => { setJustRead(null); soon(0); });
   const counts = useMemo(() => {
     const current = fetched && fetched.identity === identity && fetched.base === directMessages ? fetched.counts
       : new Map(directMessages.flatMap((dm) => dm.unread > 0 ? [[dm.id, dm.unread] as const] : []));

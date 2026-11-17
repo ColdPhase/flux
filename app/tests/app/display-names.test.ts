@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { hasInvisibleFormat, myAgentPath, removedName, viaName, withoutInvisibleFormat, type Agent, type MyAgent, type SearchResponse } from '@flux/contracts';
+import { hasInvisibleFormat, myAgentPath, removedName, viaName, withoutInvisibleFormat, type Agent, type Decision, type MyAgent, type SearchResponse,
+  type WorkReferenceRows } from '@flux/contracts';
+import { notificationFactRows, returnRows } from '@flux/db';
 import { profileFromClaims } from '../../apps/server/src/identity/claim-profile.js';
-import { pool } from './support/db.js';
+import { listCallLines } from '../../apps/server/src/live/discovery.js';
+import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { addMember, expectStatus, person, removeMember, secondSession, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeFromSpace, removeMember, secondSession, workspace } from './support/people.js';
 import { assistantScene } from './support/assistant-scene.js';
 
 // Names are drawn beside other text (#1347, the audits of #1270): a direction control or an invisible character in one would reorder what
@@ -93,4 +96,50 @@ test('an answer a removed person showed everyone is named with the mark, "Marek 
   assert.equal(viaName('Marek Zieliński', 'Assistant', true), 'Marek\'s Assistant', 'a member: their first name');
   assert.equal(viaName(removedName('Marek Zieliński'), 'Assistant', true), 'Marek Zieliński (removed)\'s Assistant', 'a removed person: the whole marked name');
   assert.equal(viaName(removedName('Marek Zieliński'), 'Claude Code'), 'Marek Zieliński (removed) · via Claude Code', 'a local client\'s post keeps its form');
+});
+
+test('"Stan Kowal (removed)" in the readers that still named him plainly: an agent\'s label in Search, Home and a notice, a decision\'s rows and a call\'s line (pre-review P2-3)', async () => {
+  const lead = await person('Removed readers lead');
+  const ws = await workspace(lead, 'Removed readers');
+  const [stan, gina] = [await person('Stan Kowal'), await person('Gina Guest')];
+  await addMember(lead, ws.id, stan, 'member');
+  await addMember(lead, ws.id, gina, 'guest');
+  const place = await project(lead, ws.id, 'Kiln', 'restricted');
+  await grant(lead, place.id, stan, 'contributor');
+  await grant(lead, place.id, gina, 'contributor');
+  // Stan's agent wrote in the space; Stan proposed one decision and accepted another; Stan was in a call of the space.
+  const agent = (expectStatus(await stan.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Planner', owner: 'self' } }), 201) as { id: string }).id;
+  const thread = expectStatus(await lead.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, { body: { body: 'Kiln schedule', clientMessageId: randomUUID() } }), 201) as { id: string };
+  const word = `glaze${randomUUID().slice(0, 8)}`;
+  const line = randomUUID();
+  await pool.query(`INSERT INTO project_messages (id, workspace_id, project_id, conversation_id, author_agent_id, client_message_id, request_fingerprint, sequence, body)
+    VALUES ($1, $2, $3, $4, $5, $6, 'test', 2, $7)`, [line, ws.id, place.id, thread.id, agent, randomUUID(), `The ${word} firing is at noon`]);
+  await pool.query('UPDATE project_conversations SET next_sequence = 3 WHERE id = $1', [thread.id]);
+  const proposed = expectStatus(await stan.browser.request('POST', `/api/v1/projects/${place.id}/decisions`, { body: { title: 'Fire on Fridays' } }), 201) as Decision;
+  const asked = expectStatus(await lead.browser.request('POST', `/api/v1/projects/${place.id}/decisions`, { body: { title: 'Buy cone 6 clay' } }), 201) as Decision;
+  expectStatus(await stan.browser.request('POST', `/api/v1/decisions/${asked.id}/accept`, { body: {}, headers: { 'if-match': `"${asked.version}"` } }), 200);
+  const call = randomUUID();
+  await pool.query(`INSERT INTO live_sessions (id, workspace_id, project_id, created_by, client_session_id, room_id, state, joined_by, ended_at)
+    VALUES ($1, $2, $3, $4, $5, $6, 'ended', $7, now())`, [call, ws.id, place.id, stan.id, randomUUID(), `live_${randomUUID()}`, [stan.id, lead.id]]);
+
+  const label = async () => (expectStatus(await gina.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse).items.find((item) => item.kind === 'message')?.author;
+  const rowOf = async (id: string) => (expectStatus(await lead.browser.request('GET', `/api/v1/projects/${place.id}/work-reference-rows?objects=decision:${id}`), 200) as WorkReferenceRows).items[0];
+  const proposer = async () => { const row = await rowOf(proposed.id); return row?.kind === 'decision' ? row.proposedBy.name : null; };
+  const accepter = async () => { const row = await rowOf(asked.id); return row?.kind === 'decision' ? row.decidedBy?.name : null; };
+  // The space's call lines as its conversation reads them (the route is the live server's; no media is needed for an ended call).
+  const removedInCall = async () => ((await listCallLines(db, { participants: async () => [] }, { kind: 'human', id: lead.id }, place.id, null)).items
+    .find((item) => item.id === call) as { removed?: Record<string, string> } | undefined)?.removed;
+  assert.equal(await label(), 'Planner · Stan\'s agent');
+  assert.deepEqual([await proposer(), await accepter(), await removedInCall()], ['Stan Kowal', 'Stan Kowal', undefined]);
+  // Out of the space only: his name is not told to the guest, who no longer shares the space with him (the space's rule, `projectAuthorOwners`).
+  await removeFromSpace(lead, place.id, stan);
+  assert.equal(await label(), 'Planner · a former member\'s agent');
+  await grant(lead, place.id, stan, 'contributor');
+  // Out of the company: "Stan Kowal (removed)" in every one of these readers (founder decision, Hubert, 2026-11-17, #1424).
+  await removeMember(lead, ws.id, stan);
+  assert.equal(await label(), 'Planner · Stan Kowal (removed)\'s agent', 'Search');
+  assert.equal((await returnRows(db).names([`agent:${agent}`])).get(`agent:${agent}`), 'Planner · Stan Kowal (removed)\'s agent', 'Home\'s lines');
+  assert.equal(((await notificationFactRows(db).projectMessage(line)) as { authorOwnerRemoved?: boolean } | null)?.authorOwnerRemoved, true, 'a notice\'s label');
+  assert.deepEqual([await proposer(), await accepter()], ['Stan Kowal (removed)', 'Stan Kowal (removed)'], 'a decision\'s proposer and accepter in its rows');
+  assert.deepEqual(await removedInCall(), { [stan.id]: 'Stan Kowal (removed)' }, 'the call\'s line, which the space\'s people no longer list');
 });

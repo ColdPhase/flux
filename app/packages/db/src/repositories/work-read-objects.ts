@@ -31,18 +31,17 @@ export function shortReason(rationale: string, max = 160): string {
 export type NativeWorkDetailObject = Exclude<WorkDetailObject, { kind: 'work' }> | Omit<Extract<WorkDetailObject, { kind: 'work' }>, 'githubRule'>;
 export function nativeWorkObjectRows(db: DbExecutor) {
   /**
-   * Names `refs` for a reader. With the company of the rows (`workspaceId`), `named.assignee` names a task's owner or the person it waits for
-   * who left the company or was removed "Tomek Nowak (removed)" (personas-33), as the full work presenter does (core `work/service.ts`), so the
-   * board, the List and the panel say who is gone; who made, proposed or decided something keeps the plain name.
+   * Names `refs` for a reader. With the company of the rows (`workspaceId`), a person who left the company or was removed, and has not come
+   * back, is "Tomek Nowak (removed)" (`removedName`): a task's owner or the person it waits for (personas-33), and who made, proposed, decided
+   * or undid something (founder decision, Hubert, 2026-11-17, #1424: everywhere), as the full work presenter does (core `work/service.ts`).
    */
   async function names(refs: PrincipalRef[], workspaceId: string | null = null) {
     const found = await workRows(db).namesIn(refs, workspaceId);
-    const named = (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.names.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
-    const assignee = (ref: PrincipalRef): NamedPrincipal => {
-      const person = named(ref);
+    const plain = (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.names.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+    return (ref: PrincipalRef): NamedPrincipal => {
+      const person = plain(ref);
       return found.gone.has(actorKey(ref)) ? { ...person, name: removedName(person.name) } : person;
     };
-    return Object.assign(named, { assignee });
   }
   /** The tasks that are part of this one (#841), by number; a task whose creation was undone is no longer one. At most 50. */
   async function subtasks(projectId: string, parentId: string) {
@@ -53,7 +52,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     const owners = children.flatMap((child): PrincipalRef[] => child.ownerUserId ? [{ kind: 'human' as const, id: child.ownerUserId }] : child.ownerAgentId ? [{ kind: 'agent' as const, id: child.ownerAgentId }] : []);
     const named = await names(owners, children[0]?.workspaceId ?? null);
     return children.map((child) => ({ id: child.id, number: child.number, title: child.title, status: child.status,
-      owner: child.ownerUserId ? named.assignee({ kind: 'human', id: child.ownerUserId }) : child.ownerAgentId ? named({ kind: 'agent', id: child.ownerAgentId }) : null }));
+      owner: child.ownerUserId ? named({ kind: 'human', id: child.ownerUserId }) : child.ownerAgentId ? named({ kind: 'agent', id: child.ownerAgentId }) : null }));
   }
   async function rows(projectId: string, objects: readonly NativeWorkReadObject[]): Promise<NativeWorkRow[]> {
     if (objects.length > 100) throw new Error('Native work hydration exceeds the global bound');
@@ -76,7 +75,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       actors.push({ kind: decision.proposedByKind, id: decision.proposedById });
       if (decision.decidedBy) actors.push({ kind: 'human', id: decision.decidedBy });
     }
-    const named = await names(actors, works[0]?.workspaceId ?? null);
+    const named = await names(actors, works[0]?.workspaceId ?? decisions[0]?.workspaceId ?? null);
     const facts = new Map((await nativeWorkVisibilityRows(db).relations(projectId, requested)).map((fact) => [`${fact.kind}:${fact.id}`, fact]));
     const waitingOn = await workRows(db).waitingTargets(works.flatMap((work): { kind: 'decision' | 'task'; id: string }[] => work.waitingForDecisionId ? [{ kind: 'decision' as const, id: work.waitingForDecisionId }]
       : work.waitingForWorkId ? [{ kind: 'task' as const, id: work.waitingForWorkId }] : []));
@@ -88,10 +87,10 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     };
     for (const work of works) {
       const projected: WorkRowProjection = { kind: 'work', id: work.id, number: work.number, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
-        status: work.status, blocker: work.blocker, waitingFor: work.waitingForUserId ? named.assignee({ kind: 'human', id: work.waitingForUserId }) : null,
+        status: work.status, blocker: work.blocker, waitingFor: work.waitingForUserId ? named({ kind: 'human', id: work.waitingForUserId }) : null,
         waitingOn: waitingOn.get(work.waitingForDecisionId ? `decision:${work.waitingForDecisionId}` : `task:${work.waitingForWorkId}`) ?? null, dropped: work.dropped, cameOfIt: work.cameOfIt, dueOn: work.dueOn, version: work.version, ...audience(work), relations: counts('work', work.id),
         prerequisiteCounts: prerequisites.get(work.id)!,
-        owner: work.ownerUserId ? named.assignee({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
+        owner: work.ownerUserId ? named({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
         rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt),
         // An existing reference to a task whose creation was undone (#238) names it as history.
         lifecycle: work.revertedAt && work.revertedByKind && work.revertedById && work.reversionNoticeId
@@ -136,7 +135,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       if (row.kind === 'work') {
         const [own] = await openRows(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, outcome: w.outcome, criteria: w.criteria, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(and(eq(w.projectId, projectId), eq(w.id, row.id))));
         if (!own) throw new Error('Missing native work detail');
-        const named = await names([{ kind: own.createdByKind, id: own.createdById }]);
+        const named = await names([{ kind: own.createdByKind, id: own.createdById }], own.workspaceId);
         const plan = (await taskGraphRows(db).taskPlans([row.id])).get(row.id) ?? { prerequisites: [], planIntent: null };
         const prerequisites = plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' }));
         if (prerequisites.length !== row.prerequisiteCounts.total || prerequisites.filter((item) => !item.met).length !== row.prerequisiteCounts.unmet)

@@ -239,7 +239,10 @@ export function notificationFactRows(db: DbExecutor) {
       // applies to the messages sent after it, so reading an event again later (a rewound cursor) decides as it did.
       const chosen = await db.select({ userId: f.userId, following: f.following }).from(f)
         .where(and(eq(f.conversationId, message.conversationId), lte(f.updatedAt, message.createdAt)));
-      const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
+      // The owner's mark in the agent's label (#1424, 2026-11-17): removed from the company (of an encrypted space: its company), as `namesIn` reads it.
+      const ownerRemoved = sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+        WHERE w.id = ${message.workspaceId}::uuid AND r.user_id = ${schema.agents.ownerUserId})`;
+      const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId, ownerRemoved }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
       // A local client writes as its person and may tell people (LC-2); every other agent's line tells only its owner (#1089, AG-4). An
       // identity with a server setup is a server agent whatever else signed in as it, and one with neither tells only its owner too.
@@ -270,7 +273,7 @@ export function notificationFactRows(db: DbExecutor) {
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
-        authorName: agent?.name ?? null, ...(agent ? { authorOwnerId: agent.ownerUserId } : {}), via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
+        authorName: agent?.name ?? null, ...(agent ? { authorOwnerId: agent.ownerUserId, authorOwnerRemoved: agent.ownerRemoved } : {}), via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
         since,
         ...(message.authorAgentId && (server || !client) ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };

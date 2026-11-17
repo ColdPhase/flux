@@ -578,6 +578,34 @@ class FirstRunSettingsPeople(unittest.TestCase):
             page.wait_for_timeout(100)
         self.assertEqual(left, [], "Cancel turned off the links, as the window said it would")
 
+    def test_11f_a_new_space_window_left_with_its_tab_turns_its_links_off_too(self) -> None:
+        """Pre-review P3: a link made in New space is tied to the space at Create; a tab closed or reloaded with the window open ran no cleanup,
+        so the link went on working as a company link nobody asked for. The window turns its links off on the way out, as Cancel does."""
+        page = self.page("maria")
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.keyboard.press("c")
+        create_other(page, "Space")
+        win = new_space_window(page)
+        win.get_by_label("Space name").fill(f"Seed tab {STAMP}")
+        win.get_by_role("button", name="Add people").click()
+        email = f"seeds.tab+{STAMP}@example.test"
+        new = win.get_by_role("form", name="Invite someone new")
+        new.get_by_label("Someone new?").fill(email)
+        new.get_by_role("button", name="Invite", exact=True).click()
+        expect(win.get_by_label(f"Link for {email}", exact=True)).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#"))
+        invites = lambda: [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] == email]  # noqa: E731
+        self.assertEqual(len(invites()), 1, "the link works while the window is open")
+        page.reload()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        left: list = invites()
+        for _ in range(50):
+            if not left:
+                break
+            page.wait_for_timeout(100)
+            left = invites()
+        self.assertEqual(left, [], "the reload turned the link off")
+
     def test_11b_the_sign_in_page_names_the_company(self) -> None:
         """The guide: the company's name is on the sign-in page, and the name setup gave it says nothing."""
         fresh = self.page()

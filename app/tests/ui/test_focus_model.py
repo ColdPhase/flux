@@ -1003,6 +1003,32 @@ class FocusModel(unittest.TestCase):
             where = page.evaluate(held, selector)
             self.assertTrue(where and where["card"] and where["inView"], f"the new task's card keeps the focus, in view, after {wait} ms: {where}")
 
+    def test_40_letters_typed_while_a_field_is_on_its_way_never_go_into_a_password_field(self) -> None:
+        # Pre-review P3: what is typed while the composer is on its way goes into whatever field takes focus first, a password field too.
+        page = self.page()
+        page.goto("/")
+        dm = page.get_by_role("navigation", name="Messages").get_by_role("link", name=re.compile("Piotr Nowak"))
+        expect(dm).to_be_visible()
+        held: list = []
+        page.route(re.compile(rf"/api/v1/dms/{self.ids['dm']}"), lambda route: held.append(route))
+        dm.focus()
+        page.keyboard.press("Enter")
+        page.keyboard.type("hunter2 is my password")
+        page.evaluate("() => { const field = document.createElement('input'); field.type = 'password'; field.id = 'planted-password'; document.body.append(field); field.focus(); }")
+        planted = page.locator("#planted-password")
+        expect(planted).to_be_focused()
+        page.wait_for_timeout(300)
+        self.assertEqual(planted.input_value(), "", "the words typed on the way did not go into a password field")
+        # What the person types there themselves is theirs.
+        page.keyboard.type("their own")
+        expect(planted).to_have_value("their own")
+        page.evaluate("() => document.getElementById('planted-password').remove()")
+        for route in held:
+            route.continue_()
+        page.unroute(re.compile(rf"/api/v1/dms/{self.ids['dm']}"))
+        expect(page.locator("#dm-composer")).to_be_visible()
+        expect(page.locator("#dm-composer")).to_have_value("")
+
 
 if __name__ == "__main__":
     unittest.main()

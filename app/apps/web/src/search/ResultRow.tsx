@@ -41,12 +41,9 @@ export function placeText(place: SearchPlace) {
   }
 }
 
-/** An agent's one label, "Planner · Ada's agent" (#1364), as Search names an agent author. */
-const AGENT_LABEL = / · [^·]+'s agent$/;
-
 /** The initials of an author's name, for the tile of a message. */
 function initials(author: string | null): string {
-  const words = (author ?? '').replace(AGENT_LABEL, '').split(/\s+/).filter(Boolean);
+  const words = (author ?? '').split(/\s+/).filter(Boolean);
   return words.slice(0, 2).map((word) => word[0]!.toUpperCase()).join('');
 }
 
@@ -62,7 +59,7 @@ function Tile({ result }: { result: SearchResult }) {
   if (result.kind === 'file') return <span className="sr__ic sr__ic--file" aria-hidden="true"><FileIcon name={plainTitle(result)} size={20} /></span>;
   if (result.kind === 'message' || result.kind === 'dm_message') {
     // An agent's message, or an agent's answer a person showed everyone, is its Kreska in its colour, as the message draws it (#1528).
-    if (result.agentColour || AGENT_LABEL.test(result.author ?? '')) {
+    if (result.byAgent) {
       return <span className="sr__ic sr__ic--agent" aria-hidden="true"><Kreska size={28} {...(result.agentColour ? { hue: result.agentColour } : {})} /></span>;
     }
     const letters = initials(result.author);

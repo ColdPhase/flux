@@ -12,6 +12,7 @@ import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
 import { companyGuestSql, isCompanyGuest } from './access.js';
 import { personTimeZones } from './person-time-zone.js';
+import { dmAuthorName, removedInDm } from './direct-messages.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -433,7 +434,10 @@ export function personalRunRows(db: DbExecutor) {
         .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), isNull(m.removedAt), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
         .orderBy(desc(m.sequence)).limit(limit);
-      return rows.reverse().map(({ authorId, authorName, editedAt, ...row }) => ({ ...row, edited: editedAt !== null, author: { kind: 'human' as const, id: authorId }, authorName }));
+      // Its people see one who left the company or was removed as "Stefan Kowal (removed)", and so does the run (#1424, 2026-11-17).
+      const removed = await removedInDm(db, dmId, rows.map((row) => row.authorId));
+      return rows.reverse().map(({ authorId, authorName, editedAt, ...row }) => ({ ...row, edited: editedAt !== null, author: { kind: 'human' as const, id: authorId },
+        authorName: dmAuthorName(authorName, removed, authorId) }));
     },
 
     /** The last `limit` exchanges of an agent's private chat before this run: what was asked and what it answered. */

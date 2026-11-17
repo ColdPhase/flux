@@ -42,7 +42,7 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   messages also held. The statement therefore counts for each hit how many of the query's words it holds whole (`held` in `scored`; the
   word being typed also as its prefix), and ranks by that count first and by BM25 among the hits that hold as many. The words counted are
   those that are not little words (`isSearchStopWord`), all of them when every word is little, so "barrel by the shed" is not decided by
-  "by". A typo-only hit holds none (it is shown only when no hit holds a word whole), and the task a query names by its number stays first.
+  "by". A typo-only hit holds none (it is shown only when no hit holds any searched word whole, the rule of "A title tolerates a typo" below), and the task a query names by its number stays first.
   With the optional vectors the lexical list that is fused is in the same order. The in-memory index of an encrypted workspace counts the
   same words the same way. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
   order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
@@ -55,8 +55,13 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   query ("6:30", "6 trays") a task's own number line ("#6", the first line of its indexed body) is not a match of it, so "6:30" never
   finds task #6 (personas round 4); the number elsewhere in a task's words still counts. A typo is a way to find what the words did not (v0.2.1 personas round: "price list" listed the person "Kasia Lis", one
   edit from "list", beside the price list itself): a hit found only by a typo in its title (no word whole, not the word being typed)
-  is shown only when no visible hit holds one of the words whole (`stats.whole` in the statement; the in-memory index of an encrypted
-  workspace keeps the same rule). "liss" alone still finds "Kasia Lis".
+  is shown only when no hit the reader may see holds any of the searched words whole (founder decision H, #1424: "Typo matches show only
+  when nothing matches a searched word exactly"). The rule is the statement's: `stats.whole` counts the hits for which `tf > 0` for any word
+  of the query, before the little-words cut below. So a word counts as whole in any form the index finds it (its stem, without accents,
+  hyphen-joined, as typed), a little word such as "the" counts like any other, and a hit that holds one counts even when that hit is
+  itself left out for holding only little words. It holds for people's search only (`plan.fuzzy`; an agent's `flux_search` has no typo
+  match). The in-memory index of an encrypted workspace keeps the rule with the words as typed, and counts only hits of the kinds asked for.
+  "liss" alone still finds "Kasia Lis".
 - **A hyphenated word is one word** (v0.2.1 personas round: "mockup" did not find "mock-up"). Migration 0085 adds a title and a body
   field to the BM25 index with the hyphens between two letters or digits taken out (`flux_joined_words`, English stems), and the
   query joins its own words the same way (`joinHyphenatedWords`), so "mockup", "mock-up" and "mockups" find each other;
@@ -154,7 +159,8 @@ Markdown, plain text, CSV/TSV (never the inside of images, audio or video, and n
 decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads the files.
 
 - **Rows.** Every file attached to a space's message gets, at publication, one row for its name (`doc_key` `file:<id>:0`, `version` 0,
-  an empty body, written by `search_put`), whatever its kind: "IMG_2041" finds IMG_2041.jpg. A file whose name `file_text_extractable`
+  an empty body, written by `search_put`), whatever its kind: "IMG_2041" finds IMG_2041.jpg. A video's poster (`poster_of`) is not a file of the
+  message and gets no row. A file whose name `file_text_extractable`
   accepts also gets a job, and the worker replaces the rest: one row for each part of about 4,000
   characters of the text (`file:<id>:<n>`, `version` n from 1, `page` the PDF page of the part: a part never crosses a page, so a page of more than
   4,000 characters is several parts and a file is at most about 150 rows). The audience is the message's

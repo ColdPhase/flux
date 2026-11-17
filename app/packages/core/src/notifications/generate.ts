@@ -1,5 +1,5 @@
 import { redactedError } from '../encryption/redact.js';
-import { agentWords, decisionAppPath, messagePreview, viaName } from '@flux/contracts';
+import { agentWords, decisionAppPath, messagePreview, removedName, viaName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -8,6 +8,9 @@ import type { SourceLookup } from '../push/ports.js';
 import { asksStarter, isQuestion, mentions, threadAskee } from './addressing.js';
 import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NoticeAnnouncement, NotificationFacts } from './ports.js';
 import { channelsOf, inQuietHours } from './preferences.js';
+
+/** An agent's owner in its one label: "Stefan Kowal (removed)" once they left the company or were removed (#1424, 2026-11-17). */
+const ownerName = (name: string | undefined, removed: boolean | undefined) => (name && removed ? removedName(name) : name);
 
 // Notifications from committed domain events (issue #116, foundation 8.9). The worker reads the
 // event log after its cursor, in commit order, and for each event decides who it concerns and
@@ -151,7 +154,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const names = await facts.names([...(authorId ? [authorId] : []), ...(ownerId ? [ownerId] : []), ...people]);
       // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code", and an
       // agent's answer they showed everyone is "Ada's Assistant", its one name (#1424). An agent's own line is its one label, "Planner · Ada's agent".
-      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : agentWords(message.authorName ?? 'Agent', ownerId ? names.get(ownerId) : null);
+      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : agentWords(message.authorName ?? 'Agent', ownerId ? ownerName(names.get(ownerId), message.authorOwnerRemoved) : null);
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
       // Who gets the replies of a thread (#1249): the people who follow it. A person's own choice (Follow, Unfollow) wins over the default,
       // which is that its starter and earlier writers follow it.
