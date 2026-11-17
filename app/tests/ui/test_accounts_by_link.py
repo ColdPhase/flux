@@ -268,8 +268,10 @@ class AccountsByLink(unittest.TestCase):
         # Round 14 (new P3-c, daily P3-2, look-a B14): Settings said "You're not in a company … yet", offered Connect AI and the
         # notification choices. Company says where they stand; AI and Notifications are not offered, and their addresses say what Home says.
         page.goto("/settings/company")
-        expect(page.locator("[data-no-longer-in]")).to_have_text(
-            f"You’re no longer in {company['name']}. Ask an owner or admin of the company for an invite link to come back.")
+        # Round 15 (daily P3-6): Company says it as every other page does, the heading, its line and Go to Home, not a small grey line.
+        expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}")).to_be_visible()
+        expect(page.locator("[data-no-longer-in]")).to_contain_text("Ask an owner or admin of the company for an invite link to come back.")
+        expect(page.locator("[data-no-longer-in]").get_by_role("link", name="Go to Home")).to_be_visible()
         self.assertEqual(page.get_by_role("navigation", name="Settings sections").get_by_role("link").all_inner_texts(),
                          ["Account", "Appearance", "Company", "Shortcuts"])
         for path in ("/settings/notifications", "/settings/agents"):

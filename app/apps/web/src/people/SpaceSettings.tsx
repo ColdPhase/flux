@@ -122,6 +122,13 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   const [links, setLinks] = useState<WorkspaceInvite[]>([]);
   const [freshLink, setFreshLink] = useState<string | null>(null);
   const [linksSeen, setLinksSeen] = useState(0);
+  // A link made in Someone new? is listed under the people, far below the field the cursor stays in for the next address (personas-36): its row
+  // comes into view, and the field keeps the focus, so the next address typed brings it back (round 15, new P3-i: the link was out of view).
+  useEffect(() => {
+    if (!freshLink) return undefined;
+    const frame = requestAnimationFrame(() => document.getElementById(`spset-link-${freshLink}`)?.closest('li')?.scrollIntoView({ block: 'nearest' }));
+    return () => cancelAnimationFrame(frame);
+  }, [freshLink]);
   // Someone joined with a link made here, was added or removed elsewhere, or their role changed: the people listed are read again at once (#1424).
   useStreamEvents(meId, (event) => {
     if ((event.objectId === project.id && event.kind.startsWith('project.grant_')) || (event.objectId === project.workspaceId && event.kind.startsWith('workspace.member_'))) load();
@@ -132,7 +139,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     if (!listsLinks) return undefined;
     const controller = new AbortController();
     listInvites(project.workspaceId, controller.signal).then((list) => {
-      setLinks(list.filter((invite) => invite.space?.id === project.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+      // Newest first, as Settings › Company lists the same links (round 15, daily P3-2: oldest first here).
+      setLinks(list.filter((invite) => invite.space?.id === project.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     }, () => undefined);
     return () => controller.abort();
   }, [listsLinks, project.workspaceId, project.id, linksSeen, reload]);
@@ -295,7 +303,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
               none={roster.members.some((member) => member.userId !== meId) ? `Everyone in ${companyName} is already in ${project.name}.` : undefined} />
             {inviter ? <SomeoneNew workspaceId={project.workspaceId} spaceId={project.id} spaceName={project.name} members={roster.members} inSpace={(id) => !!grantOf(id)}
               meId={meId} companyName={companyName} onTick={(id) => setChosen((list) => (list.includes(id) ? list : [...list, id]))} listed
-              onMade={(invite) => { setLinks((list) => [...list.filter((item) => item.id !== invite.id), invite]); setFreshLink(invite.id); }} /> : null}
+              onMade={(invite) => { setLinks((list) => [invite, ...list.filter((item) => item.id !== invite.id)]); setFreshLink(invite.id); }} /> : null}
             {/* No dead control (#1424, persona B-4): Add and Cancel while someone is ticked, otherwise one Close. */}
             <div className="newspace__foot">
               {chosen.length ? <>
@@ -310,7 +318,9 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         ) : everyone && !manager ? (
           <ul className="sset-card" aria-label="People of this space"><li className="sset-row"><span className="sset-row__b"><span className="sset-row__t">Everyone in {companyName}</span>
             </span></li></ul>
-        ) : (
+        ) : encrypted ? null : (
+          // An encrypted space's people are listed once, with their roles, Remove and Add people, in People and encryption under this heading
+          // (round 15, daily P2-2: the panel listed the same people beside this card, in another look).
           <ul className="sset-card" aria-label={`People in ${project.name}`} aria-busy={manager && !roster ? true : undefined}>
             {rows.map((row) => (<Fragment key={row.userId}>
               <li className="sset-row" data-person={row.userId}>
@@ -331,7 +341,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
                     {removing === row.userId ? (
                       <span className="spset__confirm" role="group" aria-label={`Remove ${row.name}`} onKeyDown={onEscape(() => closeRemoving(row.userId))}>
                         <Button variant="danger" size="sm" busy={busy === row.userId} onClick={() => void remove(row)}>Remove</Button>
-                        <Button variant="quiet" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
+                        <Button variant="secondary" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
                       </span>
                     ) : <Button variant="quiet" size="sm" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>}
                   </span>

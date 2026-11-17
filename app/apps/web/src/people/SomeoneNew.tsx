@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject, type SyntheticEvent } from 'react';
 import type { WorkspaceInvite, WorkspaceMember } from '@flux/contracts';
 import { Button, Icon, Input } from '../ui';
 import { attemptKeys, createInvite, problemText, revokeInvite } from './api';
@@ -102,8 +102,13 @@ export function SomeoneNew({ workspaceId, spaceId, spaceName, companyName, membe
  * it gives, **Copy link** and **Revoke**. Revoke asks once, in place, with the focus on Keep it, the safe answer, as Remove's Keep (round 14).
  * The link just made (or one the browser refused to copy) shows once in its row, in a read-only field to read or select.
  */
-export function InviteLinkList({ headingId, links, meta, shown, linkId, linkRef, canRevoke = () => true, onCopy, onRevoke }: {
+export function InviteLinkList({ headingId, links, meta, shown, linkId, linkRef, canRevoke = () => true, onCopy, onRevoke, note = null }: {
   headingId: string; links: WorkspaceInvite[]; meta: (invite: WorkspaceInvite) => string;
+  /**
+   * What was just said about one link ("created and copied", "Link copied."), drawn in that link's row, under its field (round 15): it shows with
+   * the link it is about, comes into view with it, and goes with the row when the link is used, revoked or expires.
+   */
+  note?: { about: string; line: ReactNode } | null;
   /** The link shown in its row: the one just made, or one the browser refused to copy. */
   shown: (invite: WorkspaceInvite) => boolean; linkId: (invite: WorkspaceInvite) => string; linkRef?: RefObject<HTMLInputElement | null>;
   canRevoke?: (invite: WorkspaceInvite) => boolean; onCopy: (invite: WorkspaceInvite) => void; onRevoke: (invite: WorkspaceInvite) => void;
@@ -132,6 +137,7 @@ export function InviteLinkList({ headingId, links, meta, shown, linkId, linkRef,
                 <Input ref={linkRef} id={linkId(invite)} label={`Link for ${invite.email ?? 'anyone'}`} readOnly value={invite.link} onFocus={(event) => event.currentTarget.select()} onKeyDown={keepWindow} />
               </div>
             ) : null}
+            {note?.about === invite.id ? note.line : null}
             {/* A revoked link can't come back, so Revoke asks once, in place (#763 FT-13). */}
             {revoking === invite.id ? (
               <div className="people__edit" role="group" aria-label={`Revoke link for ${who(invite)}`} ref={askRef}
@@ -158,12 +164,15 @@ export function InviteLinkList({ headingId, links, meta, shown, linkId, linkRef,
 export function SpaceLinks({ workspaceId, companyName, links, fresh, meId, onRevoked }: {
   workspaceId: string; companyName: string; links: WorkspaceInvite[]; fresh: string | null; meId: string; onRevoked: (id: string) => void;
 }) {
-  const [status, setStatus] = useState('');
+  // What was said and which link it is about (null: about none listed, as a revoked one): drawn in that link's row (round 15).
+  const [said, setSaid] = useState<{ text: string; about: string | null }>({ text: '', about: null });
+  const setStatus = (text: string, about: string | null = null) => setSaid({ text, about });
+  const status = said.about === null ? said.text : '';
   const [problem, setProblem] = useState('');
   const [shown, setShown] = useState<string | null>(null);
   async function copy(invite: WorkspaceInvite) {
     const copied = await copyText(invite.link);
-    setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.');
+    setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.', invite.id);
     // Where the browser refuses, the link is shown in its row to be selected by hand.
     if (!copied) setShown(invite.id);
   }
@@ -183,7 +192,8 @@ export function SpaceLinks({ workspaceId, companyName, links, fresh, meId, onRev
     <section className="details__sec spset__links" aria-labelledby="spset-links-h" data-space-links="">
       <InviteLinkList headingId="spset-links-h" links={links} shown={(invite) => fresh === invite.id || shown === invite.id} linkId={(invite) => `spset-link-${invite.id}`}
         meta={(invite) => `Member · until ${until.format(new Date(invite.expiresAt))} · by ${youLabel(invite.createdBy.name, invite.createdBy.id === meId)}`}
-        onCopy={(invite) => void copy(invite)} onRevoke={(invite) => void revoke(invite)} />
+        onCopy={(invite) => void copy(invite)} onRevoke={(invite) => void revoke(invite)}
+        note={said.about && said.text ? { about: said.about, line: <p className="people__invite-status" role="status"><Icon name="check" size={13} />{said.text}</p> } : null} />
       {statusLine}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>

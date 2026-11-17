@@ -2120,8 +2120,10 @@ under them read as one set:
   - **A row that asks** keeps the role where it was: on Settings › Company, while Remove asks (Remove / Keep), Reset link steps aside and
     the two answers take the actions' column alone. What Remove ends is said **under that person's row, starting under the name**, on
     Settings › Company and in Space settings alike (it stood under the face, and in Space settings at the card's foot).
-  - **One role column**: a role that cannot be changed ("Owner", "Admin", "Guest") ends where a role menu's word ends, so every word
-    ends on one line and only the menus' chevrons stand after it.
+  - **One role column** (round 15, replacing round 14's word-end rule, which two personas still read as ragged): the column is
+    right-aligned and its edge is the chevrons, so a role that cannot be changed ("Owner", "Admin", "Guest") ends where a menu's chevron
+    ends, as every role of Settings › Company's column does. A section heading with a button beside it (People and Add people) starts
+    where the other headings start.
   - **Add people and Invite are one control**: the quiet "+ Add people" of Space settings is the "+ Invite" of the company, 14 px.
   - **The company's invite form is a card of its own**, 16 px above the people's card; a form drawn as a card has no hairline between
     its parts. Add people open in Space settings is one card: its search field is the only frame inside it.
@@ -2132,9 +2134,29 @@ under them read as one set:
   - **Delete space** opens as every window that asks: its title with × in its head, and on the phone the sheet's grabber.
   - **Company › Spaces** lists every space of the company: an encrypted space the admin is in is a row that opens it, with its lock.
   - **Settings › AI's sections** have Settings' one heading, with their line under it, not beside it.
-  - **Someone no longer in the company** (left or removed) reads it in Settings too: Company says "You’re no longer in Riverside Bakery.
-    Ask an owner or admin of the company for an invite link to come back."; AI and Notifications are not offered (there is nothing to
-    connect AI to or to hear about), and their addresses say what Home says.
+  - **Someone no longer in the company** (left or removed) reads it in Settings too: Company, AI and Notifications say what Home says, in its
+    one look (the heading "You’re no longer in Riverside Bakery", the line "Ask an owner or admin of the company for an invite link to come
+    back." and Go to Home; round 15: Company was a small grey line). AI and Notifications are not in the section list (there is nothing to
+    connect AI to or to hear about).
+- **Round 15** (persona round and atlas-39, 2026-11-17, the last round of v0.2.1):
+  - **An ask in place is one look**: Remove (a company row, a space row, an encrypted space's row), Revoke, Lock now and a key holder's
+    demotion ask with their action first (`danger` where it ends someone's access: Remove, Revoke link, Lock) and the safe answer after it,
+    `secondary` and focused when the ask opens (Keep, Keep it, Keep it unlocked, Keep Ben an admin), never a grey quiet word.
+  - **A line about a link stands in its row**: "Invite link created and copied…" and "Link copied." are said under that link in Waiting to be
+    used, so they come into view with it and go with the row when the link is used, revoked or expires; only a line about no listed link
+    (a revoke) stays at the list's foot. On Settings › Company the new link's row, its field and that line come into view together; in Space
+    settings the cursor stays in Someone new? for the next address and the new link's row is brought into view (typing brings the field back).
+  - **Links waiting to be used are newest first** on both pages.
+  - **A person new to an open list** (restored, joined, added) takes their sorted place among the rows already drawn, not the end; the rows
+    already drawn still never move.
+  - **A status line holds in its state**: People and encryption's "Board minutes is locked." is shown only while the space is locked, so it
+    goes when the space is unlocked from its centre card (and "is unlocked." when it is locked again).
+  - **An encrypted space's people are listed once**, in People and encryption, in the rows of every list of people: the role menu acts at
+    once with Undo (a key holder's demotion asks first under the row), Remove is on the row, and "+ Add people" opens Space settings' list
+    of the company's people (no link, C-24). Space settings has the People heading and the People and encryption row, no second card of
+    the same people. The panel's rows stack as the company's page does under 37.5 rem; its encryption actions stand in one column.
+  - **A person's second line** keeps "· • Active now" and "Active 8 min ago" in one unbroken box (an inline-block), so it never splits.
+
 
 #### Hide previews
 
@@ -2500,7 +2522,8 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   "Invited with a link: ana@…, leo@…. The links add them to Bakery floor once you create it; Cancel turns them off." After Invite the
   cursor is back in the Email field for the next address, as it is when the address is missing or wrong; the link is one Tab further, and
   Enter in its read-only field never submits the window (personas-36: the next address was lost and Enter created the space early). AI is a switch, on by
-  default, and Encrypted a switch, off by default ("Can't be turned off later"). Cancel and
+  default, and Encrypted a switch, off by default ("Can't be turned off later"); as drawn, neither row has an icon, so their words start at
+  one edge, and Name is a heading of the window as People is, 16 px under the head's hairline (round 15). Cancel and
   Create space have the same height.
 - **With Encrypted on,** the AI row is dimmed ("No AI in encrypted spaces"). The window adds the
   unlock password and Repeat side by side, a strength hint and Download recovery code. Create space
@@ -2545,7 +2568,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - **GitHub repositories** is offered to a space's manager only on a server where GitHub is set up. A server without it shows no row, no link and no
     "ask whoever runs Flux" (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424): what a server cannot do is not shown.
   - An encrypted space shows its lock in place of the AI switch, and only its own admins change its
-    people.
+    people, in People and encryption, where they are listed once with the rows of every list of people (round 15).
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card
   in place of the content. A member sees "Payroll is locked" and the admins who can unlock it, with
   no buttons. A space admin sees the unlock password field, Unlock and Use recovery code. The rest
