@@ -38,6 +38,10 @@ svg { flex: none; }
 /* Task names use the shared mono face (F-026); #338 supplies Geist Mono. */
 /* Never under the meta size: 12 px on the computer and tablet, the phone's 12.5 px under 680 px (#763 sweep: not by pointer). */
 .ui-task-number { font-family: var(--mono); font-size: max(var(--fs-xs), 1em); font-variant-numeric: tabular-nums; }
+/* A name with its mark (`PersonName`): where the row is short the name ends in "…" and "(you)" or "(removed)" stays whole after it. */
+.ui-name { display: inline-flex; min-width: 0; max-width: 100%; white-space: nowrap; }
+.ui-name__n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ui-name__m { flex: none; white-space: pre; }
 
 /* Focus: a ring that fades in and settles 2px out, only for keyboard focus. */
 :root[data-theme-switching] *, :root[data-theme-switching] *::before, :root[data-theme-switching] *::after { transition: none !important; }

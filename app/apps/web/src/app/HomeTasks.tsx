@@ -115,7 +115,7 @@ export function HomeTasks() {
                   <span className={`home-tasks__status is-${item.status}`}><StatusGlyph status={item.status} size={16} className="home-tasks__glyph" />{STATUS_LABEL[item.status]}</span>
                   <span className="home-tasks__body">
                     <span className="home-tasks__title"><span className="home-tasks__num ui-task-number">{taskNumber(item)}</span> {item.title}</span>
-                    {item.status === 'blocked' ? <span className="home-tasks__why">{blockedLine(item)}</span> : null}
+                    {item.status === 'blocked' ? <span className="home-tasks__why">{blockedLine(item, me.user.id)}</span> : null}
                   </span>
                   <Icon name="chevron-right" size={14} className="home-tasks__go" />
                 </RefLink>

@@ -367,7 +367,9 @@ class MapCanvasJourney(unittest.TestCase):
                     for key in ('x', 'y', 'width', 'height'):
                         self.assertAlmostEqual(on_list[name][key], on_map[name][key], delta=1, msg=f'{width}: {name} {key} stays put')
                 expect(page.locator('.sk-hint')).to_have_count(0)
-                expect(page.get_by_role('button', name='Move around', exact=True)).to_have_attribute('aria-disabled', 'true')
+                # The canvas tools are not drawn in the List (round 14 look-b P13: two greyed tools that did nothing); their room stays.
+                expect(page.get_by_role('button', name='Move around', exact=True)).to_have_count(0)
+                expect(page.locator('.sk-tool--away')).to_have_count(3)
                 shot(page, f'map-list-positions-{width}-light')
                 show_map_as(page, 'Map')
                 self.assertAlmostEqual(controls['Undo'].bounding_box()['x'], on_map['Undo']['x'], delta=1)

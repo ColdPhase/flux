@@ -17,6 +17,7 @@ import { TypingNotice } from '../typing/TypingNotice';
 import { useObservation } from '../app/receipts';
 import { observeProjectMessages } from '../conversations/api';
 import { DECISION_COMPOSER } from './discuss';
+import { inPhoneSheet } from './panelOpening';
 
 
 const MESSAGES = 50;
@@ -103,7 +104,15 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   const list = useRef<HTMLOListElement>(null);
   // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
   const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;
-  useLayoutEffect(() => { list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' }); }, [last]);
+  // The phone's sheet opens at its top, the decision first (`usePanelOpening`, round 14 new P2-3); what arrives or is sent later shows there too.
+  const drawn = useRef(false);
+  useLayoutEffect(() => {
+    const first = !drawn.current && messages.length > 0;
+    if (messages.length) drawn.current = true;
+    if (first && inPhoneSheet(list.current)) return;
+    list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [last]);
   // What is read here is read in the thread too (persona round 8): the panel records what it shows as viewed, by the thread's own rule
   // (60 % of a message in view for 700 ms), so the thread draws no New divider above a message already read in the panel.
   const scroller = useRef<HTMLElement | null>(null);

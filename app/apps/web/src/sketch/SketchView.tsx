@@ -841,19 +841,19 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   }
   // #509 AC-5 / #510 AC-5: one toolbar at the bottom, the same element in the Map and the List, so
   // switching moves nothing (Spokój rule 7). The pointer tools only act on the canvas; in the List
-  // they are dimmed, not removed, so + Thought and Undo keep their places.
+  // they are not shown but keep their room, so + Thought and Undo keep their places (round 14 look-b P13: two greyed tools that did nothing).
   const dock = canWrite && !phone ? (
     <div className="sk-tools" role="toolbar" aria-label="Map tools">
       {bare ? null : <>
-        <button type="button" className="sk-tool" aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
+        <button type="button" className={`sk-tool${mapMode ? '' : ' sk-tool--away'}`} aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
           onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
         </button>
-        <button type="button" className="sk-tool" aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
+        <button type="button" className={`sk-tool${mapMode ? '' : ' sk-tool--away'}`} aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
           onClick={() => { if (!mapMode) return; setHand(!hand); if (connectFrom) escape(); }}>
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8.5V3.75a1 1 0 012 0V7.5M7 7.5V2.75a1 1 0 012 0V7.5M9 7.5V3.5a1 1 0 012 0v4M11 7V5.25a1 1 0 012 0V10a4 4 0 01-4 4H7.75a4 4 0 01-3-1.4L2.75 10.1a1 1 0 011.4-1.4L5 9.9" /></svg>
         </button>
-        <span className="sk-div" aria-hidden="true" />
+        <span className={`sk-div${mapMode ? '' : ' sk-tool--away'}`} aria-hidden="true" />
       </>}
       <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
       {coarse && !bare ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}

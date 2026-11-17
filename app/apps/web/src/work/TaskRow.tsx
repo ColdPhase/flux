@@ -25,7 +25,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (
       : named(owner, meId);
   const rest = [
     // What it waits for, in the words the board, the panel, Home and the Inbox use (personas-28).
-    item.status === 'blocked' ? blockedLine(item) : null,
+    item.status === 'blocked' ? blockedLine(item, meId) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     // The rule a task follows is in its panel or sheet, not on the row (#763 LD-2).
     item.relations.sourceMessages > 0 ? 'from a message' : null,

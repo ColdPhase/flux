@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, FluxLogo, Icon, IconButton, Kreska, choosesInPlace, useTravelingHighlight } from '../ui';
 import { useKeyboardMove, useReorder } from '../ui/reorder';
+import { useScrollEdges } from '../ui/scrollEdges';
 import { MoreMenu, type MoreItem } from './HeaderParts';
 import { useNeedsYouSpaces } from '../notifications/dot';
 import { useMarkAllRead } from './markAllRead';
@@ -49,29 +50,6 @@ function ProjectTile({ name, icon, size = 20 }: { name: string; icon?: SpaceIcon
 /** The tile of a space that waits to be unlocked: the lock glyph where a project has its letter (F-030, #655). */
 function LockTile({ size = 20 }: { size?: number }) {
   return <span className="side__pj side__pj--lock" style={{ width: size, height: size }} aria-hidden="true"><Icon name="lock" size={Math.round(size * 0.6)} /></span>;
-}
-
-/**
- * Where a list that scrolls can still go (#1375): its lower edge fades while there is more below, its upper edge while it is scrolled, so
- * a row cut by the edge reads as "more", not as the end. The marks are set when the size, the contents or the position change; the
- * fade itself is static (app.css `data-scroll-down`, `data-scroll-up`).
- */
-function useScrollEdges(ref: RefObject<HTMLElement | null>, deps: readonly unknown[]) {
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-    const check = () => {
-      el.toggleAttribute('data-scroll-down', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
-      el.toggleAttribute('data-scroll-up', el.scrollTop > 1);
-    };
-    check();
-    el.addEventListener('scroll', check, { passive: true });
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    for (const child of el.children) observer.observe(child);
-    return () => { el.removeEventListener('scroll', check); observer.disconnect(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, ...deps]);
 }
 
 /**

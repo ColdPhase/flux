@@ -49,12 +49,16 @@ const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y
  * or under a thought. The middle of the line first, then points a little towards either end; a label that every point puts under a thought
  * gets `null`, and the map draws it at the line's middle over the thoughts' edges (never hidden). Sizes are the labels' boxes in plane units.
  */
+const LABEL_POINTS = Array.from({ length: 19 }, (_, i) => (i + 1) / 20).sort((a, b) => Math.abs(a - 0.5) - Math.abs(b - 0.5) || b - a);
+
 export function placeLabels(labels: { id: string; at(t: number): { x: number; y: number }; w: number; h: number }[], cards: Rect[]): Map<string, { x: number; y: number } | null> {
   const placed: Rect[] = [];
   const result = new Map<string, { x: number; y: number } | null>();
   for (const label of labels) {
     let chosen: { x: number; y: number } | null = null;
-    for (const t of [0.5, 0.6, 0.4, 0.7, 0.3, 0.8, 0.2]) {
+    // Every point along the curve, nearest the middle first, so a label a card covers at the middle finds the free part of its line
+    // (round 14 look-b P11: "problem" was never drawn while seven points were tried).
+    for (const t of LABEL_POINTS) {
       const point = label.at(t);
       const box = { x: point.x - label.w / 2 - 3, y: point.y - label.h / 2 - 2, w: label.w + 6, h: label.h + 4 };
       if (cards.some((card) => overlaps(box, card)) || placed.some((other) => overlaps(box, other))) continue;

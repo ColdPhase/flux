@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { named } from '../docs/format';
 import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentIdentity, Button, Icon, StatusGlyph, initials, useRowMotion } from '../ui';
+import { AgentIdentity, Button, Icon, PersonName, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
 import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
@@ -117,7 +116,7 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
           aria-describedby={writable ? hintId : undefined} aria-current={open ? 'true' : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
-      {blocked ? <p className="tb-card__blocker">{blockedLine(item)}</p> : null}
+      {blocked ? <p className="tb-card__blocker">{blockedLine(item, meId)}</p> : null}
       <div className="tb-card__foot">
         <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
         {item.dueOn ? <span className="tb-card__due">{dueShort(item.dueOn)}</span> : null}
@@ -128,7 +127,8 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
             ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} hue={hue(owner)} /></span>
             : <span className="tb-card__owner">
               <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>
-              <span className="tb-card__name">{named(owner, meId)}</span>
+              {/* "(you)" stays whole where the column is narrow (beside the open panel), and the name gives way (round 14 daily P2-3). */}
+              <PersonName className="tb-card__name" name={owner.name} mark={owner.id === meId ? 'you' : null} />
             </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
       </div>

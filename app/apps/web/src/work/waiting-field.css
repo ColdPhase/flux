@@ -6,7 +6,7 @@
 .waiting__pick { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 28px; padding: 0 4px 0 6px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line2); font-size: var(--fs-md); font-weight: 500; }
 .waiting__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .waiting__x { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-pill); color: var(--t3); }
-.waiting__x:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .waiting__x:hover { background: var(--hov); color: var(--t1); } }
 .waiting__list { padding: 6px; border-radius: 16px; background: var(--el); box-shadow: inset 0 0 0 1px var(--line); max-height: 220px; overflow: auto; overscroll-behavior: contain; }
 .waiting__h { padding: 4px 10px 2px; color: var(--t3); font-size: var(--fs-sm); }
 .waiting__o { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); cursor: pointer; }

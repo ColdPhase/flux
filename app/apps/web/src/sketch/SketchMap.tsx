@@ -1181,16 +1181,20 @@ export function SketchMap(props: SketchMapProps) {
           {props.changes}
           {props.hint}
           {canWrite ? <>
-          <div className="sk-phone__secondary">
-            {editing && props.editControls ? <div className="sk-actions sk-actions--edit">{props.editControls}</div> : null}
-            {plus ? <button type="button" className="sk-edit-btn" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'thought'} onClick={(event) => {
-              event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('thought'); setPhoneMenuOpen(true);
-            }}><Icon name="more" size={16} />Thought actions</button> : null}
-            {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
-          </div>
           {props.onDismissComputerNote ? <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer
             <IconButton icon="x" size={14} label="Dismiss" className="sk-phone__note-x" onClick={props.onDismissComputerNote} /></p> : null}
-          <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Thought</button>
+          {/* One bottom row (round 14 look-b P14: Thought actions, the note and Thought stood in three floating rows): the selection's actions,
+              or an edit's Save and Cancel, then Undo and Thought beside them. */}
+          <div className="sk-phone__row">
+            <div className="sk-phone__secondary">
+              {editing && props.editControls ? <div className="sk-actions sk-actions--edit">{props.editControls}</div> : null}
+              {plus ? <button type="button" className="sk-edit-btn" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'thought'} onClick={(event) => {
+                event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('thought'); setPhoneMenuOpen(true);
+              }}><Icon name="more" size={16} />Thought actions</button> : null}
+              {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
+            </div>
+            <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Thought</button>
+          </div>
           </> : null}
         </div>
       ) : null}
