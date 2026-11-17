@@ -79,7 +79,9 @@ toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
 - **When.** While it is still proposed and unchanged (`If-Match`: `428` without it, `409 VERSION_CONFLICT` when stale,
   `409 DECISION_NOT_PROPOSED` once accepted) and while nothing else names it: a link to it
   (a task related to it, a Wiki page that mentions it), a task that waits for it or a decision that replaces it are `409 DECISION_IN_USE`,
-  and it stays. So is a decision someone has written about ([its discussion](#a-decisions-discussion-1424)).
+  and it stays. So is a decision someone has written about ([its discussion](#a-decisions-discussion-1424)). An agent's proposal
+  follows the same rule through its run's Undo: once someone wrote in its discussion, the Undo is refused with "Replies since. Open it"
+  and the decision stays, so the discussion never becomes a thread about nothing (pre-review P2-2).
 - **What goes.** The decision row, its own `source`/`affects` links, its notifications (their queued emails go with them) and the
   Inbox choices made on it (`needs_you_states` `decision:<id>`), in one transaction. Its Inbox item is derived from the row, so it is gone
   too, and so is its card ([`listObjectNotices`](#events)): a reader's next refresh of the newest notices drops a card the server no
