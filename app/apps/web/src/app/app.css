@@ -507,6 +507,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__attach[aria-disabled="true"] { opacity: .45; cursor: default; }
 .composer__attach[aria-disabled="true"]:hover { background: transparent; color: var(--t3); }
 .composer__attach:focus-visible { outline: 2px solid var(--ring); outline-offset: 0; }
+/* The composer sits at the window's foot: its tools' tooltips open above them, never cut by the window's edge (visual review 2026-11-17). */
+.composer__box [data-tip]::after { top: auto; bottom: calc(100% + 8px); }
 /* ✦ Ask my assistant (#57): one quiet button in the box; no connection means an honest note. */
 .composer__ask { display: grid; place-items: center; width: 32px; height: 32px; flex: none; margin-left: -8px; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
 .composer__ask:hover { background: var(--hov); color: var(--t1); }

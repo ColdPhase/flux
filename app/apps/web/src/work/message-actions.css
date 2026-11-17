@@ -100,10 +100,10 @@
 @container thread-feed (max-width: 519px) {
   .thread__in { --acts-room: 0px; }
   .thread .project-convo__message > .msg-acts, .thread .project-convo__message.is-mine > .msg-acts,
-  .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -18px; left: auto; right: 8px; padding: 2px; border-radius: 10px;
+  .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -14px; left: auto; right: 8px; padding: 0; border-radius: 9px;
     /* The pill keeps a visible container on the panel's white (visual review 2026-11-17: bare icons over the bubble's edge). */
     box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2); }
-  .thread .project-convo__message:has(> .project-convo__message-meta) > .msg-acts, .thread .dm-msg__main:has(> .dm-msg__meta) > .msg-acts { top: -8px; }
+  .thread .project-convo__message:has(> .project-convo__message-meta) > .msg-acts, .thread .dm-msg__main:has(> .dm-msg__meta) > .msg-acts { top: -4px; }
   .thread .msg-acts::before, .thread .project-convo__message.is-mine > .msg-acts::before, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts::before { display: none; }
   .thread .msg-acts__b { width: 24px; height: 24px; border-radius: 8px; }
   .thread .project-convo__message > .project-convo__message-meta, .thread .dm-msg__meta { padding-right: 90px; }

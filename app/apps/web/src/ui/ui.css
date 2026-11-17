@@ -130,6 +130,8 @@ svg { flex: none; }
 /* Every field's placeholder, also those without .ui-input (the new-conversation search, Propose a decision, the AI connection
    name): WebKit's own default is #a9a9a9, 2.4:1 on white (#763 sweep). */
 input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
+/* A search field's clear button is the browser's blue cross: grey here, so no colour enters the interface (visual review 2026-11-17). */
+input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-input:focus-visible, .ui-input:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 /* The error is said in words next to the field (shape, not colour); the field keeps a strong edge. */
 .ui-field--invalid .ui-input { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
@@ -378,7 +380,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 @media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } .ui-toast--also .ui-toast__action { padding: 0 10px; } }
 /* On a phone the words keep their line: "Task #12 created · Undo · Another task ×" fits 358 px with tighter gaps and actions, so the
    message is not broken over two lines beside them (visual review 2026-11-17). Large text still wraps it. */
-@media (max-width: 480px) { .ui-toast { gap: 4px; padding-left: 14px; } .ui-toast .ui-toast__action { padding: 0 8px; } .ui-toast__sep { margin: 0 2px; } }
+@media (max-width: 480px) { .ui-toast { gap: 4px; padding-left: 14px; } .ui-toast .ui-toast__action { padding: 0 6px; } }
 
 /* ---------- Empty and error states ---------- */
 .ui-empty, .ui-error { display: flex; flex-direction: column; align-items: flex-start; max-width: 440px; }
