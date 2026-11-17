@@ -313,10 +313,10 @@ span.sk-li-img { width: 160px; height: 96px; }
    top left, the tools at the bottom centre, and the selection's actions above the selected thought. */
 .sk-page--map { position: relative; overflow: hidden; }
 .sk-page--map .sk--map { position: relative; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; gap: 0; container: sk-pane / inline-size; }
-/* Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone there, so Undo stays on the toolbar's one row in the Map and the List. */
-@container sk-pane (max-width: 680px) { .sk-dock .sk-select-several { padding: 0 11px; min-width: 44px; justify-content: center; } .sk-dock .sk-select-several .sk-bl { display: none; } }
 .sk--map .sk-canvas-wrap { position: absolute; inset: 0; display: block; flex: none; height: auto; min-height: 0; padding: 0; }
-.sk--map .sk-canvas { height: 100%; box-sizing: border-box; padding: 56px 0 100px; border-radius: 0; box-shadow: none; background-color: var(--bg); }
+/* A notice under the header takes its own room (SketchMap measures it as --sk-over-bottom): the plane starts under it (founder check,
+   Hubert 2026-11-17). Without one it starts under the header, as always. */
+.sk--map .sk-canvas { height: 100%; box-sizing: border-box; padding: max(56px, calc(var(--sk-over-bottom, 0px) + 8px)) 0 100px; border-radius: 0; box-shadow: none; background-color: var(--bg); }
 .sk-over { position: absolute; left: 14px; top: 12px; right: 14px; z-index: 8; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
   max-height: calc(100% - 24px); overflow-y: auto; pointer-events: none; }
 .sk-over > * { pointer-events: auto; }
@@ -329,6 +329,9 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-aud { flex: none; white-space: nowrap; }
 .sk--map .sk-mode .seg__b { min-width: 48px; }
 .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
+/* A kept private movement is a raised card like the read-only line, in the map's frame: where it floats over the plane it covers a thought
+   cleanly instead of printing its words over the thought's (founder check, Hubert 2026-11-17). */
+.sk--map .editing-map-recovery { border: 0; background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }
 /* What a local client changed on the map (#868): its change line stands in the bottom dock, whose height the map reserves, so it never covers a thought; in the List it heads the list. */
 .sk-dock .client-changes, .sk-phone .client-changes { pointer-events: auto; margin: 0; align-items: center; max-width: min(640px, 100%); }
@@ -342,7 +345,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* Its own width, not what is left of the 50% it starts at: the hint wraps only where the pane is narrower than it is. */
 .sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; width: max-content; max-width: calc(100% - 32px); margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }
 .sk-dock { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; pointer-events: none; }
-.sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px 5px 5px; border-radius: var(--r-pill);
+/* One inset all round, so every tool in it (a circle, a word's pill) is concentric with the dock's pill (founder check, Hubert 2026-11-17). */
+.sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-line { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
 /* The first-run hint steps aside while a thought lies under it (SketchMap measures it), instead of sitting on its text.
@@ -359,14 +363,18 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock__row { flex-wrap: wrap; justify-content: center; }
 .sk-dock__row > *, .sk-dock .sk-tools > * { flex: none; }
 .sk-dock .ui-btn { min-height: 36px; padding: 0 14px; border-radius: var(--r-btn); gap: 6px; }
-.sk-dock .ui-btn svg { color: var(--t2); }
-.sk-dock .ui-btn[aria-pressed="true"] { background: var(--sub); }
-.sk-dock .ui-btn[aria-disabled="true"] { opacity: .55; }
-.sk-dock .ui-btn--primary { padding: 0 18px; }
 .sk-tool { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--t2); transition: var(--tr); }
-@media (hover: hover) { .sk-tool:hover { background: var(--hov); color: var(--t1); } }
+@media (hover: hover) { .sk-tool:hover:where(:not(:disabled)) { background: var(--hov); color: var(--t1); } }
 .sk-tool[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
-.sk-tool[aria-disabled="true"] { opacity: .5; }
+.sk-tool[aria-disabled="true"], .sk-tool:disabled { opacity: .5; }
+/* A tool with its word (Thought, Select several) is a pill in the dock's pill: its hover and pressed fills follow the dock's curve, never a
+   10 px box inside a round bar (founder check, Hubert 2026-11-17). It is a map tool, not a system button, whose radius stays 10. */
+.sk-tool.sk-tool--word { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; padding: 0 14px;
+  border-radius: var(--r-pill); font-size: var(--fs-base); font-weight: 500; line-height: 1.2; white-space: nowrap; }
+.sk-tool--word svg { color: var(--t2); }
+@media (hover: hover) { .sk-tool--word:hover:where(:not(:disabled)) svg { color: var(--t1); } }
+/* Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone there, a circle like Undo, so Undo stays on the toolbar's one row in the Map and the List. */
+@container sk-pane (max-width: 680px) { .sk-dock .sk-tool--word.sk-select-several { width: 44px; padding: 0; } .sk-dock .sk-select-several .sk-bl { display: none; } }
 /* In the List the canvas tools are not drawn but keep their room, so Thought and Undo stay where they are in the Map (round 14 look-b P13). */
 .sk-tool--away { visibility: hidden; }
 .sk--map .sk-help:not(.is-open) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -387,7 +395,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-phone > * { pointer-events: auto; }
 @media (max-width: 640px) {
   .sk--map .sk-canvas-wrap { background-color: var(--bg); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px; }
-  .sk--map .sk-canvas { position: absolute; inset: 60px 0 calc(var(--sk-phone-tools-height, 150px) + 8px); height: auto; padding: 0 0 24px; }
+  .sk--map .sk-canvas { position: absolute; inset: max(60px, calc(var(--sk-over-bottom, 0px) + 8px)) 0 calc(var(--sk-phone-tools-height, 150px) + 8px); height: auto; padding: 0 0 24px; }
   /* A space's map keeps its title, the maps' switcher (#1438 point 7), as the one small pill, on the row of Map options (#1424): the
      thoughts start under both, so the pill never lies over the first one. A draft stays below that row, so changing views cannot cover its
      entry. My map has no pill, so its drafts and notices start under Map options as before. */

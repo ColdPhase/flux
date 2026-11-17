@@ -82,7 +82,7 @@ export function ProjectMap() {
         ) : (
           <div className="sk-dock"><DockRow>
             <div className="sk-tools" role="toolbar" aria-label="Map tools">
-              <button type="button" className="ui-btn ui-btn--quiet sk-add" disabled={creating} onClick={() => void start()}><Icon name="plus" size={16} />Thought</button>
+              <button type="button" className="sk-tool sk-tool--word sk-add" disabled={creating} onClick={() => void start()}><Icon name="plus" size={16} />Thought</button>
             </div>
           </DockRow></div>
         )}

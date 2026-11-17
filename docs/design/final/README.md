@@ -241,6 +241,13 @@ looks ugly"):
   thought's tasks show once, as its quiet count (UI116-4); the line that repeated its first task beside the count is gone. The phone's
   **Thought** is the soft fill of the phone's floating "+". In the map's List a connection's label stays the tag before the title (#510),
   in a slot of one width right against the title, so labelled siblings' titles start at one edge; the tree's ticks reach their rows.
+- **The map's dock and notices** (founder check, Hubert 2026-11-17): the dock is a pill, so every tool in it is concentric with it: one
+  5 px inset all round, the icon tools circles and a tool with its word (**Thought**, Select several) a pill, so a hover or pressed fill
+  follows the dock's curve and never draws a 10 px box inside the round bar. These are map tools (`sk-tool sk-tool--word`), not system
+  buttons, whose radius stays 10. A notice under the map's header (a kept private movement, the read-only line, a kept edit) takes its own
+  room and never lies on what it is about: in the List it opens the list's column, in its flow above the first row; on the Map it is a
+  raised card under the header and the plane starts under it (the computer's canvas inset and the phone's projection), so it covers no
+  thought; with no notice the plane starts under the header, as before.
 - **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
   an ellipsis); where the number, a due day and the owner's face, mark and a few letters do not fit one line (a column beside the open
   panel), the owner takes the line under them, at the right, never shrinking to "AK (you)" with "(you)" past the card (round 15 look-3 F1);
