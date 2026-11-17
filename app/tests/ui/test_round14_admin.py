@@ -3,7 +3,7 @@
 Each test is one finding, measured in the running app: Space settings' links waiting to be used keep the card's inset (daily P2-2), what
 Remove ends is said under the person's row (look-a A9), the company's invite form is a card of its own (look-a A8), Remove asking on a
 company row leaves the role where it was (new P3-a, daily P3-4, look-a B9), the same links are one list on both pages (daily P3-5, P3-7)
-and a person removed from the company is told so in Settings, which offers no AI and no Notifications (new P3-c, daily P3-2, look-a B14).
+(a person removed from the company is told so in Settings: test_accounts_by_link test_07, which has the real company).
 Runs through scripts/check_ui.sh against the running app.
 """
 
@@ -192,26 +192,6 @@ class Round14Admin(unittest.TestCase):
         shot(page, f"round14-company-remove-{UI_BROWSER}")
         ask.get_by_role("button", name="Keep").click()
         expect(row.get_by_role("button", name="Reset link for Kai Tanaka")).to_be_visible()
-
-    def test_05_a_removed_person_reads_it_in_settings_which_offer_no_ai_or_notifications(self) -> None:
-        """New P3-c, daily P3-2, look-a B14: Company said "You're not in a company … yet", AI offered Connect AI and Notifications its choices."""
-        self.ensure_world()
-        owner = self.page()
-        self.api(owner, "DELETE", f"/api/v1/workspaces/{self.ids['workspace']}/members/{self.ids['lee']}", status=204)
-        page = self.page("lee")
-        page.goto("/settings/company")
-        expect(page.locator("[data-no-longer-in]")).to_have_text(f"You’re no longer in {COMPANY}. Ask an owner or admin of the company for an invite link to come back.")
-        nav = page.get_by_role("navigation", name="Settings sections")
-        self.assertEqual(nav.get_by_role("link").all_inner_texts(), ["Account", "Appearance", "Company", "Shortcuts"])
-        for path in ("/settings/notifications", "/settings/agents"):
-            page.goto(path)
-            expect(page.get_by_role("heading", name=f"You’re no longer in {COMPANY}")).to_be_visible()
-            expect(page.get_by_role("switch")).to_have_count(0)
-            expect(page.get_by_role("button", name="Connect AI")).to_have_count(0)
-        # Without New, Search is the sidebar's one button and says its name (look-a B14: a lone square).
-        search = page.locator(".side__actions").get_by_role("button", name="Search")
-        self.assertGreater(search.evaluate("el => el.getBoundingClientRect().width"), 100)
-        shot(page, f"round14-removed-settings-{UI_BROWSER}")
 
 
 if __name__ == "__main__":

@@ -265,6 +265,21 @@ class AccountsByLink(unittest.TestCase):
         page.keyboard.press("c")
         expect(page.get_by_role("dialog")).to_have_count(0)
         shot(page, "removed-from-the-company-desktop-1440")
+        # Round 14 (new P3-c, daily P3-2, look-a B14): Settings said "You're not in a company … yet", offered Connect AI and the
+        # notification choices. Company says where they stand; AI and Notifications are not offered, and their addresses say what Home says.
+        page.goto("/settings/company")
+        expect(page.locator("[data-no-longer-in]")).to_have_text(
+            f"You’re no longer in {company['name']}. Ask an owner or admin of the company for an invite link to come back.")
+        self.assertEqual(page.get_by_role("navigation", name="Settings sections").get_by_role("link").all_inner_texts(),
+                         ["Account", "Appearance", "Company", "Shortcuts"])
+        for path in ("/settings/notifications", "/settings/agents"):
+            page.goto(path)
+            expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}"), path).to_be_visible()
+            expect(page.get_by_role("switch"), path).to_have_count(0)
+            expect(page.get_by_role("button", name="Connect AI"), path).to_have_count(0)
+        # Without New, the sidebar's Search is its row's one button and says its name, not a lone square.
+        self.assertGreater(page.locator(".side__actions").get_by_role("button", name="Search").evaluate("el => el.getBoundingClientRect().width"), 100)
+        shot(page, "removed-from-the-company-settings-desktop-1440")
         # Restored, the person is told nothing of it.
         restored = owner.request.post(f"{ORIGIN}/api/v1/workspaces/{company['id']}/removed-people/{me}/restore", headers={"origin": ORIGIN})
         self.assertEqual(restored.status, 201, restored.text())
