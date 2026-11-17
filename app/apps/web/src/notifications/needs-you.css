@@ -129,8 +129,8 @@
 /* The row is what is focused (L931: arriving at the Inbox, the open item's row takes the focus): the ring goes round the whole row, as a
    list row's does, never round the title's words (release audit ffcb07c). */
 .nyc--list .nyc__open:focus-visible { outline: none; }
-/* 1 px out from the row (the rows are 4 px apart), so the ring stands apart from the open row's raised fill (#1424). */
-.nyc--list:has(.nyc__open:focus-visible) .nyc__card { outline: 2px solid var(--ring); outline-offset: 1px; }
+/* 2 px out from the row, following its radius, so the ring stands apart from the open row's raised fill (#1424). */
+.nyc--list:has(.nyc__open:focus-visible) .nyc__card { outline: 2px solid var(--ring); outline-offset: 2px; }
 .nyc__snippet { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--t3); }
 /* The open item is its card with no box around it, in its own column. */
 .nyc--open .nyc__card--pane { max-width: 680px; padding: 0; background: none; box-shadow: none; }

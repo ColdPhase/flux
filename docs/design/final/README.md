@@ -69,7 +69,7 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--t3` | `#636363` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg`, `--el`, `--side`, `--sub` and `--hov`; APCA Lc at least 45) |
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
-| `--ring` | `--t2` (`#4A4A4A`) | `--t2` (`#BDBDBD`) | The keyboard focus ring, everywhere (founder direction, Hubert 2026-11-17, #1424) |
+| `--ring` | `--t3` (`#636363`) | `--t3` (`#A1A1A1`) | The keyboard focus ring, everywhere (founder direction, Hubert 2026-11-17, #1424) |
 | `--seg` / `--seg-on` / `--seg-off` | `--act` / `--el` / `--t2` | `--sub` / `--pick` / `--t3` | A segmented control: its track, the selected option's pill and an unselected label (#1238). Roles over existing colours, no new colour |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
@@ -101,9 +101,10 @@ every ring in the app:
   click, and the focus a script moves after one (the phone Inbox's expanded title, a window's first field), draws no
   ring; the next key brings it back where the focus is. A text field keeps its ring when it is tapped or clicked: the
   caret is going there.
-- It is 2 px of `--ring` (`--t2`: 8.1:1 on `--bg`, 7.4:1 on `--sub`, 10.1:1 on the dark `--bg`; at least 3:1 on every
-  surface, WCAG 2.4.7 and 2.4.11), with an offset, and follows the rounded shape of what it surrounds. It is lighter
-  than the `--t1` ink and stays distinct from the selection, which is a fill and never an outline.
+- It is 2 px of `--ring`, the mid-grey `--t3` in both themes (light `#636363`: 5.5:1 on `--bg`, 5.0:1 on `--sub`, 4.7:1
+  on `--hov`; dark `#A1A1A1`: 7.3:1 on `--bg`; at least 3:1 on every surface, WCAG 2.4.7 and 2.4.11), with an offset
+  (2 px unless a component has no room outside), and follows the rounded shape of what it surrounds. It never reads as a
+  black frame, and stays distinct from the selection, which is a fill and never an outline.
 - Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
   `data-input` on `<html>` (`pointer` or `keys`), set by the first pointer or key event.
 
@@ -1676,8 +1677,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   switcher.
 - You edit on the rendered page, and versions save by themselves. Live co-editing shows the other
   person's cursor and name.
-- **History** (⋯ › History) lists the versions on the left as a timeline: one continuous hairline from dot to dot,
-  the chosen version's dot filled. **Restore lives in one place** (founder question and coordinator decision, Hubert
+- **History** (⋯ › History) lists the versions on the left as a timeline: one continuous mid-grey line from dot to dot,
+  the chosen version's dot filled. In the comparison, added text is underlined only (no fill, no grey bar under a
+  heading) and removed text is struck through in `--t3`. **Restore lives in one place** (founder question and coordinator decision, Hubert
   2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): the chosen version's row in that list carries
   **Restore this version**, only when it is not the current version. There is no separate Restore button at the top
   right. Restore opens the page and makes that version the page again as the next version, with the toast "Version N

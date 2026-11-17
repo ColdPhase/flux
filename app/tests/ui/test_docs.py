@@ -448,10 +448,14 @@ class DocsJourney(unittest.TestCase):
         expect(table.locator("tr.wiki-chg--added")).to_contain_text("Shed")
         for raw in ("| ---", "## ", "- Shed gateway"):
             self.assertNotIn(raw, diff.inner_text(), "the rendered view shows no raw Markdown")
-        # Added text has a soft fill and an underline; removed text is struck through in --t3.
+        # Added text is an underline only, with no fill or grey bar (coordinator review of the #1424 look round, 2026-11-17);
+        # removed text is struck through in --t3.
         look = diff.locator("p ins").evaluate("""el => { const s = getComputedStyle(el); return { line: s.textDecorationLine, fill: s.backgroundColor }; }""")
         self.assertIn("underline", look["line"])
-        self.assertNotIn(look["fill"], ("rgba(0, 0, 0, 0)", "transparent"))
+        self.assertIn(look["fill"], ("rgba(0, 0, 0, 0)", "transparent"))
+        heading = diff.locator("h2.wiki-chg--added, .wiki-chg--added h2").first
+        if heading.count():
+            self.assertIn(heading.evaluate("el => getComputedStyle(el).backgroundColor"), ("rgba(0, 0, 0, 0)", "transparent"), "an added heading has no grey bar")
         struck = diff.locator("p del").evaluate("""el => { const s = getComputedStyle(el); const probe = document.createElement('span'); probe.style.color = 'var(--t3)'; document.body.append(probe);
             const t3 = getComputedStyle(probe).color; probe.remove(); return { line: s.textDecorationLine, color: s.color, t3 }; }""")
         self.assertIn("line-through", struck["line"])

@@ -190,12 +190,12 @@
 .doc-versions li:has([aria-current="true"]) .doc-version { background: none; }
 /* A timeline (#511, AC-2): a dot per version on one continuous hairline, the chosen one filled. The line belongs to the row and runs
    from this dot's centre to the next row's dot centre (each dot's centre is 20.5 px under its row's top), so it meets every dot
-   whatever a row holds; the dots are drawn over it. */
+   whatever a row holds; the dots are drawn over it. A mid-grey, so it reads on the chosen row's --sub fill as well as on the page. */
 .doc-version { position: relative; min-width: 0; display: flex; gap: 12px; padding: 10px 8px 10px 10px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 .doc-version:hover { background: var(--hov); }
 .doc-version__dot { position: relative; z-index: 2; flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t3); background: var(--bg); }
 .doc-version[aria-current="true"] .doc-version__dot { background: var(--t1); box-shadow: none; }
-.doc-versions li:not(:last-child)::before { content: ""; position: absolute; z-index: 1; left: 14px; top: 20.5px; bottom: -20.5px; width: 1px; background: var(--line2); pointer-events: none; }
+.doc-versions li:not(:last-child)::before { content: ""; position: absolute; z-index: 1; left: 14px; top: 20.5px; bottom: -20.5px; width: 1px; background: color-mix(in srgb, var(--t3) 55%, transparent); pointer-events: none; }
 .doc-version__restore { grid-column: 1 / -1; justify-self: start; margin: -2px 0 10px 31px; }
 .doc-version__b { min-width: 0; }
 .doc-version__t { display: block; font-size: var(--fs-md); color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; }
@@ -234,13 +234,14 @@
 .doc-changes__stat { font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
 .doc-changes__page { margin-top: 16px; padding: 4px 0 24px; }
 .doc-changes__page .doc-prose { max-width: 720px; }
-.doc-changes__page ins { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; background: color-mix(in srgb, var(--t1) 9%, transparent); border-radius: 3px; }
+/* Added is an underline only, never a fill or a grey bar (coordinator review, #1424 look round); removed is struck through in --t3. */
+.doc-changes__page ins { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .doc-changes__page del { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 .doc-changes__key { display: flex; gap: 6px; align-items: baseline; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
-.doc-changes__key ins { text-decoration: underline; text-underline-offset: 3px; background: color-mix(in srgb, var(--t1) 9%, transparent); border-radius: 3px; color: var(--t1); padding: 0 2px; }
+.doc-changes__key ins { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; color: var(--t1); }
 .doc-changes__key del { text-decoration: line-through; color: var(--t3); }
 /* Monochrome: an added block gets a soft fill and an underline, a removed one is struck through in --t3. */
-.doc-changes__page .wiki-chg--added { background: color-mix(in srgb, var(--t1) 8%, transparent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; border-radius: 4px; }
+.doc-changes__page .wiki-chg--added { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .doc-changes__page .wiki-chg--removed, .doc-changes__page .wiki-chg--removed :is(td, th, li, strong, a, h1, h2, h3, h4) { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 
 .doc-prose :is(h1, h2, h3):focus { outline: none; }
