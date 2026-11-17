@@ -294,7 +294,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   question to another agent, C-51) shows there for everyone, but it notifies nobody except the
   agent's owner, whatever it names: no mention, question or reply notification, push or email
   ([#1089](https://github.com/ColdPhase/flux/issues/1089)). A local client writes as its person and
-  notifies like them (LC-2).
+  notifies like them (LC-2). Such a line (its report, its Done line, a post in the discussion) is in the language the task is
+  written in, its title and description, never one guessed from a name, a place or a time zone (round 15 real-model confirmation: a
+  task written in English got a Polish report, which everyone in the task read).
   The owner writes to people.
 
 ## AG-5 — Tasks reach agents through their owner

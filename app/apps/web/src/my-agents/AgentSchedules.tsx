@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ASSISTANT_SCHEDULE_STARTERS, type AssistantJob, type MyAgent } from '@flux/contracts';
+import { ASSISTANT_SCHEDULE_STARTERS, oneLinePreviewText, type AssistantJob, type MyAgent } from '@flux/contracts';
 import { Button, Icon, Spinner } from '../ui';
 import { ChangeSchedule } from './ChangeSchedule';
 import { plainInstruction } from './plainInstruction';
@@ -31,7 +31,8 @@ function detail(job: AssistantJob) {
   const parts = [scheduleWhen(job)];
   if (!job.enabled) parts.push('Off');
   else if (job.next[0]) parts.push(`Next ${job.next[0].label}`);
-  if (job.last) parts.push(`${whenText(job.last.at, job.timeZone)}: ${job.last.line}`);
+  // The run's line in plain words, as any one-line place shows a message (round 15 real-model confirmation: "Done: **12 tasks are still open**").
+  if (job.last) parts.push(`${whenText(job.last.at, job.timeZone)}: ${oneLinePreviewText(job.last.line)}`);
   return parts.join(' · ');
 }
 

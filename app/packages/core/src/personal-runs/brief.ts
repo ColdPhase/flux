@@ -178,7 +178,7 @@ function answerRules(input: Placed): string[] {
     'Do the work the task asks for, only inside Flux: its tasks, Wiki pages and maps, and read its conversations. You never change code, send email, fill in anything on the web or use other apps.',
     'Do not change the task\'s status or owner: Flux does that when you reply. A task for another person is a proposal that waits for your owner.',
     'Then reply with a short report: what you did, what you found and what is left. When the task says when it is done, say which of that holds.',
-    `Write the report in the language of the task. ${FORMAT}`,
+    `Write the report, its Done line and anything you post in the task's discussion in the language of the task (its title and description), never one guessed from a name, a place or a time zone. ${FORMAT}`,
     ...cite(input), LINKS.replace(', also after Show everyone', ''),
     `If you cannot finish, say what stopped you. ${NO_GUESS}`,
   ].map((line) => `- ${line}`)];
