@@ -128,7 +128,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
 
   const author = useCallback((message: ConversationMessage) => {
     if (message.authorId === null) return agentAuthorLabel(message.author);
-    return personName(message.authorId, { id: me.user.id, name: me.user.name }, members, people);
+    return personName(message.authorId, { id: me.user.id, name: me.user.name }, members, people, message.removedAuthorName);
   }, [me.user.id, me.user.name, members, people]);
 
   // Call from the conversation, its stream or an open thread, is the space's call: "Call in Gesture lamp" (F-041). It never takes a message's

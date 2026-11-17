@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DOC_LIMITS,
+  removedName,
   decisionAppPath,
   type AddDocSectionCommand,
   type CreateDocCommand,
@@ -113,11 +114,15 @@ async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodie
   return fence;
 }
 
-async function names(ports: DocPorts, actors: ActorRef[]) {
+/** Who wrote a page or a version: a person who left the company of `workspaceId` or was removed is "Tomek Nowak (removed)" (#1424, 2026-11-17). */
+async function names(ports: DocPorts, actors: ActorRef[], workspaceId: string | null = null) {
   const unique = [...new Map(actors.map((actor) => [`${actor.kind}:${actor.id}`, actor])).values()];
-  const found = await ports.work.names(unique);
-  return (actor: ActorRef): NamedPrincipal => ({ kind: actor.kind, id: actor.id,
-    name: found.get(`${actor.kind}:${actor.id}`) ?? (actor.kind === 'agent' ? 'Agent' : 'Former member') });
+  const { names: found, gone } = workspaceId && ports.work.namesIn ? await ports.work.namesIn(unique, workspaceId) : { names: await ports.work.names(unique), gone: new Set<string>() };
+  return (actor: ActorRef): NamedPrincipal => {
+    const name = found.get(`${actor.kind}:${actor.id}`);
+    return { kind: actor.kind, id: actor.id,
+      name: name === undefined ? (actor.kind === 'agent' ? 'Agent' : 'Former member') : gone.has(`${actor.kind}:${actor.id}`) ? removedName(name) : name };
+  };
 }
 
 function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedPrincipal): DocVersionSummary {
@@ -125,13 +130,13 @@ function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedP
     ...(version.contributors ? { contributors: version.contributors.map(named), liveSnapshot: version.liveSnapshot } : {}) };
 }
 
-async function presentVersion(ports: DocPorts, version: DocVersionRecord): Promise<DocVersion> {
-  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])])]);
+async function presentVersion(ports: DocPorts, version: DocVersionRecord, workspaceId: string | null = null): Promise<DocVersion> {
+  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])], workspaceId)]);
   return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: ports.renderer.render(version.body, map), mentions };
 }
 
 async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {
-  const [view, linksOf, named] = await Promise.all([presentVersion(ports, row.current), linkReader(ports.work, [row.doc.id]), names(ports, [row.doc.createdBy])]);
+  const [view, linksOf, named] = await Promise.all([presentVersion(ports, row.current, row.doc.workspaceId), linkReader(ports.work, [row.doc.id]), names(ports, [row.doc.createdBy], row.doc.workspaceId)]);
   return {
     ...view, id: row.doc.id, workspaceId: row.doc.workspaceId, audience: { kind: 'project', projectId: row.doc.projectId },
     createdBy: named(row.doc.createdBy), startedAt: iso(row.doc.createdAt), links: linksOf(row.doc.id),
@@ -139,7 +144,7 @@ async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {
 }
 
 async function summaries(ports: DocPorts, rows: DocWithCurrent[]): Promise<DocSummary[]> {
-  const named = await names(ports, rows.map((row) => row.current.author));
+  const named = await names(ports, rows.map((row) => row.current.author), rows[0]?.doc.workspaceId ?? null);
   return rows.map(({ doc, current, projectName }) => ({
     id: doc.id, projectId: doc.projectId, projectName, workspaceId: doc.workspaceId, title: current.title,
     version: current.version, updatedBy: named(current.author), updatedAt: iso(current.createdAt), reason: current.reason, excerpt: excerpt(current.body),
@@ -260,20 +265,20 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     async listVersions(principal: Principal, docId: string, query?: PageQuery): Promise<Page<DocVersionSummary>> {
       const window = valid.page(query);
       return uow.run(async (ports) => {
-        const { id } = await authorized(ports, principal, docId, 'read');
+        const { id, workspaceId } = await authorized(ports, principal, docId, 'read');
         const { items, total } = await ports.docs.versions(id, window);
-        const named = await names(ports, items.flatMap((item) => [item.author, ...(item.contributors ?? [])]));
+        const named = await names(ports, items.flatMap((item) => [item.author, ...(item.contributors ?? [])]), workspaceId);
         return { items: items.map((item) => summaryOf(item, named)), total, ...window };
       });
     },
 
     getVersion: (principal: Principal, docId: string, version: unknown) => uow.run(async (ports) => {
-      const { id } = await authorized(ports, principal, docId, 'read');
+      const { id, workspaceId } = await authorized(ports, principal, docId, 'read');
       const number = typeof version === 'string' && /^[1-9][0-9]{0,9}$/.test(version) ? Number(version) : version;
       if (typeof number !== 'number' || !Number.isSafeInteger(number) || number < 1) throw versionNotFound();
       const record = await ports.docs.version(id, number);
       if (!record) throw versionNotFound();
-      return presentVersion(ports, record);
+      return presentVersion(ports, record, workspaceId);
     }),
 
     /** Renders text exactly as a saved version would render for this project's readers. */

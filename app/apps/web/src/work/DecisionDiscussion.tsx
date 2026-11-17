@@ -99,7 +99,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   const messages = [...stored, ...composer.sent.map((item) => item.message)
     .filter((message) => !stored.some((other) => other.id === message.id) && (!discussion?.conversationId || message.conversationId === discussion.conversationId))]
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const author = (message: ConversationMessage) => message.authorId === null ? agentDisplayName(message.author) : personName(message.authorId, me, members, people);
+  const author = (message: ConversationMessage) => message.authorId === null ? agentDisplayName(message.author) : personName(message.authorId, me, members, people, message.removedAuthorName);
   const list = useRef<HTMLOListElement>(null);
   // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
   const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;

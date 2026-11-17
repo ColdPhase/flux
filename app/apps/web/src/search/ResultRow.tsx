@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
-import type { SearchKind, SearchPlace, SearchResult, SearchText } from '@flux/contracts';
+import { removedName, type SearchKind, type SearchPlace, type SearchResult, type SearchText } from '@flux/contracts';
 import { Icon, Kreska, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
 import { plainSnippet } from './plain';
 import { useRouteLoaderData } from 'react-router';
@@ -7,6 +7,7 @@ import { SpaceFace } from '../ui/SpaceFace';
 import { PersonPhoto } from '../ui/Avatar';
 import { FileIcon } from '../composer/Attachments';
 import type { ShellData } from '../app/data';
+import { youLabel } from '../docs/format';
 
 // One search result as Search.dc.html draws it (#870): a 28 px tile for what it is, the matching text with the matched
 // words marked, and one line of where it lives, who wrote it and when. The groups are `groups.ts`.
@@ -94,8 +95,9 @@ function meta(result: SearchResult): Line[] {
 
 function pieces(result: SearchResult): Array<Line | null> {
   const place = result.place;
-  // In a DM with the author, "With Ari · Ari" would say the same thing twice.
-  const author = result.author && !(place.type === 'dm' && place.name === result.author) ? result.author : null;
+  // In a DM with the author, "With Ari · Ari" would say the same thing twice. The reader is "Kasia Wójcik (you)", as everywhere a person is
+  // named as an author (design §5 "Naming people", personas-37).
+  const author = result.author && !(place.type === 'dm' && (place.name === result.author || removedName(place.name) === result.author)) ? youLabel(result.author, !!result.mine) : null;
   const where = placeText(place);
   const { task } = result;
   if (task) return [`#${task.number}`, TASK_STATE_WORD[task.status], where];
@@ -123,8 +125,11 @@ function pieces(result: SearchResult): Array<Line | null> {
  * screen reader, which would otherwise run the pieces together ("Ada KowalskaCommunity garden sensors18:45").
  */
 export function resultName(result: SearchResult) {
-  return [plainTitle(result), ...meta(result).map(lineText)].join(', ');
+  return [personTitle(result) ?? plainTitle(result), ...meta(result).map(lineText)].join(', ');
 }
+
+/** A person found by name who is the reader: "Ana Costa (you)", as People names them (personas-37). */
+const personTitle = (result: SearchResult) => (result.kind === 'person' && result.mine ? youLabel(plainTitle(result), true) : null);
 
 /** The body of a row; the caller supplies the option element. */
 export function ResultBody({ result }: { result: SearchResult }) {
@@ -134,7 +139,7 @@ export function ResultBody({ result }: { result: SearchResult }) {
     <>
       <Tile result={result} />
       <span className="sr__main">
-        <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={result.title} /></span>
+        <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={result.title} />{personTitle(result) ? <span> (you)</span> : null}</span>
         {lines.length ? <span className="sr__meta">{lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{lineNode(line)}</span></Fragment>)}</span> : null}
       </span>
       <kbd className="sr__enter" aria-hidden="true">↵</kbd>

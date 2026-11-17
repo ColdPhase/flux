@@ -81,7 +81,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
-  const author = (id: string) => personName(id, { id: me.user.id, name: me.user.name }, data.members, core.people);
+  // A person who left the company or was removed is "Stefan Kowal (removed)", by the name the server gives their messages (#1424, 2026-11-17).
+  const removedNames = new Map(messages.flatMap((item) => (item.authorId !== null && item.removedAuthorName ? [[item.authorId, item.removedAuthorName] as const] : [])));
+  const author = (id: string) => personName(id, { id: me.user.id, name: me.user.name }, data.members, core.people, removedNames.get(id));
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
   // The owner's waiting changes (F-027 A3): refreshed when their run moves.

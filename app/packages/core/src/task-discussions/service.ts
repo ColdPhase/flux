@@ -31,10 +31,12 @@ export async function appendMessage<C extends { id: string }, I extends { byFlux
     throw new ConflictError('Five agent messages in a row need a person\'s message first', 'AGENT_TURN_LIMIT');
   return discussion.append(conversation, author, input);
 }
-const wire = (row: DiscussionMessage, names: Map<string, string>, owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage => {
+const wire = (row: DiscussionMessage, names: Map<string, string>, owners: ReadonlyMap<string, AgentProjectOwner> = new Map(), gone: ReadonlySet<string> = new Set()): ConversationMessage => {
   const contribution = messageContribution(row.kind);
+  // A person who left the company or was removed is "Stefan Kowal (removed)" to every reader of the task (#1424, 2026-11-17).
+  const removedAuthorName = row.author.kind === 'human' && gone.has(`human:${row.author.id}`) ? names.get(`human:${row.author.id}`) : undefined;
   return { id: row.id, conversationId: row.conversationId,
-    ...(row.author.kind === 'human' ? { authorId: row.author.id } : { authorId: null,
+    ...(row.author.kind === 'human' ? { authorId: row.author.id, ...(removedAuthorName ? { removedAuthorName } : {}) } : { authorId: null,
       author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent',
         ...(owners.has(row.author.id) ? { projectOwner: owners.get(row.author.id)! } : {}) } }),
     body: row.body, source: row.source, ...(row.sourceDeleted ? { sourceDeleted: true as const } : {}), sequence: row.sequence, createdAt: row.createdAt.toISOString(),
@@ -141,12 +143,13 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         const { binding, root } = bound;
         const rows = await ports.discussion.messages(binding.conversationId, window);
         const hasMoreBefore = rows.length > window.limit;
-        const names = await ports.work.names([root.author, ...rows.map((row) => row.author)]);
+        const authors = [root.author, ...rows.map((row) => row.author)];
+        const { names, gone } = ports.work.namesIn ? await ports.work.namesIn(authors, project.workspaceId) : { names: await ports.work.names(authors), gone: new Set<string>() };
         const selected = rows.slice(0, window.limit).reverse();
         const owners = await ports.authorOwners?.read(project.projectId, project.workspaceId,
           [root, ...selected].flatMap((row) => row.author.kind === 'agent' ? [row.author.id] : [])) ?? new Map<string, AgentProjectOwner>();
-        const messages = selected.map((row) => wire(row, names, owners));
-        return { ...identity(project, binding), root: wire(root, names, owners), messages,
+        const messages = selected.map((row) => wire(row, names, owners, gone));
+        return { ...identity(project, binding), root: wire(root, names, owners, gone), messages,
           messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
       });
     },

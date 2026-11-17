@@ -1,4 +1,4 @@
-import { TASK_ACTIVITY_PAGE, type NamedPrincipal, type TaskActivityEntry, type TaskActivityPage, type TaskActivityQuery } from '@flux/contracts';
+import { TASK_ACTIVITY_PAGE, removedName, type NamedPrincipal, type TaskActivityEntry, type TaskActivityPage, type TaskActivityQuery } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import type { ActorRef, TaskActivityPosition, TaskActivityRecord, WorkPorts } from './ports.js';
 
@@ -35,7 +35,7 @@ export function activityWindow(query: TaskActivityQuery | undefined) {
 
 /**
  * One newest-first page of `workId`'s activity. People and agents are named as the task names its owner and creator: a
- * person who has left shows as a former member, and an agent carries its owner only from the current project audience.
+ * person who left the company or was removed is "Tomek Nowak (removed)", and an agent carries its owner only from the current project audience.
  * The caller has already authorized reading the task.
  */
 export async function readTaskActivity(ports: WorkPorts, task: { id: string; projectId: string; workspaceId: string }, query: TaskActivityQuery | undefined): Promise<TaskActivityPage> {
@@ -51,7 +51,7 @@ export async function readTaskActivity(ports: WorkPorts, task: { id: string; pro
   const named = (who: ActorRef): NamedPrincipal => {
     const projectOwner = who.kind === 'agent' ? owners.get(who.id) : undefined;
     const name = names.get(key(who));
-    return { ...who, name: name === undefined ? (who.kind === 'agent' ? 'Agent' : 'Former member') : gone.has(key(who)) ? `${name} (removed)` : name, ...(projectOwner ? { projectOwner } : {}) };
+    return { ...who, name: name === undefined ? (who.kind === 'agent' ? 'Agent' : 'Former member') : gone.has(key(who)) ? removedName(name) : name, ...(projectOwner ? { projectOwner } : {}) };
   };
   const namedOrNull = (who: ActorRef | null) => who ? named(who) : null;
   const entries = items.map((record): TaskActivityEntry => {

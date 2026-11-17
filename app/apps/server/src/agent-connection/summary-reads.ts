@@ -4,7 +4,7 @@ import { AGENT_SUMMARY_LIMITS } from '@flux/contracts';
 import { authorLabel, digestPage, DomainError, NotFoundError, summaryCursorText, summaryNote, summaryRange, type DigestMessage, type SummaryCursor, type SummaryRange } from '@flux/core';
 import { schema, type Database, type Transaction } from '@flux/db';
 import { taskDiscussionInTransaction } from '../work/task-discussions.js';
-import { spaceReadersNamed, withAgentLabels } from './authors.js';
+import { spaceAuthorsNamed, withAgentLabels } from './authors.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -128,7 +128,7 @@ async function readDm(tx: Transaction, dmId: string, range: SummaryRange, limit:
 /** A space's messages as the digest tells them: each author as people see them in this space (#1160), and the thread of a main conversation's message. */
 async function projectDigest(ctx: FluxAgentReadContext, scope: Extract<Scope, { projectId: string }>, rows: Stored[]): Promise<DigestMessage[]> {
   const { tx } = ctx;
-  const names = await spaceReadersNamed(tx, scope.projectId, rows.flatMap((row) => row.humanId !== null ? [row.humanId] : []));
+  const names = await spaceAuthorsNamed(tx, scope.projectId, rows.flatMap((row) => row.humanId !== null ? [row.humanId] : []));
   // The agents among the authors are named with their owners, by the space's own rule.
   const agents = [...new Map(rows.flatMap((row) => row.agentId !== null ? [[row.agentId, { kind: 'agent' as const, id: row.agentId, name: row.agentName ?? 'Agent' }] as const] : [])).values()];
   const labelled = new Map((await withAgentLabels(tx, scope.projectId, ctx.workspaceId, agents)).map((agent) => [agent.id, agent.name]));

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
-  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES, agentWords, joinHyphenatedWords, viaName,
+  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES, agentWords, joinHyphenatedWords, removedName, viaName,
   type SearchFilterType, type SearchQuery, type SearchResponse, type SearchResult,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
@@ -145,7 +145,10 @@ function taskOf(row: SearchRow): SearchResult['task'] {
   return row.kind === 'work' && row.workNumber !== null && status ? { number: row.workNumber, status } : undefined;
 }
 
-function toResult(row: SearchRow, marks: SearchMarks | null): SearchResult {
+/** A person author as every view names them: "Stefan Kowal (removed)" once they left the company or were removed (#1424, 2026-11-17). */
+const personName = (row: SearchRow) => (row.authorRemoved ? removedName(row.authorName ?? '') : row.authorName ?? '');
+
+function toResult(row: SearchRow, marks: SearchMarks | null, reader: string): SearchResult {
   const source = SEARCH_SOURCES[row.kind];
   const task = taskOf(row);
   const marked = (text: SearchRow['title']) => (marks ? markSearchWords(text, marks) : text);
@@ -158,7 +161,8 @@ function toResult(row: SearchRow, marks: SearchMarks | null): SearchResult {
     snippet: source.textIsTitle || !row.snippet ? null : marked(row.snippet),
     ...(task ? { task } : {}),
     place: searchPlaceOf(row),
-    author: row.author?.kind === 'agent' ? agentWords(row.authorName ?? 'Agent', row.agentOwnerName) : row.via && row.authorName ? viaName(row.authorName, row.via, row.viaAgent) : row.authorName,
+    author: row.author?.kind === 'agent' ? agentWords(row.authorName ?? 'Agent', row.agentOwnerName) : row.via && row.authorName ? viaName(personName(row), row.via, row.viaAgent) : row.authorName === null ? null : personName(row),
+    ...((row.kind === 'person' ? row.objectId === reader : row.author?.kind === 'human' && row.author.id === reader) ? { mine: true as const } : {}),
     ...(row.agentColour && (row.author?.kind === 'agent' || row.viaAgent) ? { agentColour: row.agentColour } : {}),
     at: row.at.toISOString(),
     target: source.target(row),
@@ -244,7 +248,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       const page = rows.slice(0, plan.limit);
       const more = rows.length > plan.limit;
       return {
-        items: page.map((row) => toResult(row, marks)),
+        items: page.map((row) => toResult(row, marks, plan.reader)),
         next: more ? ports.cursors.seal(principal, scope, page[page.length - 1]!.position) : null,
         ...(sealed.unavailable.length ? { sealedUnavailable: sealed.unavailable } : {}),
       };

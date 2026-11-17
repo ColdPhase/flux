@@ -111,7 +111,7 @@ export interface TaskDiscussionPorts {
    */
   inbox?: { answerIn(userId: string, projectId: string, conversationId: string): Promise<string[]> };
   access: WorkAccess;
-  work: Pick<WorkRepository, 'locate' | 'findWork' | 'names' | 'prepareTaskUse'>;
+  work: Pick<WorkRepository, 'locate' | 'findWork' | 'names' | 'namesIn' | 'prepareTaskUse'>;
   discussion: TaskDiscussionRepository;
   events: {
     record(principal: Principal, workspaceId: string, kind: TaskDiscussionEventIntent['kind'],
