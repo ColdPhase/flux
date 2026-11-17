@@ -19,6 +19,12 @@ export interface AcceptSteps {
 const conflicting = (error: unknown) => error instanceof ApiError && (error.status === 409 || error.status === 404 || error.status === 403);
 
 /**
+ * The Undos of this tab still on their way, by decision: Accept pressed again before one is answered waits for it and sends the version it
+ * left, so a quick Z then A is not refused as stale (the card back in the list still has the version from before the accept).
+ */
+const returning = new Map<string, Promise<Decision>>();
+
+/**
  * Accept works at once everywhere, with a 10 s Undo (founder decision, Hubert, 2026-11-15, round 8, #1424): the Inbox (`A`, the button) and
  * the decision's panel accept the same way. The decision is accepted for everyone the moment Accept is pressed, as a proposal reaches
  * everyone at once (#1424 L), and the toast's Undo takes the acceptance back for everyone (`POST /decisions/:id/unaccept`): proposed again,
@@ -32,7 +38,12 @@ export function useAcceptDecision(userId: string) {
     const key = `decision:${decision.id}`;
     // Every queue and count of this tab leaves it out while the accept is on its way, and drops it before its next read lands.
     const release = holdAccepting(decision.id);
-    const sent = acceptDecision(decision, crypto.randomUUID());
+    const idempotencyKey = crypto.randomUUID();
+    const before = returning.get(decision.id);
+    const sent = before
+      ? before.then((proposed) => acceptDecision({ id: decision.id, version: Math.max(proposed.version, decision.version) }, idempotencyKey),
+        () => acceptDecision(decision, idempotencyKey))
+      : acceptDecision(decision, idempotencyKey);
     sent.then((accepted) => { announceAcceptedInboxItem(userId, key); release(); announceInboxChange(); steps.accepted?.(accepted); }, (error: unknown) => {
       refused = true;
       release();
@@ -47,6 +58,9 @@ export function useAcceptDecision(userId: string) {
       undone = true;
       // Pressed before the accept was answered, it is taken back as soon as it is accepted.
       const back = sent.then((accepted) => unacceptDecision(accepted));
+      returning.set(decision.id, back);
+      const settled = () => { if (returning.get(decision.id) === back) returning.delete(decision.id); };
+      back.then(settled, settled);
       steps.undoing?.(back);
       back.then(() => { announceReturnedInboxItem(userId, key); announceInboxChange(); }, (error: unknown) => {
         if (refused) return;

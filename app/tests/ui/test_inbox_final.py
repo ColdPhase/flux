@@ -793,7 +793,7 @@ class InboxFinal(unittest.TestCase):
         if home:
             page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         held = []
-        state = {"hold": False}
+        state = {"hold": False, "landed": False}
 
         def on_queue(route):
             answer = route.fetch()
@@ -801,7 +801,9 @@ class InboxFinal(unittest.TestCase):
                 held.append((route, answer))
                 mark(page, "heldRead")
             else:
-                self.assertIn(f"decision:{proposed['id']}", [item["key"] for item in answer.json()["items"]])
+                # Before the accept lands a read still has the proposal; a read after it (the stream's event, once the held reads go) has not.
+                if not state["landed"]:
+                    self.assertIn(f"decision:{proposed['id']}", [item["key"] for item in answer.json()["items"]])
                 route.fulfill(response=answer)
                 mark(page, "cachedRead")
 
@@ -827,6 +829,7 @@ class InboxFinal(unittest.TestCase):
         accepted.pop().continue_()
         seen(page, "heldRead")
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to land")
+        state["landed"] = True
         expect(card).to_have_count(0)
         self.assertFalse(page.evaluate("() => window.__reappeared"), "the cached proposal never reappears after success")
         release()
