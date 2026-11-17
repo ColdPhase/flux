@@ -531,11 +531,13 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
     const scroller = parent.current?.closest<HTMLElement>('.wiki-main');
     if (!heading || !view || !scroller) return;
     landing.current();
+    // The page scrolls (smoothly unless motion is reduced); it lands through the editor, which draws the heading's lines before it
+    // scrolls to them, so the page is not moved off them while they are drawn (WebKit, 2026-11-17).
     landing.current = scrollPage(scroller, () => {
       if (!view.dom.isConnected) return null;
       const block = view.lineBlockAt(Math.min(heading.at, view.state.doc.length));
       return scroller.scrollTop + view.documentTop + block.top - scroller.getBoundingClientRect().top - 24;
-    });
+    }, () => view.dispatch({ effects: EditorView.scrollIntoView(Math.min(heading.at, view.state.doc.length), { y: 'start', yMargin: 24 }) }));
   };
   useEffect(() => () => landing.current(), []);
   // A section an answer cited (C-62) opens at its heading: the current version's address opens this page with its `#section-N` (round 15

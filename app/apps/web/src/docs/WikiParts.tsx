@@ -64,14 +64,15 @@ export function useReferenceClicks() {
 
 /**
  * Scrolls the page so `top()` (the scroll position a heading needs) is reached, smoothly unless the person reduces
- * motion. Returns how to stop a landing still in progress.
+ * motion, and keeps it there while the page settles (`landOn`, which lands with `place()` when given). Returns how to
+ * stop a landing still in progress.
  */
-export function scrollPage(scroller: HTMLElement, top: () => number | null): () => void {
+export function scrollPage(scroller: HTMLElement, top: () => number | null, place?: () => void): () => void {
   const target = top();
   if (target === null) return () => undefined;
-  const smooth = !prefersReducedMotion();
-  scroller.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
-  return smooth ? landOn(scroller, top) : () => undefined;
+  const landing = landOn(scroller, top, place);
+  scroller.scrollTo({ top: Math.max(0, target), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  return landing;
 }
 
 export interface ContentsHeading { id: string; text: string; level: number }
