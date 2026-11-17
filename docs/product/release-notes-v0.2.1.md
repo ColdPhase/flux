@@ -94,6 +94,8 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
   excerpt. No OCR, and nothing in an encrypted space.
 - **Search ranks by BM25** in Flux's database: any of your words, Polish and English forms alike, accents ignored, best match first,
   and always only among what you may read. A word that occurs more often in a message ranks it higher.
+- **Search finds every file by its name** (a photo, a video, a spreadsheet), and **a match with a typo shows only when nothing else
+  matches**: "price list" lists the price list, not a person named "Lis".
 - **Optional local embeddings** for a larger server: `FLUX_EMBEDDINGS=on` (or the release's `compose.embeddings.yaml`) adds one
   container that lets search also rank by meaning, so an English question finds a Polish message. It needs about 3.2 GiB of RAM more,
   downloads a 2.3 GB model on its first start, and embeds about 10,000 messages in 17 minutes of two cores. Off by default; encrypted
@@ -143,6 +145,17 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
 - **Settings keep only what the system does not decide.** Appearance has Theme and the face switch; text size and reduced motion follow
   your system. Search's Recent lists a space once.
 - Buttons, switches and segmented controls look the same on every screen and are clearly visible in light and dark.
+
+## The Inbox, decisions and people who leave
+
+- **The Inbox finishes what it shows.** A task someone or an agent gives you is an Inbox item, and **Done** on it, or on your own blocked
+  task, finishes the task, with Undo. An answer to a question you asked reaches you. "2 for later" and "4 done today" under the list open
+  their lists, with Bring back now and Put back.
+- **Accept works at once** in the Inbox and in the decision's panel, with a 10 s Undo that takes it back for everyone (a decision it
+  replaced comes back too). A proposed decision reaches everyone at once and its Undo withdraws it. A decision has one discussion: the
+  thread under its card and the decision's panel show the same messages. A guest who can write in a space accepts its decisions there.
+- **A removed person is named "Full Name (removed)"** in messages, discussions, task history, notices, Search and what agents read of a
+  space. **Restore** brings them back as they were: their role, their spaces and direct messages, and what they had put off in the Inbox.
 
 ## Files, previews and video
 
