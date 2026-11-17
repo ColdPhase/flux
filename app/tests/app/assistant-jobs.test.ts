@@ -6,7 +6,7 @@ import {
   type AssistantJob, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
-import { assistantTick, nothingToReport, PERSONAL_RUN_JOB, resultOf, settleOne, type BackgroundStart, type Principal } from '@flux/core';
+import { assistantTick, chatBody, nothingToReport, PERSONAL_RUN_JOB, resultOf, settleOne, type BackgroundStart, type Principal } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
 import { db, pool } from './support/db.js';
@@ -247,6 +247,14 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     assert.deepEqual(resultOf(run({ status: 'completed', answerBody: 'Nothing to report' }), 'UTC', at), { state: 'done', line: 'Done: nothing to report' });
     assert.deepEqual(resultOf(run({ status: 'completed', answerBody: 'Three tasks are due.\nTwo are mine.' }), 'UTC', at), { state: 'done', line: 'Done: Three tasks are due.' });
     assert.deepEqual(resultOf(run({ status: 'stopped' }), 'UTC', at), { state: 'skipped', line: 'Stopped' });
+  });
+
+  test('a schedule\'s result in the chat has no bare source numbers it cannot list (train 37 row 28)', () => {
+    const sources = [{ type: 'work', id: 'a' }, { type: 'work', id: 'b' }];
+    assert.equal(chatBody('done', 'Done: x', { answerBody: '- #4 Print flyers: new [1]\n- #6 Banner quote: due Friday [2]', answerSources: sources as never }),
+      '- #4 Print flyers: new\n- #6 Banner quote: due Friday');
+    assert.equal(chatBody('done', 'Done: x', { answerBody: 'Nothing to report.', answerSources: [] }), null);
+    assert.equal(chatBody('failed', 'Couldn\'t run', { answerBody: null, answerSources: [] }), 'Couldn\'t run');
   });
 
   test('Run now, pause, edit and delete with Undo: the owner\'s own controls; one run at a time', async () => {

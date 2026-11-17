@@ -4,7 +4,7 @@ import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } 
 import { onPageLive, pageLeaving } from '../api/pageLeaving';
 import { streamLive, useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
-import { isWorking } from '../assistant/format';
+import { BUDGET_WAITING, budgetWaitText, isWorking, waitsForBudget } from '../assistant/format';
 import { Icon, Kreska, agentHue, useToast, type KreskaExpression } from '../ui';
 import { useSmallMoments } from './smallMoments';
 import { getOwnWorkingAgents } from '../agents/api';
@@ -126,10 +126,11 @@ function useWorkingRun(identity: string) {
 }
 
 const face = (run: AssistantRun): KreskaExpression =>
-  run.stopRequested ? 'idle' : run.status === 'queued' ? 'waiting' : run.status === 'reading' ? 'reading' : 'thinking';
+  run.stopRequested ? 'idle' : waitsForBudget(run) ? 'asleep' : run.status === 'queued' ? 'waiting' : run.status === 'reading' ? 'reading' : 'thinking';
 
 const doing = (run: AssistantRun) =>
-  run.stopRequested ? 'stopping…' : run.status === 'queued' ? 'getting ready'
+  // A run that waits for the API key's next day says so, never "getting ready" (train 37 row 36).
+  run.stopRequested ? 'stopping…' : waitsForBudget(run) ? BUDGET_WAITING : run.status === 'queued' ? 'getting ready'
     // F-027 AST-10: the owner's own Claude Code reads for itself; one plain word while it works.
     : run.engine === 'runtime' ? 'working…' : run.status === 'reading' ? 'reading the conversation' : 'writing an answer';
 
@@ -270,8 +271,11 @@ export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   // M18), in the words every place uses for an agent on a task ("Working on #9 · …").
   const task = run.task && run.projectId !== null ? run.task : null;
   const name = task ? agents.find((agent) => agent.id === run.agentId)?.name ?? 'Your agent' : 'Your assistant';
-  const line = task ? (run.stopRequested ? 'stopping…' : workingLine(task.number, task.title)) : doing(run);
-  const label = stopping ? `Stopping ${task ? name : 'your assistant'}…` : task ? `${name} · ${line}` : `Your assistant is ${doing(run)}`;
+  const waits = waitsForBudget(run) && !run.stopRequested;
+  const line = task ? (run.stopRequested ? 'stopping…' : waits ? BUDGET_WAITING : workingLine(task.number, task.title)) : doing(run);
+  // Its name says the whole truth: when it starts again and where the budget is raised.
+  const label = stopping ? `Stopping ${task ? name : 'your assistant'}…` : waits && run.resumesAt ? `${name} · ${budgetWaitText(run.resumesAt)}`
+    : task ? `${name} · ${line}` : `Your assistant is ${doing(run)}`;
   const stopLabel = task ? `Stop ${name}` : 'Stop your assistant';
   // Where the person asked (#842): a conversation, a space's main conversation, a direct message or the agent's own chat; a task run, its task.
   const destination = task ? `/projects/${run.projectId}/tasks?open=work:${task.id}`

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { AgentColour, ConversationMessage } from '@flux/contracts';
+import { ownerInLabel, type AgentColour, type ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles } from '../composer/Outbox';
@@ -181,7 +181,6 @@ export function shownAnswer(message: { via?: string | undefined; viaColour?: Age
   return message.via && message.viaColour ? { agent: message.via, colour: message.viaColour } : null;
 }
 
-const firstWord = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** "Hubert's Assistant" (the asker's first name and the agent's own name), and what a screen reader reads: "Hubert's Assistant, shown by Hubert". */
 /**
  * The colour of a message's face (#1528): a shown answer's agent's, or an agent author's own, which every read carries; none for a person.
@@ -191,14 +190,16 @@ export function messageHue(message: { via?: string | undefined; viaColour?: Agen
 }
 
 export function shownLabel(shown: { agent: string }, asker: string): { label: string; spoken: string } {
-  const first = firstWord(asker);
+  // The asker as an agent's label names its owner (C-56, #1424): their first name, or the whole marked name of someone removed, "Marek Zieliński
+  // (removed)'s Assistant" (train 37 rows 32-33).
+  const first = ownerInLabel(asker);
   return { label: `${first}'s ${shown.agent}`, spoken: `${first}'s ${shown.agent}, shown by ${first}` };
 }
 
 /** The name line of a shown answer: its label and the "Agent" tag, with "shown by" for a screen reader. */
 export function ShownAnswerName({ shown, asker }: { shown: { agent: string; colour?: AgentColour }; asker: string }) {
   const { label } = shownLabel(shown, asker);
-  return <><strong><AgentIdentity name={label} icon={false} hue={shown.colour} /></strong><span className="ui-vh">, shown by {firstWord(asker)}</span></>;
+  return <><strong><AgentIdentity name={label} icon={false} hue={shown.colour} /></strong><span className="ui-vh">, shown by {ownerInLabel(asker)}</span></>;
 }
 
 /**

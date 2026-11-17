@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { MY_AGENTS_PATH, taskActivityPath, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskDiscussionPath, workItemPath,
   type MyAgentList, type Project, type TaskActivityPage, type TaskAgentState, type TaskDiscussion, type WorkItem, type Workspace } from '@flux/contracts';
-import { taskAgentState, taskRunClientId, type Principal, type TaskAgentFacts } from '@flux/core';
+import { TAKEN_WORDS, takenWords, taskAgentState, taskRunClientId, type Principal, type TaskAgentFacts } from '@flux/core';
 import { createAgentTaskDrain } from '../../apps/server/src/agent-tasks/drain.js';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows } from '@flux/db';
@@ -304,6 +304,13 @@ describe('the state line of an agent on a task (#856)', () => {
     assert.deepEqual(line({ viewerId: 'jonas', waitingChanges: 2, run: run({ status: 'completed' }) }), ['waiting_for_ok', 'Waiting for Ada\'s OK']);
     assert.deepEqual(line({ run: run({ status: 'unavailable', endReason: 'plan_limit' }), successor: { resumeAt: new Date('2026-11-07T14:00:00Z') } }), ['paused_by_limit', 'Claude limit reached']);
     assert.deepEqual(line({ run: run({ status: 'provider_failed', endReason: 'unknown' }) }), ['failed', 'Couldn\'t finish']);
+    // Train 37 row 36: a run that waits for the API key's next day says so, never "Working on" or "on it", and the panel adds when and where to raise it.
+    const waiting = taskAgentState(facts({ run: run({ status: 'queued', engine: 'server', endReason: 'budget', resumeAt: new Date('2026-11-18T00:00:00+01:00') }) }));
+    assert.deepEqual([waiting.line, waiting.text, waiting.budget, waiting.resumesAt], ['paused_by_limit', 'Waiting: today’s AI budget is used up', true, '2026-11-17T23:00:00.000Z']);
+    assert.equal(taskAgentState(facts({ viewerId: 'jonas', run: run({ status: 'queued', engine: 'server', endReason: 'budget', resumeAt: new Date('2026-11-18T00:00:00+01:00') }) })).text,
+      'Waiting: Ada’s AI budget for today is used up');
+    assert.equal(takenWords({ resumeAt: new Date('2026-11-18T00:00:00+01:00'), endReason: 'budget' }), 'Waiting: today’s AI budget is used up, so I’ll start when it starts again.');
+    assert.equal(takenWords({ resumeAt: null, endReason: null }), TAKEN_WORDS, 'a run that starts now is on it');
     // Done is the same for every reader (#856, personas-26); only the agent's owner may take it back.
     const doneFor = (viewerId: string) => { const state = taskAgentState(facts({ viewerId, run: run({ status: 'completed' }), task: { ownerUserId: null, ownerAgentId: 'a1', status: 'done' } })); return [state.line, state.text, state.canTakeBack]; };
     assert.deepEqual(doneFor('ada'), ['done', 'Marked done', true]);

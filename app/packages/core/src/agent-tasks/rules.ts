@@ -13,6 +13,17 @@ export function taskRunPrompt(task: { number: number; title: string }): string {
 export const TAKEN_WORDS = 'Got it, I\'m on it.';
 
 /**
+ * What it says instead when its run waits for the key's next day (v0.2.1 real-model gate, train 37 row 36): the owner's API key has nothing left
+ * today, so "I'm on it" would be a promise it cannot keep. The task's state line says when it starts and where the budget is raised.
+ */
+export const BUDGET_WAIT_WORDS = 'Waiting: today\u2019s AI budget is used up, so I\u2019ll start when it starts again.';
+
+/** The words of a task's start: on it, or waiting for the key's next day when its run was admitted paused (#854). */
+export function takenWords(run: { resumeAt: Date | null; endReason: string | null }): string {
+  return run.resumeAt && run.endReason === 'budget' ? BUDGET_WAIT_WORDS : TAKEN_WORDS;
+}
+
+/**
  * One owner assignment, one run: the same assignment event always names the same run, so a drained event that is handled twice
  * (a crash after the run was made) meets its earlier run instead of starting a second.
  */
@@ -75,15 +86,19 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
     const mayStopAnswer = viewerId === answer.ownerId || facts.viewerIsAdmin;
     const resumes = answer.run.status === 'queued' && answer.run.resumeAt && answer.run.endReason !== 'no_room' ? answer.run.resumeAt : null;
     // A paused answer shows as paused, with when it resumes: it is not "didn't answer".
-    if (resumes) return state('paused_by_limit', `Waiting for ${answer.name} to answer · ${answer.run.engine === 'server' ? 'the daily budget is used' : `${vendor(answer.run)} limit reached`}`,
-      { resumesAt: resumes.toISOString(), canStop: mayStopAnswer });
+    if (resumes) return state('paused_by_limit', `Waiting for ${answer.name} to answer · ${answer.run.engine === 'server' ? 'today\u2019s AI budget is used up' : `${vendor(answer.run)} limit reached`}`,
+      { resumesAt: resumes.toISOString(), canStop: mayStopAnswer, ...(answer.run.engine === 'server' ? { budget: true } : {}) });
     return state('working', `Waiting for ${answer.name} to answer…`, { canStop: mayStopAnswer });
   }
   if (IN_FLIGHT.has(run.status)) {
     if (!holds) return none();
     if (run.status === 'queued') {
       const resumes = run.resumeAt && run.endReason !== 'no_room' ? run.resumeAt : null;
-      if (resumes) return state('paused_by_limit', run.engine === 'server' ? 'The daily budget is used' : `${vendor(run)} limit reached`, { resumesAt: resumes.toISOString(), canStop: mayStop });
+      // The key's daily budget (train 37 row 36): the plain truth, the owner's own words for the owner; the panel adds when it starts again.
+      if (resumes) return run.engine === 'server'
+        ? state('paused_by_limit', mine ? 'Waiting: today\u2019s AI budget is used up' : `Waiting: ${agent.owner.name}\u2019s AI budget for today is used up`,
+          { resumesAt: resumes.toISOString(), canStop: mayStop, budget: true })
+        : state('paused_by_limit', `${vendor(run)} limit reached`, { resumesAt: resumes.toISOString(), canStop: mayStop });
       return state('waiting_for_room', run.endReason === 'no_room' ? 'Waiting for room on the server' : 'Waiting for its turn', { canStop: mayStop });
     }
     return state('working', run.stopRequestedAt ? 'Stopping…' : 'Working…', { canStop: mayStop && !run.stopRequestedAt });

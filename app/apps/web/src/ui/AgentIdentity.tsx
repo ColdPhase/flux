@@ -22,7 +22,9 @@ export function AgentIdentity({ name, owner, icon = 20, expression, hue, classNa
       {icon ? <Kreska size={icon} expression={expression} hue={hue} /> : null}
       <span className="agent-id__label" title={owner ? `${name} · ${ownerInLabel(owner)}'s agent` : undefined}>
         <span className="agent-id__name">{name}</span>
-        {owner ? <span className="agent-for">{` · ${ownerInLabel(owner)}'s agent`}</span> : null}
+        {/* The space before the dot stands outside the owner's part: where that part is an inline block (a conversation line's meta), a space at
+            its start would be dropped, "Assistant· Ola's agent" (train 37 row 24). */}
+        {owner ? <>{' '}<span className="agent-for">{`· ${ownerInLabel(owner)}'s agent`}</span></> : null}
       </span>
       {owner ? null : <AgentTag hue={hue} />}
     </span>

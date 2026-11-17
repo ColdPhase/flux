@@ -171,7 +171,9 @@ class AiConnectionSettings(unittest.TestCase):
         expect(metadata.locator("div").filter(has_text="Provider")).to_contain_text("OpenAI-compatible endpoint")
         expect(metadata.locator("div").filter(has_text="Model")).to_contain_text("llama3.1:8b")
         expect(metadata).to_contain_text(ENDPOINT)
-        expect(metadata).to_contain_text("$0.00 input · $0.00 output per 1M tokens · Entered by you")
+        # The same plain words as the Connect AI form (train 37 row 5).
+        expect(metadata).to_contain_text("$0.00 for what you send and $0.00 for what it writes, per million tokens · Entered by you")
+        expect(metadata).not_to_contain_text("per 1M tokens")
         expect(key.get_by_test_id("key-usage")).to_have_text("$0.00 of $5 today")
         saved = self.connection(page, provider="openai_compatible")
         self.assertEqual((saved["provider"], saved["model"], saved["baseUrl"], saved["price"]["source"], saved["dailyBudgetCents"]),

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { messageLinkUrls, messagePreview, parseInline, parseMessage, plainMessageText, plainPreviewText, withoutCiteMarks, type MessageBlock, type MessageInline } from '@flux/contracts';
 import { plainWords } from '../../apps/web/src/work/messageWords.js';
+import { plainInstruction } from '../../apps/web/src/my-agents/plainInstruction.js';
 
 // The one parser of the message subset (#1247): `**bold**`, `*italic*`, `` `code` ``, fenced code, `- ` and `1. ` lists and `> ` quotes.
 // It reads text and returns plain data, so what it returns is all the renderer can draw: text, bold, italic, code, quote, list, code block.
@@ -257,7 +258,19 @@ describe('an agent\'s cite marks are never words for a reader (C-62, v0.2.1 real
     assert.equal(withoutCiteMarks('items[0] and [task:not-an-id] and [1]'), 'items[0] and [task:not-an-id] and [1]');
   });
   test('a preview is plain words: no marks, a page by its title, a list on its lines', () => {
-    assert.equal(plainPreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200\n- It fits Fair contacts\n- Cheaper');
+    // A list reads as words in a one-line place (train 37 row 22: "Reasons: - Setup time…" in the Inbox).
+    assert.equal(plainPreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200\nIt fits Fair contacts; Cheaper');
+    assert.equal(plainPreviewText('Reasons:\n- Setup time: the stand needs 45 minutes.\n- Volunteers arrive at 8:00'), 'Reasons:\nSetup time: the stand needs 45 minutes. Volunteers arrive at 8:00');
+    assert.ok(!/(^|\s)- /.test(plainPreviewText('Reasons:\n- Setup\n- Power').replace(/\s+/g, ' ')), 'no list dash is left');
     assert.equal(messagePreview(`Done [task:${id}]`), 'Done');
+  });
+});
+
+describe('a schedule card says what it does in plain words (train 37 row 16)', () => {
+  test('words about cite marks and tool names are left out; the rest is as the agent wrote it', () => {
+    assert.equal(plainInstruction('Give a short list: task name, what changed (new, status, due date), and the cite mark. If nothing changed, say so.'),
+      'Give a short list: task name, what changed (new, status, due date). If nothing changed, say so.');
+    assert.equal(plainInstruction('List open tasks with flux_list_work. Add the cite mark after each line. Keep it short.'), 'List open tasks with list work. Keep it short.');
+    assert.ok(!/cite/i.test(plainInstruction('Add cite marks to every line.')));
   });
 });

@@ -1,8 +1,8 @@
 import { FIRST_AGENT_NAME, type CreateMyAgentCommand, type MyAgent } from '@flux/contracts';
-import { createAgent, DomainError, InvalidInputError, type Principal } from '@flux/core';
+import { createAgent, DomainError, InvalidInputError, resumeBudgetWaits, type Principal } from '@flux/core';
 import { accessPorts, agentTaskRows, assistantJobRows, lockAssistantOwner, type Database } from '@flux/db';
 import { workUseCases } from '../work/adapters.js';
-import { personalRunUseCases, type PersonalRunComposition } from './adapters.js';
+import { personalRunPorts, personalRunUseCases, type PersonalRunComposition } from './adapters.js';
 
 /**
  * Makes one of the caller's agents in the caller's transaction (F-036 AG-1): its identity and its setup together or not at all. With
@@ -91,6 +91,20 @@ export function agentsSettler(db: Database, composition: PersonalRunComposition,
       });
     } catch (error) {
       if (!(error instanceof DomainError)) log.warn({ error }, 'The agents could not be moved onto the connection that is left');
+    }
+  };
+}
+
+/**
+ * Called after the owner changed a key's daily budget (train 37 row 37): the requests that waited on it for its next day are offered to the
+ * worker again at once, and one the new budget still cannot hold waits again with the same words. It never fails the change that called it.
+ */
+export function budgetWaitsResumer(db: Database, composition: PersonalRunComposition, log: { warn(object: unknown, message: string): void } = { warn: () => undefined }) {
+  return async (ownerUserId: string, connectionId: string): Promise<void> => {
+    try {
+      await db.transaction(async (tx) => { await resumeBudgetWaits(personalRunPorts(tx, composition.queue), ownerUserId, connectionId); });
+    } catch (error) {
+      log.warn({ error }, 'The requests waiting for the key\'s next day could not be started again');
     }
   };
 }

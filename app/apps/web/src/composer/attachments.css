@@ -69,6 +69,10 @@ a.file-row__act:hover { background: var(--hov); color: var(--t1); }
 span.photo-grid__open { cursor: default; }
 .photo-grid__open:disabled { cursor: progress; }
 .photo-grid__open img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* One photo shows whole, in its own shape (train 37 row 31: a plan cut at "tand layout"); 4:3 holds its place only while it loads. A very tall
+   or wide one is fitted inside its bounds, never cut. */
+.photo-grid--1 .photo-grid__tile[data-photo-state="ready"] { aspect-ratio: auto; }
+.photo-grid--1 .photo-grid__tile[data-photo-state="ready"] img { height: auto; max-height: 420px; object-fit: contain; }
 .photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: var(--fs-xl); font-weight: 600; color: #fff; }
 .photo-grid:has(.photo-grid__file) + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-bubble + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-files + .photo-meta { display: none; }
 .project-convo__message > .photo-grid { width: min(100%, 340px); }
@@ -180,12 +184,18 @@ span.photo-grid__open { cursor: default; }
 .is-dropping { outline: 2px dashed var(--t2); outline-offset: -6px; border-radius: var(--r-lg); }
 
 /* Inline references in text: chips on the text baseline. */
-.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; margin: 0 1px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
+/* No margin: punctuation after a chip sits against it ("#6, …", "(#15)"; train 37 row 10). */
+.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 6px; margin: 0; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
 .ref-chip svg { align-self: center; flex: none; }
 /* A map thought's own address (#1376): a chip that opens the map with the thought selected; one the reader may not read says so. */
 a.ref-chip--thought { text-decoration: none; cursor: pointer; }
 a.ref-chip--thought:hover { background: var(--hov); }
 a.ref-chip--thought:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* A task's or a Wiki page's chip opens it (train 37 row 9): a button that reads as the chip. */
+button.ref-chip--open { border: 0; font: inherit; font-weight: 500; line-height: 1.35; cursor: pointer; }
+button.ref-chip--open:hover { background: var(--hov); }
+button.ref-chip--open:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+button.ref-chip--open[aria-busy] { cursor: progress; }
 .ref-chip--thought.is-unavailable { color: var(--t2); font-weight: 400; }
 .ref-chip__face { position: relative; align-self: center; flex: none; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-face); font-weight: 600; }
 /* As the 16 px Avatar: the initials are --fs-face (px, #1370) scaled to the circle, so "AK" never runs wider than the face (#1373). */

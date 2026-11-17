@@ -84,7 +84,10 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
       <div className="wd-agent__line" role="status" aria-live="polite">
         <Kreska size={20} expression={FACE[state.line]} hue={hue(state.agent)} />
         <AgentIdentity name={state.agent.name} owner={state.agent.owner.name} icon={false} />
-        <span className="wd-agent__text">{state.text}{state.resumesAt ? `, resumes at ${clock(state.resumesAt)}` : ''}</span>
+        <span className="wd-agent__text">{state.budget && state.resumesAt
+          // The key's budget (train 37 rows 36-37): when it starts again, and for its owner where the budget is raised.
+          ? `${state.text}. It starts again at ${clock(state.resumesAt)}${state.agent.owner.id === me.user.id ? ', or raise the budget in Settings › AI' : ''}.`
+          : `${state.text}${state.resumesAt ? `, resumes at ${clock(state.resumesAt)}` : ''}`}</span>
         <span className="wd-agent__actions">
           {state.canStop ? <Button variant="secondary" size="sm" busy={busy === 'stop'} onClick={() => void act('stop', () => stopTaskAgent(item.id))}>Stop</Button> : null}
           {state.canTryAgain ? <Button variant="secondary" size="sm" busy={busy === 'retry'} onClick={() => void act('retry', () => retryTaskAgent(item.id))}>Try again</Button> : null}

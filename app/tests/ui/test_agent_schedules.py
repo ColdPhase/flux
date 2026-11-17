@@ -216,6 +216,19 @@ class AgentSchedulesJourney(unittest.TestCase):
         header.get_by_role("button", name="Undo", exact=True).click()
         expect(header.locator("[data-schedule]")).to_have_count(1)
         self.no_horizontal_scroll(page)
+        # Escape closes the list and the focus is back on its line (train 37 row 29: it stayed open over the chat).
+        header.locator("[data-schedule]").get_by_role("button", name="Pause Garden summary").focus()
+        page.keyboard.press("Escape")
+        expect(header.locator("[data-schedule]")).to_have_count(0)
+        expect(header.locator(".agc__sched-row")).to_have_attribute("aria-expanded", "false")
+        expect(header.locator(".agc__sched-row")).to_be_focused()
+        # Opened and left with Escape while typing in the chat, it closes too and the words stay where they are typed.
+        header.locator(".agc__sched-row").click()
+        expect(header.locator("[data-schedule]")).to_have_count(1)
+        page.locator("#agent-composer").fill("Thanks")
+        page.keyboard.press("Escape")
+        expect(header.locator("[data-schedule]")).to_have_count(0)
+        expect(page.locator("#agent-composer")).to_be_focused()
         # The agent's page lists none: the chat is the one place (#1419).
         listed = self.page()
         listed.goto(f"/settings/agents/{self.ids['agent']}")

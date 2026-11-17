@@ -1,9 +1,11 @@
 import { Fragment, useMemo, type ReactNode } from 'react';
+import { useInRouterContext } from 'react-router';
 import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, type MessageInline, type ProjectPerson } from '@flux/contracts';
 import { Icon, Kreska, initials } from '../ui';
 import { CodeBlock } from './CodeBlock';
 import { useLinkPreviews } from './linkPreviews';
 import { ThoughtChip, thoughtLink } from './thoughtLinks';
+import { RefChipOpen } from './refChips';
 import '../composer/attachments.css';
 import './message-format.css';
 
@@ -34,6 +36,7 @@ function tokens(names: string[], cites = false): RegExp {
  * into what the caller draws for source 3 (null leaves the text as it is).
  */
 export function MessageText({ body, linked = true, people = null, cite }: { body: string; linked?: boolean; people?: readonly NamedPerson[] | null; cite?: (index: number) => ReactNode | null }) {
+  const opens = useInRouterContext() && linked;
   const names = [...(people ?? [])].sort((a, b) => b.name.length - a.name.length);
   const blocks = useMemo(() => parseMessage(body), [body]);
   const reference = tokens(names.map((person) => person.name), cite !== undefined);
@@ -59,8 +62,13 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
           {agent ? <Kreska size={12} className="ref-chip__k" {...(named?.colour ? { hue: named.colour } : {})} /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
           <span className="ui-vh">@</span>{name}</span>);
       }
-      else if (groups.task) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);
-      else if (groups.wiki) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>);
+      // A task's and a page's chip opens what it names (train 37 row 9), except on a surface that is itself a link or outside the app's pages.
+      else if (groups.task) parts.push(opens
+        ? <RefChipOpen key={`${keyPrefix}${key++}`} kind="task" value={groups.task} className="ref-chip ref-chip--task"><Icon name="tasks" size={12} />#{groups.task}</RefChipOpen>
+        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);
+      else if (groups.wiki) parts.push(opens
+        ? <RefChipOpen key={`${keyPrefix}${key++}`} kind="wiki" value={groups.wiki} className="ref-chip ref-chip--wiki"><Icon name="doc" size={12} />{groups.wiki}</RefChipOpen>
+        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>);
       else if (groups.cite) {
         const source = cite?.(Number(groups.cite)) ?? null;
         parts.push(source === null ? match[0] : <Fragment key={`${keyPrefix}${key++}`}>{source}</Fragment>);

@@ -4,7 +4,7 @@ import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Serv
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { maxRequestMicros, type AiPrice, type AiProviderKind } from '@flux/contracts';
-import { admitGatewayRequest, createModelGateway, gatewayHoldMicros, type GatewayRequestFacts } from '@flux/core';
+import { admitGatewayRequest, createModelGateway, CUT_OUTPUT_MARGIN, gatewayHoldMicros, type GatewayRequestFacts } from '@flux/core';
 import { MODEL_GATEWAY_LIMITS, parseModelGatewayUrl } from '@flux/runtime-protocol';
 import { parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -231,6 +231,37 @@ describe('answers whose cost is not known, and the provider\'s error answers', (
     assert.equal((await row(stalled.id)).charged_micros, hold);
     await gateway.close(cut.id);
     await gateway.close(stalled.id);
+  });
+
+  test('a stream cut because its run was stopped is charged what it used so far; one cut while nobody stopped it keeps all it held (#854)', async () => {
+    // Train 37 row 20: two Stops at about 6 s counted $0.31 and $0.23, their whole holds. A stop's cost is what the stream said it read and what it
+    // wrote (every streamed byte as a token at most, and the margin the provider may have written after the last byte).
+    const body = { model: 'claude-sonnet-5', max_tokens: 8_000, stream: true, messages: [{ role: 'user', content: 'Write the whole run sheet' }] };
+    const hold = holdOf({ provider: 'anthropic', operation: 'anthropic_messages', pathModel: null, pathStream: null }, body, 'claude-sonnet-5');
+    const events = [{ type: 'message_start', message: { usage: { input_tokens: 1_200, output_tokens: 1 } } }, { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Fair day: 8:00 set up' } }];
+    const streamedBytes = events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0);
+    const cutAfter = (stop: string | null): Script => (_req, _body, res) => {
+      void (async () => {
+        if (stop) await pool.query('UPDATE personal_runs SET stop_requested_at = now() WHERE id = $1', [stop]);
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write(sse(...events));
+        setTimeout(() => res.destroy(), 30);
+      })();
+    };
+    const stopped = await runOn('anthropic', 'claude-sonnet-5');
+    script = cutAfter(stopped.id);
+    await call('/anthropic/v1/messages', stopped.token, body);
+    const used = maxRequestMicros(PRICE, 1_200, streamedBytes + CUT_OUTPUT_MARGIN);
+    const after = await row(stopped.id);
+    assert.ok(used < hold / 2, `what the stop used (${used}) is well below the hold (${hold})`);
+    assert.deepEqual([after.charged_micros, after.reserved_micros, after.input_tokens, after.output_tokens], [used, used, 1_200, streamedBytes + CUT_OUTPUT_MARGIN],
+      'the stop counts what it read and wrote, not its whole hold');
+    assert.deepEqual(await gateway.close(stopped.id), { requests: 1, chargedMicros: used, unknown: 0, stopped: null }, 'its cost is known, so the run is not "unknown"');
+    const lost = await runOn('anthropic', 'claude-sonnet-5');
+    script = cutAfter(null);
+    await call('/anthropic/v1/messages', lost.token, body);
+    assert.equal((await row(lost.id)).charged_micros, hold, 'a stream lost while nobody stopped its run keeps all it held');
+    assert.deepEqual(await gateway.close(lost.id), { requests: 1, chargedMicros: hold, unknown: 1, stopped: null });
   });
 
   test('a whole answer slower than the idle bound is waited for (a long answer is written before its first byte) and charged its usage', async () => {

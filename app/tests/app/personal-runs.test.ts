@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { recoverPersonalRuns, runReservationMicros, type PersonalRunHooks, type Principal } from '@flux/core';
+import { recoverPersonalRuns, resumeBudgetWaits, runReservationMicros, type PersonalRunHooks, type Principal } from '@flux/core';
 import {
   type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
   type Project, type WorkItem, type Workspace,
 } from '@flux/contracts';
-import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -339,6 +339,15 @@ describe('personal assistant runs (#68, pi in the runtime on a scripted model: n
     assert.deepEqual([latePaused.status, latePaused.end_reason, latePaused.reserved_micros], ['queued', 'budget', 0]);
     assert.ok((await pool.query('SELECT resume_at FROM personal_runs WHERE id = $1', [late.run.id])).rows[0].resume_at, 'it resumes by itself');
     assert.equal(requested(), lateRequests, 'nothing was sent');
+    // Train 37 row 37: raising the budget starts the requests that wait on the key at once, not at 0:00.
+    connections.connect(hubert.id, hubertConnection, { dailyBudgetCents: budget + 20 });
+    const offered = queue.runIds.length;
+    assert.equal(await db.transaction((tx) => resumeBudgetWaits(personalRunPorts(tx, queue.factory), hubert.id, hubertConnection)), 1, 'the waiting request is started again');
+    assert.deepEqual(queue.runIds.slice(offered), [late.run.id], 'it is offered to the worker now');
+    const raised = await row(late.run.id);
+    assert.deepEqual([raised.status, raised.end_reason], ['queued', null], 'it no longer waits for the next day');
+    assert.equal((await pool.query('SELECT resume_at FROM personal_runs WHERE id = $1', [late.run.id])).rows[0].resume_at, null);
+    assert.equal(await db.transaction((tx) => resumeBudgetWaits(personalRunPorts(tx, queue.factory), hubert.id, hubertConnection)), 0, 'nothing else waits');
     await runs.stop(human(hubert), late.run.id);
     connections.connect(hubert.id, hubertConnection);
 

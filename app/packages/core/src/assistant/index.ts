@@ -5,6 +5,6 @@ export type { JobRecord, JobRunRecord, AssistantJobRepository, AssistantJobPorts
 export { accountKey, backgroundNote, createAssistantJobs, fireJob, guardText, prepareSchedule, runView as assistantJobRunView, titleFromText, uuidFrom, type AssistantJobUseCases, type JobDeps } from './jobs.js';
 export { cronWords, nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, shortClock, timeLabel, type CronFields } from './schedule.js';
 export { assistantTick, ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, type TickDeps, type TickResult } from './job-tick.js';
-export { chatSchedule, clockIn, nothingToReport, resultOf } from './job-result.js';
+export { chatBody, chatSchedule, clockIn, nothingToReport, resultOf } from './job-result.js';
 export { settleOne, settleOwnerRuns } from './job-settle.js';
 export { takeScheduleBlocks, type ScheduleRequest } from './schedule-block.js';

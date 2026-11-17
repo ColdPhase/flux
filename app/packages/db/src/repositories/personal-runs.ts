@@ -210,6 +210,13 @@ export function personalRunRows(db: DbExecutor) {
       return row ? toRun(row) : null;
     },
 
+    /** The owner's requests on this key that wait, queued, for its next day (#854): what raising its budget starts again (train 37 row 37). */
+    async waitingForBudget(ownerUserId: string, connectionId: string) {
+      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), eq(r.connectionId, connectionId), eq(r.status, 'queued'),
+        eq(r.endReason, 'budget'), sql`${r.resumeAt} IS NOT NULL`)).orderBy(asc(r.createdAt));
+      return rows.map((row) => row.id);
+    },
+
     /** Queued runs whose owner's lane is free, each owner's requests first, and whoever waited longest first: the next starts when the one before it ends. */
     async startableQueued(limit: number, keys = false) {
       // Heads waiting for room stay out of the list until there is room, so they never crowd out a run on an API key (unless API keys run in

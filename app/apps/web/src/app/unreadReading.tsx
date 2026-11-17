@@ -35,7 +35,7 @@ export function UnreadDivider() {
   return <li className="convo-unread" data-unread-start="" role="separator" aria-label="New"><span>New</span></li>;
 }
 
-/** The "↓ 3 new" line over the foot of a feed. It takes no layout space and is announced once per change. Its frame is `.convo-stream`. */
+/** The "↓ 3 new" line at the foot of a feed, in its own room while it shows (no text under it), announced once per change. Its frame is `.convo-stream`. */
 export function NewBelow({ count, onClick }: { count: number; onClick: () => void }) {
   const text = newBelowText(count);
   return (
