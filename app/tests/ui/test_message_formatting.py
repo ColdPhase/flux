@@ -333,8 +333,8 @@ class MessageFormatting(unittest.TestCase):
         page.go_back()
         wiki = page.locator(".message-body", has_text="Wiring first").first.locator(".ref-chip[data-ref=wiki]")
         expect(wiki).to_have_text("Probe wiring")
-        wiki.focus()
-        page.keyboard.press("Enter")
+        # The feed may draw its rows again as its reads settle after Back: the press finds the chip as it is then (focus, then Enter, in one step).
+        wiki.press("Enter")
         page.wait_for_url(re.compile(rf"/projects/{project}/docs/{doc.json()['id']}$"))
 
     def test_06_text_that_looks_like_html_or_a_script_stays_text(self) -> None:
