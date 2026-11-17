@@ -68,10 +68,12 @@ def assert_touch_target(case: unittest.TestCase, page: Page, control: Locator) -
       const coreWidth = Math.min(width, 44), coreHeight = Math.min(height, 44);
       const x = (width - coreWidth) / 2, y = (height - coreHeight) / 2;
       const positions = [[x + .5, height / 2], [x + coreWidth - .5, height / 2], [width / 2, y + .5], [width / 2, y + coreHeight - .5], [width / 2, height / 2]];
-      return {width, height, hittable: positions.every(([x, y]) => {
+      const misses = positions.flatMap(([x, y]) => {
         const hit = document.elementFromPoint(left + x, top + y);
-        return hit === el || (hit !== null && el.contains(hit));
-      })};
+        if (hit === el || (hit !== null && el.contains(hit))) return [];
+        return [`(${Math.round(x)}, ${Math.round(y)}): ${hit ? hit.tagName.toLowerCase() + (hit.className ? '.' + String(hit.className).trim().split(/\s+/).join('.') : '') : 'nothing'}`];
+      });
+      return {width, height, hittable: misses.length === 0, misses};
     }""")
     name = control.get_attribute("aria-label") or control.inner_text() or control.get_attribute("name") or control.get_attribute("type")
     case.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"44 × 44 px touch target {name!r}: {measured}")

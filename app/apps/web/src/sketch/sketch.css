@@ -69,6 +69,8 @@
 .sk-el { position: absolute; left: 0; top: 0; padding: 0 5px; border-radius: 4px; background: var(--sub); color: var(--t2);
   font-size: var(--fs-xs); line-height: 18px; white-space: nowrap; }
 .sk-el.is-on { color: var(--t1); }
+/* A label whose line has no free part stands over the two thoughts' edges, not under them (SketchMap, placeLabels). */
+.sk-el--over { z-index: 1; }
 .sk-edge-hits { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .sk-edge-hits path { fill: none; stroke: transparent; stroke-width: 18px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
 .sk-edge-hits path:hover { stroke: var(--line); }
@@ -188,8 +190,9 @@
 .sk-edit { position: absolute; left: 0; top: 0; z-index: 5; resize: none; overflow: hidden; font: 500 var(--fs-md)/1.35 var(--font); letter-spacing: var(--tracking);
   padding: 6px 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1);
   box-shadow: inset 0 0 0 1px var(--line2); }
-/* Every field on the map is one field (founder direction 2026-11-17 visual review): the field hairline, and the one --ring while it is being written in. */
-.sk-edit:focus, .sk-li-edit:focus, .sk-title-edit:focus, .sk-draft textarea:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
+/* Every field on the map is one field (founder direction 2026-11-17 visual review): the field hairline, and the one --ring over it (its edge,
+   offset -1 px, as every text field's) while it is being written in. */
+.sk-edit:focus, .sk-li-edit:focus, .sk-title-edit:focus, .sk-draft textarea:focus { outline: 2px solid var(--ring); outline-offset: -1px; }
 
 .sk-canvas-wrap { position: relative; }
 /* The map uses the height actually left by the shell, including wrapped project state and
