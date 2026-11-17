@@ -153,10 +153,11 @@ export function highlightParts(value: string): SearchText {
   }, []);
   // Text left out of what is searched (a citation, a link's address) leaves no space before the punctuation after it: "5 lux. Interpretation",
   // never "5 lux . Interpretation" (audit 3274a05).
+  // Each run of spaces is tried once, from its start (a run tried from each of its spaces is quadratic in its length, pre-review P3).
   joined.forEach((part, at) => {
-    part.text = part.text.replace(/\s+(?=[.,;:!?)])/g, '');
+    part.text = part.text.replace(/(?<!\s)\s+(?=[.,;:!?)])/g, '');
     const next = joined[at + 1];
-    if (next && /^[.,;:!?)]/.test(next.text)) part.text = part.text.replace(/\s+$/, '');
+    if (next && /^[.,;:!?)]/.test(next.text)) part.text = part.text.trimEnd();
   });
   return joined;
 }

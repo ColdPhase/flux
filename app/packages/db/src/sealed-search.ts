@@ -58,8 +58,12 @@ const REBUILD_AFTER_MS = 23 * 3_600_000;
 
 const WORD = /[\p{L}\p{N}]+/gu;
 const wordsOf = (text: string) => text.toLowerCase().match(WORD) ?? [];
-/** A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). */
-const HYPHENATED = /[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
+/**
+ * A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). A match starts only
+ * where a word starts: without the look-behind, a 100,000-letter word with no hyphen was tried from every letter to its end, seconds of the API's
+ * time per message (pre-review P2-1); the matches are the same, since a match from inside a word would start at that word's beginning anyway.
+ */
+const HYPHENATED = /(?<![\p{L}\p{N}])[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
 export const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
 
 /** Trigrams of `text` in order, with duplicates, as pg_trgm pads each word: two spaces before, one after. */
