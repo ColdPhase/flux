@@ -202,7 +202,8 @@ class RoundFifteenTalk(unittest.TestCase):
                 page.goto(f"/projects/{project}")
                 last = self.message(page, LINES[-1][1])
                 expect(last).to_be_in_viewport()
-                page.wait_for_timeout(1500)
+                # Past the opening's first seconds, while the stream no longer holds its end by itself (the place it hid in round 15).
+                page.wait_for_timeout(5000)
                 field = page.get_by_label("Write a message", exact=True)
                 field.fill("Photo of the new seals and the order list for the shed, please check the sizes before Friday.")
                 page.locator(".project-convo__composer input[type=file]").first.set_input_files([
