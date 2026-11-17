@@ -977,8 +977,10 @@ class FocusModel(unittest.TestCase):
         window = page.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()
         title = f"Clean the proofing baskets {uuid.uuid4().hex[:4]}"
-        page.keyboard.type(title)
-        page.keyboard.press("Enter")
+        field = window.get_by_placeholder("What needs doing?")
+        expect(field).to_be_focused()
+        field.fill(title)
+        field.press("Enter")
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=title)).to_be_visible()
         page.wait_for_timeout(400)
