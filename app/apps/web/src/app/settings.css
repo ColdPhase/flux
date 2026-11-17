@@ -10,6 +10,14 @@
 .sset__link[aria-current="page"] { background: var(--el); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12); }
 .sset__link:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .sset__page { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+/* In a window of 900 px or less (a small window, or 200 % zoom) the section list is one row above the page instead of a 220 px column beside
+   it, so the page keeps its width (visual review 2026-11-17 V24: 340 px were left and the company's name wrapped onto three lines). */
+@media (min-width: 641px) and (max-width: 900px) {
+  .sset { flex-direction: column; }
+  .sset__nav { flex-direction: row; width: auto; gap: 4px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .sset__nav::-webkit-scrollbar { display: none; }
+  .sset__link { flex: none; }
+}
 .pane-in.sset-in { max-width: calc(640px + 88px); margin: 0 auto; padding: 30px 44px 48px; }
 /* One column for every page inside Settings (#1362): 640 px of content, centred in the page's area at every computer width as Home, Inbox, the
    conversation and a space's settings centre theirs (F-015, #763). The sub-pages (an agent, the keys, the clients) and Notifications carry their own
@@ -33,6 +41,10 @@
 .sset-head p { margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 600px; }
 .sset-sec { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
 .sset-sub { margin: 22px 2px 4px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
+/* One section heading on every page of Settings and Space settings, as drawn (visual review 2026-11-17 V11: three styles, 13, 14 and 16 px): 14 px
+   semibold in --t1 on the computer, the phone's grouped-list label (13 px, 500, --t3) on the phone. `.sset-sub` is the same heading. */
+.sset-sec, .sset-sub { margin: 26px 2px 10px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
+@media (max-width: 640px) { .sset-sub { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); } }
 .sset-note { margin: 10px 2px 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .sset-note--sub { margin: 0 2px 10px; }
 .sset-card {
@@ -104,8 +116,12 @@
 /* Theme previews: Light, Dark and Match system as three drawn tiles. */
 .sset-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .sset-theme { display: grid; gap: 8px; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; text-align: left; cursor: pointer; }
-.sset-theme__art { position: relative; display: block; height: 96px; border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
-.sset-theme[aria-checked="true"] .sset-theme__art { box-shadow: inset 0 0 0 2px var(--t1), 0 0 0 2px var(--bg); }
+/* Each tile has a visible 1 px edge (--line2), and the chosen one a 2 px --t2 frame rather than the heaviest ink; in dark the Light tile is dimmed
+   so it does not glare (visual review 2026-11-17 V19). The art is drawn over the tile, so the edge is an outline. */
+.sset-theme__art { position: relative; display: block; height: 96px; border-radius: 14px; overflow: hidden; outline: 1px solid var(--line2); outline-offset: -1px; }
+.sset-theme[aria-checked="true"] .sset-theme__art { outline: 2px solid var(--t2); outline-offset: -2px; box-shadow: 0 0 0 2px var(--bg); }
+:root[data-theme="dark"] :is(.sset-theme__art--light, .sset-theme__art--system) { filter: brightness(.82); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.sset-theme__art--light, .sset-theme__art--system) { filter: brightness(.82); } }
 /* The ring of README §2 is on the tile itself (the radio is the button), clear of the chosen tile's own edge (#1380). */
 .sset-theme:focus-visible { outline: 2px solid var(--ring); outline-offset: 5px; border-radius: var(--r-sm); }
 .sset-theme__art--light { background: #F4F4F5; }
@@ -133,8 +149,25 @@
 .sset-me--link:hover { background: var(--hov); }
 .sset-me--link:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .sset-me--link .sset-row__go { margin-left: auto; color: var(--t3); }
+/* The pages under AI (Sign in to ChatGPT or Claude, Your API keys) are Settings pages like the others (visual review 2026-11-17 V12, V16): the
+   title and its line as .sset-head, no rule under them, and each section a white card with 16 px between its blocks. */
+.sset__page :is(.rt-page .inbox__head, .background-settings__head) { margin-bottom: 16px; padding: 0; border-bottom: 0; }
+.sset__page :is(.rt-page .inbox__head, .background-settings__head) p { max-width: 600px; margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); }
+.sset__page :is(.rt-page > .nset__sec, .background-settings__section) {
+  display: grid; gap: 16px; margin: 0 0 16px; padding: 18px; border: 0; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card);
+}
+.sset__page :is(.rt-page > .nset__sec, .background-settings__section) > * { margin: 0; }
+.sset__page .rt-page > .nset__sec > h3 { font-size: var(--fs-base); font-weight: 600; }
+.sset__page .background-settings__section > .background-settings__connections:empty { display: none; }
+.sset__page .background-settings__connection { padding: 0; border: 0; border-radius: 0; background: none; }
+.sset__page .background-settings__connection + .background-settings__connection { padding-top: 16px; border-top: 1px solid var(--line); }
+/* A page that has nothing to offer here still says what it is and what to do instead (visual review 2026-11-17 V15). */
+.sset-off { display: grid; gap: 16px; justify-items: start; }
+.sset-off .nset__problem { margin: 0; }
 /* Keyboard shortcuts. */
-.sset-keys { width: 100%; border-collapse: collapse; }
+/* The card is the table itself: `display: table` over the card's `block`, so its rows and their lines run the card's whole width (visual review
+   2026-11-17 V2: they stopped 260 px short of its edge). Separate borders keep the card's rounded corners. */
+.sset-card.sset-keys { display: table; width: 100%; border-collapse: separate; border-spacing: 0; }
 .sset-keys tr + tr td, .sset-keys tr + tr th { border-top: 1px solid var(--line); }
 .sset-keys td { width: 132px; padding: 10px 0 10px 18px; white-space: nowrap; }
 .sset-keys th { padding: 10px 18px 10px 8px; text-align: left; font-weight: 400; font-size: var(--fs-base); color: var(--t1); }

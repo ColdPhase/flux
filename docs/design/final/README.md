@@ -79,7 +79,9 @@ Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for re
 **Shadows**
 - Card: `0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12)`.
 - Pop-over: `0 1px 2px rgba(0,0,0,.06), 0 12px 30px -10px rgba(0,0,0,.22)`.
-- Field: `inset 0 0 0 1px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -8px rgba(0,0,0,.12)`.
+- Field: `inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -8px rgba(0,0,0,.12)`; dark `inset 0 0 0 1px rgba(255,255,255,.16), 0 1px 2px rgba(0,0,0,.4)`.
+  Its edge is `--line2`, as a select's, so a resting field is visible on a white card and a form's select and field share one edge and the
+  same 14 px inset (founder direction 2026-11-17 visual review, V7 and V14: the old .05 edge left a field invisible on `--el`).
 - Dark mode uses inset 1 px light outlines plus deeper shadows. Layers get lighter as they rise.
 
 **Gradients**
@@ -107,6 +109,9 @@ every ring in the app:
   black frame, and stays distinct from the selection, which is a fill and never an outline.
 - Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
   `data-input` on `<html>` (`pointer` or `keys`), set by the first pointer or key event.
+- A heading that takes the focus from a script (a page opened like a panel, as Space settings, or an emptied list) draws
+  no ring: it is where reading starts, not a control (visual review 2026-11-17 V1).
+- A radio is drawn by the app at 16 px in every engine: a 1.5 px `--t3` ring, chosen a `--t1` ring and dot (V22).
 
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.
@@ -1910,6 +1915,26 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     **Add me**. **No row has a Delete** (#1424): a space is deleted in its own settings, **Space settings › Delete space…**, the one way.
     The only row with a Delete is an encrypted space the admin cannot open (a company admin may delete it, never read it), which has no
     settings to reach.
+
+#### One look for every Settings page
+
+Founder direction 2026-11-17 (visual review: "a UI check must catch what looks ugly"). Settings, Space settings and the pages
+under them read as one set:
+- **One section heading**: 14 px semibold `--t1` on the computer, the phone's grouped-list label (13 px, 500, `--t3`) on the
+  phone (`.sset-sec`; `.sset-sub` and the company's headings are the same).
+- **A sub-page** (Sign in to ChatGPT or Claude, Your API keys, Claude Code or Codex on your computer, a space's GitHub) has its
+  way back above the title in one style ("‹ AI", "‹ Space settings"), the title and its line as every Settings title, and
+  its sections as white cards (`--el`, the card shadow) with 16 px between their blocks; never a grey card or a bare divider
+  list. A page with nothing to offer on this server keeps its title and gives the next step ("Use an API key instead").
+- **A window that asks something** (Connect AI, Delete space, New space) opens with its top at 8vh on the computer and is a
+  bottom sheet as tall as its content on the phone (`ui-dialog-sheet`). Its fields are the app's 44 px fields.
+- **An edit in a row** (a space's name) puts Save and Cancel under the field, as the company name does. A row that asks
+  (Remove / Keep) keeps its buttons 8 px apart in a column as wide as both, so the role beside it never moves.
+- **A role menu** ("Member ▾") has its chevron 4 px after the word; the column is right-aligned, so chevrons stay in line.
+- **The section list** is a row above the page in a window of 900 px or less (and at 200 % zoom), not a column beside it.
+- **The current place** in the sidebar is the raised white pill in both themes, the profile row in Settings included.
+- **Appearance's tiles** have a 1 px `--line2` edge, the chosen one a 2 px `--t2` frame, and in dark the Light tile is dimmed.
+- **An unlock refusal** is said right under the field, as a field's error.
 
 #### Hide previews
 

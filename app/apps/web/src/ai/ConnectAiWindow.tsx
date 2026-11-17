@@ -162,6 +162,6 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, manager, have
     </div>
   );
   return phone
-    ? <Sheet open onClose={close} label="Connect your AI" className="cai-sheet">{body}</Sheet>
+    ? <Sheet open onClose={close} label="Connect your AI" className="ui-dialog-sheet cai-sheet">{body}</Sheet>
     : <Overlay placement="center" open onClose={close} label="Connect your AI" className="cai-dialog">{body}</Overlay>;
 }

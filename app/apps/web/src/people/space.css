@@ -24,10 +24,11 @@
 .pick__who span { font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick__none { margin: 6px 8px; font-size: var(--fs-sm); color: var(--t3); }
 
-/* The New space window and the delete confirmation share one surface: centred on the computer, a bottom sheet on the phone. */
-.ui-overlay--center .newspace-win { top: 11vh; width: min(600px, calc(100% - 32px)); max-height: 84vh; overflow-y: auto; }
+/* The New space window and the delete confirmation share one surface: centred on the computer with its top at 8vh, as every window that asks
+   something (Connect AI too), and a bottom sheet on the phone (visual review 2026-11-17 V21). */
+.ui-overlay--center .newspace-win { top: 8vh; width: min(600px, calc(100% - 32px)); max-height: 84vh; overflow-y: auto; }
 .ui-overlay--bottom .newspace-win { inset: auto 0 0 0; max-height: 92dvh; overflow-y: auto; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
-.ui-overlay--center .delspace-win { top: 18vh; width: min(480px, calc(100% - 32px)); }
+.ui-overlay--center .delspace-win { top: 8vh; width: min(480px, calc(100% - 32px)); }
 .ui-overlay--bottom .delspace-win { inset: auto 0 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
 
 /* The New space window. */
@@ -65,8 +66,8 @@
 .spset .sset-head h2 { margin: 0; }
 .sset-row.spset__name { display: flex; align-items: center; gap: 12px; }
 .spset__name b { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: break-word; }
-.spset__name form { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
-.spset__name .ui-field { flex: 1; min-width: 0; margin: 0; }
+.spset__name form { display: grid; flex: 1; gap: 12px; min-width: 0; padding-block: 6px; }
+.spset__name .ui-field { min-width: 0; margin: 0; }
 /* The space's icon (F-040): a second row of the Name card, the same 28 px tile as a Search result, and the emoji in 44 px targets. */
 .spset__icon { border-top: 1px solid var(--line); }
 .spset__icon-b { flex: 1; min-width: 0; display: grid; }
@@ -102,7 +103,9 @@
 .spset__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--ring); outline-offset: 1px; }
 @media (pointer: coarse) { .spset__rolecell .ui-select { min-height: 44px; font-size: var(--fs-sm); } }
 .spset__remove.ui-btn { flex: none; min-width: 72px; color: var(--t2); }
-.spset__remove-gap { flex: none; width: 72px; }
+/* The row's last column holds Remove, or Remove and Keep while it asks: as wide as both, so the role beside it stays put (visual review
+   2026-11-17 V8: "Member ▾" jumped 53 px left). A row without Remove keeps the column empty, so every role sits in one line. */
+.spset__acts { display: inline-flex; flex: none; justify-content: flex-end; min-width: 8.5rem; }
 .spset__add { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
 .spset__add .newspace__foot { justify-content: flex-start; }
 /* #1438: "Someone new?" under the company's people: an email and Invite on one row; its link and status under them. */
@@ -145,8 +148,8 @@
   /* The role's word starts under the name, as on the company's rows (the quiet control's 10 px padding is taken off). */
   .spset__role, .spset__rolecell { min-width: 0; margin-left: 38px; text-align: left; }
   .spset__rolecell { margin-left: 28px; }
-  .spset__remove.ui-btn, .spset__confirm { margin-left: auto; }
-  .spset__remove-gap { display: none; }
+  .spset__acts { min-width: 0; margin-left: auto; }
+  .spset__acts--none { display: none; }
 }
 
 /* An encrypted space's people and keys open in a panel (F-030, C-24): the row is the whole target. */

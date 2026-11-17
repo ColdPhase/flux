@@ -4,11 +4,12 @@ import type { GithubBinding, GithubCapabilities, GithubRepository, GithubRuleDef
 import { ApiError } from '../api/client';
 import { bindGithubRepository, disconnectGithubAccount, disconnectGithubBinding, getGithubCapabilities, linkTaskPull, listGithubBindings, listGithubInstallations, listGithubRepositories, listTaskGithubLinks, saveGithubRuleDefault, startGithub } from './api';
 import { useProjectShell, type ProjectShell } from '../project/data';
-import { Button, Spinner } from '../ui';
+import { Button, Icon, Spinner } from '../ui';
 import { Select, Option } from '../ui/Select';
 import { useShellData } from '../app/data';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
+import '../app/settings.css';
 import './github.css';
 const failure = (cause: unknown) => cause instanceof ApiError && cause.status < 500 ? cause.message : 'GitHub is unavailable. Your work is saved; try again when the connection returns.';
 export function GithubSettings() {
@@ -49,8 +50,9 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   }
   return <div className="pane-scroll"><div className="pane-in github-settings">
-    <div className="github-settings__head"><div><h2>GitHub repositories</h2><p>Connect repositories to {shell.project.name} and see their pull requests beside your tasks.</p></div>
-      <Link className="ui-link" to={`/projects/${projectId}/settings`}>‹ Space settings</Link></div>
+    {/* The way back is the one of every settings sub-page, "‹ Space settings" above the title as "‹ AI" (visual review 2026-11-17 V12). */}
+    <Link className="sset-back" to={`/projects/${projectId}/settings`}><Icon name="chevron-left" size={12} />Space settings</Link>
+    <div className="github-settings__head"><div><h2>GitHub repositories</h2><p>Connect repositories to {shell.project.name} and see their pull requests beside your tasks.</p></div></div>
     <p className="github-settings__note">Private repository details are shown only when your own GitHub account and Flux access both permit them.</p>
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {!capabilities ? error ? <Button variant="secondary" onClick={() => void refresh()}>Check access again</Button> : <Spinner label="Loading GitHub settings" /> : capabilities.status === 'unavailable'

@@ -51,7 +51,7 @@
   --sh-1: 0 1px 2px rgba(0, 0, 0, .06);
   --sh-card: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -6px rgba(0, 0, 0, .12);
   --sh-pop: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 30px -10px rgba(0, 0, 0, .22);
-  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
+  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12); /* the edge is --line2, as a select's (visual review 2026-11-17 V7) */
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .06);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
   /* An inverted surface that is not a button. Nothing draws it now: own bubbles are --own, chosen chips flat --inv, and a toast is a raised
@@ -151,7 +151,7 @@
     --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
     --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
     --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
-    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .4);
     --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
@@ -170,7 +170,7 @@
   --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
   --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
   --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
-  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .4);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);

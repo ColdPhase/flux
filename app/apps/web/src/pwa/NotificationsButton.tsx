@@ -46,8 +46,9 @@ export function NotificationsButton({ deviceLabel }: {
   return (
     <div>
       <p className={note}>Get notified about mentions and replies, work assigned to you, decisions and agent results, even when Flux is closed.</p>
+      {/* The row's main action is an outline button, never bare text (button system; visual review 2026-11-17 V20). */}
       <Button
-        variant="secondary"
+        variant="outline"
         className="pwa-action"
         onClick={() => {
           // Called directly in the click handler: the permission prompt needs this user gesture.

@@ -23,11 +23,12 @@
 /* The Connect AI window (mockup ConnectAI): one window in steps, a dialog on the computer and a sheet on the phone. */
 /* On the computer the window starts higher and may be taller than a centred dialog's 76vh, so the API key step with an unpriced model and More
    open keeps Cancel and Connect in view at 1440 × 900 and 1280 × 800 without scrolling (#1424). */
-.ui-overlay--center .ui-overlay__surface.cai-dialog { top: 6vh; max-height: 88vh; }
-.cai-dialog .cai-window { max-height: 88vh; }
+/* Every window that asks something opens at one height, its top at 8vh (visual review 2026-11-17 V21: this one stood at 54 px, Delete space at 162). */
+.ui-overlay--center .ui-overlay__surface.cai-dialog { top: 8vh; max-height: 86vh; }
+.cai-dialog .cai-window { max-height: 86vh; }
 .cai-window { display: flex; flex-direction: column; gap: 10px; padding: 20px; max-height: calc(100dvh - 96px); overflow-y: auto; }
 .cai-window:focus { outline: none; }
-.cai-sheet .cai-window { padding-top: 28px; }
+.cai-sheet .cai-window { padding-top: 24px; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 .cai-window__title { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); }
 .cai-window__lead { margin: 0 0 6px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
 .cai-window__choices { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 14px; }
