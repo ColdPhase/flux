@@ -808,9 +808,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   /* "Forgot password?" sits between the Email and the Password fields, with 5 px under it and the form's gap above it, so a 44 px area
      cannot fit without covering an input. Its hit area stays in that gap, 7 px short of the Email's bottom edge and ending with the
      line: a touch browser takes a tap within a few px of a link for the link, so a tap on either input's edge must stay at least
-     that far from it. It is wider than the text to the left, and covers neither input. */
-  .auth__form .ui-field__aside .ui-link { position: relative; }
-  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(5px - var(--auth-gap)); bottom: 0; }
+     that far from it. It is wider than the text to the left, and covers neither input. The area is placed against the aside's own box (the
+     top of the Password field and the label's line), not the link's text box, so a change of the line's height or font never moves it
+     towards the Email field. */
+  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(7px - var(--auth-gap)); bottom: 0; }
 }
 
 /* F-029 (#614): "Not in <workspace>: AI is off there." is its own line under its card, not the caption of the next heading. */

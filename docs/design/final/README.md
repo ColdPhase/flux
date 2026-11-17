@@ -152,17 +152,18 @@ looks ugly"). The same element looks the same on every screen, in light and dark
 looks ugly"):
 - **Fields.** Every text field (a thought being written or edited on the map or in its List, a map's or a task's title being renamed, What came
   of it, the date field, a picker) has the field hairline (`--line2` or the field shadow) on `--el`, and while it is written in the one
-  2 px `--ring`. None draws its own black frame.
+  2 px `--ring`, over its edge (offset −1 px) as "A text field's ring is its edge" above. None draws its own black frame.
 - **Selected text** is `--selection` behind the text's own colour, in both themes; never the browser's blue or CodeMirror's lavender.
 - **A state in a pill** is its glyph and word on a 1 px `--line2` hairline in `--t1` (the task panel's "Blocked"), never an inverted slab.
 - **A text button that starts a line** in a panel (Add to a thought, Add to a Wiki page) hangs its padding outside, so its icon stands on
-  the edge of the labels above it.
+  the edge of the labels above it: the same rule as "A text button that starts a row of actions under text" above, one rule in `ui.css`.
 - **Hover fills need a hovering pointer** (`@media (hover: hover)`): a tap on a phone leaves no fill on whatever lies under the finger.
 - **A menu's rows lead with their icon**, and a line sets the destructive row apart (the Wiki's ⋯, as the maps' switcher).
 - **The Wiki's prose is one prose:** the editor, the history and an old version hang a list's "•" (`--t1`) at the column's edge with the
   words 1.5em in, in `--t2`; the line under a heading is a short step, not a whole empty line. A version's banner puts its links in a row
   of their own under the sentence. The title's chevron follows its last word.
-- **The map:** a label sits on a free part of its own line, never on another label or under a thought; the selection's actions never lie
+- **The map:** a label sits on a free part of its own line, never on another label or under a thought; a line with no free part (two
+  thoughts side by side) keeps its label at its middle, raised over the thoughts' edges, never hidden; the selection's actions never lie
   over another thought (they slide beside it, or rise above it); an edit's **Save** and **Cancel** are that toolbar beside the thought
   (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
   with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the

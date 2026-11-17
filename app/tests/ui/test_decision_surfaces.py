@@ -61,7 +61,14 @@ MEASURE = """(root) => {
   root.querySelectorAll('.wd-rows dt').forEach((el) => note('row ' + el.textContent.trim(), el));
   root.querySelectorAll('.details__sec > h4').forEach((el) => note('heading ' + el.textContent.trim(), el));
   root.querySelectorAll('.details__sec > p, .wd-accept-finish > p').forEach((el) => note('text ' + el.textContent.trim().slice(0, 24), el));
-  root.querySelectorAll('.wd-actions button, .wd-decide__foot .nyc__actions > button:first-child').forEach((el) => note('button ' + el.textContent.trim(), el));
+  // A text button (no fill, no border) that starts a line hangs its padding outside, so its icon is what stands on the edge (founder direction
+  // 2026-11-17 visual review, README "One look for the same element"); a filled or outlined button's edge is its box.
+  const noteButton = (name, el) => {
+    const s = getComputedStyle(el), r = el.getBoundingClientRect();
+    const text = rgba(s.backgroundColor)?.a === 0 && parseFloat(s.borderLeftWidth) === 0 && s.backgroundImage === 'none';
+    lefts.push({ name, left: r.left + (text ? parseFloat(s.paddingLeft) : 0) - edge, right: end - r.right, submit: !!el.closest('.wd-submit') });
+  };
+  root.querySelectorAll('.wd-actions button, .wd-decide__foot .nyc__actions > button:first-child').forEach((el) => noteButton('button ' + el.textContent.trim(), el));
   root.querySelectorAll('.wd-link > span:first-child').forEach((el) => note('link ' + el.textContent.trim().slice(0, 24), el));
   const sections = [...(root.querySelector(':scope > .wd__scroll') ?? root).children].filter((el) => el.matches('.details__sec'));
   return {
