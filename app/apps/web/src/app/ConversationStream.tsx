@@ -957,8 +957,10 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
-      <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
+      {/* The message's own time stays with its bubble, and the thread's line ("2 replies · last 9:40") comes after it, so the two times
+          never read as one said twice (visual review 2026-11-17). */}
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
+      <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions {...actions} />
       {touch.dots}{touch.node}
     </li>

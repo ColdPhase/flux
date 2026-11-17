@@ -23,6 +23,14 @@
 .pick__who b { font-size: var(--fs-base); font-weight: 500; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick__who span { font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick__none { margin: 6px 8px; font-size: var(--fs-sm); color: var(--t3); }
+/* Add people open is one box (visual review 2026-11-17: an almost empty box over a second box with its own scroll): the chosen people and
+   Add people, then a hairline, the search and the list, then "Someone new?", all on one card. In the New space window the list does not
+   scroll on its own; the window's body scrolls. */
+.pick:has(> .pick__list) { gap: 0; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.pick:has(> .pick__list) > :is(.pick__field, .pick__list) { background: none; box-shadow: none; border-radius: 0; }
+.pick:has(> .pick__field) > .pick__list { border-top: 1px solid var(--line); }
+.pick:has(> .pick__list) > :not(.pick__field, .pick__list) { margin: 0 10px 10px; }
+.newspace .pick__list { max-height: none; overflow: visible; }
 
 /* The New space window and the delete confirmation share one surface: centred on the computer, a bottom sheet on the phone. */
 .ui-overlay--center .newspace-win { top: 11vh; width: min(600px, calc(100% - 32px)); max-height: 84vh; overflow-y: auto; }
@@ -36,7 +44,8 @@
    fold, which matters most with Encrypted on, when the form is long. */
 .ui-overlay .newspace-win:has(.newspace--pinned) { overflow: hidden; }
 .newspace--pinned { display: flex; flex-direction: column; gap: 0; padding: 0; max-height: inherit; min-height: 0; }
-.newspace--pinned .newspace__head { flex: none; padding: 22px 24px 12px; }
+/* A hairline under the pinned head, as over the pinned foot, so the body never slides under the title unmarked (visual review 2026-11-17). */
+.newspace--pinned .newspace__head { flex: none; padding: 22px 24px 12px; border-bottom: 1px solid var(--line); }
 /* Its rows are as tall as their content (`max-content`): an `auto` row shrinks to the room left, and the card holding AI, Encrypted and the password (it clips what
    overflows it) was squeezed on a short phone, with "Suggest six random words" and the recovery code cut off inside it. The body scrolls instead (#1419). */
 .newspace--pinned .newspace__body { display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; flex: 1 1 auto; min-height: 0; padding: 4px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
@@ -109,6 +118,8 @@
 .spset__new { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .spset__newform { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .spset__newform > .ui-field { min-width: 0; }
+/* Invite stands on the field's middle, not its foot (visual review 2026-11-17: 6 px low beside the 44 px field). */
+.spset__newform > .ui-btn { margin-bottom: calc((var(--ctl-lg) - var(--ctl)) / 2); }
 .spset__status { min-height: 18px; margin: 8px 2px 0; font-size: var(--fs-sm); color: var(--t2); }
 .spset__status:empty { display: none; }
 .spset__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }

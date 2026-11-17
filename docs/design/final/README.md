@@ -108,7 +108,15 @@ every ring in the app:
   (2 px unless a component has no room outside), and follows the rounded shape of what it surrounds. It never reads as a
   black frame, and stays distinct from the selection, which is a fill and never an outline.
 - Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
-  `data-input` on `<html>` (`pointer` or `keys`), set by the first pointer or key event.
+  `data-input` on `<html>` (`pointer`, `field` or `keys`), set by the first pointer or key event: `field` is a tap or a click in a
+  text field (its label or the box drawn round it), so that field shows its ring; a field the app focuses after a tap elsewhere
+  (a conversation's composer as it opens, a window's first field) is `pointer` and shows none until a key or a click in it
+  (visual review 2026-11-17: every conversation and every Create window opened framed). The composer's ring is this ring, 2 px
+  out from its card, never a dark inset frame.
+
+**Raised, never inverted** (visual review 2026-11-17, after the toast rule above): a tooltip is a small raised card, `--el` with
+`--t1` words, the pop-over shadow and a `--line2` hairline, in both themes; a message toolbar's tooltip is centred on its
+button. A primary button that waits (`disabled`) keeps a 1 px `--line2` edge, so it never melts into a dark sheet.
 
 **One look for one element** (founder direction, Hubert 2026-11-17, the fresh-eyes visual review of v0.2.1: "a UI check must catch what
 looks ugly"). The same element looks the same on every screen, in light and dark, on the computer and the phone:
@@ -162,7 +170,8 @@ buttons above, which read as too strong:
 - Buttons are 32 px high in rows and toolbars and 36 px in dialogs; a primary button and the
   button beside it have the same height. Touch targets stay at least 44 px (the system below).
 - Counts are quiet mono numbers ("Waiting for you 5", "Inbox 5"), never pills.
-- A composer's Send is a soft fill (`--own`) with the arrow icon.
+- A composer's Send is a soft fill (`--own`) with the arrow icon, a circle concentric with the round composer; on touch its fill
+  keeps a 4 px inset inside the 44 px target (visual review 2026-11-17).
 - The phone's floating "+" is a soft fill like Send (`--own`, `--t1` icon, 56 px, no shadow), so each
   phone screen has at most one dark button (founder decision, 2026-10-31, follow-up on #763).
 `tests/test_ui_tokens.py` (`QuietButtons`) guards the flat buttons, the radius and the retired tokens.
@@ -533,6 +542,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   lose their gaps and side room and keep 44 px targets, #1424); only large text scrolls the tabs sideways. There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
   Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
+  The Messages page and the Spaces tab's Messages are one list, in the Spaces list's card and rows, with **+ New message** under the card
+  and the line "Only the people in each conversation can read it." beside it, on the computer and the phone (visual review 2026-11-17).
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
   v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
   - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
@@ -920,11 +931,15 @@ These functional rules from UI116-4 remain required:
   with "+N" on the last one.
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're
     back", Retry.
-  - Before sending, thumbnails with × sit in the composer.
+  - Before sending, thumbnails with × sit in the composer: one tile per file, a photo and any other file alike, 240 × 56 on
+    `--sub` with a 44 px face (the photo cropped, or the page icon), the name and its line on one line each, × at the tile's top
+    corner, and on a touch screen a small order number on the face's lower corner; the tray stands on the pane's `--bg`
+    (visual review 2026-11-17).
   - On the phone the system's own picker numbers your choices as you make them and hands them back in that
     order. Flux adds no picker of its own (founder review 2026-11-13, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
     the files arrive in the draft at once, each with its name, numbered "Sends 1", "Sends 2" on its thumbnail. The
-    full-screen viewer is always dark, with Reply, Create task, Save and Share.
+    full-screen viewer is always dark, with Reply, Create task, Save and Share (kept together in at most 600 px under the
+    photo, and the caption centred under it, visual review 2026-11-17).
 - **A file preview** (founder decisions 2026-11-10 and 2026-11-12, [#1252](https://github.com/ColdPhase/flux/issues/1252),
   [C-60](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
   CSV/TSV and PDF open in the photo viewer's frame. Pressing the row's name opens the preview; the
@@ -1341,7 +1356,22 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   row at its top.
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
-  divides Add to map, Copy link and Copy text from Edit and Delete.
+  divides Add to map, Copy link and Copy text from Edit and Delete. **The menu opens away from its message** (visual review
+  2026-11-17): from the toolbar's far edge, to the right of someone else's message and to the left of one's own, so it never
+  covers the words it acts on. In a narrow thread pane the toolbar keeps its raised container in the bubble's corner.
+- **One look for a conversation's pieces** (visual review 2026-11-17):
+  - One divider: its words in the middle and a hairline to each edge, for the day ("Today"), **New** (stronger words and line)
+    and a thread's "2 replies · Today".
+  - Under a message, its own time comes first, then the thread's line ("4 replies · last 7:47", the speech-bubble icon in a
+    space and in a direct message alike), so the two times never read as one said twice.
+  - A person's face beside a message is the same grey face in a space and in a direct message.
+  - A long address in a message, and the address line of a link card (up to its three lines, #348), breaks after `/`, `_`, `#`,
+    `?`, `&`, `=`, `.` or `-`, never inside a word.
+  - Editing one's message in place: the message takes its column's full width and the field grows with its words (to 40 % of
+    the window), with no resize grip.
+  - The `@` and `/` lists keep the ↵ badge's slot on every row, so the right column never moves with the highlight.
+  - On the phone, a thread's "Replying to · …" stands above the field.
+  - A photo in a message has a `--line2` hairline, so a light picture keeps its edge, and its toolbar stands beside the photo.
 - The composer has the paperclip, the hint and Send. A conversation with its usual audience shows
   no "who can see this" text.
 
@@ -1626,6 +1656,12 @@ type, because a message is written in the composer. The phone's "+" opens that w
 sheet at once: it has no list of the types before the tabs (founder direction, Hubert, 2026-11-13,
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
+- **The window's fields and lists** (visual review 2026-11-17): a field without a frame (the title, the details) has its edge on the
+  content's edge, where the space chip and the property chips start, with its words 8 px inside it; it never reaches out of the column.
+  **+ From a message or thought** grows the window to show the search and its results above the footer ("Search messages and
+  thoughts"). The Space list shows each space's tile and the Owner list each person's face (an agent's Kreska), as the chips do.
+  In the New space window, Add people open is one box (chosen people, a hairline, the search and the list, then Someone new?) that
+  scrolls with the window, never a second scrolling box; its head has a hairline like its foot; Invite stands on its field's middle.
 - **Plain words in the Task tab** (persona round 30): the details field reads "Add details…", and the link to where it came from is
   **+ From a message or thought**; the task panel's own action is **Add to a thought**.
 - **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,

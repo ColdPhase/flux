@@ -32,8 +32,12 @@
 .msg-acts__b:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .msg-acts__b:disabled { opacity: .5; cursor: progress; }
 .msg-acts__b:focus-visible, .msg-menu__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-/* The tooltip of a small control opens below it, which would cover the pill's neighbours: keep it above. */
-.msg-acts [data-tip]::after { top: auto; bottom: calc(100% + 6px); }
+/* The tooltip of a small control opens above it, centred on its button (visual review 2026-11-17: it stood 40 px to the left). */
+.msg-acts [data-tip]::after { top: auto; bottom: calc(100% + 6px); left: 50%; right: auto; translate: -50% 0; }
+/* The pill's end buttons often stand at the pane's edge: their tooltips start or end with the pill, never past the pane; a narrow thread's
+   pill sits at the pane's right edge, so all its tooltips end with their button. */
+.msg-acts > [data-tip]:first-child::after { left: 0; right: auto; translate: none; }
+.msg-acts > [data-tip]:last-child::after, .thread .msg-acts > [data-tip]::after { left: auto; right: 0; translate: none; }
 
 /* The computer's menu: one list under its anchor. (A phone's long press opens a bottom sheet instead: MessageSheet, message-sheet.css.) */
 .msg-menu__scrim { position: fixed; inset: 0; z-index: calc(var(--z-menu) - 1); }
@@ -100,7 +104,9 @@
 @container thread-feed (max-width: 519px) {
   .thread__in { --acts-room: 0px; }
   .thread .project-convo__message > .msg-acts, .thread .project-convo__message.is-mine > .msg-acts,
-  .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -14px; left: auto; right: 8px; padding: 0; border-radius: 9px; }
+  .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -14px; left: auto; right: 8px; padding: 0; border-radius: 9px;
+    /* The pill keeps a visible container on the panel's white (visual review 2026-11-17: bare icons over the bubble's edge). */
+    box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2); }
   .thread .project-convo__message:has(> .project-convo__message-meta) > .msg-acts, .thread .dm-msg__main:has(> .dm-msg__meta) > .msg-acts { top: -4px; }
   .thread .msg-acts::before, .thread .project-convo__message.is-mine > .msg-acts::before, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts::before { display: none; }
   .thread .msg-acts__b { width: 24px; height: 24px; border-radius: 8px; }

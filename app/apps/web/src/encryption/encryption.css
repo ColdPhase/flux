@@ -16,7 +16,8 @@
 .newspace__phrase { min-height: 64px; padding: 10px 12px; resize: none; font-family: var(--mono); font-size: var(--fs-base); line-height: 1.5; overflow: hidden; }
 /* The download button, what it is for, and its refusal: one column with the same 8 px between a control and its hint as elsewhere in the window (#1216). */
 .newspace__download { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.newspace__quiet { display: flex; flex-wrap: wrap; gap: 0 4px; margin: 0 0 0 -8px; }
+/* The quiet button's words start on the column's edge: the margin is its own side padding (visual review 2026-11-17: 6 px off). */
+.newspace__quiet { display: flex; flex-wrap: wrap; gap: 0 4px; margin: 0 0 0 -14px; }
 .newspace__quiet .ui-btn { color: var(--t2); }
 .newspace__hint, .newspace__warning { margin: 0; font-size: var(--fs-md); color: var(--t2); line-height: 1.55; }
 .newspace__warning { color: var(--t1); }
@@ -24,6 +25,8 @@
 .newspace__meter { display: inline-flex; gap: 3px; flex: none; }
 .newspace__meter i { width: 16px; height: 4px; border-radius: 2px; background: var(--hov); }
 .newspace__meter i.is-on { background: var(--inv); }
+/* With nothing typed the bars say nothing, and read as stray lines (visual review 2026-11-17): the meter shows from its first bar. */
+.newspace__meter:not(:has(.is-on)) { display: none; }
 .newspace .details__actions { flex-wrap: wrap; }
 .newspace__protects { font-size: var(--fs-md); color: var(--t2); }
 .newspace__protects summary { display: inline-block; cursor: pointer; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; border-radius: var(--r-sm); }

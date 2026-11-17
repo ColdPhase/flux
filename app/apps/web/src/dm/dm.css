@@ -35,19 +35,9 @@
 .dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
 @keyframes dm-rise { from { opacity: 0; transform: translateY(8px); } }
 
-/* List of conversations */
-.dm-index__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
-.dm-index__head p { font-size: var(--fs-sm); color: var(--t3); }
-.dm-index { list-style: none; margin: 0; padding: 6px 0; }
-.dm-index__item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 10px; margin: 0 -10px; border-radius: var(--r); color: var(--t1); text-decoration: none; transition: var(--tr); }
-.dm-index__item:hover { background: var(--hov); }
-.dm-index__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.dm-index__text b { font-size: var(--fs-md); font-weight: 500; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* A conversation reads as a space does (#1424 decision 10): `--t2` when read, bold in the primary colour while something is unread. */
-.dm-index__item.is-unread .dm-index__text b { font-weight: 600; color: var(--t1); }
-.dm-index__quiet { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
-.dm-index__text span { font-size: var(--fs-sm); color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dm-index__item time { flex: none; font-size: var(--fs-xs); color: var(--t3); }
+/* List of conversations: the Spaces list's card and rows (DmRows, app/settings.css), then New message and the privacy line under it. */
+.dm-index__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 12px; }
+.dm-index__foot .proj-index__lead { flex: 1 1 16em; }
 
 /* New message */
 .dm-new { max-width: 560px; }
@@ -68,7 +58,7 @@
 .dm-new__name span { font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-new__tick { color: var(--t1); }
 .dm-new__title { display: grid; gap: 6px; margin-top: 14px; font-size: var(--fs-sm); color: var(--t2); }
-.dm-new__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--line); background: var(--el); }
+.dm-new__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--line); background: var(--bg); }
 .dm-new__audience { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .dm-new__audience svg { color: var(--t3); }
 
@@ -83,8 +73,6 @@
   .dm__faces .ui-avatar--lg { width: 30px; height: 30px; }
   .dm__composer { padding-top: 6px; }
   .dm__composer .composer__hint:not(.dm__error) { display: none; }
-  .dm-index__head { align-items: center; }
-  .dm-index__head p { display: none; }
 }
 .dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--t1); border-radius: 2px; }
 .dm-msg:focus { outline: none; }
@@ -106,7 +94,8 @@
 
 /* Shared bubble and clock, with the same author columns as project messages. */
 .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
-.dm-msg__face .ui-avatar { width: 32px; height: 32px; }
+/* The same face as in a space's conversation (project-conversation.css): grey, --t2 initials (visual review 2026-11-17: white with black initials here). */
+.dm-msg__face .ui-avatar { width: 32px; height: 32px; font-size: var(--fs-face-lg); font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
 .dm-msg.is-mine .dm-msg__row { display: flex; justify-content: flex-end; }
 .dm-msg.is-mine .dm-msg__face { display: none; }
 .dm-msg__main { max-width: min(600px, 100%); }

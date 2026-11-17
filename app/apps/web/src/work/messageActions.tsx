@@ -111,7 +111,11 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
     if (!node) return;
     const { offsetWidth: width, offsetHeight: height } = node;
     const box = anchor.getBoundingClientRect();
-    const left = Math.max(12, Math.min(box.right - width, window.innerWidth - width - 12));
+    // It opens away from the message it acts on (visual review 2026-11-17: it covered the words): from the toolbar's far edge, under it,
+    // to the right of someone else's message and to the left of one's own, as the toolbar itself sits.
+    const pill = (anchor.closest('.msg-acts') ?? anchor).getBoundingClientRect();
+    const mine = !!anchor.closest('.is-mine');
+    const left = Math.max(12, Math.min(mine ? pill.right - width : pill.left, window.innerWidth - width - 12));
     const below = box.bottom + 8;
     // Under the button, else over it; never past the window: taller than the room on its side, it scrolls (a large text size).
     const room = { below: window.innerHeight - 12 - below, above: box.top - 8 - 12 };

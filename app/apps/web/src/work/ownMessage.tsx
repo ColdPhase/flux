@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { formatKey } from '../composer/formatKeys';
 import { Button, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
@@ -39,6 +39,13 @@ function Editor({ body, hasFiles, onSave, onCancel }: { body: string; hasFiles: 
     node.focus({ preventScroll: true });
     node.setSelectionRange(node.value.length, node.value.length);
   }, []);
+  // The field is as tall as its words (to 40 % of the window, then it scrolls): a third line is never cut under a two-line box.
+  useLayoutEffect(() => {
+    const node = field.current;
+    if (!node) return;
+    node.style.height = 'auto';
+    node.style.height = `${node.scrollHeight + node.offsetHeight - node.clientHeight}px`;
+  }, [text]);
   const words = text.trim();
   const unchanged = words === body.trim();
   const save = async () => {
@@ -54,7 +61,7 @@ function Editor({ body, hasFiles, onSave, onCancel }: { body: string; hasFiles: 
   };
   return (
     <form className="msg-edit" role="group" aria-label="Edit your message" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-      <textarea ref={field} className="msg-edit__field" aria-label="Edit message" value={text} rows={Math.min(8, Math.max(2, text.split('\n').length))} maxLength={100_000}
+      <textarea ref={field} className="msg-edit__field" aria-label="Edit message" value={text} rows={2} maxLength={100_000}
         onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} />
       <div className="msg-edit__row">
         <Button type="submit" variant="primary" size="sm" busy={busy} disabled={!words && !hasFiles}>Save</Button>

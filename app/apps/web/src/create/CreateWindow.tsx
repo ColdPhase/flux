@@ -19,7 +19,7 @@ import { lastSpace } from '../app/lastSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
-import { Button, Icon, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast } from '../ui';
+import { Avatar, Button, Icon, Kreska, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast } from '../ui';
 import { Select, Option, OptionGroup } from '../ui/Select';
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
@@ -190,7 +190,8 @@ function PlacePicker({ projectId, onChange, compact = false, plain = false }: { 
       {compact ? <Icon name="chevron-down" size={12} /> : null}
       <Select aria-label="Space" value={projectId} onChange={(next) => onChange(next)}>
         {current ? null : <Option value="">Choose a space</Option>}
-        {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
+        {/* Each space with its tile, as the chip shows the chosen one (visual review 2026-11-17). */}
+        {projects.map((project) => <Option key={project.id} value={project.id}><span className="create__opt"><span className="create__tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} /></span>{project.name}</span></Option>)}
       </Select>
     </label>
   );
@@ -308,11 +309,11 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   }, [projectId]);
   const loaded = context?.projectId === projectId ? context.value : null;
 
-  const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: personLabel(m, me.user.id) }))
-    : [{ value: `human:${me.user.id}`, label: youLabel(me.user.name, true) }]), [loaded, me.user.id, me.user.name]);
+  const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: personLabel(m, me.user.id), id: m.userId, name: m.name }))
+    : [{ value: `human:${me.user.id}`, label: youLabel(me.user.name, true), id: me.user.id, name: me.user.name }]), [loaded, me.user.id, me.user.name]);
   // F-029 (#614): no agent owners while the workspace's AI is off.
   const aiOff = useSpaceAi(loaded?.project.id).blocked;
-  const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
+  const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)`, colour: agent.colour }));
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ (\((you|agent)\)|· Guest)$/, '') ?? 'No owner';
 
   const text = oneLine(title);
@@ -388,8 +389,9 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       <div className="create__props">
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
           <Option value="">No owner</Option>
-          <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}</OptionGroup>
-          {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}>{a.label}</Option>)}</OptionGroup> : null}
+          {/* A face on every row, as in the mention and New message lists (visual review 2026-11-17). */}
+          <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}><span className="create__opt"><Avatar name={p.name} id={p.id} size="sm" />{p.label}</span></Option>)}</OptionGroup>
+          {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}><span className="create__opt"><Kreska size={20} hue={a.colour} />{a.label}</span></Option>)}</OptionGroup> : null}
         </PickChip>
         <div className="create__prop">
           <span className="create__lab" aria-hidden="true">Link</span>
@@ -689,9 +691,12 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
   const state = !text ? 'idle' : !current ? 'loading' : current.items ? 'ready' : 'failed';
   // A link that was just taken no longer needs offering.
   const items = (current?.items ?? []).filter((f) => !taken.some((t) => t.type === f.ref.type && t.id === f.ref.id));
+  // The window grows for the search (create.css) and the search and its results scroll into view, never cut under the footer (visual review 2026-11-17).
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.scrollIntoView({ block: 'nearest' }); }, [state, items.length]);
   return (
-    <div className="create__picker">
-      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search this space’s messages and thoughts" value={query}
+    <div ref={box} className="create__picker">
+      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.stopPropagation(); onDone(); }

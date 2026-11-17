@@ -19,6 +19,15 @@ import './message-format.css';
 export type NamedPerson = Pick<ProjectPerson, 'kind' | 'name'> & { colour?: ProjectPerson['colour'] };
 
 const URL_TOKEN = LINK_URL_SOURCE;
+
+/**
+ * A long address breaks after its separators (`/`, `_`, `#`, `?`, `&`, `=`, `.`, `-`), never inside a word ("Soil_m / oisture"; visual
+ * review 2026-11-17). `<wbr>` adds no character, so copying the link copies the address as written.
+ */
+function breakable(url: string): ReactNode {
+  const parts = url.split(/(?<=[/_#?&=.-])(?=[^/_#?&=.-])/u);
+  return parts.length < 2 ? url : parts.map((part, index) => <Fragment key={index}>{index ? <wbr /> : null}{part}</Fragment>);
+}
 const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The inline references in a body, longest known names first; a web address is always group `url`; `[3]` is group `cite` when asked for. */
@@ -50,7 +59,7 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       const thought = groups.url ? thoughtLink(groups.url) : null;
       // A map thought's own address (its Copy link) is the thought's chip, not a bare address (#1376).
       if (thought) parts.push(<ThoughtChip key={`${keyPrefix}${key++}`} link={thought} linked={linked} />);
-      else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
+      else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{breakable(groups.url)}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
       else if (groups.known || groups.mention) {
         const name = (groups.known ?? groups.mention!).slice(1);
         const named = names.find((person) => person.name === name);
@@ -123,7 +132,7 @@ export function LinkPreviews({ body, projectId, messageId }: { body: string; pro
       <a className="link-preview" href={raw} target="_blank" rel="noopener noreferrer nofollow" data-page={page?.description ? 'described' : page?.title ? 'titled' : 'address'}>
         <span className="link-preview__site"><Icon name="link" size={12} />{url.hostname.replace(/^www\./, '')}</span>
         <strong>{page?.title ?? addressTitle(url)}</strong>
-        <small>{page?.description ?? (url.pathname.length > 1 ? `${url.hostname}${url.pathname}` : 'Opens in a new tab')}</small>
+        <small>{page?.description ?? (url.pathname.length > 1 ? breakable(`${url.hostname}${url.pathname}`) : 'Opens in a new tab')}</small>
       </a>
     </li>;
   })}</ul>;

@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
-import { Avatar, Button, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
+import { Button, Icon, MEDIA, useMediaQuery } from '../ui';
 import { useKeyboardMove, useReorder } from '../ui/reorder';
 import { MoreMenu, type MoreItem } from './HeaderParts';
 import { useNeedsYouSpaces } from '../notifications/dot';
@@ -13,11 +13,8 @@ import { useShellData } from './data';
 import { startsConversations, startsSpaces } from '../people/api';
 import { useShellActions } from './shellContext';
 import { SpaceFace } from '../ui/SpaceFace';
-import { useAgentUnread } from '../my-agents/AgentChatDots';
-import { useDmUnread } from '../dm/dmUnread';
-import type { MyAgent } from '@flux/contracts';
+import { DmRows } from '../dm/DmIndex';
 import './settings.css';
-import { lastSaid } from './timeFormat';
 
 /**
  * Projects (#266 PF-1): the list the phone's Projects place opens, like a messenger's list of chats.
@@ -50,8 +47,6 @@ export function ProjectsIndex() {
   const encryptedIn = useEncryptedWorkspaceIds();
   // A call is on in the space (F-041): the call glyph after its name, as in the sidebar.
   const calls = useLiveSpaces();
-  // A conversation with something unread is bold, as a space (#1424 decision 10); a muted one has the quiet count.
-  const dmUnread = useDmUnread();
   return (
     <div className="pane-scroll">
       <div className="pane-in set">
@@ -113,29 +108,9 @@ export function ProjectsIndex() {
         {phone && (directMessages.length || agents.length || (!!workspace && startsConversations(workspace))) ? (
           <section className="proj-index__dms" aria-labelledby="proj-index-dms">
             <h2 id="proj-index-dms">Messages</h2>
-            {/* The same card and grid as the spaces, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
+            {/* The same list as the Messages page (dm/DmIndex.tsx): the spaces' card and grid, with a fixed time column (#763 NV-5). */}
             {directMessages.length || agents.length ? (
-              <ul className="set-card proj-index__dmlist" aria-label="Conversations">
-                {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} first={index === 0} />)}
-                {directMessages.map((dm) => {
-                  const quiet = muted.has(`dm:${dm.id}`);
-                  const fresh = dmUnread.get(dm.id) ?? 0;
-                  return (
-                  <li key={dm.id}>
-                    <Link to={`/dm/${dm.id}`} className={`set-row${fresh && !quiet ? ' is-unread' : ''}`} aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
-                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
-                      <span className="set-row__b">
-                        <span className="set-row__t proj-index__one">{dm.title}</span>
-                        <span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span>
-                      </span>
-                      {quiet ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
-                      {quiet && fresh ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : null}
-                      {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{lastSaid(dm.lastAt)}</time> : null}
-                    </Link>
-                  </li>
-                  );
-                })}
-              </ul>
+              <DmRows />
             ) : <p className="proj-index__lead">No messages yet. Only the people in each conversation can read it.</p>}
             {/* A guest replies in conversations they are added to and starts none (#1424): no New message for them. */}
             {(!!workspace && startsConversations(workspace)) ? <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link> : null}
@@ -143,21 +118,5 @@ export function ProjectsIndex() {
         ) : null}
       </div>
     </div>
-  );
-}
-
-/** One of your agents in Messages: its name bold while its chat has an answer or a report you have not read (#919, #1424 decision 10). */
-function AgentRow({ agent, first }: { agent: MyAgent; first: boolean }) {
-  const unread = useAgentUnread(agent.id);
-  return (
-    <li>
-      <Link to={`/agents/${agent.id}`} className={`set-row${unread ? ' is-unread' : ''}`} data-agent={agent.id} aria-label={unread ? `${agent.name}, new messages` : undefined}>
-        <Kreska size={36} hue={agent.colour} />
-        <span className="set-row__b">
-          <span className="set-row__t proj-index__one">{agent.name}</span>
-          <span className="set-row__s proj-index__one">{first ? 'Your agent · answers /ai' : 'Your agent'}</span>
-        </span>
-      </Link>
-    </li>
   );
 }

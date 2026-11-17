@@ -12,17 +12,22 @@ import { Avatar, Button, EmptyState, Icon, Kreska, MEDIA, useMediaQuery } from '
 import { focusField, stopAwaitingField, waitForField } from '../ui/keys';
 import { GUEST_NO_DMS, audienceOf } from './names';
 import { startsConversations } from '../people/api';
+import '../app/settings.css';
 import './dm.css';
 import { lastSaid } from '../app/timeFormat';
 
-/** The rows of conversations with people; Home's Projects shows them on the phone (#341). */
+/**
+ * The rows of conversations with people: one list for the Messages page and the phone's Spaces tab (#341), in the card and rows of the
+ * Spaces list (visual review 2026-11-17: a flat list here, a card there, for the same conversations). A long preview never pushes the
+ * time out (#763 NV-5).
+ */
 export function DmRows() {
   const { directMessages, agents } = useShellData();
   // Unread is bold, as a space's; a muted conversation is never bold, its unread is the quiet count (#1424 decision 10, #1249).
   const unread = useDmUnread();
   const { muted } = usePlaceMutes();
   return (
-    <ul className="dm-index" aria-label="Conversations">
+    <ul className="set-card proj-index__dmlist dm-index" aria-label="Conversations">
       {/* Your agents come first, Assistant at the top (F-036 AG-4). */}
       {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} first={index === 0} />)}
       {directMessages.map((dm) => {
@@ -30,11 +35,12 @@ export function DmRows() {
         const fresh = unread.get(dm.id) ?? 0;
         return (
         <li key={dm.id}>
-          <Link to={`/dm/${dm.id}`} className={`dm-index__item${fresh && !quiet ? ' is-unread' : ''}`} aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
+          <Link to={`/dm/${dm.id}`} className={`set-row dm-index__item${fresh && !quiet ? ' is-unread' : ''}`} aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
             <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
-            <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
-            {quiet && fresh ? <span className="dm-index__quiet" aria-hidden="true">{fresh}</span> : null}
-            {dm.lastAt ? <time dateTime={dm.lastAt}>{lastSaid(dm.lastAt)}</time> : null}
+            <span className="set-row__b dm-index__text"><b className="set-row__t proj-index__one">{dm.title}</b><span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span></span>
+            {quiet ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
+            {quiet && fresh ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : null}
+            {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{lastSaid(dm.lastAt)}</time> : null}
           </Link>
         </li>
         );
@@ -48,9 +54,9 @@ function AgentRow({ agent, first }: { agent: MyAgent; first: boolean }) {
   const unread = useAgentUnread(agent.id);
   return (
     <li>
-      <Link to={`/agents/${agent.id}`} className={`dm-index__item${unread ? ' is-unread' : ''}`} data-agent={agent.id} aria-label={unread ? `${agent.name}, new messages` : undefined}>
+      <Link to={`/agents/${agent.id}`} className={`set-row dm-index__item${unread ? ' is-unread' : ''}`} data-agent={agent.id} aria-label={unread ? `${agent.name}, new messages` : undefined}>
         <Kreska size={36} hue={agent.colour} />
-        <span className="dm-index__text"><b>{agent.name}</b><span>{first ? 'Your agent · answers /ai' : 'Your agent'}</span></span>
+        <span className="set-row__b dm-index__text"><b className="set-row__t proj-index__one">{agent.name}</b><span className="set-row__s proj-index__one">{first ? 'Your agent · answers /ai' : 'Your agent'}</span></span>
       </Link>
     </li>
   );
@@ -74,12 +80,13 @@ export function DmIndex() {
     );
   }
   return (
-    <div className="pane-scroll"><div className="pane-in">
-      <div className="dm-index__head">
-        <div><p>Only the people in each conversation can read it.</p></div>
-        {starts ? <Link className="ui-btn ui-btn--secondary" to="/dm/new"><Icon name="plus" size={14} />New message</Link> : null}
-      </div>
+    <div className="pane-scroll"><div className="pane-in set dm-index-page">
+      {/* The Spaces list's layout: the card, then New message under it, as on the phone's Spaces tab (visual review 2026-11-17). */}
       <DmRows />
+      <div className="dm-index__foot">
+        {starts ? <Link className="ui-btn ui-btn--secondary" to="/dm/new"><Icon name="plus" size={14} />New message</Link> : null}
+        <p className="proj-index__lead">Only the people in each conversation can read it.</p>
+      </div>
     </div></div>
   );
 }

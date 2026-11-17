@@ -70,7 +70,7 @@ button.project-convo__contribution { cursor: pointer; }
 /* A tablet keeps its reading measure inside the workspace (adaptive-layout-rules): the rail gives the column more width. */
 @media (min-width: 681px) and (max-width: 900px) { .project-convo__in { padding-left: calc(var(--space-page) + 56px); padding-right: calc(var(--space-page) + 56px); } }
 .project-convo__day { justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
-.project-convo__day::before, .project-convo__day::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line); }
+.project-convo__day::before, .project-convo__day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .project-convo__message { display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: min(260px, 100%); max-width: min(600px, 100%); padding: 0 0 0 44px; }
 .project-convo__message + .project-convo__message { margin-top: 24px; }
 .project-convo__message > :is(.ui-avatar, .author-face) { top: 0; }
@@ -118,9 +118,9 @@ button.project-convo__contribution { cursor: pointer; }
    (the home indicator) itself (#151 AC-4). */
 @media (max-width: 640px) {
   .project-convo__composer { padding: 6px 10px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
-  .project-convo__composer .project-convo__to { margin: 4px 4px 0; }
-  /* With the "Replying to" line under the field, the composer keeps 12 px under it, or the home indicator's room: the line never sits on
-     the screen's bottom edge (visual review 2026-11-17, core 21). */
+  /* What a thread's composer answers ("Replying to · …") stands above the field, never pressed under it against the screen's lower edge
+     (visual review 2026-11-17). */
+  .project-convo__composer .project-convo__to { order: 0; margin: 0 4px 6px; }
   .project-convo__composer:has(.project-convo__current-thread) { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
 
