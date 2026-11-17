@@ -307,6 +307,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     const grew = added.reduce((sum, line) => sum + (lineOf(line.key)?.getBoundingClientRect().height ?? 0), 0);
     const wasAtEnd = !feed || feed.scrollHeight - feed.scrollTop - feed.clientHeight - grew < END_SLACK;
     if (!sent && others.length && !wasAtEnd) { below.add(arrivedBelow(feed, others, lineOf)); return; }
+    // A line of the person's own that is not a message they sent (they set the status to Done, changed the owner) does not move the panel:
+    // they stay at the control they used, with the title and the status in view (visual review 2026-11-17, core 33: Done jumped the sheet).
+    if (!sent && !others.length) return;
     const last = root?.querySelector<HTMLElement>('.wd-pending__item:last-child') ?? root?.querySelector<HTMLElement>('.wd-act')?.lastElementChild;
     if (last instanceof HTMLElement) last.scrollIntoView({ block: 'nearest' });
   }, [newest, state.loading]);
