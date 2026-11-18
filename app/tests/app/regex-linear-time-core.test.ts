@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { excerpt, isQuestion, placeDecisionReference } from '@flux/core';
+import { authorsNamed, excerpt, isQuestion, placeDecisionReference } from '@flux/core';
 import { titleFromText } from '../../packages/core/src/assistant/jobs.js';
 import { shortReason } from '../../packages/db/src/repositories/work-read-objects.js';
 import { highlightParts } from '../../packages/db/src/repositories/search.js';
@@ -24,6 +24,14 @@ function within(label: string, work: () => unknown) {
 }
 
 describe('text a person writes is read in linear time', () => {
+  test('an author name an agent passes is read in linear time (authorsNamed, CodeQL js/polynomial-redos)', () => {
+    const people = [{ kind: 'human' as const, id: 'u-ada', name: 'Ada Nowak' }, { kind: 'agent' as const, id: 'a-1', name: 'Assistant', ownerName: 'Ada Nowak' }];
+    within('authorsNamed spaces', () => authorsNamed(`Ada${' '.repeat(BIG)}x`, people));
+    within('authorsNamed (a', () => authorsNamed(`(${'(a'.repeat(BIG / 2)}`, people));
+    within('authorsNamed agent', () => authorsNamed(`Assistant (${"Ada's ".repeat(BIG / 6)}agent)`, people));
+    assert.deepEqual(authorsNamed("Assistant (Ada's agent)", people).map((a) => a.id), ['a-1']);
+  });
+
   test('a question mark and a long run of spaces does not hold the process (isQuestion)', () => {
     assert.equal(within('isQuestion', () => isQuestion(`?${' '.repeat(BIG - 2)}x`)), true, 'a question mark before a space is a question');
     assert.equal(within('isQuestion', () => isQuestion(`${'a'.repeat(BIG)}?`)), true);
