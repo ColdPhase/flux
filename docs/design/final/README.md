@@ -231,8 +231,9 @@ looks ugly"):
   (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
   with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
   minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden, down to
-  a 640 px pane (200 % text on a 1440 px window). In the map's List the canvas tools (Select, Move around) are not drawn and keep their room,
-  so Thought and Undo stay where they are, never two greyed tools that do nothing (round 14 look-b P13). The phone's map has one bottom row:
+  a 640 px pane (200 % text on a 1440 px window). In the map's List the canvas tools (Select, Move around) are not drawn, never two greyed tools that do
+  nothing (round 14 look-b P13), and the bar is only as wide as what it holds, centred like the map's, with its height and look (founder check,
+  Hubert 2026-11-18: the map's full width read as a long pill with empty room). The phone's map has one bottom row:
   the selection's Thought actions (or an edit's Save and Cancel), Undo and **Thought** side by side, with the once-said computer line above
   it (round 14 look-b P14); Undo there is its icon, as on the computer's toolbar, so the three fit one row of a 390 px phone (round 15
   look-3 b). The map's status line ("Added … · Saved") is a small raised pill on the computer as on the phone, never words printed over a

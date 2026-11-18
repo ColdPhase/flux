@@ -420,8 +420,8 @@ export class SharedWiki {
       case 'resync': this.disconnected(); return;
       case 'revoked': this.retireAccess('Access ended. Your pending text is kept privately.'); return;
       case 'error':
-        if (message.outcome === 'refused' && !message.retryable && message.commandId) { this.retire(`A change was refused (${message.code}). Your text is kept privately for comparison.`); return; }
-        this.problem = `Sharing is not confirmed (${message.code}). The exact pending change is kept for retry.`;
+        if (message.outcome === 'refused' && !message.retryable && message.commandId) { this.retire('Flux could not save this change. Your text is kept privately: compare it with the page and add it again.'); return; }
+        this.problem = 'Sharing is not confirmed. The exact pending change is kept for retry.';
         if (message.retryable) { if (message.commandId) { this.sent.delete(message.commandId); if (this.activeCommand === message.commandId) this.activeCommand = null; } this.scheduleSend(40); }
         else if (message.outcome === 'unknown') this.disconnected();
         break;

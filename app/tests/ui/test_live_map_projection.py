@@ -207,6 +207,30 @@ class LiveMapProjectionJourney(LiveFixture):
         self.assertIn(link['id'], [item['id'] for item in after['links']])
         self.assertEqual((await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}/live'))['generation'], generation)
 
+    async def test_a_drag_started_right_after_a_drop_keeps_both_and_shows_no_code(self):
+        """Founder check, Hubert 2026-11-18: "The map change is not confirmed (EDITING_LEASE_CHANGED)." The next drag cancelled the lease of the
+        drop still being saved; every move is kept now, and no message names a code, on the map or in its List."""
+        await self.create_map(4)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        for _ in range(3):
+            for thought in self.thoughts:
+                node = ada.locator(f'.sk-node[data-id="{thought["id"]}"]')
+                box = await node.bounding_box()
+                await ada.mouse.move(box['x'] + 20, box['y'] + 20)
+                await ada.mouse.down()
+                await ada.mouse.move(box['x'] + 26, box['y'] + 32, steps=2)
+                await ada.mouse.up()
+        await self.map_saved(ada)
+        stored = {item['id']: item for item in (await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}'))['thoughts']}
+        for thought in self.thoughts:
+            self.assertEqual(stored[thought['id']]['version'], thought['version'] + 3, f'every drop of {thought["id"]} landed, though each next drag started at once')
+            self.assertGreater(stored[thought['id']]['y'], thought['y'])
+        await ada.get_by_role('radio', name='List', exact=True).click()
+        await expect(ada.get_by_role('tree')).to_be_visible()
+        text = await ada.locator('body').inner_text()
+        self.assertNotRegex(text, r'\b[A-Z]{3,}_[A-Z_]{3,}\b', 'no error code is shown to a person')
+        self.assertNotIn('not confirmed', text)
+
     async def test_signed_positions_preview_and_land_for_the_peer(self):
         """#509 AC-2: on the live map a thought moves into negative space; the peer sees the preview and the landing."""
         await self.create_map(2)

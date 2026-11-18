@@ -350,6 +350,7 @@ class MapCanvasJourney(unittest.TestCase):
                     'Undo': page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Undo', exact=True),
                 }
                 on_map = {name: control.bounding_box() for name, control in controls.items()}
+                bar_on_map = page.locator('.sk-dock__row').bounding_box()
                 expect(page.locator('.sk-hint')).to_be_visible()
                 tools = page.get_by_role('toolbar', name='Map tools')
 
@@ -364,13 +365,22 @@ class MapCanvasJourney(unittest.TestCase):
                 one_row()
                 expect(page.get_by_role('tree', name='Thoughts in Plane directions')).to_be_visible()
                 on_list = {name: control.bounding_box() for name, control in controls.items()}
-                for name in controls:
+                for name in ('pill', 'Map', 'List'):
                     for key in ('x', 'y', 'width', 'height'):
                         self.assertAlmostEqual(on_list[name][key], on_map[name][key], delta=1, msg=f'{width}: {name} {key} stays put')
                 expect(page.locator('.sk-hint')).to_have_count(0)
-                # The canvas tools are not drawn in the List (round 14 look-b P13: two greyed tools that did nothing); their room stays.
+                # The canvas tools are not in the List (round 14 look-b P13), and its bar is only as wide as what it holds, centred like the
+                # map's, with the same height and look (founder check, Hubert 2026-11-18: a long pill with empty room on its left).
                 expect(page.get_by_role('button', name='Move around', exact=True)).to_have_count(0)
-                expect(page.locator('.sk-tool--away')).to_have_count(3)
+                bar = page.evaluate('''() => { const row = document.querySelector('.sk-dock__row'), r = row.getBoundingClientRect(), css = getComputedStyle(row);
+                    const kids = [...row.querySelector('.sk-tools').children].map((el) => el.getBoundingClientRect()).filter((b) => b.width > 0);
+                    return {x: r.x, width: r.width, height: r.height, radius: css.borderTopLeftRadius, content: Math.max(...kids.map((b) => b.right)) - Math.min(...kids.map((b) => b.left)),
+                            pad: parseFloat(css.paddingLeft) + parseFloat(css.paddingRight)}; }''')
+                self.assertAlmostEqual(bar['width'], bar['content'] + bar['pad'], delta=2, msg=f'{width}: the List bar is as wide as Thought and Undo: {bar}')
+                self.assertLess(bar['width'], bar_on_map['width'] - 40, f'{width}: the List bar is narrower than the map\'s')
+                self.assertAlmostEqual(bar['x'] + bar['width'] / 2, bar_on_map['x'] + bar_on_map['width'] / 2, delta=1, msg=f'{width}: centred where the map\'s bar is')
+                self.assertAlmostEqual(bar['height'], bar_on_map['height'], delta=0.5, msg=f'{width}: the same height')
+                self.assertAlmostEqual(on_list['Thought']['y'], on_map['Thought']['y'], delta=1, msg=f'{width}: the same line')
                 shot(page, f'map-list-positions-{width}-light')
                 show_map_as(page, 'Map')
                 self.assertAlmostEqual(controls['Undo'].bounding_box()['x'], on_map['Undo']['x'], delta=1)
@@ -439,7 +449,6 @@ class MapCanvasJourney(unittest.TestCase):
         const shape = (b) => { const r = b.getBoundingClientRect(), css = getComputedStyle(b);
             return {name: b.getAttribute('aria-label') || b.innerText.trim(), left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height,
                     radius: parseFloat(css.borderTopLeftRadius), fill: css.backgroundColor}; };
-        // A tool not drawn in the List keeps its room (round 14 look-b P13), so the insets are measured on every tool.
         return {row: {left: row.left, right: row.right, top: row.top, bottom: row.bottom, height: row.height}, tools: tools.map(shape), every: every.map(shape)};
     }"""
 

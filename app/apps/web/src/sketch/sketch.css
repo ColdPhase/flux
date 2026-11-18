@@ -375,8 +375,6 @@ span.sk-li-img { width: 160px; height: 96px; }
 @media (hover: hover) { .sk-tool--word:hover:where(:not(:disabled)) svg { color: var(--t1); } }
 /* Beside the sidebar a tablet's pane is narrow: "Select several" is its icon alone there, a circle like Undo, so Undo stays on the toolbar's one row in the Map and the List. */
 @container sk-pane (max-width: 680px) { .sk-dock .sk-tool--word.sk-select-several { width: 44px; padding: 0; } .sk-dock .sk-select-several .sk-bl { display: none; } }
-/* In the List the canvas tools are not drawn but keep their room, so Thought and Undo stay where they are in the Map (round 14 look-b P13). */
-.sk-tool--away { visibility: hidden; }
 .sk--map .sk-help:not(.is-open) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk--map .sk-help.is-open { position: absolute; left: 50%; bottom: 110px; z-index: 9; width: min(560px, calc(100% - 28px)); max-width: none; margin: 0; padding: 12px 16px; transform: translateX(-50%);
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); color: var(--t2); }

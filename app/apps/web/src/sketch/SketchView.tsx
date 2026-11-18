@@ -838,16 +838,17 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // they are not shown but keep their room, so + Thought and Undo keep their places (round 14 look-b P13: two greyed tools that did nothing).
   const dock = canWrite && !phone ? (
     <div className="sk-tools" role="toolbar" aria-label="Map tools">
-      {bare ? null : <>
-        <button type="button" className={`sk-tool${mapMode ? '' : ' sk-tool--away'}`} aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
-          onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
+      {/* The List's bar holds only what works there, as wide as that and centred like the map's (founder check, Hubert 2026-11-18). */}
+      {bare || !mapMode ? null : <>
+        <button type="button" className="sk-tool" aria-label="Select" aria-pressed={!connectFrom && !hand} data-tip="Select"
+          onClick={() => { setHand(false); if (connectFrom) escape(); }}>
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
         </button>
-        <button type="button" className={`sk-tool${mapMode ? '' : ' sk-tool--away'}`} aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
-          onClick={() => { if (!mapMode) return; setHand(!hand); if (connectFrom) escape(); }}>
+        <button type="button" className="sk-tool" aria-label="Move around" aria-pressed={hand} data-tip="Move around: drag to pan"
+          onClick={() => { setHand(!hand); if (connectFrom) escape(); }}>
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8.5V3.75a1 1 0 012 0V7.5M7 7.5V2.75a1 1 0 012 0V7.5M9 7.5V3.5a1 1 0 012 0v4M11 7V5.25a1 1 0 012 0V10a4 4 0 01-4 4H7.75a4 4 0 01-3-1.4L2.75 10.1a1 1 0 011.4-1.4L5 9.9" /></svg>
         </button>
-        <span className={`sk-div${mapMode ? '' : ' sk-tool--away'}`} aria-hidden="true" />
+        <span className="sk-div" aria-hidden="true" />
       </>}
       {/* The dock is a pill, so its word tools are pills like its round tools (founder check, Hubert 2026-11-17): a hover fill follows the dock's curve. */}
       <button type="button" className="sk-tool sk-tool--word sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>

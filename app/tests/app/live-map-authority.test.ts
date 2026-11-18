@@ -473,3 +473,26 @@ test('a stale final drop never moves the thought: cleared, expired, foreign or a
     assert.deepEqual(await thought(c),moved);assert.equal(await journal(),entries);
   } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
+
+test('a cancel of a lease that is gone is done, never an error the person sees; another person still cannot cancel a live lease (founder check, Hubert 2026-11-18)', {timeout:20000},async()=>{
+  const f=await scene(2);const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
+  const [a,b]=f.ids as [string,string];
+  try {
+    const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const connection=randomUUID();
+    const cancel=(session:SessionContext,lease:{gestureId:string;leaseId:string})=>{const command={generation:head.generation,gestureId:lease.gestureId,leaseId:lease.leaseId};return authority.cancel(session,f.sketch.id,connection,command,Buffer.byteLength(JSON.stringify(command)));};
+    // A drop consumes its lease; the client's cancel when the next drag starts, sent before the drop's delta arrived, is then a no-op.
+    const used=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:a,expectedVersion:1}]});
+    await native(f.ownerSession,f.sketch.id,randomUUID(),{id:a,x:50,leaseId:used.leaseId}).moveThoughts(f.ownerSession.principal,f.sketch.id,{leaseId:used.leaseId,moves:[{id:a,x:50,y:40,expectedVersion:1}]});
+    await cancel(f.ownerSession,used);
+    assert.deepEqual((await pool.query('SELECT x,version FROM sketch_thoughts WHERE id=$1',[a])).rows[0],{x:50,version:2},'the drop is kept');
+    // An expired lease of one's own is simply removed.
+    const expired=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:b,expectedVersion:1}]});
+    await pool.query("UPDATE map_live_gestures SET expires_at=clock_timestamp()-interval'1 second' WHERE lease_id=$1",[expired.leaseId]);
+    await cancel(f.ownerSession,expired);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_gestures WHERE lease_id=$1',[expired.leaseId])).rows[0].n,0);
+    // Someone else's live lease is not theirs to cancel.
+    const live=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:b,expectedVersion:1}]});
+    await assert.rejects(cancel(f.peerSession,live),refused('EDITING_LEASE_CHANGED'));
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_gestures WHERE lease_id=$1',[live.leaseId])).rows[0].n,1,'the owner\'s lease stays');
+  } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
+});
