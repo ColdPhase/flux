@@ -173,6 +173,8 @@ person's own choice (204; idempotent).
   what it answers ("I can ask Ms. Novak tomorrow." stayed in Ada's Inbox although she had written twice since). The generator therefore
   checks when it stores a `question` or `mention`: if its person wrote there after its message, it is stored read and marked `done`, as
   Done marks it (no notice, push or email), so it is in done today and Put back brings it back. An agent's question card stays, as above.
+  The reply and the notice can also be written at the same moment, each unseen by the other until it commits; both checks take the events'
+  order lock (`flux.events.seq`, held to commit), so whichever commits second sees the other.
 - **An answer to your question reaches you** (founder decision 2026-11-14, #1424 decision 1). The rule that makes a message a
   `question` for the person it names also makes the answer a need for the one who asked: a person's message in a conversation of a
   space (a thread, a task's discussion), or in a direct message at the same level (its roots, or one thread), notifies the author of a

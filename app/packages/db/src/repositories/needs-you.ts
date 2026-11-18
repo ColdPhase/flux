@@ -28,6 +28,13 @@ export function needsYouRows(db: DbExecutor) {
     });
     return ids.map((id) => `note:${id}`);
   };
+  /**
+   * A reply and the notice it answers can be written at once, each unseen by the other until it commits (founder check, Hubert
+   * 2026-11-18: the answer's notice was stored while Ada's next message was still being written). Both take the events' own order lock
+   * (`flux.events.seq`, which every message's event already takes and holds to its commit), so whichever comes second sees the other: the
+   * reply takes the notice out, or the notice is stored done. The one lock keeps one order with every event write, so no deadlock.
+   */
+  const serialize = () => db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('flux.events.seq'))`);
   return {
     async states(userId: string) {
       const rows = await db.select().from(s).where(eq(s.userId, userId));
@@ -93,6 +100,7 @@ export function needsYouRows(db: DbExecutor) {
      */
     async answerIn(userId: string, projectId: string, conversationId: string): Promise<string[]> {
       const at = `/projects/${projectId.toLowerCase()}/conversations/${conversationId.toLowerCase()}#message-`;
+      await serialize();
       const rows = await db.select({ id: n.id, url: n.url }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), inArray(n.reason, ['question', 'mention']),
         eq(n.sourceType, 'project'), eq(n.sourceId, projectId), sql`starts_with(lower(${n.url}), ${at})`));
       if (!rows.length) return [];
@@ -129,6 +137,7 @@ export function needsYouRows(db: DbExecutor) {
      */
     async answerInDm(userId: string, dmId: string): Promise<string[]> {
       const at = `/dm/${dmId.toLowerCase()}#message-`;
+      await serialize();
       const rows = await db.select({ id: n.id }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), inArray(n.reason, ['question', 'mention']),
         eq(n.sourceType, 'dm'), eq(n.sourceId, dmId), sql`starts_with(lower(${n.url}), ${at})`));
       return takeOut(userId, rows.map((row) => row.id));
@@ -148,6 +157,7 @@ export function needsYouRows(db: DbExecutor) {
       const talk = /^\/projects\/([0-9a-f-]{36})\/conversations\/([0-9a-f-]{36})#message-([0-9a-f-]{36})$/.exec(url);
       let wrote = false;
       if (row?.sourceType === 'dm' && dm && dm[1] === row.sourceId.toLowerCase()) {
+        await serialize();
         const m = schema.dmMessages;
         const [after] = await db.select({ id: m.id }).from(m).where(and(eq(m.dmId, dm[1]!), eq(m.authorId, userId),
           sql`${m.sequence} > (SELECT sequence FROM dm_messages WHERE dm_id = ${dm[1]!}::uuid AND id = ${dm[2]!}::uuid)`)).limit(1);
@@ -156,6 +166,7 @@ export function needsYouRows(db: DbExecutor) {
         const q = schema.agentQuestions;
         const [card] = await db.select({ id: q.id }).from(q).where(and(eq(q.askedUserId, userId), eq(q.messageId, talk[3]!))).limit(1);
         if (card) return false;
+        await serialize();
         const m = schema.projectMessages;
         const [after] = await db.select({ id: m.id }).from(m).where(and(eq(m.conversationId, talk[2]!), eq(m.authorId, userId),
           sql`${m.sequence} > (SELECT sequence FROM project_messages WHERE conversation_id = ${talk[2]!}::uuid AND id = ${talk[3]!}::uuid)`)).limit(1);
