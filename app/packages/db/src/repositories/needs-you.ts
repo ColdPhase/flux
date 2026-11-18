@@ -134,6 +134,38 @@ export function needsYouRows(db: DbExecutor) {
       return takeOut(userId, rows.map((row) => row.id));
     },
 
+    /**
+     * Written after it already (founder check, Hubert 2026-11-18): a question or mention notification stored after its person wrote in
+     * the same place after the message it opens (the same DM, or the same conversation of a space) is answered as their reply would have
+     * answered it, had it come first: read and marked done. The generator runs after the message, so a quick reply can come before the
+     * notice of what it answers. An agent's question card is answered with its own answers and stays. True when it was taken out.
+     */
+    async answeredBefore(userId: string, notificationId: string): Promise<boolean> {
+      const [row] = await db.select({ url: n.url, sourceType: n.sourceType, sourceId: n.sourceId }).from(n)
+        .where(and(eq(n.userId, userId), eq(n.id, notificationId), isNull(n.readAt), inArray(n.reason, ['question', 'mention'])));
+      const url = (row?.url ?? '').toLowerCase();
+      const dm = /^\/dm\/([0-9a-f-]{36})#message-([0-9a-f-]{36})$/.exec(url);
+      const talk = /^\/projects\/([0-9a-f-]{36})\/conversations\/([0-9a-f-]{36})#message-([0-9a-f-]{36})$/.exec(url);
+      let wrote = false;
+      if (row?.sourceType === 'dm' && dm && dm[1] === row.sourceId.toLowerCase()) {
+        const m = schema.dmMessages;
+        const [after] = await db.select({ id: m.id }).from(m).where(and(eq(m.dmId, dm[1]!), eq(m.authorId, userId),
+          sql`${m.sequence} > (SELECT sequence FROM dm_messages WHERE dm_id = ${dm[1]!}::uuid AND id = ${dm[2]!}::uuid)`)).limit(1);
+        wrote = !!after;
+      } else if (row?.sourceType === 'project' && talk && talk[1] === row.sourceId.toLowerCase()) {
+        const q = schema.agentQuestions;
+        const [card] = await db.select({ id: q.id }).from(q).where(and(eq(q.askedUserId, userId), eq(q.messageId, talk[3]!))).limit(1);
+        if (card) return false;
+        const m = schema.projectMessages;
+        const [after] = await db.select({ id: m.id }).from(m).where(and(eq(m.conversationId, talk[2]!), eq(m.authorId, userId),
+          sql`${m.sequence} > (SELECT sequence FROM project_messages WHERE conversation_id = ${talk[2]!}::uuid AND id = ${talk[3]!}::uuid)`)).limit(1);
+        wrote = !!after;
+      }
+      if (!wrote) return false;
+      await takeOut(userId, [notificationId]);
+      return true;
+    },
+
     /** Whether the person's own notification exists; read or unread is set on it. */
     async setNotificationRead(userId: string, id: string, read: boolean) {
       const rows = await db.update(n).set({ readAt: read ? sql`coalesce(${n.readAt}, now())` : null })

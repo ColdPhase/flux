@@ -258,6 +258,11 @@ export interface GeneratorPorts {
    * follow storage.
    */
   followThread?(userId: string, conversationId: string): Promise<void>;
+  /**
+   * A question or mention stored after its person already wrote in the same place after its message (founder check, Hubert 2026-11-18):
+   * read and marked done, as their reply would have taken it. True when it was taken out. Absent for callers without the Inbox's state.
+   */
+  answeredBefore?(userId: string, notificationId: string): Promise<boolean>;
   /** Counts a failed generation of the event (outside its savepoint) and returns the attempts so far. */
   recordFailure(eventId: string, error: string): Promise<number>;
   /** Marks the event as given up on, for operators to inspect. */

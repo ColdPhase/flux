@@ -369,6 +369,58 @@ describe('the Inbox needs-you queue', () => {
     for (const key of [inDm.key]) json(await resolve(partner, key, { action: 'done' }), 200);
   });
 
+  test('what you wrote after it answers it, even when its notice is made after your message: an answer in a DM, a mention in a thread (founder check, Hubert 2026-11-18)', async () => {
+    const inbox = async (someone: Person) => json<InboxResponse>(await someone.browser.request('GET', '/api/v1/inbox'), 200).items;
+    // The generator makes notices after the message; holding its cursor lets the reader write before the notice exists, as a quick reply does.
+    const beforeTheNotice = async (write: () => Promise<void>) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`SELECT seq FROM notification_cursor WHERE id = 'generator' FOR UPDATE`);
+        await write();
+        await client.query('COMMIT');
+      } finally { client.release(); }
+    };
+    const answeredIt = async (url: string, label: string) => {
+      const note = await waitFor(async () => (await inbox(owner)).find((entry) => entry.url === url), label);
+      const key = `note:${note.id}`;
+      assert.ok(note.readAt, 'it is read, as Done reads it');
+      assert.equal(find(await queue(owner), key), undefined, 'it is not in the Inbox');
+      assert.ok((await aside(owner)).done.some((entry) => entry.item.key === key), 'it is in done today');
+      assert.equal((await restore(owner, key)).status, 204);
+      assert.ok(find(await queue(owner), key), 'Put back brings it back');
+      json(await resolve(owner, key, { action: 'done' }), 200);
+    };
+
+    // A Reply in a direct message: the owner asked, the partner answered, and the owner wrote again before the Reply was made.
+    const created = await post(owner, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [partner.id] });
+    assert.ok(created.status === 200 || created.status === 201, created.text);
+    const dm = (created.json as { id: string }).id;
+    const say = async (from: Person, body: string) => json<SentDmMessage>(await post(from, `/api/v1/dms/${dm}/messages`, { body, clientMessageId: randomUUID() }), 201);
+    const asked = await say(owner, 'Can you borrow the ESP32 kits from the robotics club?');
+    await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url === `/dm/${dm}#message-${asked.id}`), 'the question reaches the partner');
+    let answer!: SentDmMessage;
+    await beforeTheNotice(async () => {
+      answer = await say(partner, 'I can ask Ms. Novak tomorrow.');
+      await say(owner, 'Great. Let us keep it between us until she says yes.');
+    });
+    await answeredIt(`/dm/${dm}#message-${answer.id}`, 'the answer\'s notice is made');
+
+    // A mention in a thread: the owner replied there before the mention's notice was made.
+    const thread = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Who checks the frost probes this week?', clientMessageId: randomUUID() }), 201);
+    let mention!: SentConversationMessage;
+    await beforeTheNotice(async () => {
+      mention = json<SentConversationMessage>(await post(partner, `/api/v1/conversations/${thread.id}/messages`, { body: '@Needs Owner the frost probes are back in the shed.', clientMessageId: randomUUID() }), 201);
+      json(await post(owner, `/api/v1/conversations/${thread.id}/messages`, { body: 'Thanks, I will log them.', clientMessageId: randomUUID() }), 201);
+    });
+    await answeredIt(`/projects/${lamp.id}/conversations/${thread.id}#message-${mention.id}`, 'the mention\'s notice is made');
+
+    // Writing before the message answers nothing: a mention after the owner's last line waits.
+    const later = json<SentConversationMessage>(await post(partner, `/api/v1/conversations/${thread.id}/messages`, { body: '@Needs Owner one probe has a cracked cable.', clientMessageId: randomUUID() }), 201);
+    const waits = await waitFor(async () => (await queue(owner)).items.find((entry) => entry.url.endsWith(`#message-${later.id}`)), 'the later mention waits');
+    json(await resolve(owner, waits.key, { action: 'done' }), 200);
+  });
+
   test('an answer reaches whoever asked it, by the detection that put the question in the answerer\'s Inbox, with no name in it (#1424 decision 1, personas-26 P2 #1)', async () => {
     const inbox = async (someone: Person) => json<InboxResponse>(await someone.browser.request('GET', '/api/v1/inbox'), 200).items;
     // The owner asks the partner by name; the partner answers and asks back without naming anyone.
