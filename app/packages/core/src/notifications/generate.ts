@@ -385,6 +385,8 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
     ...(candidate.answer ? { answer: true } : {}), from: candidate.from ?? event.actorId,
   });
   if (!inserted) return false;
+  // Its person wrote there after the message already (the generator runs after it): answered, so it is in done today and nothing interrupts.
+  if ((candidate.reason === 'question' || candidate.reason === 'mention') && await ports.answeredBefore?.(candidate.userId, notificationId)) return true;
 
   const now = options.now?.() ?? new Date();
   // Quiet hours (C-31): no push and no email while they last, and nothing is sent when they end; the inbox row is stored above.

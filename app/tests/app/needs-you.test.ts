@@ -6,7 +6,8 @@ import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project as createProject, removeMember, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/push.js';
-import { pool } from './support/db.js';
+import { db, pool } from './support/db.js';
+import { needsYouRows, sql } from '@flux/db';
 
 // The Inbox "Needs you" queue (#342): what asks something of a person is computed from current rows and
 // the access policy; only what the person did with an item is stored. One person accepts a decision
@@ -367,6 +368,104 @@ describe('the Inbox needs-you queue', () => {
     const inDm = await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url === `/dm/${dm}#message-${said.id}`), 'the answer in the DM reaches the asker\'s Inbox');
     assert.deepEqual([inDm.kind, inDm.answer, inDm.title, inDm.project, inDm.from?.id], ['mention', true, 'Yes, it is in the blue folder.', null, owner.id]);
     for (const key of [inDm.key]) json(await resolve(partner, key, { action: 'done' }), 200);
+  });
+
+  test('what you wrote after it answers it, even when its notice is made after your message: an answer in a DM, a mention in a thread (founder check, Hubert 2026-11-18)', async () => {
+    const inbox = async (someone: Person) => json<InboxResponse>(await someone.browser.request('GET', '/api/v1/inbox'), 200).items;
+    // The generator makes notices after the message; holding its cursor lets the reader write before the notice exists, as a quick reply does.
+    const beforeTheNotice = async (write: () => Promise<void>) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`SELECT seq FROM notification_cursor WHERE id = 'generator' FOR UPDATE`);
+        await write();
+        await client.query('COMMIT');
+      } finally { await client.query('ROLLBACK').catch(() => undefined); client.release(); }
+    };
+    const answeredIt = async (url: string, label: string) => {
+      const note = await waitFor(async () => (await inbox(owner)).find((entry) => entry.url === url), label);
+      const key = `note:${note.id}`;
+      assert.ok(note.readAt, 'it is read, as Done reads it');
+      assert.equal(find(await queue(owner), key), undefined, 'it is not in the Inbox');
+      assert.ok((await aside(owner)).done.some((entry) => entry.item.key === key), 'it is in done today');
+      assert.equal((await restore(owner, key)).status, 204);
+      assert.ok(find(await queue(owner), key), 'Put back brings it back');
+      json(await resolve(owner, key, { action: 'done' }), 200);
+    };
+
+    // A Reply in a direct message: the owner asked, the partner answered, and the owner wrote again before the Reply was made.
+    const created = await post(owner, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [partner.id] });
+    assert.ok(created.status === 200 || created.status === 201, created.text);
+    const dm = (created.json as { id: string }).id;
+    const say = async (from: Person, body: string) => json<SentDmMessage>(await post(from, `/api/v1/dms/${dm}/messages`, { body, clientMessageId: randomUUID() }), 201);
+    const asked = await say(owner, 'Can you borrow the ESP32 kits from the robotics club?');
+    await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url === `/dm/${dm}#message-${asked.id}`), 'the question reaches the partner');
+    let answer!: SentDmMessage;
+    await beforeTheNotice(async () => {
+      answer = await say(partner, 'I can ask Ms. Novak tomorrow.');
+      await say(owner, 'Great. Let us keep it between us until she says yes.');
+    });
+    await answeredIt(`/dm/${dm}#message-${answer.id}`, 'the answer\'s notice is made');
+
+    // A mention in a thread: the owner replied there before the mention's notice was made.
+    const thread = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Who checks the frost probes this week?', clientMessageId: randomUUID() }), 201);
+    let mention!: SentConversationMessage;
+    await beforeTheNotice(async () => {
+      mention = json<SentConversationMessage>(await post(partner, `/api/v1/conversations/${thread.id}/messages`, { body: '@Needs Owner the frost probes are back in the shed.', clientMessageId: randomUUID() }), 201);
+      json(await post(owner, `/api/v1/conversations/${thread.id}/messages`, { body: 'Thanks, I will log them.', clientMessageId: randomUUID() }), 201);
+    });
+    await answeredIt(`/projects/${lamp.id}/conversations/${thread.id}#message-${mention.id}`, 'the mention\'s notice is made');
+
+    // Writing before the message answers nothing: a mention after the owner's last line waits.
+    const later = json<SentConversationMessage>(await post(partner, `/api/v1/conversations/${thread.id}/messages`, { body: '@Needs Owner one probe has a cracked cable.', clientMessageId: randomUUID() }), 201);
+    const waits = await waitFor(async () => (await queue(owner)).items.find((entry) => entry.url.endsWith(`#message-${later.id}`)), 'the later mention waits');
+    json(await resolve(owner, waits.key, { action: 'done' }), 200);
+  });
+
+  test('a reply written while the answer\'s notice is being stored still answers it: A asks in a DM, B answers, A writes again at the same time (founder check, Hubert 2026-11-18)', async () => {
+    const created = await post(owner, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [second.id] });
+    assert.ok(created.status === 200 || created.status === 201, created.text);
+    const dm = (created.json as { id: string }).id;
+    const asked = json<SentDmMessage>(await post(owner, `/api/v1/dms/${dm}/messages`, { body: 'Could the school lend us two more sensors?', clientMessageId: randomUUID() }), 201);
+    await waitFor(async () => (await queue(second)).items.find((entry) => entry.url === `/dm/${dm}#message-${asked.id}`), 'the question reaches B');
+    const hold = await pool.connect();
+    const noteId = randomUUID();
+    try {
+      // The generator waits, so the answer's notice is written below by hand, as the generator writes it, in its own transaction.
+      await hold.query('BEGIN');
+      await hold.query(`SELECT seq FROM notification_cursor WHERE id = 'generator' FOR UPDATE`);
+      const answer = json<SentDmMessage>(await post(second, `/api/v1/dms/${dm}/messages`, { body: 'I can ask Ms. Novak tomorrow.', clientMessageId: randomUUID() }), 201);
+      const eventId = (await pool.query(`SELECT id FROM events WHERE kind = 'dm.message_sent.v1' AND data->>'messageId' = $1`, [answer.id])).rows[0].id as string;
+      // A's next message and the notice are written at once: neither transaction sees the other's rows until it commits.
+      let started!: () => void; let commit!: () => void;
+      const replyStarted = new Promise<void>((resolve) => { started = resolve; });
+      const gate = new Promise<void>((resolve) => { commit = resolve; });
+      const reply = db.transaction(async (tx) => {
+        // As the server appends: the DM's own counter gives the sequence.
+        await tx.execute(sql`WITH next AS (UPDATE dms SET next_sequence = next_sequence + 1, last_message_at = now() WHERE id = ${dm}::uuid RETURNING next_sequence - 1 AS sequence)
+          INSERT INTO dm_messages (id, workspace_id, dm_id, author_id, client_message_id, request_fingerprint, sequence, body)
+          SELECT ${randomUUID()}::uuid, ${ws.id}::uuid, ${dm}::uuid, ${owner.id}, ${randomUUID()}::uuid, 'test', sequence, 'Great. Let us keep it between us.' FROM next`);
+        const answered = await needsYouRows(tx).answerInDm(owner.id, dm);
+        started();
+        await gate;
+        return answered;
+      });
+      await replyStarted;
+      const notice = db.transaction(async (tx) => {
+        await tx.execute(sql`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, event_id, in_inbox, ai_origin, answer, from_actor)
+          VALUES (${noteId}::uuid, ${owner.id}, ${ws.id}::uuid, 'dm', ${dm}::uuid, 'ny-second answered you', 'I can ask Ms. Novak tomorrow.', ${`/dm/${dm}#message-${answer.id}`},
+            'mention', ${eventId}::uuid, true, false, true, ${`human:${second.id}`})`);
+        return needsYouRows(tx).answeredBefore(owner.id, noteId);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      commit();
+      assert.deepEqual(await reply, [], 'the reply saw no notice yet');
+      assert.equal(await notice, true, 'the notice, stored second, sees the reply and is stored done');
+      await hold.query('COMMIT');
+    } finally { await hold.query('ROLLBACK').catch(() => undefined); hold.release(); }
+    const key = `note:${noteId}`;
+    assert.equal(find(await queue(owner), key), undefined, 'the answer is not in A\'s Inbox');
+    assert.ok((await aside(owner)).done.some((entry) => entry.item.key === key), 'it is in done today');
   });
 
   test('an answer reaches whoever asked it, by the detection that put the question in the answerer\'s Inbox, with no name in it (#1424 decision 1, personas-26 P2 #1)', async () => {

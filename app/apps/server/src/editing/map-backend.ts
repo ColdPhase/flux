@@ -103,8 +103,13 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded preview frame is full','EDITING_MAP_CAPACITY');
       const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.bindMove(current.leaseId,connectionId,seq,next);await rows.notify(sketchId);
     },'transient');},
-    cancel(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{closed(command,['generation','gestureId','leaseId']);const current=await lease(c,who,command.leaseId,command.gestureId,command.generation,connectionId);
-      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.removeGesture(current.leaseId);await rows.notify(sketchId);
+    // A cancel wants the lease gone: one already gone (its drop committed it, it expired or was cleared) is done, never an error the person
+    // sees (founder check, Hubert 2026-11-18: "The map change is not confirmed (EDITING_LEASE_CHANGED)" after a drop and a new drag).
+    cancel(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{closed(command,['generation','gestureId','leaseId']);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);const found=await rows.gesture(id(command.leaseId));if(!found)return;
+      if(found.sketchId!==c.room.sketchId||found.generation!==id(command.generation)||found.gestureId!==id(command.gestureId)||found.actorId!==who.actorId||found.sessionId!==who.sessionId
+        ||found.connectionId!==null&&found.connectionId!==id(connectionId))throw stale();
+      await rows.removeGesture(found.leaseId);await rows.notify(sketchId);
     },'transient');},
     presence(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{
       closed(command,['generation','selected','cursor']);if(id(command.generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');

@@ -13,6 +13,21 @@ export interface MapPreview { generation: string; actor: NamedPrincipal; gesture
 interface Gesture { id: string; base: Map<string, number>; lease: Promise<LiveMapLease>; active: boolean; sequence: number; latest: LiveMapPosition[] | null; lastPositions: LiveMapPosition[] | null; serverLease: LiveMapLease | null; lastPreviewAt: number }
 interface PrivateMovement { generation: string; gestureId: string; positions: LiveMapPosition[]; versions: [string, number][] }
 
+/**
+ * What a person reads when the room refuses a drag's live positions: what happened and what to do, never a code (founder check,
+ * Hubert 2026-11-18: "The map change is not confirmed (EDITING_LEASE_CHANGED)"). A refused drag keeps where it was dragged privately.
+ */
+export function mapProblem(code: string, outcome: 'refused' | 'unknown'): string {
+  if (outcome === 'unknown') return 'Flux could not confirm this move. Check where the thoughts are now and drag them again if they are not where you left them.';
+  switch (code) {
+    case 'EDITING_LEASE_CHANGED': case 'VERSION_CONFLICT':
+      return 'This move stopped because the thoughts changed meanwhile or the move waited too long. Where you dragged them is kept; drag them again.';
+    case 'EDITING_GENERATION_CHANGED': return 'The map was reloaded meanwhile, so this move stopped. Where you dragged them is kept; drag them again.';
+    case 'EDITING_MAP_CAPACITY': case 'RATE_LIMITED': return 'The map is busy right now, so this move was not shared. Wait a moment and drag again.';
+    default: return 'This move was not shared. Where you dragged the thoughts is kept; drag them again.';
+  }
+}
+
 export class SharedMap {
   head: LiveMapBootstrap | null = null;
   status: 'connecting' | 'live' | 'unavailable' | 'private' = 'connecting';
@@ -153,9 +168,10 @@ export class SharedMap {
       case 'revoked': this.retire('Access ended. Your unfinished movement is kept locally.'); return;
       case 'resync': this.disconnected(); return;
       case 'error':
-        // A preview already in flight when the commit consumed its lease is refused by design; the commit result decides.
-        if (message.code === 'EDITING_LEASE_CHANGED' && !this.gesture && this.completedGesture) break;
-        this.problem = `The map change is not confirmed (${message.code}).`;
+        // A preview already in flight when the commit consumed its lease is refused by design; the commit result decides, also when the next
+        // drag has started meanwhile (founder check, Hubert 2026-11-18). The drop's delta clears `completedGesture`.
+        if (message.code === 'EDITING_LEASE_CHANGED' && this.completedGesture) break;
+        this.problem = mapProblem(message.code, message.outcome);
         if (message.outcome === 'refused') this.cancel(true); break;
     }
     this.changed();
@@ -172,7 +188,9 @@ export class SharedMap {
   }
   resync() { this.disconnected(); }
   begin(thoughts: Thought[]) {
-    this.cancel();
+    // Only an unfinished drag is cancelled. The lease of a drop still being saved is that drop's: cancelling it made the server refuse
+    // the drop when the next drag started at once (founder check, Hubert 2026-11-18).
+    if (this.gesture) this.cancel();
     if (!this.head?.canWrite || this.status !== 'live' || !thoughts.length || thoughts.length > 200) return false;
     const id = crypto.randomUUID();
     const gesture: Gesture = { id, base: new Map(thoughts.map((thought) => [thought.id, thought.version])), active: true, sequence: 0, latest: null, lastPositions: null, serverLease: null, lastPreviewAt: 0,
