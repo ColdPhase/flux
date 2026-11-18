@@ -11,6 +11,8 @@ function clean(text: string): string {
   return text
     .replace(/\r\n?/g, '\n')
     .replace(/<[^>]+>/g, '')
+    // What is left of a cut tag at either end of the slice, so no `<` survives the cleaning (CodeQL js/incomplete-multi-character-sanitization).
+    .replace(/[<>]/g, '')
     // Block markers at the start of a line: headings, quotes, list bullets, numbered lists.
     .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)/gm, '')
     // Table separator rows, then the cell pipes.

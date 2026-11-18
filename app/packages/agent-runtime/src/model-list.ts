@@ -86,7 +86,7 @@ export async function listProviderModels(provider: AiProviderKind, baseUrl: stri
   if (!url) return result('refused');
   if (provider === 'openai_compatible' && await checkEndpoint(url, policy, resolve)) return result('refused');
   try {
-    const response = await guardedFetch(policy, { timeoutMs, maxResponseBytes }, resolve)(`${url.replace(/\/+$/, '')}/models`,
+    const response = await guardedFetch(policy, { timeoutMs, maxResponseBytes }, resolve)(`${withoutTrailingSlashes(url)}/models`,
       { method: 'GET', headers: { accept: 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }, signal: AbortSignal.timeout(timeoutMs) });
     if (apiKey && (response.status === 401 || response.status === 403)) return result('key_refused');
     if (response.status !== 200) return result('unavailable');
