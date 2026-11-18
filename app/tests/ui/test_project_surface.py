@@ -206,9 +206,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
             box = bubble.bounding_box()
             assert box
             self.assertLessEqual(box["width"], 700, "readable measure per message")
-        # Calm chips under a message open their object.
-        chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Test the camera in low light") + "$"))
-        expect(chip).to_contain_text("Doing")
+        # A task made from a reply is the conversation's task card under that reply, never a chip in the bubble (#1424, design L1059;
+        # v0.2.1 audit P2-5): its whole title and its state word, opening the task.
+        card = page.locator(f"#message-{self.ids['m0']} .msg-tasks__card").get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape("Test the camera in low light") + "$"))
+        expect(card).to_contain_text("Doing")
+        expect(page.locator(f"#message-{self.ids['m0']} .ws-chip[data-work-kind='work']")).to_have_count(0)
         self.assert_whole_messages(page)
         shot(page, "project-conversation-desktop-1440")
         small = self.page("ada", viewport={"width": 1280, "height": 800})
@@ -396,7 +398,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 # The GitHub page keeps its place and leads back to the settings, the one way in (not to a panel).
                 page.goto(f"/projects/{self.ids['project']}/github")
                 expect(page.get_by_role("heading", level=2, name="GitHub repositories")).to_be_visible()
-                page.get_by_role("link", name="‹ Space settings").click()
+                page.get_by_role("link", name="Space settings", exact=True).click()
                 expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
                 shot(page, f"project-settings-{'phone-390' if phone else 'desktop-1440'}")
 
@@ -461,7 +463,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.locator(".sk-switch .wiki-switch").tap()
         switcher = page.get_by_role("dialog", name="Maps in this space")
         expect(switcher).to_be_visible()
-        self.assertGreaterEqual(switcher.locator(".wiki-menu__row").first.bounding_box()["height"], 44)
+        self.assertGreaterEqual(round(switcher.locator(".wiki-menu__row").first.bounding_box()["height"], 2), 44)  # sub-pixel layout (43.99998)
         self.assertLessEqual(switcher.bounding_box()["x"] + switcher.bounding_box()["width"], PHONE["width"])
         shot(page, "project-map-phone-390")
         page.keyboard.press("Escape")

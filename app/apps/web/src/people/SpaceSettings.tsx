@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
-import type { Project, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
+import { INVITE_CREATED_EVENT, INVITE_REVOKED_EVENT, type Project, type ProjectGrant, type ProjectPerson, type WorkspaceInvite, type WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
+import { awaitField, isTyping } from '../ui/keys';
+import { useStreamEvents } from '../api/stream';
 import { useGithubSetUp } from '../github/useGithubSetUp';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
@@ -10,19 +12,23 @@ import { leaveProject, renameProject, setSpaceAi } from '../project/api';
 import { SpaceIconRow } from './SpaceIconRow';
 import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
-import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
+import { Avatar, Button, Icon, Input, useFocusBack, useToast } from '../ui';
+import { Option, Select } from '../ui/Select';
 import { SwitchRow } from '../ui/SwitchRow';
-import { attemptKeys, createInvite, firstName, grantPerson, isManagerRole, listGrants, listMembers, problemText, revokeGrant } from './api';
-import type { WorkspaceInvite } from '@flux/contracts';
+import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, listInvites, keepPlaces, listMembers, peopleOrder, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
+import { SomeoneNew, SpaceLinks } from './SomeoneNew';
 import '../app/settings.css';
 import './space.css';
 import './people.css';
 
-/** What a person is in a space: its admin (a company owner or admin always is), or a member. */
-const roleWord = (role: ProjectGrantRole | 'manager') => (role === 'manager' ? 'Admin' : 'Member');
+/**
+ * What a person is in a space, in the one word every list of people uses (#1424): a guest of the company is a Guest and its owner the Owner (as
+ * Settings › Company and the people picker say), a space's admin or a company admin is an Admin, anyone else a Member.
+ */
+const roleWord = (row: Row) => (row.guest ? 'Guest' : row.owner ? 'Owner' : row.company || row.role === 'manager' ? 'Admin' : 'Member');
 
 /** The last admin of a space cannot leave, step down or be removed: the words the server's refusal gets (C-16). */
 const lastAdmin = (error: unknown) => (error instanceof ApiError && error.code === 'LAST_SPACE_ADMIN' ? 'Add another admin first: a space always keeps one.' : null);
@@ -38,7 +44,7 @@ const transient = (error: unknown) => error instanceof NetworkError
 /** How long the page waits before it asks again for who is in the space, by attempt; after the last one it says it could not. */
 export const ROSTER_RETRY_MS = [800, 2400];
 
-interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; grantId: string | null; lastActiveAt?: string }
+interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; owner: boolean; grantId: string | null; lastActiveAt?: string }
 
 /**
  * A space's settings (F-037, #874; ⋯ › Settings): its name, its people with their roles, the AI switch, Leave space and, for its admins,
@@ -51,11 +57,13 @@ export function SpaceSettings() {
   if (!shell) return null;
   // #1438: only the company's owners and admins make invite links, so only they get "Someone new?" in Add people.
   const inviter = workspace?.id === shell.project.workspaceId && isManagerRole(workspace.role ?? 'guest');
-  return <SpaceSettingsPage project={shell.project} people={shell.people} meId={me.user.id} meName={me.user.name} companyName={workspace?.name ?? 'the company'} inviter={inviter} />;
+  // A guest has no AI (AG-2): their settings have no AI row to read (#1424).
+  const guest = workspace?.id === shell.project.workspaceId && workspace.role === 'guest';
+  return <SpaceSettingsPage project={shell.project} people={shell.people} meId={me.user.id} meName={me.user.name} companyName={workspace?.name ?? 'the company'} inviter={inviter} guest={guest} />;
 }
 
-function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter }: {
-  project: Project; people: ProjectPerson[] | null; meId: string; meName: string; companyName: string; inviter: boolean;
+function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter, guest }: {
+  project: Project; people: ProjectPerson[] | null; meId: string; meName: string; companyName: string; inviter: boolean; guest: boolean;
 }) {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -69,6 +77,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   // A space open to the whole company (Everyone) has no list to add to, and it cannot be left or deleted.
   const everyone = project.visibility === 'workspace' && !encrypted;
   const [roster, setRoster] = useState<{ members: WorkspaceMember[]; grants: ProjectGrant[] } | null>(null);
+  const [drawn, setDrawn] = useState<{ from: unknown; order: string[] }>({ from: null, order: [] });
   const [rosterFailed, setRosterFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [status, setStatus] = useState('');
@@ -92,8 +101,59 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   const onEscape = (close: () => void) => (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } };
   useEffect(() => { if (removing) focusOn(`[data-person="${removing}"] .spset__confirm button:last-child`); }, [removing]);
   useEffect(() => { if (leaving) focusOn('.spset__leaving button:last-child'); }, [leaving]);
-  useEffect(() => { if (adding) focusOn('.spset__add input[type="checkbox"], .spset__add input[type="search"]'); }, [adding]);
+  // The search or the first person, else "Someone new?" when nobody else is in the company (F-026 §4).
+  useEffect(() => { if (adding) focusOn('.spset__add input:not([disabled])'); }, [adding]);
+  // Opened from the header's faces or ⋯ › Settings, the settings take the focus as any opened panel does (F-026 §4, personas-33): the button
+  // that opened them is no longer where the person works. A control inside them, a field being typed in, or a control in the open detail
+  // panel beside them keeps it: an admin who unlocks the space in its keys panel stays on Lock now while the settings come back behind it.
+  const headRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active?.closest('[data-space-settings], #details') || isTyping(active)) return;
+      headRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [project.id]);
   const changed = (message: string) => { setStatus(message); setProblem(''); load(); void revalidator.revalidate(); };
+  // The space's Someone new? links (personas-36), for a company owner or admin, read from the server: those made here or in New space, there
+  // when Add people is folded and after a reload. Read again when someone joins (a link used goes) and when a link is made or revoked.
+  const listsLinks = inviter && manager && !everyone;
+  const [links, setLinks] = useState<WorkspaceInvite[]>([]);
+  const [freshLink, setFreshLink] = useState<string | null>(null);
+  const [linksSeen, setLinksSeen] = useState(0);
+  // A link made in Someone new? is listed under the people, below the field the cursor stays in for the next address (personas-36): the page
+  // scrolls towards the link's row as far as the field stays in view, so both show where they fit (round 15, new P3-i: the link was out of view).
+  useEffect(() => {
+    if (!freshLink) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(`spset-link-${freshLink}`)?.closest('li');
+      const field = document.getElementById('spset-new-email');
+      const pane = row?.closest<HTMLElement>('.pane-scroll');
+      if (!row || !pane) return;
+      const view = pane.getBoundingClientRect();
+      const below = row.getBoundingClientRect().bottom + 16 - view.bottom;
+      const room = field ? field.getBoundingClientRect().top - 16 - view.top : below;
+      const by = Math.min(below, room);
+      if (by > 0) pane.scrollBy({ top: by });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [freshLink]);
+  // Someone joined with a link made here, was added or removed elsewhere, or their role changed: the people listed are read again at once (#1424).
+  useStreamEvents(meId, (event) => {
+    if ((event.objectId === project.id && event.kind.startsWith('project.grant_')) || (event.objectId === project.workspaceId && event.kind.startsWith('workspace.member_'))) load();
+    if (event.objectId === project.workspaceId && (event.kind === INVITE_CREATED_EVENT || event.kind === INVITE_REVOKED_EVENT)) setLinksSeen((n) => n + 1);
+  }, load);
+
+  useEffect(() => {
+    if (!listsLinks) return undefined;
+    const controller = new AbortController();
+    listInvites(project.workspaceId, controller.signal).then((list) => {
+      // Newest first, as Settings › Company lists the same links (round 15, daily P3-2: oldest first here).
+      setLinks(list.filter((invite) => invite.space?.id === project.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    }, () => undefined);
+    return () => controller.abort();
+  }, [listsLinks, project.workspaceId, project.id, linksSeen, reload]);
 
   // A space's admins read the company's people and the space's grants: who is in it, and who could be added. A read that fails for a reason
   // that passes (see `transient`) is asked again on its own, twice; the notice comes only when that did not help (#1272).
@@ -126,11 +186,13 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   // A space's admins see its people from the server's read: when it failed the page says so and lists nobody, never both (#1272).
   const listFailed = manager && rosterFailed && !roster;
 
-  const rows: Row[] = (() => {
+  // The rows keep the places they were drawn in while the page is open (personas-33), as the company's people do: a role chosen moves no row.
+  const rowSource = manager && roster ? roster : people;
+  const sortedRows: Row[] = (() => {
     if (manager && roster) {
       const fromMember = (member: WorkspaceMember, grant: ProjectGrant | null): Row => ({
         userId: member.userId, name: member.name, email: member.email, role: grant?.role === 'manager' || isManagerRole(member.role) ? 'manager' : 'contributor',
-        company: isManagerRole(member.role), guest: member.role === 'guest', grantId: grant?.id ?? null, lastActiveAt: member.lastActiveAt,
+        company: isManagerRole(member.role), guest: member.role === 'guest', owner: member.role === 'owner', grantId: grant?.id ?? null, lastActiveAt: member.lastActiveAt,
       });
       const list = everyone
         ? roster.members.filter((member) => member.role !== 'guest' || grantOf(member.userId)).map((member) => fromMember(member, grantOf(member.userId)))
@@ -138,12 +200,14 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
           const member = grant.principal.kind === 'human' ? memberOf(grant.principal.id) : null;
           return member ? [fromMember(member, grant)] : [];
         });
-      return list.sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
+      return list.sort(peopleOrder(meId, roleWord));
     }
     return (people ?? []).filter((person) => person.kind === 'human')
-      .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: false, grantId: null, lastActiveAt: person.lastActiveAt }))
-      .sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
+      .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: !!person.guest, owner: !!person.owner, grantId: null, lastActiveAt: person.lastActiveAt }))
+      .sort(peopleOrder(meId, roleWord));
   })();
+  const rows = keepPlaces(drawn.order, sortedRows);
+  if (rowSource && drawn.from !== rowSource) setDrawn({ from: rowSource, order: rows.map((row) => row.userId) });
 
   // Any company person, the owner too (F-037 "chosen from the company"; the same list New space offers, #905).
   const candidates = (roster?.members ?? []).filter((member) => member.userId !== meId && !grantOf(member.userId));
@@ -156,7 +220,20 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
       if (everyone && role === 'contributor') { if (row.grantId) await revokeGrant(project.id, row.grantId); }
       else await grantPerson(project.id, row.userId, role, keys.current.for(`${row.userId}:${role}`));
       keys.current.done();
-      changed(`${firstName(row.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`);
+      // At once, with a 10 s Undo that gives the role back, as the company's roles (personas-35). Your own role keeps its line: an admin who
+      // made themselves a member can no longer change it back.
+      const words = `${firstName(row.name)} is ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}`;
+      if (row.userId === meId) changed(`${firstName(row.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`);
+      else {
+        changed('');
+        const was = row.role;
+        toast({ message: `${words} now`, tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
+          const back = everyone && was === 'contributor'
+            ? listGrants(project.id).then((grants) => { const grant = grants.find((item) => item.principal.kind === 'human' && item.principal.id === row.userId); return grant ? revokeGrant(project.id, grant.id) : undefined; })
+            : grantPerson(project.id, row.userId, was, crypto.randomUUID());
+          void back.then(() => changed(''), (error: unknown) => { setProblem(lastAdmin(error) ?? problemText(error, { workspace: companyName, who: row.name })); load(); });
+        } } });
+      }
       focusOn(`[data-person="${row.userId}"] [role="combobox"]`, true);
     } catch (error) {
       keys.current.done();
@@ -170,7 +247,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     try {
       await revokeGrant(project.id, row.grantId);
       setRemoving(null);
-      changed(`${firstName(row.name)} was removed from ${project.name}.`);
+      changed(`${firstName(row.name)} is no longer in ${project.name}.`);
       focusOn('.spset__seclead button, .spset__leave', true);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'GRANT_NOT_FOUND') { setRemoving(null); load(); }
@@ -188,10 +265,12 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         added.push(firstName(memberOf(id)?.name ?? 'Someone'));
       }
       setChosen([]); setAdding(false);
-      changed(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now in ${project.name}.`);
+      changed(`${joinNames(added)} ${added.length === 1 ? 'is' : 'are'} now in ${project.name}.`);
+      // The panel that had focus is gone: Add people takes it back (F-026 §4, round 27).
+      requestAnimationFrame(() => focusOn('.spset__seclead button'));
     } catch (error) {
       keys.current.done();
-      if (added.length) changed(`${added.join(', ')} ${added.length === 1 ? 'was' : 'were'} added.`);
+      if (added.length) changed(`${joinNames(added)} ${added.length === 1 ? 'was' : 'were'} added.`);
       setProblem(problemText(error, { workspace: companyName }));
     } finally { setBusy(null); }
   }
@@ -213,7 +292,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     <div className="pane-scroll">
       <div className="pane-in sset-in spset" data-space-settings="">
         <div className="sset-head">
-          <h2>Space settings</h2>
+          <h2 ref={headRef} tabIndex={-1}>Space settings</h2>
           <p>{encrypted ? 'Only the people added here see this space, and only its admins hold the keys. Not even the company’s admins can open it.'
             : everyone ? `Everyone in ${companyName} is in this space.`
               : 'Only people added here, and the company’s owners and admins, can open this space.'}</p>
@@ -223,17 +302,24 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         <NameCard project={project} manager={manager} companyName={companyName} onRenamed={(name) => changed(`Renamed to ${name}.`)} onIconChanged={changed} />
 
         <div className="spset__seclead">
-          <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <span className="spset__count">{rows.length}</span> : null}</h3>
-          {manager && !everyone ? <Button variant="secondary" size="sm" icon="plus" aria-expanded={adding} disabled={!roster} onClick={() => { setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
+          <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <> <span className="spset__count">{rows.length}</span></> : null}</h3>
+          {/* The same quiet "+ Add people" as the company's "+ Invite" above its people (round 14: 12 px here, 14 px there). */}
+          {manager && !everyone ? <Button variant="quiet" icon="plus" className="access__invite spset__addbtn" aria-expanded={adding} disabled={!roster} onClick={() => { if (!adding && !window.matchMedia('(hover: none)').matches) awaitField(); setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
         </div>
         {manager && adding && roster ? (
           <div className="spset__add" role="group" aria-label="Add people" onKeyDown={onEscape(() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); })}>
-            <PeoplePicker listOnly candidates={candidates} value={chosen} onChange={setChosen} disabled={busy === 'add'} companyName={companyName} />
-            {inviter ? <SomeoneNew project={project} members={roster.members} inSpace={(id) => !!grantOf(id)} meId={meId} companyName={companyName}
-              onTick={(id) => setChosen((list) => (list.includes(id) ? list : [...list, id]))} /> : null}
+            {/* With nobody left to add, the list says the true thing: everyone else is already here, or there is nobody else (#1424). */}
+            <PeoplePicker listOnly candidates={candidates} value={chosen} onChange={setChosen} disabled={busy === 'add'} companyName={companyName}
+              none={roster.members.some((member) => member.userId !== meId) ? `Everyone in ${companyName} is already in ${project.name}.` : undefined} />
+            {inviter ? <SomeoneNew workspaceId={project.workspaceId} spaceId={project.id} spaceName={project.name} members={roster.members} inSpace={(id) => !!grantOf(id)}
+              meId={meId} companyName={companyName} onTick={(id) => setChosen((list) => (list.includes(id) ? list : [...list, id]))} listed
+              onMade={(invite) => { setLinks((list) => [invite, ...list.filter((item) => item.id !== invite.id)]); setFreshLink(invite.id); }} /> : null}
+            {/* No dead control (#1424, persona B-4): Add and Cancel while someone is ticked, otherwise one Close. */}
             <div className="newspace__foot">
-              <Button variant="primary" busy={busy === 'add'} disabled={!chosen.length} onClick={() => void addChosen()}>{chosen.length ? `Add ${chosen.length === 1 ? '1 person' : `${chosen.length} people`}` : 'Add'}</Button>
-              <Button variant="secondary" onClick={() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); }}>Cancel</Button>
+              {chosen.length ? <>
+                <Button variant="primary" busy={busy === 'add'} onClick={() => void addChosen()}>{`Add ${chosen.length === 1 ? '1 person' : `${chosen.length} people`}`}</Button>
+                <Button variant="secondary" onClick={() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); }}>Cancel</Button>
+              </> : <Button variant="secondary" onClick={() => { setAdding(false); focusOn('.spset__seclead button'); }}>Close</Button>}
             </div>
           </div>
         ) : null}
@@ -242,33 +328,42 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         ) : everyone && !manager ? (
           <ul className="sset-card" aria-label="People of this space"><li className="sset-row"><span className="sset-row__b"><span className="sset-row__t">Everyone in {companyName}</span>
             </span></li></ul>
-        ) : (
+        ) : encrypted ? null : (
+          // An encrypted space's people are listed once, with their roles, Remove and Add people, in People and encryption under this heading
+          // (round 15, daily P2-2: the panel listed the same people beside this card, in another look).
           <ul className="sset-card" aria-label={`People in ${project.name}`} aria-busy={manager && !roster ? true : undefined}>
-            {rows.map((row) => (
-              <li className="sset-row" key={row.userId} data-person={row.userId}>
+            {rows.map((row) => (<Fragment key={row.userId}>
+              <li className="sset-row" data-person={row.userId}>
                 <Avatar name={row.name} id={row.userId} size="md" tone={row.userId === meId ? 'me' : 'neutral'} />
-                <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> · you</span> : null}</b><PersonLine email={row.email} lastActiveAt={row.userId === meId ? undefined : row.lastActiveAt} /></span>
-                {manager && row.userId !== meId && !row.company ? (
+                <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> (you)</span> : null}</b><PersonLine email={row.email} lastActiveAt={row.userId === meId ? undefined : row.lastActiveAt} /></span>
+                {/* A guest is never a space's admin, so their row has no choice to make: it says Guest, as everywhere (#1424). */}
+                {manager && row.userId !== meId && !row.company && !row.guest ? (
                   <span className="spset__rolecell">
                     <Select aria-label={`Role of ${row.name}`} value={row.role} onChange={(next) => void setRole(row, next as 'manager' | 'contributor')}>
-                      {row.guest ? null : <Option value="manager">Admin</Option>}
+                      <Option value="manager">Admin</Option>
                       <Option value="contributor">Member</Option>
                     </Select>
                   </span>
-                ) : <span className="spset__role">{row.company ? 'Admin' : roleWord(row.role)}</span>}
+                ) : <span className="spset__role">{roleWord(row)}</span>}
+                {/* Remove, or its Remove / Keep, in one column as wide as both, so the role never moves when it asks (visual review 2026-11-17 V8). */}
                 {manager && !everyone ? (row.userId !== meId && row.grantId ? (
-                  removing === row.userId ? (
-                    <span className="spset__confirm" role="group" aria-label={`Remove ${row.name}`} onKeyDown={onEscape(() => closeRemoving(row.userId))}>
-                      <Button variant="danger" size="sm" busy={busy === row.userId} onClick={() => void remove(row)}>Remove</Button>
-                      <Button variant="quiet" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
-                    </span>
-                  ) : <Button variant="quiet" size="sm" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>
-                ) : <span className="spset__remove-gap" aria-hidden="true" />) : null}
+                  <span className="spset__acts">
+                    {removing === row.userId ? (
+                      <span className="spset__confirm" role="group" aria-label={`Remove ${row.name}`} onKeyDown={onEscape(() => closeRemoving(row.userId))}>
+                        <Button variant="danger" size="sm" busy={busy === row.userId} onClick={() => void remove(row)}>Remove</Button>
+                        <Button variant="secondary" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
+                      </span>
+                    ) : <Button variant="quiet" size="sm" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>}
+                  </span>
+                ) : <span className="spset__acts spset__acts--none" aria-hidden="true" />) : null}
               </li>
-            ))}
-            {manager && removing ? <li className="sset-row spset__removing" role="status"><span className="sset-row__s">{firstName(rows.find((row) => row.userId === removing)?.name ?? 'They')} stops seeing {project.name} at once, not even its name.</span></li> : null}
+              {/* What Remove ends is said under the person's row, as Settings › Company says it (round 14: it stood at the card's foot). */}
+              {manager && removing === row.userId ? <li className="spset__removing" role="status">{firstName(row.name)} stops seeing {project.name} at once, not even its name.</li> : null}
+            </Fragment>))}
           </ul>
         )}
+        {listsLinks ? <SpaceLinks workspaceId={project.workspaceId} companyName={companyName} links={links} fresh={freshLink} meId={meId}
+          onRevoked={(id) => setLinks((list) => list.filter((invite) => invite.id !== id))} /> : null}
         {encrypted ? (
           <button type="button" className="sset-card spset__keys" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })}>
             <span className="sset-row"><Icon name="lock" size={16} /><span className="sset-row__b"><span className="sset-row__t">People and encryption</span>
@@ -279,11 +374,13 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         <p className="spset__status" role="status">{status}</p>
         {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
 
+        {guest ? null : <>
         <h3 className="sset-sec">AI</h3>
         {encrypted
           ? <ul className="sset-card" data-encrypted-line=""><li className="sset-row"><Icon name="lock" size={16} /><span className="sset-row__b"><span className="sset-row__t">No AI in encrypted spaces</span>
             <span className="sset-row__s">Only people work here.</span></span></li></ul>
           : <AiCard project={project} manager={manager} onChanged={changed} />}
+        </>}
 
         {admin ? <GithubRow projectId={project.id} /> : null}
 
@@ -338,8 +435,11 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
         {editing ? (
           <form onSubmit={(event) => void save(event)} noValidate onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
             <Input label="Space name" value={value} maxLength={200} autoFocus error={problem || undefined} onChange={(event) => { setValue(event.target.value); setProblem(''); }} />
-            <Button type="submit" variant="primary" busy={busy}>Save</Button>
-            <Button variant="secondary" onClick={close}>Cancel</Button>
+            {/* Save and Cancel under the field, as the company name's (visual review 2026-11-17 V3): beside it they left a phone ~175 px for the name. */}
+            <div className="details__actions">
+              <Button type="submit" variant="primary" busy={busy}>Save</Button>
+              <Button variant="secondary" onClick={close}>Cancel</Button>
+            </div>
           </form>
         ) : <>
           <b>{project.name}</b>
@@ -395,74 +495,10 @@ function AiCard({ project, manager, onChanged }: { project: Project; manager: bo
   return (
     <>
       <div className="sset-card" data-ai-switch={on ? 'on' : 'off'}>
-        <SwitchRow label="AI" detail="Agents can work here. Each person uses their own AI." checked={on} disabled={!manager} onChange={(next) => void change(next)} />
+        {/* Under the section's "AI" heading the row says what the switch does, not "AI" a second time (round 14). */}
+        <SwitchRow label="Let AI agents help in this space" checked={on} disabled={!manager} onChange={(next) => void change(next)} />
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </>
-  );
-}
-
-const EMAIL = /^[^\s@]+@[^\s@]+$/;
-
-async function copyText(text: string): Promise<boolean> {
-  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
-}
-
-/**
- * "Someone new?" in a space's Add people (founder decision 2026-11-13, #1438): the email of someone not in the company makes the company's
- * invite link (Member, 7 days, locked to that address) that also adds them to this space when they join. It is copied at once and shown with
- * Copy link; Flux sends no email. An address of someone already in the company ticks them in the list above instead.
- */
-function SomeoneNew({ project, members, inSpace, meId, companyName, onTick }: {
-  project: Project; members: WorkspaceMember[]; inSpace: (userId: string) => boolean; meId: string; companyName: string; onTick: (userId: string) => void;
-}) {
-  const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState('');
-  const [status, setStatus] = useState('');
-  const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
-  const keys = useRef(attemptKeys());
-  const linkRef = useRef<HTMLInputElement>(null);
-  async function invite(event: FormEvent) {
-    event.preventDefault();
-    if (busy) return;
-    const address = email.trim().toLowerCase();
-    setStatus(''); setProblem('');
-    if (!EMAIL.test(address)) { setProblem('Enter their email address.'); return; }
-    const known = members.find((member) => member.email.toLowerCase() === address);
-    if (known) {
-      if (known.userId === meId || inSpace(known.userId)) setProblem(`${known.userId === meId ? 'You are' : `${known.name} is`} already in ${project.name}.`);
-      else { onTick(known.userId); setEmail(''); setStatus(`${known.name} is in ${companyName}: ticked above. Add them with Add.`); }
-      return;
-    }
-    setBusy(true);
-    try {
-      const made = await createInvite(project.workspaceId, { role: 'member', email: address, expiresInDays: 7, spaceId: project.id }, keys.current.for(`space:${project.id}:${address}`));
-      keys.current.done();
-      setFresh(made); setEmail('');
-      setStatus(await copyText(made.link) ? 'Invite link created and copied. Send it to them yourself.' : 'Invite link created. Copy it and send it to them yourself.');
-      requestAnimationFrame(() => linkRef.current?.select());
-    } catch (error) {
-      setProblem(problemText(error, { workspace: companyName, email: address }));
-    } finally { setBusy(false); }
-  }
-  return (
-    <div className="spset__new" data-someone-new="">
-      <form className="spset__newform" onSubmit={(event) => void invite(event)} noValidate aria-label="Invite someone new">
-        <Input id="spset-new-email" label="Someone new?" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
-          aria-invalid={problem ? true : undefined} aria-describedby="spset-new-hint" onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }} />
-        <Button type="submit" variant="secondary" busy={busy}>Invite</Button>
-      </form>
-      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p>
-        : <p className="people__hint" id="spset-new-hint">They join {companyName} and {project.name} with the link.</p>}
-      {fresh ? (
-        <div className="people__link" role="group" aria-label="New invite link">
-          <Input ref={linkRef} id="spset-new-link" label={`Link for ${fresh.email ?? 'anyone'}`} readOnly value={fresh.link}
-            onFocus={(event) => event.currentTarget.select()} hint="It works once, for 7 days. Flux doesn’t send it: paste it into your message to them." />
-          <div className="details__actions"><Button variant="secondary" onClick={() => void copyText(fresh.link).then((ok) => setStatus(ok ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button></div>
-        </div>
-      ) : null}
-      <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
-    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Button, Icon, Kreska } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
-import { useConnection } from './connection';
+import { lineListeners, lines, subscribeLines, useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
 import { MessageBubble, FileIcon, typeLine, useObjectUrl } from './Attachments';
 import { selectedFile, uploadLabel } from './draft';
@@ -63,7 +63,7 @@ export function PendingFiles({ files, send, body }: { files: readonly DraftFile[
     </div> : null}
     <MessageBubble>{body}
       {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
-        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file.staged))}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
+        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file.staged ?? file, detailLine(file.staged))}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
       </li>)}</ol> : null}
     </MessageBubble>
   </>;
@@ -126,9 +126,7 @@ export function SendAnnouncer({ pending }: { pending: readonly PendingSend[] }) 
 
 // Several composers can be on screen (the stream and a docked thread): the newest one's line shows and is the live region
 // (on the phone the thread covers the stream).
-const lines: symbol[] = [];
-const lineListeners = new Set<() => void>();
-const subscribeLines = (listener: () => void) => { lineListeners.add(listener); return () => { lineListeners.delete(listener); }; };
+// The registry is in `connection.ts`, so the shell's offline line can ask whether one is shown without loading this module.
 
 /** A quiet line above a composer while sends cannot reach Flux (HIG-67): why, and what happens to messages. */
 export function ConnectionLine() {

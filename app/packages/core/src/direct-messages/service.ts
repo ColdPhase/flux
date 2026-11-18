@@ -119,7 +119,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
     ...(record.files?.length ? { files: record.files } : {}),
-    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
+    threadRootId: record.threadRootId, replyCount: record.replyCount, lastReplyAt: iso(record.lastReplyAt), ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
     ...(record.editedAt && !record.removedAt ? { editedAt: record.editedAt.toISOString() } : {}), ...(record.removedAt ? { removedAt: record.removedAt.toISOString() } : {}) };
 }
 
@@ -163,21 +163,29 @@ async function found(ports: DmPorts, dmId: string): Promise<DmRecord> {
   return record;
 }
 
-/** The DM with a message window. Former participants who wrote in the window keep their names. */
+/**
+ * The DM with a message window. Former participants who wrote in the window keep their names, and someone who left the company or was removed
+ * is "Stefan Kowal (removed)" (founder decision, Hubert, 2026-11-17, #1424).
+ */
 async function peopleOf(ports: DmPorts, record: DmRecord, messages: DmMessageRecord[]): Promise<DmPerson[]> {
   const known = new Map<string, DmPerson>(record.participants.map((p) => [p.id, p]));
   const missing = [...new Set(messages.map((m) => m.authorId).filter((id) => !known.has(id)))];
-  for (const extra of missing.length ? await ports.dms.names(missing) : []) known.set(extra.id, extra);
+  for (const extra of missing.length ? await ports.dms.names(record.workspaceId, missing) : []) known.set(extra.id, extra);
   return [...known.values()];
 }
 
 async function detail(ports: DmPorts, record: DmRecord, self: string, window: { limit: number; beforeSequence: number | null }): Promise<Dm> {
   const { messages, hasMoreBefore } = await ports.dms.window(record.id, window);
   const items = messages.map(toMessage);
+  // The other person of a 1:1 who no longer takes part: left the conversation, or no longer in the company (personas-30), as a send would say.
+  const other = counterpartOf(record, self);
+  const gone = other && !record.participants.some((p) => p.id === other.id)
+    ? ((await ports.access.activePeople(record.workspaceId, [other.id])).has(other.id) ? 'conversation' as const : 'company' as const) : null;
   return {
     ...toSummary(record, self), messages: items, people: await peopleOf(ports, record, messages),
     messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? items[0]!.sequence : null, limit: window.limit },
     unreadFrom: await ports.dms.unreadFrom(record.id, self, null),
+    ...(gone ? { counterpartGone: gone } : {}),
   };
 }
 
@@ -341,7 +349,9 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       return uow.run(async (ports) => {
         await ports.access.requireWorkspace(principal, workspaceId);
         const { items, total } = await ports.dms.listVisible(principal, workspaceId, bounds);
-        return { items: items.map((item) => toSummary(item, principal.id)), total, ...bounds };
+        // What the person has not read in each (#1424 decision 10): the list marks it, on every device alike.
+        const unread = await ports.dms.unread(items.map((item) => item.id), principal.id);
+        return { items: items.map((item) => ({ ...toSummary(item, principal.id), unread: unread.get(item.id) ?? 0 })), total, ...bounds };
       });
     },
 

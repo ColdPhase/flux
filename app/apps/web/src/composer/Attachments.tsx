@@ -222,7 +222,12 @@ function PhotoTile({ file, index, count, more, onOpen }: { file: MessageFile; in
 
 /** Photos without a file frame: radius 16, caption below; 2–4 form a grid with "+N" on the last one. */
 export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?: PhotoContext }) {
-  const [open, setOpen] = useState<number | null>(null);
+  const [clicked, setClicked] = useState<number | null>(null);
+  // A search result for one of these photos (found by its name, #1424 B) opens the viewer at it, as a file row opens its preview.
+  const link = useFileLink(photos.map((photo) => photo.id));
+  const linked = link ? photos.findIndex((photo) => photo.id === link.fileId) : -1;
+  const open = clicked ?? (linked >= 0 ? linked : null);
+  const setOpen = (index: number | null) => { setClicked(index); if (index === null) link?.close(); };
   const shown = photos.slice(0, 4);
   const more = photos.length - shown.length;
   return (
@@ -230,13 +235,17 @@ export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?
       <ul className="photo-grid__tiles" aria-label={photos.length === 1 ? '1 photo' : `${photos.length} photos`}>
         {shown.map((file, index) => <PhotoTile key={file.id} file={file} index={index} count={photos.length} more={index === shown.length - 1 ? more : 0} onOpen={setOpen} />)}
       </ul>
+      <PhotoMeta photos={photos} />
       {open !== null ? <PhotoViewer photos={photos} start={open} context={context} onClose={() => setOpen(null)} /> : null}
     </div>
   );
 }
 
-/** A single photo's name and size, read after its caption (F-026 §6: caption first, then the meta line). */
-export function PhotoMeta({ photos }: { photos: MessageFile[] }) {
+/**
+ * A single photo's name and size, on the photo's lower edge (founder check, Hubert 2026-11-17): the photo and the words sent with it are one
+ * unit, so nothing stands between them, and the name never reads as another file's (round 15).
+ */
+function PhotoMeta({ photos }: { photos: MessageFile[] }) {
   const only = photos.length === 1 ? photos[0] : undefined;
   return only ? <p className="photo-meta">{only.name} · {fileSize(only.size)}</p> : null;
 }
@@ -253,13 +262,22 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
   const file = photos[index]!;
   const bytes = useFileBytes(file.id, 'image');
   const returnTo = useRef<Element | null>(null);
+  // An action that takes the focus where it leads (Reply, Create task) ends the keeping below before it moves it.
+  const leaving = useRef(false);
   useEffect(() => {
     returnTo.current = document.activeElement;
     const close = root.current?.querySelector<HTMLElement>('.photo-viewer__close');
     close?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
+    // A modal keeps focus, as the file preview does: a photo opened by a search result (found by its name, #1424 B) opens while its
+    // message is being shown and focused, and that focus must not leave Esc and Tab outside the viewer.
+    const keep = (event: FocusEvent) => {
+      if (leaving.current) return;
+      if (root.current && event.target instanceof Node && !root.current.contains(event.target)) root.current.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
+    };
+    document.addEventListener('focusin', keep);
+    return () => { document.removeEventListener('focusin', keep); document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
   }, []);
   const step = useCallback((by: number) => { setNote(''); setIndex((value) => Math.min(photos.length - 1, Math.max(0, value + by))); }, [photos.length]);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -309,7 +327,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
       <div className="photo-viewer__actions" role="group" aria-label="Photo actions">
         {actions.filter((item) => item.run).map((item) => <button key={item.key} type="button" className="photo-viewer__act" onClick={() => {
           // The action takes focus where it leads (the composer, the new task), so the opener does not take it back.
-          returnTo.current = null; onClose(); item.run?.();
+          returnTo.current = null; leaving.current = true; onClose(); item.run?.();
         }}><Icon name={item.icon} size={20} />{item.label}</button>)}
         <a href={filePath(file.id)} download={file.name}><Icon name="download" size={20} />Save</a>
         <button type="button" className="photo-viewer__act" onClick={() => void share()} disabled={bytes.status !== 'ready'}><Icon name="share" size={20} />Share</button>
@@ -330,23 +348,24 @@ export function MessageFiles({ files, context }: { files?: MessageFile[]; contex
     {others.length ? <ol className="message-files" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.id}>
       {fileKind(file.name) === 'audio' ? <VoiceNote file={file} /> : <FileRow file={file} />}
     </li>)}</ol> : null}
-    <PhotoMeta photos={photos} />
   </>;
 }
 
-/** The media comes first; its caption, file rows and native references share one message bubble, then a single photo's meta. */
 /** The one visible bubble shell for stored and queued messages on every conversation surface. */
 export function MessageBubble({ children }: { children: ReactNode }) {
   return <div className="message-bubble">{children}</div>;
 }
 
+/**
+ * The media comes first, a single photo's name and size on it; then its words, file rows and native references share one message bubble, joined
+ * to the photo's lower edge as one unit of the photo's width (founder check, Hubert 2026-11-17: the words read as a second message).
+ */
 export function MessageContent({ files, context, body, references, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; references?: readonly MessageReferenceCard[]; children?: ReactNode }) {
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
     <MessageBubble>{body}<MessageFiles files={others} />{children}<MessageReferences references={references} /></MessageBubble>
-    <PhotoMeta photos={photos} />
   </>;
 }
 

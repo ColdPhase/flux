@@ -569,16 +569,27 @@ class LightMotionJourney(unittest.TestCase):
 
     PANEL_FRAMES = """(ms) => {
       window.__panel = []; window.__panelDone = false;
-      const top = (sel, base) => { const el = document.querySelector(sel); return el ? Math.round((el.getBoundingClientRect().top - base.getBoundingClientRect().top) * 10) / 10 : null; };
+      // Each part's place in the panel, against the panel's top read in the same instant. On a phone the sheet slides up as it opens, and
+      // WebKit moves it on between two reads in one frame (16 px in 4 ms at the start): a part read a moment before the panel's top looked
+      // 4 px lower for that frame, though nothing in the panel had moved. A frame counts only when the panel's top is the same before and
+      // after its parts are read; otherwise it is read again.
+      const read = (base) => {
+        const at = base.getBoundingClientRect().top;
+        const top = (sel) => { const el = document.querySelector(sel); return el ? Math.round((el.getBoundingClientRect().top - at) * 10) / 10 : null; };
+        const title = document.querySelector('#details .wd-skeleton__name, #details h3.wd-title');
+        const frame = { skeleton: !!document.querySelector('#details .wd-skeleton'),
+          title: top('#details .wd-skeleton__name, #details h3.wd-title'), titleHeight: title ? Math.round(title.getBoundingClientRect().height * 10) / 10 : null,
+          rows: top('#details .wd-skeleton__rows, #details dl.wd-rows'), actions: top('#details .wd-skeleton__actions, #details .wd-acts'),
+          section: top('#details .wd-skeleton__sec, #details section.details__sec') };
+        return base.getBoundingClientRect().top === at ? frame : null;
+      };
       const start = performance.now();
       const step = () => {
         const base = document.querySelector('#details .wd__scroll');
         if (base) {
-          const title = document.querySelector('#details .wd-skeleton__name, #details h3.wd-title');
-          window.__panel.push({ t: Math.round(performance.now() - start), skeleton: !!document.querySelector('#details .wd-skeleton'),
-            title: top('#details .wd-skeleton__name, #details h3.wd-title', base), titleHeight: title ? Math.round(title.getBoundingClientRect().height * 10) / 10 : null,
-            rows: top('#details .wd-skeleton__rows, #details dl.wd-rows', base), actions: top('#details .wd-skeleton__actions, #details .wd-acts', base),
-            section: top('#details .wd-skeleton__sec, #details section.details__sec', base) });
+          let frame = null;
+          for (let attempt = 0; attempt < 20 && !frame; attempt++) frame = read(base);
+          if (frame) window.__panel.push({ t: Math.round(performance.now() - start), ...frame });
         }
         if (performance.now() - start < ms) requestAnimationFrame(step); else window.__panelDone = true; };
       requestAnimationFrame(step); }"""
@@ -798,6 +809,45 @@ class LightMotionJourney(unittest.TestCase):
         if (performance.now() - start < ms) requestAnimationFrame(step); };
       requestAnimationFrame(step); }"""
 
+    # The exit read on the animation's own timeline, not on sampled frames: a loaded WebKit can skip every frame of a 120 ms fade (frames
+    # at 107 and 344 ms, the fade between them), so "it fades" and "it is gone within 120 ms and a few frames" are read from the exit itself.
+    # The fade on the panel's surface is sought to its start and middle in the task that starts it (no frame is painted in between, so the
+    # person never sees the seek), and the frames are counted from the fade's end until the panel is gone.
+    EXIT_WATCH = """() => {
+      const panel = document.getElementById('details');
+      const surface = panel.closest('.ui-overlay__surface') || panel;
+      const out = window.__exit = { fades: [], removed: null };
+      const animate = Element.prototype.animate;
+      let frames = null;
+      const read = () => ({ opacity: Number(getComputedStyle(surface).opacity), present: panel.isConnected,
+        text: panel.querySelector('.ui-panel__body')?.innerText.trim().length ?? 0 });
+      Element.prototype.animate = function (keyframes, options) {
+        const animation = animate.call(this, keyframes, options);
+        const last = Array.isArray(keyframes) ? keyframes[keyframes.length - 1] : null;
+        if (this === surface && last && last.opacity !== undefined && Number(last.opacity) === 0) {
+          const duration = Number(animation.effect.getComputedTiming().duration);
+          const at = (time) => { animation.currentTime = time; return read(); };
+          const fade = { duration, start: at(0), middle: at(duration / 2), finished: false };
+          animation.currentTime = 0;
+          out.fades.push(fade);
+          animation.finished.then(() => {
+            fade.finished = true;
+            frames = 0;
+            const tick = () => { if (frames === null || out.removed) return; frames += 1; requestAnimationFrame(tick); };
+            requestAnimationFrame(tick);
+          }, () => { fade.cancelled = true; });
+        }
+        return animation;
+      };
+      const observer = new MutationObserver(() => {
+        if (document.getElementById('details')) return;
+        out.removed = { framesAfterTheFade: frames };
+        observer.disconnect();
+        Element.prototype.animate = animate;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }"""
+
     def test_10k_a_thread_panel_leaves_with_its_content_in_120_ms_on_a_computer_and_a_phone(self):
         """Closing a thread's panel used to empty it on the first frame and fade a blank box on a computer, and take the phone's sheet away with no fade at
         all, because the thread is the view's own and goes with its route (#901, motion rule 3). The panel now keeps what it showed through its exit."""
@@ -812,6 +862,7 @@ class LightMotionJourney(unittest.TestCase):
                 expect(panel.locator(".thread__feed")).to_contain_text("Moisture first")
                 settled(page)
                 page.evaluate(self.CLOSE_FRAMES, 800)
+                page.evaluate(self.EXIT_WATCH)
                 if how == "escape":
                     page.keyboard.press("Escape")
                 else:
@@ -824,9 +875,18 @@ class LightMotionJourney(unittest.TestCase):
                 self.assertTrue(shown, f"the panel's exit was seen: {frames[:6]}")
                 for frame in shown:
                     self.assertGreater(frame["text"], 40, f"the thread's text stays until the panel is gone, never an empty box: {frame}")
-                fading = [frame for frame in shown if frame["opacity"] is not None and 0 < frame["opacity"] < 1]
-                self.assertTrue(fading, f"it fades out instead of vanishing: {shown}")
-                self.assertLessEqual(shown[-1]["t"] - shown[0]["t"], 260, f"within the exit's 120 ms and a few frames: {shown}")
+                exit_ = page.evaluate("window.__exit")
+                self.assertEqual(len(exit_["fades"]), 1, f"the panel's surface fades out once: {exit_}")
+                fade = exit_["fades"][0]
+                self.assertTrue(fade["start"]["present"] and fade["middle"]["present"], f"the panel is there while it fades: {exit_}")
+                self.assertEqual(fade["start"]["opacity"], 1, f"the fade starts from the panel as shown: {exit_}")
+                self.assertTrue(0 < fade["middle"]["opacity"] < 1, f"it fades out instead of vanishing: {exit_}")
+                self.assertGreater(fade["middle"]["text"], 40, f"the thread's text stays through the fade, never an empty box: {exit_}")
+                self.assertLessEqual(fade["duration"], 120, f"the exit's 120 ms: {exit_}")
+                self.assertTrue(fade["finished"], f"the fade runs to its end before the panel goes: {exit_}")
+                self.assertIsNotNone(exit_["removed"], f"the panel is gone: {exit_}")
+                self.assertIsNotNone(exit_["removed"]["framesAfterTheFade"], f"the panel goes after its fade, not before: {exit_}")
+                self.assertLessEqual(exit_["removed"]["framesAfterTheFade"], 2, f"and within a few frames of its end: {exit_}")
                 self.assertEqual(page.locator("[data-exiting]").count(), 0, "the copy that carried the content through the exit is gone with the panel")
         calm = self.page(phone=False, reduced=True)
         self.open(calm, self.fx.project_url())
@@ -852,7 +912,7 @@ class LightMotionJourney(unittest.TestCase):
                 except Exception:
                     pass
         self.addCleanup(release)
-        page.goto(f"/projects/{self.fx.project}/tasks?view=list&open=decision:{self.fx.decision['id']}")
+        page.goto(f"/projects/{self.fx.project}?open=decision:{self.fx.decision['id']}")
         skeleton = page.locator("#details .wd-skeleton")
         expect(skeleton).to_be_visible()
         self.assertEqual(skeleton.locator(".wd-skeleton__rows, .wd-skeleton__row, .wd-skeleton__actions").count(), 0, "no rows or actions at guessed places")
@@ -1022,11 +1082,22 @@ class LightMotionJourney(unittest.TestCase):
             if entry["props"] != ["scale"]:
                 self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY, f"{entry['target']} animates {entry['props']}")
 
+    def unfold_task_cards(self, page: Page) -> None:
+        """Opens the first "N task updates" fold if it is closed and waits until its cards' state glyphs are drawn."""
+        toggle = page.locator(".convo-stream .convo-fold").first.get_by_role("button", name=re.compile(r"task updates"))
+        expect(toggle).to_be_visible()
+        if toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        expect(page.locator(".convo-stream .convo-fold .convo-notice .ui-glyph").first).to_be_visible()
+
     def test_13d_a_task_notice_does_not_morph_its_glyph_when_the_conversation_opens(self):
         """The notice's state glyph used to flip from the open outline to its state on every visit; it morphs only from a state it knew (#863 rule 5)."""
         page = self.page()
         self.open(page, self.fx.project_url())
-        expect(page.locator(".convo-stream .ui-glyph").first).to_be_attached()
+        # A task card states its state once its row is read, when it comes near the screen, and nothing before (F-026 §7, personas-33:
+        # "until then it states no state and no owner"): the fixture's cards are folded, so the fold is opened for their glyphs to be drawn.
+        self.unfold_task_cards(page)
         page.wait_for_timeout(800)
         self.assertEqual(self.by(page, r"ui-glyph", "script"), [], f"no glyph morphs on the first view: {recorded(page)}")
         page.locator(self.tab("tasks")).click()
@@ -1034,6 +1105,7 @@ class LightMotionJourney(unittest.TestCase):
         clear(page)
         page.locator(self.tab("")).first.click()
         expect(page.locator(".convo-stream")).to_be_visible()
+        self.unfold_task_cards(page)
         page.wait_for_timeout(800)
         self.assertEqual(self.by(page, r"ui-glyph", "script"), [], f"nor when the conversation is visited again: {recorded(page)}")
 
@@ -1105,7 +1177,7 @@ class LightMotionJourney(unittest.TestCase):
         at_drop = len(recorded(page))
         self.assertTrue([entry for entry in recorded(page) if "tb-card" in entry["target"]], f"the card moves at the drop: {recorded(page)}")
         held.pop().continue_()
-        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"done"))).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Done"))).to_be_visible()
         page.wait_for_timeout(900)
         later = recorded(page)[at_drop:]
         self.assertEqual([entry for entry in later if "tb-" in entry["target"] or "arrive" in entry.get("name", "")], [], f"the answer adds no motion to the board: {later}")
@@ -1295,7 +1367,8 @@ class LightMotionJourney(unittest.TestCase):
         shown = toolbar.evaluate("el => { const s = getComputedStyle(el); return { opacity: s.opacity, transform: s.transform }; }")
         self.assertEqual((shown["opacity"], shown["transform"]), ("1", "none"))
         page.mouse.move(2, 2)
-        page.wait_for_timeout(400)
+        # It stays a moment for a pointer on its way to it (founder check 2026-11-17, LINGER_MS 300 ms), then fades.
+        page.wait_for_timeout(800)
         self.assertEqual(toolbar.evaluate("el => getComputedStyle(el).opacity"), "0")
 
     # ------------------------------------------------------------------ AC-6: discipline

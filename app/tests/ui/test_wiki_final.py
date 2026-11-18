@@ -19,7 +19,7 @@ import uuid
 from playwright.sync_api import Browser, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-from wiki_text import existing_text, wait_until_shared
+from wiki_text import LIVE, existing_text, saved, wait_until_shared
 
 STAMP = int(time.time() * 1000)
 PERSON = {"name": "Ada Kowalska", "email": f"ada.wikifinal+{STAMP}@example.test"}
@@ -78,6 +78,10 @@ class WikiFinal(unittest.TestCase):
         alone = api("POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Single page space", "visibility": "restricted"})
         cls.alone_url = f"/projects/{alone['id']}/docs/" + api("POST", f"/api/v1/projects/{alone['id']}/docs", {"title": "Hardware", "body": BODY},
                                                                {"idempotency-key": str(uuid.uuid4())})["id"]
+        # A space of its own for typing: the pages above keep their text for the other checks.
+        calm = api("POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Field notes", "visibility": "restricted"})
+        cls.calm_url = f"/projects/{calm['id']}/docs/" + api("POST", f"/api/v1/projects/{calm['id']}/docs", {"title": "Field notes", "body": BODY},
+                                                              {"idempotency-key": str(uuid.uuid4())})["id"]
         cls.state = ctx.storage_state()
         ctx.close()
 
@@ -114,7 +118,7 @@ class WikiFinal(unittest.TestCase):
                 expect(page.get_by_role("button", name="Preview")).to_have_count(0)
                 self.assertEqual(page.locator(".wiki-editor").evaluate("e => getComputedStyle(e).fontSize"), "15px")
                 self.assertLessEqual(page.locator(".wiki-page").bounding_box()["width"], 760.5)
-                expect(page.locator(".wiki-head__meta").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
+                expect(page.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
                 # "Saving…" and "Saved" are not announced at every pause: the save state is in no live region (#950).
                 self.assertEqual(page.evaluate("""() => [...document.querySelectorAll('[role=status], [role=alert], [aria-live]:not([aria-live=off])')]
                   .filter((region) => /Sav(ed|ing)/.test(region.textContent)).length"""), 0)
@@ -149,6 +153,94 @@ class WikiFinal(unittest.TestCase):
                 shot(page, f"wiki-final-desktop-1440-{theme}")
                 page.keyboard.press("Escape")
                 expect(page.get_by_role("button", name="Page actions")).to_be_focused()
+
+    def test_the_caret_is_the_text_colour_in_both_themes(self) -> None:
+        """Founder check, Hubert 2026-11-17: in dark mode the Wiki's caret was black on the black page. CodeMirror draws its own
+        caret; it and every native field take the text token, in both themes."""
+        for theme in ("light", "dark"):
+            with self.subTest(theme=theme):
+                page = self.open(DESKTOP, theme, path=self.calm_url)
+                t1 = page.evaluate("""() => { const probe = document.createElement('span'); probe.style.color = 'var(--t1)'; document.body.append(probe);
+                  const colour = getComputedStyle(probe).color; probe.remove(); return colour; }""")
+                existing_text(page).focus()
+                page.keyboard.press("Control+End")
+                cursor = page.locator(".wiki-editor .cm-cursor-primary")
+                expect(cursor).to_have_count(1)
+                self.assertEqual(cursor.evaluate("e => getComputedStyle(e).borderLeftColor"), t1, "the Wiki's caret is the text colour")
+                self.assertGreater(cursor.evaluate("e => parseFloat(getComputedStyle(e).borderLeftWidth)"), 0)
+                shot(page, f"wiki-final-caret-1440-{theme}")
+                # The fields on the page: the switcher's "Find a page" and Rename page.
+                page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
+                find = page.get_by_label("Find a page")
+                expect(find).to_be_focused()
+                self.assertEqual(find.evaluate("e => getComputedStyle(e).caretColor"), t1, "a field's caret is the text colour")
+                page.keyboard.press("Escape")
+                page.get_by_role("button", name="Page actions").click()
+                page.get_by_role("menuitem", name="Rename page").click()
+                rename = page.locator(".wiki-title input")
+                expect(rename).to_be_focused()
+                self.assertEqual(rename.evaluate("e => getComputedStyle(e).caretColor"), t1, "the rename field's caret is the text colour")
+                page.keyboard.press("Escape")
+
+    def test_the_save_line_stays_calm_while_typing(self) -> None:
+        """Founder check, Hubert 2026-11-17: "Saving…" and "Saved · just now" swapped at every key. Text is kept from the first
+        key, so a quick save never shows: the line keeps "Saved", and nothing above or below it moves."""
+        for size, theme in ((DESKTOP, "dark"), (PHONE, "light")):
+            with self.subTest(width=size["width"], theme=theme):
+                page = self.open(size, theme, touch=size is PHONE, path=self.calm_url)
+                expect(saved(page)).to_be_visible()
+                page.evaluate("""() => {
+                  const meta = document.querySelector('.wiki-head__meta'), title = document.querySelector('.wiki-title');
+                  window.__calm = { texts: [], tops: [title.getBoundingClientRect().top], heights: [meta.getBoundingClientRect().height] };
+                  new MutationObserver(() => {
+                    window.__calm.texts.push(meta.textContent);
+                    window.__calm.tops.push(title.getBoundingClientRect().top); window.__calm.heights.push(meta.getBoundingClientRect().height);
+                  }).observe(meta, { subtree: true, childList: true, characterData: true, attributes: true });
+                }""")
+                existing_text(page).focus()
+                page.keyboard.press("Control+End")
+                page.keyboard.type(" Readings arrive every ten minutes from the far bed.", delay=40)
+                expect(saved(page)).to_be_visible(timeout=15000)
+                calm = page.evaluate("() => window.__calm")
+                self.assertEqual([text for text in calm["texts"] if not text.startswith("Saved · ")], [], "the line said only Saved while typing")
+                self.assertEqual(len({round(top) for top in calm["tops"]}), 1, "the title never moved")
+                self.assertEqual(len({round(height) for height in calm["heights"]}), 1, "the line kept its height")
+                shot(page, f"wiki-final-calm-{size['width']}-{theme}")
+
+    def test_a_slow_save_says_saving_after_a_second(self) -> None:
+        """A save that waits does say so: "Saving…" after about a second, and "Saved" once it is done (founder check, 2026-11-17)."""
+        if not LIVE:
+            self.skipTest("the shared page's receipts are held; without live editing a save is one request")
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, storage_state=self.state, color_scheme="dark", service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        held: list = []
+        holding = {"on": True}
+
+        def relay(socket):
+            server = socket.connect_to_server()
+
+            def received(message):
+                if holding["on"] and isinstance(message, str) and json.loads(message).get("type") == "ack":
+                    held.append((socket, message))
+                    return
+                socket.send(message)
+            server.on_message(received)
+        page.route_web_socket(re.compile(r".*/api/v1/editing\?kind=wiki.*"), relay)
+        page.goto(self.calm_url)
+        wait_until_shared(page)
+        meta = page.locator(".wiki-head__meta")
+        existing_text(page).focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" Held.")
+        expect(page.locator('.wiki-head__meta:not([data-live-pending="0"])')).to_be_visible()
+        page.wait_for_timeout(500)
+        expect(meta).to_have_text(re.compile(r"^Saved · "))
+        expect(meta).to_have_text("Saving…", timeout=3000)
+        holding["on"] = False
+        for socket, message in held:
+            socket.send(message)
+        expect(saved(page)).to_be_visible()
 
     def test_the_title_row_keeps_its_places_with_one_page_or_many(self) -> None:
         def places(page):
@@ -292,8 +384,16 @@ class WikiFinal(unittest.TestCase):
             data['html'] = rendered
             route.fulfill(response=response, json=data)
 
+        def later(route):
+            # The page has a later version, so version 1 opens in the reader (the current version by its address opens the page itself).
+            response = route.fetch()
+            data = response.json()
+            data['version'] = data['version'] + 1
+            route.fulfill(response=response, json=data)
+
         # A saved version is read as the server rendered it.
-        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '$'), reader)
+        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '$'), later)
+        page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '/versions/1$'), reader)
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}/versions/1")
         prose = page.locator('.doc-prose')
         expect(prose.get_by_role('link', name='Literal table title')).to_have_attribute('title', literal)
@@ -458,7 +558,7 @@ class WikiReferences(unittest.TestCase):
         page.route("**/work-reference-rows?**", rows)
         page.goto(self.url)
         expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-tag")).to_have_count(0)
-        expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-for")).to_have_text("· Ada's agent")
+        expect(page.locator("a.doc-decision").first.locator(".doc-decision__meta .agent-for")).to_have_text("Ada's")
 
     def test_history_names_an_agent_author_in_the_timeline(self) -> None:
         """An agent's version reads "name · agent" in the timeline (#511). The author is stubbed in the list

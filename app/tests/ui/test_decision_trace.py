@@ -141,7 +141,7 @@ class DecisionTrace(unittest.TestCase):
         composer = a_thread.get_by_label("Reply", exact=True)
         composer.fill(f"/decide {title}")
         a_thread.get_by_role("button", name="Send reply").click()
-        # The one Create window on Decision, with the thread's opening message as its source (#1419); proposing is held for Undo.
+        # The one Create window on Decision, with the thread's opening message as its source (#1419); proposing sends it at once (#1424 L).
         window = ada.get_by_role("dialog", name="New decision")
         expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value(title)
         expect(window.locator(".create__source")).to_contain_text(QUESTION_DESKTOP if key == "desktop" else QUESTION_PHONE)
@@ -169,42 +169,43 @@ class DecisionTrace(unittest.TestCase):
         # Ada's own thread shows the same line.
         expect(self.thread(ada)).to_be_visible()
         expect(a_thread.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=title)).to_have_count(1)
-        expect(a_thread.locator(".convo-object .convo-notice__meta").first).to_contain_text("Ada Kowalska · you")
+        expect(a_thread.locator(".convo-object .convo-notice__meta").first).to_contain_text("Ada Kowalska (you)")
 
         # Jonas opens the decision from the line and accepts it.
         proposed.get_by_role("button", name=re.compile("^Open decision")).click()
         j_panel = self.details(jonas, phone)
         expect(j_panel.get_by_role("heading", name=title)).to_be_visible()
         j_panel.get_by_role("button", name="Accept", exact=True).click()
-        expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
+        # The panel says it as the card does (personas-30): "Accepted by …", never a second word ("Decided").
+        expect(j_panel.locator(".wd-decision-rows")).to_contain_text("Accepted by")
+        expect(j_panel.locator(".wd-decision-rows")).not_to_contain_text("Decided")
         self.back_to_thread(jonas, phone)
 
-        # The card says where it stands now, and Jonas's acceptance is a line of its own right under it: one card, not
-        # two identical ones (#763 H11-9).
+        # Accepting changes the card in place (#1424 D): it says "Accepted" and who accepted it when, and no line is added.
         decision_id = proposed.get_attribute("data-object-id")
-        accepted = j_thread.locator(f'.convo-object[data-object-kind="decision.accepted"][data-object-id="{decision_id}"]')
-        expect(accepted).to_have_count(1)
-        expect(accepted).to_have_class(re.compile(r"\bis-follow\b"))
-        expect(accepted.locator(".convo-notice__meta")).to_contain_text("Jonas Berg · you")
-        expect(accepted.locator(".convo-notice__meta")).to_contain_text("accepted it")
-        expect(accepted.locator(".convo-object__card")).to_have_count(0)
+        expect(j_thread.locator(f'.convo-object[data-object-id="{decision_id}"]')).to_have_count(1)
+        expect(j_thread.locator('.convo-object[data-object-kind="decision.accepted"]')).to_have_count(0)
         expect(j_thread.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__state')).to_have_text(["Accepted"])
+        expect(proposed.locator(".convo-object__decided")).to_contain_text("Accepted by Jonas Berg (you)")
+        expect(j_thread).not_to_contain_text("accepted it")
+        expect(j_thread).not_to_contain_text("accepted the decision")
         shot(jonas, f"decision-trace-{'phone' if phone else 'desktop'}-thread-accepted")
 
-        # Ada, who did nothing since, sees the same change in her thread: the state moved and Jonas's line arrived.
-        a_accepted = a_thread.locator(f'.convo-object[data-object-kind="decision.accepted"][data-object-id="{decision_id}"]')
-        expect(a_accepted).to_have_count(1)
-        expect(a_accepted.locator(".convo-notice__meta")).to_contain_text("Jonas Berg")
-        expect(a_accepted.locator(".convo-notice__meta")).not_to_contain_text("you")
-        expect(a_thread.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__state')).to_have_text(["Accepted"])
+        # Ada, who did nothing since, sees the same change in her thread: the card moved to Accepted, in place.
+        a_card = a_thread.locator(f'.convo-object[data-object-id="{decision_id}"]')
+        expect(a_card).to_have_count(1)
+        expect(a_card.locator(".convo-object__state")).to_have_text("Accepted")
+        expect(a_card.locator(".convo-object__decided")).to_contain_text("Accepted by Jonas Berg")
+        expect(a_card.locator(".convo-object__decided")).not_to_contain_text("you")
         stored = [line for line in self.notices(ada) if line["title"] == title]
-        self.assertEqual(sorted((line["kind"], line["status"]) for line in stored), [("decision.accepted", "accepted"), ("decision.proposed", "accepted")])
+        self.assertEqual([(line["kind"], line["status"]) for line in stored], [("decision.proposed", "accepted")])
 
-        # The project's conversation shows both too, between the roots, once the thread is closed.
+        # The project's conversation shows the one card too, between the roots, once the thread is closed.
         a_thread.get_by_role("button", name="Close replies").click()
         expect(self.thread(ada)).to_have_count(0)
         stream = ada.locator(".project-convo__message-list")
-        expect(stream.locator(f'.convo-object[data-object-id="{decision_id}"]')).to_have_count(2)
+        expect(stream.locator(f'.convo-object[data-object-id="{decision_id}"]')).to_have_count(1)
         expect(stream.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__card')).to_have_count(1)
         # In the stream the line says where it came from: the thread's opening message, by its author.
         from_root = stream.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=title)
@@ -229,7 +230,7 @@ class DecisionTrace(unittest.TestCase):
         thread = self.thread(jonas)
         expect(thread.locator(".thread__root")).to_be_visible()
         expect(thread.locator(".convo-object", has_text=DECISION_DESKTOP)).to_have_count(1)
-        expect(thread.locator(".convo-object.is-follow")).to_have_count(1)
+        expect(thread.locator(".convo-object__decided")).to_have_count(1)  # accepted on its own card (#1424 D), no second line
         expect(thread.locator(".convo-object", has_text=DECISION_PHONE)).to_have_count(0)
         # A decision made without a message or thread (from "+") is announced in the stream only, live.
         made = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/decisions", {"title": SOURCELESS}, status=201)

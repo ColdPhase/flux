@@ -19,3 +19,30 @@ export function searchWordStem(word: string): string {
   const letters = [...folded];
   return letters.length >= 6 ? letters.slice(0, -2).join('') : letters.length >= 4 ? letters.slice(0, -1).join('') : folded;
 }
+
+/**
+ * A word written with a hyphen is one word to search (v0.2.1 personas round: "mockup" did not find "mock-up"): the hyphens between two
+ * letters or digits go, so "mock-up", "mock‐up" and "mockup" are the same word. The BM25 index holds the same joined form of every title
+ * and body (migration 0085, `flux_joined_words`, the same rule in SQL), and the in-memory index of an encrypted space indexes it too.
+ */
+export function joinHyphenatedWords(text: string): string {
+  return text.replace(/([\p{L}\p{N}])[-‐‑]+(?=[\p{L}\p{N}])/gu, '$1');
+}
+
+/**
+ * The little words of English and Polish that join a sentence and say nothing of what it is about ("the", "by", "w", "na"), folded
+ * as `foldSearchWord` folds them. People's search of several words (⌘K, persona round 6: "barrel by the shed" listed 20 messages that held
+ * only "the" or "by") does not list a hit that holds only these of its words while the search has other words; a search of these words
+ * alone still finds them. Both the BM25 statement and the in-memory index of encrypted workspaces read this one list.
+ */
+const STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'for', 'from', 'has', 'have', 'i', 'if', 'in', 'into', 'is', 'it', 'its',
+  'me', 'my', 'of', 'on', 'or', 'our', 'so', 'than', 'that', 'the', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'to',
+  'us', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'who', 'will', 'with', 'you', 'your',
+  'aby', 'ale', 'albo', 'bo', 'by', 'czy', 'dla', 'do', 'i', 'ich', 'ja', 'jak', 'jest', 'juz', 'lub', 'na', 'nad', 'o', 'od', 'po',
+  'pod', 'przez', 'przy', 'sa', 'sie', 'ta', 'tak', 'te', 'to', 'tu', 'w', 'we', 'z', 'za', 'ze',
+]);
+
+export function isSearchStopWord(word: string): boolean {
+  return STOP_WORDS.has(foldSearchWord(word));
+}

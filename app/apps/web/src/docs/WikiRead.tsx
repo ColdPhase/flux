@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
 import { AgentIdentity, Icon, Morph, StatusGlyph, TASK_STATE_WORD } from '../ui';
 import { getWorkReferenceRows, getWorkRelations } from '../work/read-api';
-import type { AgentOwners } from '../agents/owners';
+import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { shortDate } from './format';
 
 // The references a page holds, as the page shows them (F-026, #354; F-034): a task as its glyph, #number and word,
@@ -12,7 +12,7 @@ import { shortDate } from './format';
 
 /** A person's name, or an agent as the final design names it: its name, the Agent tag and "for <owner>". */
 function WhoName({ who, owners }: { who: NamedPrincipal; owners: AgentOwners }) {
-  return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={owners.get(who.id)} icon={false} className="wiki-who__agent" /> : <>{who.name}</>;
+  return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={false} hue={who.colour} className="wiki-who__agent" /> : <>{who.name}</>;
 }
 
 export interface Heading { id: string; text: string; level: number }
@@ -181,24 +181,36 @@ export function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
   );
 }
 
+/** How long a landing keeps its target after the last motion ended, and how long it waits for a first one. */
+const SETTLE_MS = 1000;
+const FIRST_MS = 3000;
+
 /**
- * A smooth jump that stopped short lands on its heading (#752). WebKit can end a smooth scroll of the page early while
- * it is still settling after it opens. Unless the reader scrolled meanwhile (wheel, touch, a key or a pointer press),
- * the end of the motion puts the target where it was asked to go. `top()` answers the scroll position the target
- * needs. Returns how to stop watching.
+ * A jump that stopped short lands on its heading (#752). WebKit can end a smooth scroll of the page early while it is
+ * still settling after it opens, and while the editor draws the lines a jump reaches it can move the page to another
+ * place with no script asking, even after a landing (Contents in WebKit, 2026-11-17). So each end of a motion that is
+ * off the target lands again, until the page has been still on it for a second or the reader
+ * scrolls themselves (wheel, touch, a key or a pointer press). `top()` answers the scroll position the target needs;
+ * `place()`, when given, lands instead of a plain scroll (the editor draws the target's lines first, then scrolls to
+ * them). Returns how to stop watching.
  */
-export function landOn(scroller: HTMLElement, top: () => number | null): () => void {
+export function landOn(scroller: HTMLElement, top: () => number | null, place?: () => void): () => void {
   const inputs = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
-  const stop = () => {
+  let timer = window.setTimeout(stop, FIRST_MS);
+  function stop() {
+    window.clearTimeout(timer);
     scroller.removeEventListener('scrollend', land);
     for (const name of inputs) scroller.removeEventListener(name, stop);
-  };
+  }
   function land() {
-    stop();
     const wanted = top();
-    if (wanted === null) return;
+    if (wanted === null) { stop(); return; }
+    window.clearTimeout(timer);
+    timer = window.setTimeout(stop, SETTLE_MS);
     const clamped = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, wanted));
-    if (Math.abs(clamped - scroller.scrollTop) > 1) scroller.scrollTo({ top: clamped, behavior: 'auto' });
+    if (Math.abs(clamped - scroller.scrollTop) <= 1) return;
+    if (place) place();
+    else scroller.scrollTo({ top: clamped, behavior: 'auto' });
   }
   scroller.addEventListener('scrollend', land);
   for (const name of inputs) scroller.addEventListener(name, stop, { passive: true });

@@ -1,12 +1,10 @@
 /* Home (#342, F-026 §7, #865): a date and a greeting, what waits for you (the top of the Inbox), where to continue. */
 .pane-in.home { max-width: 848px; padding-top: 40px; }
 .home__date { margin: 0; font-size: var(--fs-md); color: var(--t3); }
-.home__hello { margin: 2px 0 28px; font-size: var(--fs-page); line-height: 1.15; letter-spacing: -.03em; font-weight: 600; }
+.home__hello { margin: 2px 0 28px; font-size: var(--fs-page); line-height: 1.15; letter-spacing: var(--tracking-title); font-weight: 600; }
 .home__sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 10px; }
-.home__sech h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; }
+.home__sech h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-lg); font-weight: 600; }
 .home__n { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; color: var(--t3); font-size: var(--fs-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
-.home__all { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: var(--fs-sm); font-weight: 600; color: var(--t1); text-decoration: none; }
-.home__all:hover { text-decoration: underline; text-underline-offset: 3px; }
 .home__card { display: block; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); color: var(--t1); text-decoration: none; }
 .home__quiet, .home__clear { padding: 18px 20px; font-size: var(--fs-base); color: var(--t2); }
 .home__clear { display: flex; align-items: center; gap: 12px; }
@@ -14,11 +12,14 @@
 .home__rows { list-style: none; margin: 0; padding: 0; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; }
 .home__rows > li + li { border-top: 1px solid var(--line); }
 .home__row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 56px; padding: 10px 16px; color: var(--t1); text-decoration: none; }
-.home__row:hover { background: color-mix(in srgb, var(--hov) 40%, var(--el)); }
+/* Hover is the hover fill itself: a 40 % mix was the page grey in light (the card melted into the page) and no change in dark (visual review 2026-11-17, core 11). */
+@media (hover: hover) { .home__row:hover { background: var(--hov); } }
 .home__row:active { background: var(--act); }
-.home__row:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.home__row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .home__row-b { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.home__row-t { font-size: var(--fs-base); line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
+.home__row-t { font-size: var(--fs-base); line-height: 1.35; font-weight: 500; overflow-wrap: anywhere; }
+/* A long title is cut to two lines with "…", as the Inbox's row cuts it (round 15 look-1 P3-3: a long question took five lines on Home). */
+.home__row-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .home__row-k { font-size: var(--fs-sm); line-height: 1.35; color: var(--t3); overflow-wrap: anywhere; }
 .home__row-go { color: var(--t3); }
 .home__row-t .home__n { display: inline; min-width: 0; height: auto; margin-left: 6px; padding: 0; font-size: inherit; font-weight: 400; }
@@ -35,7 +36,7 @@
 @media (max-width: 640px) { .home__first .ui-btn { align-self: stretch; } }
 .home__continue { margin-top: 28px; }
 /* Touch: the "Open Inbox" link and each row are 44 px tall on a phone (#393 review). */
-@media (pointer: coarse) { .home__all { min-height: 44px; } .home__row { min-height: 56px; } }
+@media (pointer: coarse) { .home__row { min-height: 56px; } }
 @media (max-width: 680px) {
   .pane-in.home { padding-top: 20px; }
   .home__hello { margin-bottom: 20px; font-size: var(--fs-2xl); }

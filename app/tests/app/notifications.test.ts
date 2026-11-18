@@ -235,9 +235,13 @@ describe('notifications from committed events', () => {
 
   test('a direct message, assigned work and work to review each notify with their own reason', async () => {
     const dmId = await dm(ada, workspaceId, ben);
-    const message = await dmMessage(ada, dmId, 'Lunch at the harbour on Friday?');
+    const message = await dmMessage(ada, dmId, 'Lunch is at the harbour on Friday.');
     const direct = await waitForItem(ben, (item) => item.reason === 'dm' && item.url?.endsWith(message.id) === true, 'Ben\'s DM');
     assert.equal(direct.title, 'Ada Quill sent you a message');
+    // A question between two people asks the other one, with no name in it (#1424 decision A).
+    const asked = await dmMessage(ada, dmId, 'Lunch at the harbour on Friday?');
+    const question = await waitForItem(ben, (item) => item.url?.endsWith(asked.id) === true, 'Ben\'s question');
+    assert.deepEqual([question.reason, question.title], ['question', 'Ada Quill asked you']);
     assert.deepEqual(direct.source, { workspaceId, type: 'dm', id: dmId });
     assert.equal(direct.url, `/dm/${dmId}#message-${message.id}`);
 
@@ -251,6 +255,8 @@ describe('notifications from committed events', () => {
     const review = await waitForItem(ben, (item) => item.url?.endsWith(`decision:${decision.id}`) === true, 'Ben\'s decision review');
     assert.equal(review.reason, 'review');
     assert.equal(review.title, 'Decision proposed: Print on recycled paper');
+    // It opens where a decision opens from everywhere: over its space's conversation, never over Tasks (the founder's bar, #342).
+    assert.equal(review.url, `/projects/${projectId}?open=decision:${decision.id}`);
     await generatorCaughtUp();
     assert.equal((await inbox(ada)).items.filter((item) => item.url?.includes(own.id)).length, 0, 'assigning yourself notifies nobody');
   });

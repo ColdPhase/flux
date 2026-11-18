@@ -115,6 +115,13 @@ test('the words a query names are marked in any longer form, with or without acc
   // A part the statement marked stays marked, and the rest of the text is split around it.
   const parts = markSearchWords([{ text: 'Camera or ', match: false }, { text: 'sensor', match: true }, { text: ' sensors', match: false }], { words: ['sensor'], typing: null });
   assert.deepEqual(parts, [{ text: 'Camera or ', match: false }, { text: 'sensor', match: true }, { text: ' ', match: false }, { text: 'sensors', match: true }]);
+  // A hyphenated word is one word (v0.2.1 personas round): "mockup" marks "mock-up" whole, also when the statement marked only its "mock".
+  assert.equal(marks('The mock-up and the mockups', ['mockup']), 'The [mock-up] and the [mockups]');
+  const split = markSearchWords([{ text: 'The ', match: false }, { text: 'mock', match: true }, { text: '-up is ready', match: false }], { words: ['mockup'], typing: null });
+  assert.deepEqual(split, [{ text: 'The ', match: false }, { text: 'mock-up', match: true }, { text: ' is ready', match: false }]);
+  assert.equal(marks('A mock-up', ['mock']), 'A [mock-up]', '"mockup" is a longer form of "mock", as "mockups" is');
+  assert.equal(marks('A well-known shop', ['shop']), 'A well-known [shop]');
+  assert.equal(marks('The mock-up', ['up']), 'The mock-[up]', 'a part of a hyphenated word is still marked by itself');
 });
 
 const reader: Principal = { kind: 'human', id: 'ari' };

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  removedName,
   WORK_LIMITS,
   waitingPhrase,
   type CreateObjectLinkCommand,
@@ -17,6 +18,7 @@ import {
   type WorkObjectType,
   type TaskActivityPage,
   type TaskActivityQuery,
+  type AgentProjectOwner,
   type ObjectNotice,
   type TaskCreationNotice,
   type TaskCreationUndoEligibility,
@@ -103,16 +105,27 @@ export async function linkReader(repo: Pick<WorkRepository, 'links' | 'titles'>,
 const NO_PLAN: TaskPlanRecord = { prerequisites: [], planIntent: null };
 
 /** Links and names needed to present a set of records to one reader. `plans` adds the task graph of work. */
-async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false, waits: readonly { kind: 'decision' | 'task'; id: string }[] = []) {
+async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false, waits: readonly { kind: 'decision' | 'task'; id: string }[] = [],
+  records: readonly { workspaceId: string }[] = []) {
   const rules = plans && ids.length ? await ports.work.githubRules(ids) : new Map<string, GithubRuleReading>();
   const ruleAuthors = [...rules.values()].flatMap((rule): ActorRef[] => rule.authorUserId ? [{ kind: 'human', id: rule.authorUserId }] : []);
-  const [linksOf, names, planOf, waitingOn] = await Promise.all([
+  // Everyone a task or a decision names (its owner, the person it waits for, who made, proposed or accepted it) who is no longer in the company
+  // says so where their name is shown: "Tomek Nowak (removed)" (personas-33; founder decision, Hubert, 2026-11-17, #1424).
+  const humans = [...actors, ...ruleAuthors].filter((ref): ref is ActorRef => ref?.kind === 'human');
+  const [linksOf, names, planOf, waitingOn, gone] = await Promise.all([
     linkReader(ports.work, ids),
     ports.work.names([...actors.filter((item): item is ActorRef => item !== null), ...ruleAuthors]),
     plans && ids.length ? ports.work.taskPlans(ids) : Promise.resolve(new Map<string, TaskPlanRecord>()),
     waits.length ? ports.work.waitingTargets(waits) : Promise.resolve(new Map<string, WaitingOn>()),
+    humans.length && records.length && ports.work.formerMembers ? ports.work.formerMembers(records.map((record) => record.workspaceId), humans.map((ref) => ref.id)) : Promise.resolve(new Set<string>()),
   ]);
-  const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+  /** A person who left the company of `workspaceId` or was removed from it is "Tomek Nowak (removed)" (`removedName`), so nothing is left with nobody. */
+  const named = (ref: ActorRef, workspaceId?: string): NamedPrincipal => {
+    const name = names.get(key(ref));
+    if (name === undefined) return { ...ref, name: ref.kind === 'agent' ? 'Agent' : 'Former member' };
+    return { ...ref, name: ref.kind === 'human' && workspaceId && gone.has(`${workspaceId}:${ref.id}`) ? removedName(name) : name };
+  };
+  const assignee = named;
   const base = (record: { id: string; projectId: string; workspaceId: string; createdAt: Date }) => ({
     id: record.id, projectId: record.projectId, workspaceId: record.workspaceId,
     audience: { kind: 'project' as const, projectId: record.projectId }, links: linksOf(record.id), createdAt: iso(record.createdAt),
@@ -120,29 +133,29 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
   const githubRule = (record: WorkRecord): WorkItem['githubRule'] => {
     const rule = rules.get(record.id);
     return rule ? { ...presentGithubRule(rule, record),
-      setUpBy: rule.authorUserId ? named({ kind: 'human', id: rule.authorUserId }) : null } : null;
+      setUpBy: rule.authorUserId ? named({ kind: 'human', id: rule.authorUserId }, record.workspaceId) : null } : null;
   };
   return {
     work: (record: WorkRecord): WorkItem => {
       const plan = planOf.get(record.id) ?? NO_PLAN;
       return {
         ...base(record), number: record.number, title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
-        waitingFor: record.waitingFor ? named(record.waitingFor) : null,
+        waitingFor: record.waitingFor ? assignee(record.waitingFor, record.workspaceId) : null,
         waitingOn: record.waitingOn ? waitingOn.get(`${record.waitingOn.kind}:${record.waitingOn.id}`) ?? null : null,
         dropped: record.dropped, cameOfIt: record.cameOfIt,
         dueOn: record.dueOn,
         dependencyIds: plan.prerequisites.map((item) => item.id),
         prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' })),
         planIntent: plan.planIntent,
-        owner: record.owner ? named(record.owner) : null,
+        owner: record.owner ? assignee(record.owner, record.workspaceId) : null,
         lifecycle: record.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
-          ? { state: 'creation_reverted', noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt), revertedBy: named(record.creationRevertedBy) } : { state: 'active' },
-        createdBy: named(record.createdBy), githubRule: githubRule(record), version: record.version, updatedAt: iso(record.updatedAt),
+          ? { state: 'creation_reverted', noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt), revertedBy: named(record.creationRevertedBy, record.workspaceId) } : { state: 'active' },
+        createdBy: named(record.createdBy, record.workspaceId), githubRule: githubRule(record), version: record.version, updatedAt: iso(record.updatedAt),
       };
     },
     decision: (record: DecisionRecord): Decision => ({
       ...base(record), title: record.title, rationale: record.rationale, status: record.status,
-      proposedBy: named(record.proposedBy), decidedBy: record.decidedBy ? named({ kind: 'human', id: record.decidedBy }) : null,
+      proposedBy: named(record.proposedBy, record.workspaceId), decidedBy: record.decidedBy ? named({ kind: 'human', id: record.decidedBy }, record.workspaceId) : null,
       decidedAt: record.decidedAt ? iso(record.decidedAt) : null, supersedes: record.supersedesId, supersededBy: record.supersededById,
       supersededAt: record.supersededAt ? iso(record.supersededAt) : null, version: record.version, updatedAt: iso(record.updatedAt),
     }),
@@ -154,10 +167,10 @@ const workActors = (records: WorkRecord[]) => records.flatMap((record) => [recor
 const decisionActors = (records: DecisionRecord[]) => records.flatMap((record) => [record.proposedBy, record.decidedBy ? { kind: 'human' as const, id: record.decidedBy } : null]);
 
 async function presentWork(ports: WorkPorts, record: WorkRecord) {
-  return (await presenter(ports, [record.id], workActors([record]), true, waitsOf([record]))).work(record);
+  return (await presenter(ports, [record.id], workActors([record]), true, waitsOf([record]), [record])).work(record);
 }
 async function presentDecision(ports: WorkPorts, record: DecisionRecord) {
-  return (await presenter(ports, [record.id], decisionActors([record]))).decision(record);
+  return (await presenter(ports, [record.id], decisionActors([record]), false, [], [record])).decision(record);
 }
 
 /**
@@ -256,7 +269,9 @@ const waitingForOf = (value: unknown): ActorRef | null => {
  * a decision's acceptance and a pull request's rule (#1055).
  */
 export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, principal: Principal, by: ActorRef, ids: readonly string[], stillWaits: (task: WorkRecord) => boolean,
-  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<void> {
+  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<{ task: WorkRecord; blocker: string | null }[]> {
+  // Each task resumed, as it is now, with the reason it waited with (an acceptance's Undo puts that back, #1424 round 8).
+  const resumed: { task: WorkRecord; blocker: string | null }[] = [];
   for (const id of ids) {
     const task = await ports.work.findWork(id, { lock: true });
     if (!task || task.creationRevertedAt || task.status !== 'blocked' || !stillWaits(task)) continue;
@@ -267,8 +282,16 @@ export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, p
     await ports.work.insertTaskUpdate(record, { kind: 'task.resumed', by, waitingFor: null, reason: because.said });
     await ports.events.record(principal, task.workspaceId, 'project.work_updated.v1', task.projectId, { workId: id,
       ...(task.owner?.kind === 'human' ? { resumedFor: task.owner.id, reason: because.token, ...(because.taskId ? { taskId: because.taskId } : {}) } : {}) });
+    resumed.push({ task: record, blocker: task.blocker });
   }
+  return resumed;
 }
+
+/**
+ * How long after an acceptance, or a proposal, its Undo can take it back (#1424 round 8 and L): the toast's 10 s, paused while pointed at
+ * or focused. An Undo is not a way to change direction later.
+ */
+export const DECISION_UNDO_MS = 10 * 60 * 1000;
 
 function linkRows(scope: { workspaceId: string; projectId: string }, from: NewObjectLink['from'], role: NewObjectLink['role'], targets: ObjectRef[], by: ActorRef): NewObjectLink[] {
   return targets.map((to) => ({ id: randomUUID(), ...scope, role, from, to, createdBy: by }));
@@ -300,6 +323,32 @@ async function undoEligibility(ports: WorkPorts, principal: Principal, record: W
   return creationUndoEligibility(await undoFacts(ports, record), principal, canWrite);
 }
 
+/**
+ * An agent a notice names carries its owner as every reader of the project gets it (#339 AC-2, the boundary of a task row and a message's
+ * author): "Planner · Ada's agent" on the created-task and proposed-decision lines for everyone, not only for the owner (v0.2.1 release gate).
+ */
+async function noticeOwners(ports: WorkPorts, first: { projectId: string; workspaceId: string } | undefined, actors: ActorRef[]) {
+  const agents = [...new Set(actors.filter((who) => who.kind === 'agent').map((who) => who.id))];
+  const owners = first && agents.length && ports.work.agentOwners ? await ports.work.agentOwners(first.projectId, first.workspaceId, agents) : new Map<string, AgentProjectOwner>();
+  return <P extends ActorRef>(who: P): P => {
+    const projectOwner = who.kind === 'agent' ? owners.get(who.id) : undefined;
+    return projectOwner ? { ...who, projectOwner } : who;
+  };
+}
+
+/**
+ * The names of the people and agents a page of notices names, the person who left the company or was removed as "Tomek Nowak (removed)"
+ * (founder decision, Hubert, 2026-11-17, #1424), and anyone the server has no name for as a former member or "Agent".
+ */
+async function noticeNames(ports: WorkPorts, first: { workspaceId: string } | undefined, actors: ActorRef[]) {
+  const { names, gone } = first && ports.work.namesIn ? await ports.work.namesIn(actors, first.workspaceId) : { names: await ports.work.names(actors), gone: new Set<string>() };
+  return (who: ActorRef): string => {
+    const name = names.get(key(who));
+    if (name === undefined) return who.kind === 'agent' ? 'Agent' : 'Former member';
+    return gone.has(key(who)) ? removedName(name) : name;
+  };
+}
+
 export function createWorkUseCases(uow: WorkUnitOfWork) {
   async function list<T, R>(principal: Principal, projectId: string, query: PageQuery | undefined,
     read: (ports: WorkPorts, projectId: string, page: ReturnType<typeof valid.page>) => Promise<{ items: R[]; total: number }>,
@@ -313,8 +362,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return { items: await present(ports, items), total, ...window, limit: Math.max(window.limit, items.length) };
     });
   }
-  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items)); return items.map(view.work); };
-  const presentDecisions = async (ports: WorkPorts, items: DecisionRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), decisionActors(items)); return items.map(view.decision); };
+  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items), items); return items.map(view.work); };
+  const presentDecisions = async (ports: WorkPorts, items: DecisionRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), decisionActors(items), false, [], items); return items.map(view.decision); };
 
   return {
     listWork: (principal: Principal, projectId: string, query?: PageQuery) =>
@@ -323,26 +372,32 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       list(principal, projectId, query, (ports, project, window) => ports.work.listDecisions(project, window), presentDecisions),
     listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<TaskCreationNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window, reach), async (ports, items) => {
-        const names = await ports.work.names([...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...items.flatMap((item) => item.reverted ? [item.reverted.by] : [])]);
+        const actors = [...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...items.flatMap((item) => item.reverted ? [item.reverted.by] : [])];
+        const nameOf = await noticeNames(ports, items[0], actors);
+        const scoped = await noticeOwners(ports, items[0], actors);
         return items.map((item) => {
           const { waitingFor, reason, reverted, ...notice } = item;
           return { ...notice, createdAt: iso(item.createdAt),
-            ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? { ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' } : null }
-              : item.kind === 'task.resumed' ? { reason: reason ?? null } : {}),
+            ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? scoped({ ...waitingFor, name: nameOf(waitingFor) }) : null }
+              : item.kind === 'task.resumed' || item.kind === 'task.unblocked' ? { reason: reason ?? null } : {}),
             lifecycle: reverted
               ? { state: 'creation_reverted' as const, noticeId: reverted.noticeId, revertedAt: iso(reverted.at),
-                revertedBy: { ...reverted.by, name: names.get(key(reverted.by)) ?? 'Former member' } }
+                revertedBy: scoped({ ...reverted.by, name: nameOf(reverted.by) }) }
               : { state: 'active' as const },
-            createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } };
+            createdBy: scoped({ ...item.createdBy, name: nameOf(item.createdBy) }) };
         });
       }),
 
     /** What the conversation says about decisions (#694): the project's audience reads it, no one else. */
     listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<ObjectNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window, reach), async (ports, items) => {
-        const names = await ports.work.names(items.map((item) => item.by));
-        return items.map((item) => ({ ...item, createdAt: iso(item.createdAt),
-          by: { ...item.by, name: names.get(key(item.by)) ?? (item.by.kind === 'agent' ? 'Agent' : 'Former member') } }));
+        const actors = [...items.map((item) => item.by), ...items.flatMap((item) => item.decided ? [item.decided.by] : [])];
+        const nameOf = await noticeNames(ports, items[0], actors);
+        const scoped = await noticeOwners(ports, items[0], actors);
+        const named = (who: ActorRef) => scoped({ ...who, name: nameOf(who) });
+        return items.map((item) => ({ ...item, createdAt: iso(item.createdAt), by: named(item.by),
+          decided: item.decided ? { by: named(item.decided.by), at: iso(item.decided.at) } : null,
+          discussion: item.discussion ? { ...item.discussion, lastReplyAt: iso(item.discussion.lastReplyAt) } : null }));
       }),
 
     /** The caller's unfinished work across the projects of a workspace they can currently read. */
@@ -418,7 +473,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const status = command.status === undefined ? 'open' : valid.status(command.status);
       const blocker = command.blocker === undefined || command.blocker === '' ? null : valid.text(command.blocker, 'blocker', WORK_LIMITS.blocker) || null;
       if (blocker && status !== 'blocked') throw new InvalidInputError('A blocker applies to blocked work only');
-      const owner = command.owner === undefined ? null : valid.owner(command.owner);
+      let owner = command.owner === undefined ? null : valid.owner(command.owner);
       const waitingFor = waitingForOf(command.waitingFor);
       if (waitingFor && status !== 'blocked') throw new InvalidInputError('A person to wait for applies to blocked work only');
       const waitingOn = command.waitingOn === undefined ? null : valid.waitingOn(command.waitingOn);
@@ -458,6 +513,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
             return presentWork(ports, earlier.work);
           }
         }
+        // A task a person makes from their own message is theirs (#1424 M) unless the command names an owner (or `null`, nobody).
+        // A task made from someone else's message keeps the plain rule: nobody owns it until someone is chosen.
+        const fromOwnMessage = command.owner === undefined && by.kind === 'human'
+          && await ports.work.messageWrittenBy(project, sources.filter((source) => source.type === 'message').map((source) => source.id), by.id);
+        if (fromOwnMessage) owner = by;
         await requireOwner(ports, project, owner, principal);
         await requireWaitingFor(ports, project, waitingFor);
         await requireTargets(ports, project, [...sources, ...related, ...parent]);
@@ -488,6 +548,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const from = { type: 'work' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by), ...linkRows(scope, from, 'part_of', parent, by)]);
         await ports.work.insertCreationNotice(record, sources);
+        // Making a task from a question answers it (personas-28): it leaves the maker's Inbox, as a reply in its conversation would.
+        const fromMessages = sources.filter((source) => source.type === 'message').map((source) => source.id);
+        if (by.kind === 'human' && fromMessages.length && ports.inbox) await ports.inbox.answerWithTask(by.id, project, fromMessages);
         await useFence.mark();
         await ports.work.recordCreationBaseline(record);
         const fresh = (await ports.work.findWork(record.id))!;
@@ -613,7 +676,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (changes.waitingOn && !(current.waitingOn?.kind === changes.waitingOn.kind && current.waitingOn.id === changes.waitingOn.id))
           await requireWaitingOn(ports, projectId, id, changes.waitingOn);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
-        const record = await ports.work.updateWork(id, changes, by, via);
+        const record = await ports.work.updateWork(id, changes, by, via, command.restore ? { undoes: true } : {});
         if (heldBy && current.owner?.kind === 'agent' && current.owner.id === heldBy) {
           const ended = await ports.work.endAgentHold?.({ workspaceId, projectId, taskId: id, agentId: heldBy, stoppedBy: principal.id });
           // As for Stop: the project's readers and the agent's owner are told who stopped it (AG-5).
@@ -642,8 +705,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if ((current.status === 'blocked') !== (record.status === 'blocked')) {
           // A task that waits for a decision or a task says so in the line, as the card does: "waiting for #7".
           const waitedOn = record.status === 'blocked' && record.waitingOn ? (await ports.work.waitingTargets([record.waitingOn])).get(`${record.waitingOn.kind}:${record.waitingOn.id}`) : undefined;
+          // A blocked task moved straight to Done is done, not "unblocked" (personas-26): the line says how it ended.
           await ports.work.insertTaskUpdate(record, { kind: record.status === 'blocked' ? 'task.blocked' : 'task.unblocked', by,
-            waitingFor: record.waitingFor, reason: record.status === 'blocked' ? (waitedOn ? `waiting for ${waitingPhrase(waitedOn)}` : record.blocker) : null });
+            waitingFor: record.waitingFor, reason: record.status === 'blocked' ? (waitedOn ? `waiting for ${waitingPhrase(waitedOn)}` : record.blocker)
+              : record.status === 'done' ? (record.dropped ? 'dropped' : 'done') : null, ...(command.restore ? { undoes: true } : {}) });
         }
         const messageIds = contribution ? await ports.contributions.append(contribution) : [];
         if (clientCommandId) await ports.work.recordNativeCommand({ workspaceId, projectId }, by,
@@ -674,6 +739,37 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         return presentWork(ports, (await ports.work.findWork(id))!);
       });
     },
+
+    /**
+     * The Undo of the Inbox's Done for the person a task waited for (personas-33): the task waits for them again, Blocked with the reason it
+     * had, without its "can continue" line, activity entry and the owner's notification since `since`. Only that person, as reading the space
+     * was enough for their Done, and only while the task is unchanged since (`expected`, the version their Done left).
+     */
+    async undoWaitingDone(principal: Principal, workId: string, expected: number, since: Date): Promise<WorkItem> {
+      const by = actor(principal);
+      if (by.kind !== 'human') throw new ForbiddenError('Only the person a task waited for can take back that they are done', 'WAITING_DONE_NEEDS_PERSON');
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'work', workId, 'read');
+        await lockProjectGraphs(ports.work, [projectId]);
+        await ports.work.lockPreparedTaskUse([id]);
+        const current = await ports.work.findWork(id, { lock: true });
+        if (!current) throw notFound('work');
+        if (current.version !== version || current.creationRevertedAt || (current.status !== 'in_progress' && current.status !== 'open'))
+          throw new VersionConflictError(current.version, await presentWork(ports, current));
+        const blocker = await ports.work.reasonLeftBlockedWith(id);
+        const back = await ports.work.updateWork(id, { status: 'blocked', blocker, waitingFor: by, waitingOn: null }, by, undefined, { undoes: true });
+        await ports.work.takeBackResumption(back, by, since);
+        await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id });
+        return presentWork(ports, back);
+      });
+    },
+
+    /** The reason a task had when it last left Blocked, for an Undo that puts it back (personas-33); reading the task is enough. */
+    reasonLeftBlockedWith: (principal: Principal, workId: string): Promise<string | null> => uow.run(async (ports) => {
+      const { id } = await authorized(ports, principal, 'work', workId, 'read');
+      return ports.work.reasonLeftBlockedWith(id);
+    }),
 
     /** People and agents may propose; the proposal names its sources and the work it affects. */
     async proposeDecision(principal: Principal, projectId: string, command: ProposeDecisionCommand): Promise<Decision> {
@@ -747,10 +843,102 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const scope = { workspaceId, projectId };
         await ports.work.artifactUsed?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
         await useFence.mark(used);
-        await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'decision' && task.waitingOn.id === id, { said: 'the decision was accepted', token: 'decision' });
+        const resumed = await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'decision' && task.waitingOn.id === id, { said: 'the decision was accepted', token: 'decision' });
+        // Its Undo puts back exactly these, while none of them changed since (#1424 round 8).
+        await ports.work.recordResumptions(scope, id, resumed.map(({ task, blocker }) => ({ id: task.id, version: task.version, blocker })));
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
         return view;
+      });
+    },
+
+    /**
+     * The accepter's Undo takes an acceptance back (founder decision, Hubert, 2026-11-15, round 8, #1424): Accept works at once with a 10 s
+     * Undo. Only the person who accepted it, with write access now, while it is accepted and unchanged (`If-Match`), within
+     * {@link DECISION_UNDO_MS} of the acceptance and while nothing rests on it: a task it resumed changed since, or a newer proposal names it
+     * as the decision it replaces (`DECISION_IN_USE`). The decision is proposed again, a decision it replaced is accepted again, and the tasks
+     * it resumed wait for it again as they were (the reason from their last move into Blocked), without their "can continue" line and
+     * notification. Under the project's graph lock and the decision rows in id order, as Accept takes them.
+     */
+    async unacceptDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<Decision> {
+      const by = actor(principal);
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'decision', decisionId, 'write');
+        const located = await ports.work.findDecision(id);
+        if (!located) throw notFound('decision');
+        if (by.kind !== 'human' || (located.decidedBy !== null && located.decidedBy !== by.id)) throw new ForbiddenError('Only the person who accepted it can take it back', 'DECISION_NOT_YOURS');
+        await lockProjectGraphs(ports.work, [projectId]);
+        const resumed = await ports.work.resumptions(id);
+        const used = sortedIds(await ports.work.taskUseTargets([{ type: 'decision', id }, ...(located.supersedesId ? [{ type: 'decision' as const, id: located.supersedesId }] : [])]), 'taskIds');
+        const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...new Set([...used, ...resumed.map((task) => task.workId)])], 'taskIds'));
+        const decisionRows = new Map<string, DecisionRecord>();
+        for (const rowId of [...new Set([id, ...(located.supersedesId ? [located.supersedesId] : [])])].sort()) {
+          const retained = await ports.work.findDecision(rowId, { lock: true });
+          if (retained) decisionRows.set(rowId, retained);
+        }
+        const current = decisionRows.get(id);
+        if (!current) throw notFound('decision');
+        if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
+        if (current.status !== 'accepted' || current.decidedBy !== by.id || !current.decidedAt) throw new ConflictError('This decision is not accepted now', 'DECISION_NOT_ACCEPTED');
+        if (Date.now() - current.decidedAt.getTime() > DECISION_UNDO_MS) throw new ConflictError('It was accepted too long ago to undo; propose a new decision to change direction', 'DECISION_UNDO_ENDED');
+        const inUse = () => new ConflictError('Something rests on this acceptance now, so it stays accepted', 'DECISION_IN_USE');
+        if (await ports.work.namedAsReplaced(id)) throw inUse();
+        const earlier = current.supersedesId ? decisionRows.get(current.supersedesId) : undefined;
+        if (current.supersedesId && (!earlier || earlier.status !== 'superseded' || earlier.supersededById !== id)) throw inUse();
+        const tasks: { task: WorkRecord; blocker: string | null }[] = [];
+        for (const entry of resumed) {
+          const task = await ports.work.findWork(entry.workId, { lock: true });
+          if (!task) continue;
+          if (task.version !== entry.version || task.creationRevertedAt) throw inUse();
+          tasks.push({ task, blocker: entry.blocker });
+        }
+        const scope = { workspaceId, projectId };
+        if (earlier) {
+          const restored = await ports.work.updateDecision(earlier.id, { status: 'accepted', supersededById: null, supersededAt: null });
+          await ports.work.artifactUsed?.(scope, { kind: 'decision', id: restored.id, revision: `${restored.version}:${restored.status}` }, useFence);
+        }
+        const record = await ports.work.updateDecision(id, { status: 'proposed', decidedBy: null, decidedAt: null });
+        await ports.work.artifactUsed?.(scope, { kind: 'decision', id: record.id, revision: `${record.version}:${record.status}` }, useFence);
+        await useFence.mark(used);
+        for (const { task, blocker } of tasks) {
+          // The reason it waited with, as the acceptance kept it.
+          const back = await ports.work.updateWork(task.id, { status: 'blocked', blocker, waitingFor: null, waitingOn: { kind: 'decision', id } }, by, undefined, { undoes: true });
+          await ports.work.takeBackResumption(back, by, current.decidedAt);
+          await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: task.id });
+        }
+        await ports.work.resumptions(id, { clear: true });
+        const view = await presentDecision(ports, record);
+        await ports.events.record(principal, workspaceId, 'project.decision_unaccepted.v1', projectId, { decisionId: id });
+        return view;
+      });
+    },
+
+    /**
+     * Its proposer withdraws a proposal with Undo (#1424 L): a proposal reaches everyone at once, so Undo takes it back for everyone.
+     * Only the person who proposed it, within {@link DECISION_UNDO_MS} of proposing it, while it is still proposed, unchanged (`If-Match`)
+     * and nothing else names it; an agent's
+     * proposal goes back only through its run's Undo. The decision, its own links, its notifications and the Inbox choices made on
+     * it are gone, and one `project.decision_withdrawn.v1` tells the readers to refetch. Under the project's graph lock, as Accept
+     * takes it, so a withdrawal and an acceptance serialize: the later one finds the decision decided (409) or gone (404).
+     */
+    async withdrawDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<void> {
+      const by = actor(principal);
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'decision', decisionId, 'write');
+        const located = await ports.work.findDecision(id);
+        if (!located) throw notFound('decision');
+        if (by.kind !== 'human' || located.proposedBy.kind !== 'human' || located.proposedBy.id !== by.id)
+          throw new ForbiddenError('Only the person who proposed it can take it back', 'DECISION_NOT_YOURS');
+        await lockProjectGraphs(ports.work, [projectId]);
+        const current = await ports.work.findDecision(id, { lock: true });
+        if (!current) throw notFound('decision');
+        if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
+        if (current.status !== 'proposed') throw new ConflictError('This decision is no longer a proposal', 'DECISION_NOT_PROPOSED');
+        if (Date.now() - current.createdAt.getTime() > DECISION_UNDO_MS) throw new ConflictError('It was proposed too long ago to take back; propose a new decision to change direction', 'DECISION_UNDO_ENDED');
+        if (await ports.work.withdrawDecision(id) === 'used') throw new ConflictError('Something else names this decision now, so it stays', 'DECISION_IN_USE');
+        await ports.events.record(principal, workspaceId, 'project.decision_withdrawn.v1', projectId, { decisionId: id });
       });
     },
 

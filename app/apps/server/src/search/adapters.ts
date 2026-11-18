@@ -9,7 +9,9 @@ import {
   type SearchCursors,
   type SearchRepository,
   type SealedSearchRepository,
+  type SearchRow,
 } from '@flux/core';
+import { agentOwnerNamesIn } from '../conversation/author-owners.js';
 
 // Adapters that connect core search (#114) to the access policy and the Drizzle rows. Core
 // defines the ports (#46); every audience here comes from the single policy choke point.
@@ -60,6 +62,32 @@ export function sealedSearchRepository(db: Database): SealedSearchRepository<SQL
   return sealedSearchRows(db);
 }
 
+/**
+ * An agent author's owner as the row's space names them (`agentOwnerNamesIn`): by name while they can read the space, "Stefan Kowal (removed)"
+ * once they left the company or were removed (#1424, 2026-11-17), and not at all when its readers cannot be told who it is. The same rule
+ * for the plain rows and the encrypted workspaces' rows.
+ */
+async function withAgentOwners(db: Database, rows: SearchRow[]): Promise<SearchRow[]> {
+  const spaces = new Map<string, { workspaceId: string; agents: Set<string> }>();
+  for (const row of rows) {
+    if (row.author?.kind !== 'agent' || !row.projectId) continue;
+    const space = spaces.get(row.projectId) ?? { workspaceId: row.workspaceId, agents: new Set<string>() };
+    space.agents.add(row.author.id);
+    spaces.set(row.projectId, space);
+  }
+  for (const [projectId, space] of spaces) {
+    const names = await agentOwnerNamesIn(db, projectId, space.workspaceId, [...space.agents]);
+    for (const row of rows) if (row.projectId === projectId && row.author?.kind === 'agent') row.agentOwnerName = names.get(row.author.id) ?? null;
+  }
+  return rows;
+}
+
 /** The search use cases bound to a connection. */
-export const searchUseCases = (db: Database, cursors: SearchCursors, vectors?: QueryVectors) =>
-  createSearchUseCases({ access: policySearchAccess(db), rows: searchRepository(db, vectors), sealed: sealedSearchRepository(db), cursors });
+export function searchUseCases(db: Database, cursors: SearchCursors, vectors?: QueryVectors) {
+  const rows = searchRepository(db, vectors);
+  const sealed = sealedSearchRepository(db);
+  return createSearchUseCases({ access: policySearchAccess(db), cursors,
+    rows: { ...rows, page: async (audiences, plan) => withAgentOwners(db, await rows.page(audiences, plan)),
+      ranked: async (audiences, plan) => withAgentOwners(db, await rows.ranked(audiences, plan)) },
+    sealed: { search: async (audiences, plan) => { const answer = await sealed.search(audiences, plan); await withAgentOwners(db, answer.rows); return answer; } } });
+}

@@ -1,4 +1,4 @@
-import { messagePreview, withoutInvisibleFormat } from '@flux/contracts';
+import { agentWords, messagePreview, removedName, withoutInvisibleFormat } from '@flux/contracts';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -68,6 +68,10 @@ const SUMMARY_DECISIONS = `SELECT id, workspace_id AS "workspaceId", project_id 
 const SUMMARY_CONVERSATIONS = `SELECT c.id, c.workspace_id AS "workspaceId", c.project_id AS "projectId", c.created_by AS "createdBy", c.created_by_agent_id AS "createdByAgentId",
   m.id AS "openingId", m.body AS opening, m.attachment_count AS "attachmentCount"
   FROM project_conversations c LEFT JOIN project_messages m ON m.conversation_id = c.id AND m.sequence = 1 WHERE c.id = ANY($1::uuid[])`;
+// The decisions these conversations are the discussions of (#1424), with who a question there asks: the proposer, an agent's owner.
+const SUMMARY_DISCUSSED = `SELECT dd.conversation_id AS "conversationId", d.id, d.workspace_id AS "workspaceId", d.title, d.proposed_by_kind AS "proposedByKind",
+  d.proposed_by_id AS "proposedById", a.owner_user_id AS "agentOwner" FROM project_decision_discussions dd JOIN project_decisions d ON d.id = dd.decision_id
+  LEFT JOIN agents a ON d.proposed_by_kind = 'agent' AND a.id::text = d.proposed_by_id WHERE dd.conversation_id = ANY($1::uuid[])`;
 const LAST_POSTS = `SELECT conversation_id AS id, max(created_at) AS at FROM project_messages WHERE author_id = $1 AND conversation_id = ANY($2::uuid[])
   GROUP BY conversation_id`;
 const SUMMARY_MATERIALS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version
@@ -75,8 +79,14 @@ const SUMMARY_MATERIALS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.pr
 const SUMMARY_DOCS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version, v.reason
   FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[]) AND pm.kind = 'doc'`;
 const SUMMARY_SKETCHES = 'SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title FROM sketches WHERE id = ANY($1::uuid[])';
-const PEOPLE_NAMES = 'SELECT id, name FROM auth_users WHERE id = ANY($1::text[])';
-const AGENT_NAMES = 'SELECT id, name FROM agents WHERE id = ANY($1::uuid[])';
+// A person who left the company of a workspace these lines are about, or was removed from it, and has not come back, is marked, as an agent's
+// owner is below (#1424, 2026-11-17; delta review N2).
+const PEOPLE_NAMES = `SELECT u.id, u.name, EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+  WHERE w.id = ANY($2::uuid[]) AND r.user_id = u.id) AS removed FROM auth_users u WHERE u.id = ANY($1::text[])`;
+// The owner of an agent who left its workspace's company or was removed, and has not come back, is marked (#1424, 2026-11-17).
+const AGENT_NAMES = `SELECT a.id, a.name, u.name AS owner_name, EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r
+  ON r.workspace_id = coalesce(w.company_workspace_id, w.id) WHERE w.id = a.workspace_id AND r.user_id = a.owner_user_id) AS owner_removed
+  FROM agents a LEFT JOIN auth_users u ON u.id = a.owner_user_id WHERE a.id = ANY($1::uuid[])`;
 type PointRow = { key: string; seq: string | number; savedAt: Date; previousSeq: string | number | null; previousSavedAt: Date | null };
 
 // A space's rows: its own events (their object is the space) and its sketches'; a conversation's: its messages.
@@ -203,8 +213,12 @@ export function returnRows(db: DbExecutor) {
         openingId: string | null; opening: string | null; attachmentCount: number | null }>(db, SUMMARY_CONVERSATIONS, [ids])).rows;
       const rows = await openAliased(db, read, { table: 'project_messages', column: 'body', key: 'opening', workspace: (row) => row.workspaceId,
         identity: (row) => (row.openingId ? [row.openingId] : null) });
+      // A decision's discussion asks its proposer (personas-33 P2 5), as the Inbox does: the same rule, `threadAskee`.
+      const discussed = new Map((await openRows(db, 'project_decisions', (await queryPrepared<{ conversationId: string; id: string; workspaceId: string; title: string;
+        proposedByKind: string; proposedById: string; agentOwner: string | null }>(db, SUMMARY_DISCUSSED, [ids])).rows))
+        .map((row) => [row.conversationId, { title: row.title, askee: row.proposedByKind === 'human' ? row.proposedById : row.agentOwner }]));
       return byId(rows.map(({ createdBy, createdByAgentId, id, projectId, opening, attachmentCount }) => ({ id, projectId, attachmentCount,
-        createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(opening ?? '', attachmentCount ?? 0)) })));
+        createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(opening ?? '', attachmentCount ?? 0)), decision: discussed.get(id) ?? null })));
     },
 
     async lastPosts(userId: string, conversationIds: string[]) {
@@ -231,12 +245,20 @@ export function returnRows(db: DbExecutor) {
       return byId(await openRows(db, 'sketches', (await queryPrepared<{ id: string; workspaceId: string; projectId: string | null; title: string }>(db, SUMMARY_SKETCHES, [ids])).rows));
     },
 
-    async names(keys: string[]) {
+    /** `workspaceIds`: the workspaces of the lines that name them, whose company decides who is "(removed)". */
+    async names(keys: string[], workspaceIds: string[] = []) {
       const humans = keys.filter((item) => item.startsWith('human:')).map((item) => item.slice(6));
       const agents = keys.filter((item) => item.startsWith('agent:')).map((item) => item.slice(6)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
       const names = new Map<string, string>();
-      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, PEOPLE_NAMES, [humans])).rows) names.set(`human:${row.id}`, withoutInvisibleFormat(row.name));
-      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, AGENT_NAMES, [agents])).rows) names.set(`agent:${row.id}`, withoutInvisibleFormat(row.name));
+      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string; removed: boolean }>(db, PEOPLE_NAMES, [humans, workspaceIds])).rows) {
+        const name = withoutInvisibleFormat(row.name);
+        names.set(`human:${row.id}`, row.removed && name.trim() ? removedName(name) : name);
+      }
+      // An agent by its one label, "Planner · Ada's agent" (#1364).
+      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string; owner_name: string | null; owner_removed: boolean }>(db, AGENT_NAMES, [agents])).rows) {
+        const owner = row.owner_name === null ? null : withoutInvisibleFormat(row.owner_name);
+        names.set(`agent:${row.id}`, agentWords(withoutInvisibleFormat(row.name), owner !== null && row.owner_removed ? removedName(owner) : owner));
+      }
       return names;
     },
   };

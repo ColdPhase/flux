@@ -203,7 +203,7 @@ function PasswordForm({ onDone }: { onDone: (others: boolean) => void }) {
       <Input label="Current password" type="password" autoComplete="current-password" autoFocus value={currentPassword} error={errors.current}
         onChange={(event) => { setCurrent(event.target.value); setErrors({}); }} />
       <Input label="New password" type="password" autoComplete="new-password" value={next} error={errors.next}
-        hint={`At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} onChange={(event) => { setNext(event.target.value); setErrors({}); }} />
+        hint={`At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} onChange={(event) => { setNext(event.target.value); setErrors({}); }} />
       {/* An on/off in Settings is always this switch (#872). */}
       <div className="sset-acct__switch"><SwitchRow label="Sign out my other devices" checked={others} onChange={setOthers} /></div>
       {errors.form ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{errors.form}</p> : null}
@@ -212,14 +212,16 @@ function PasswordForm({ onDone }: { onDone: (others: boolean) => void }) {
   );
 }
 
-const when = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const dated = (iso: string) => { const date = new Date(iso); return Number.isNaN(date.getTime()) ? iso : when.format(date); };
 
-/** A plain name for a browser from its user agent: enough to tell devices apart, never the raw string. */
+/** A plain name for a browser from its user agent: enough to tell devices apart, never the raw string; an app that is no browser says its own name. */
 function deviceName(agent: string | null): string {
   if (!agent) return 'A browser';
-  const browser = /Edg\//.test(agent) ? 'Edge' : /Firefox\//.test(agent) ? 'Firefox' : /Chrome\//.test(agent) ? 'Chrome' : /Safari\//.test(agent) ? 'Safari' : 'A browser';
-  const system = /iPhone/.test(agent) ? 'iPhone' : /iPad/.test(agent) ? 'iPad' : /Android/.test(agent) ? 'Android' : /Mac OS X/.test(agent) ? 'Mac'
+  // The browsers that carry another's name in their agent come first: Chrome and Edge on iPhone and Android say Safari or Chrome too.
+  const browser = /Edg(e|A|iOS)?\//.test(agent) ? 'Edge' : /OPR\/|Opera/.test(agent) ? 'Opera' : /SamsungBrowser\//.test(agent) ? 'Samsung Internet' : /Firefox\/|FxiOS\//.test(agent) ? 'Firefox'
+    : /Chrome\/|CriOS\//.test(agent) ? 'Chrome' : /Safari\//.test(agent) ? 'Safari' : /^(?!Mozilla)[A-Za-z][\w.-]*(?=\/)/.exec(agent)?.[0] ?? 'A browser';
+  const system = /iPhone/.test(agent) ? 'iPhone' : /iPad/.test(agent) ? 'iPad' : /Android/.test(agent) ? 'Android' : /CrOS/.test(agent) ? 'ChromeOS' : /Mac OS X/.test(agent) ? 'Mac'
     : /Windows/.test(agent) ? 'Windows' : /Linux/.test(agent) ? 'Linux' : '';
   return system ? `${browser} on ${system}` : browser;
 }
@@ -264,7 +266,7 @@ function Sessions() {
             ))}
           </ul>
         )}
-      {others > 1 ? <div className="details__actions sset-gap"><Button variant="secondary" busy={busy === 'others'} onClick={() => void end('others')}>Sign out all other devices</Button></div> : null}
+      {others > 1 ? <div className="details__actions sset-gap sset-lead"><Button variant="secondary" busy={busy === 'others'} onClick={() => void end('others')}>Sign out all other devices</Button></div> : null}
       <p className="sset-acct__done" role="status">{status}</p>
     </section>
   );

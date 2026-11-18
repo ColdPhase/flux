@@ -270,6 +270,16 @@ export async function isCompanyGuest(db: DbExecutor, userId: string, options: { 
 }
 
 /**
+ * Whether the person left the company or was removed from it and has not come back (on its `workspace_removed_people`; joining again by any
+ * path clears the row). Their session still signs them in, to be told so; nothing the company gives its people is theirs meanwhile.
+ */
+export async function isRemovedFromCompany(db: DbExecutor, userId: string): Promise<boolean> {
+  const result = await db.execute(sql`SELECT 1 FROM workspace_removed_people r JOIN workspaces w ON w.id = r.workspace_id
+    WHERE r.user_id = ${userId} AND w.company`);
+  return result.rows.length > 0;
+}
+
+/**
  * SQL: the person in `userId` (a column or a value) is a guest of the company. Their agents, API keys and client connections are kept
  * but hidden and refused while they are (#1035, C-50): a statement that lists or finds one of them adds `NOT` this, so the same rows come
  * back when the person is a member again.

@@ -22,11 +22,12 @@ import time
 import unittest
 import urllib.request
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, TimeoutError as PlaywrightTimeout, expect, sync_playwright
 
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, press_shortcut, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")  # chromium (default) or webkit, as in the other journeys (#68 AC-8)
@@ -200,19 +201,26 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Ask my assistant")).to_have_count(0)
         self.composer(page).fill("/ai ")
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("You haven’t set up your assistant. Nobody else’s can be used for you.")
+        expect(bar).to_contain_text("Not set up yet.")
         self.composer(page).fill("Summarize this for me")
-        expect(page.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
+        # Send is not silently dead (persona round 26): it opens the one Connect AI window, and the words wait in the box.
+        expect(page.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "false")
         self.composer(page).press("Enter")
+        sent = page.get_by_role("dialog", name="Connect your AI")
+        expect(sent).to_be_visible()
+        sent.get_by_role("button", name="Cancel").click()
+        expect(sent).to_have_count(0)
         expect(self.composer(page)).to_have_value("Summarize this for me")
         shot(page, "assistant-1440-not-set-up")
         bar.get_by_role("button", name="Connect your AI").click()
-        panel = page.get_by_role("complementary", name="Connect your AI")  # headed by the button that opened it (#1058)
-        expect(panel.get_by_role("link", name="Ways to connect, in Settings → AI")).to_have_attribute("href", "/settings/agents")
-        # Details take the thread's one panel; "back" returns to the reply being written.
-        panel.get_by_role("button", name="Thread").click()
+        # Persona round (#1424): the one Connect AI window, as Settings › AI and Home open it; no side panel of its own.
+        window = page.get_by_role("dialog", name="Connect your AI")
+        expect(window.get_by_role("radiogroup", name="What to connect")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Connect your AI")).to_have_count(0)
+        window.get_by_role("button", name="Cancel").click()
+        expect(window).to_have_count(0)
+        # The reply being written is still there; Esc returns to a plain reply and the person's own message is sent as usual.
         expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
-        # Esc returns to a plain reply; the person's own message is sent as usual.
         self.composer(page).fill("/ai ")
         expect(page.locator("#project-ask")).to_be_visible()
         self.composer(page).focus()
@@ -473,14 +481,15 @@ class PersonalAssistantJourney(unittest.TestCase):
             expect(card.get_by_role("button", name="Stop your assistant")).to_be_visible()
             expect(card.locator(".kreska")).to_have_count(0)
             self.assertEqual(jo.evaluate(animated), 0)
-            # The folded rail keeps a visible target (the mark) with the same label and Stop, and no face.
-            jo.keyboard.press("[")
+            # The folded rail keeps a visible target (the mark) with the same label and Stop, and no face. "[" is a shortcut, pressed outside
+            # the reply box the arrival may have focused.
+            press_shortcut(jo, "[")
             rail_card = jo.locator(".side--rail .agentlive")
             expect(rail_card.get_by_role("link")).to_be_visible()
             expect(rail_card.get_by_role("button", name="Stop your assistant")).to_be_visible()
             expect(rail_card.locator(".kreska")).to_have_count(0)
             self.assertEqual(jo.evaluate(animated), 0)
-            jo.keyboard.press("[")
+            press_shortcut(jo, "[")
             expect(jo.locator(".side--rail")).to_have_count(0)
             # Turning the moments back on brings the live thinking face back, in the conversation and the sidebar.
             settings = jo.context.new_page()  # the same storage as the conversation
@@ -576,11 +585,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         run = next(item for item in self.own_runs(jo) if item["prompt"] == question)
         self.assertEqual(run["status"], "completed")
         self.assertEqual([source["type"] for source in run["answer"]["sources"]], ["doc", "doc", "decision"])
-        # The section opens the version it was numbered in, at its heading.
+        # The section opens the version it was numbered in, at its heading. That version is the page's current one, and the current
+        # version's address opens the page itself (design guide, round 15 new P2-4), keeping the section.
         chips.nth(0).click()
-        jo.wait_for_url(re.compile(rf"/projects/{project}/docs/{page['id']}/versions/\d+#section-2$"))
-        heading = jo.locator("#section-2")
-        expect(heading).to_have_text("Install")
+        jo.wait_for_url(re.compile(rf"/projects/{project}/docs/{page['id']}#section-2$"))
+        heading = jo.locator(".cm-content .cm-line").filter(has_text=re.compile(r"^(## )?Install$"))
+        expect(heading).to_have_count(1)
         expect(heading).to_be_in_viewport()
         # A decision opens in Details (the thread, which is the same one panel, makes room for it); the answer is still the owner's to read.
         again = self.conversation("jo")
@@ -609,6 +619,20 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(bar).to_contain_text("Not enough left of your API key’s $5.00 daily budget. A request now starts", timeout=10000)
         expect(bar.get_by_role("button", name=re.compile("raise|switch|another|instead", re.I))).to_have_count(0)
         shot(jo, "assistant-1440-capped")
+        # Train 37 row 36: a request that waits for the key's next day is never "getting ready" or "Working on #…" on the working card; it says
+        # the truth, when it starts again and where the budget is raised. The waiting run is stubbed like the status above (wording only).
+        template = next(item for item in self.own_runs(jo) if item["projectId"])
+        tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+        waiting = {**template, "id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "status": "queued", "endReason": "budget", "resumesAt": tomorrow,
+                   "stopRequested": False, "stopAcknowledged": False, "answer": None, "task": None, "prompt": "what is still open?"}
+        jo.route("**/api/v1/assistant-runs?*", lambda route: route.fulfill(status=200, content_type="application/json",
+                 body=json.dumps({"items": [waiting], "total": 1, "limit": 10, "offset": 0})) if route.request.method == "GET" else route.continue_())
+        jo.reload()
+        card = jo.locator('[data-ai-surface="working-assistant"]:not(.agentlive--compact)').first
+        expect(card).to_contain_text("Waiting: today’s AI budget is used up", timeout=10000)
+        expect(card).not_to_contain_text("getting ready")
+        expect(card).to_have_attribute("aria-label", re.compile(r"Waiting: today’s AI budget is used up\. It starts again .+, or raise the budget in Settings › AI\."))
+        jo.unroute("**/api/v1/assistant-runs?*")
         # Human work is never blocked by the budget.
         kai = self.conversation("kai")
         self.composer(kai).fill("Noted, thanks.")

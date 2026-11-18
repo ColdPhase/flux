@@ -5,15 +5,20 @@ import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Button, Icon, prefersReducedMotion, usePop, useToast } from '../ui';
+import { Button, EmptyState, Icon, prefersReducedMotion, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
+import { listProjectSources } from '../materials/api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
 import { holdTyping } from './typeAhead';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
+import { useFitInWindow } from '../ui/pickerPlace';
+import { RefLink, useFollow } from '../place/origin';
+
+const isSource = (to: string) => to.startsWith('/materials/');
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
 // quiet row: "Saved · just now · Jonas is here too", the faces of the people writing, Contents (≡) and ⋯. The title is the
@@ -59,14 +64,15 @@ export function useReferenceClicks() {
 
 /**
  * Scrolls the page so `top()` (the scroll position a heading needs) is reached, smoothly unless the person reduces
- * motion. Returns how to stop a landing still in progress.
+ * motion, and keeps it there while the page settles (`landOn`, which lands with `place()` when given). Returns how to
+ * stop a landing still in progress.
  */
-export function scrollPage(scroller: HTMLElement, top: () => number | null): () => void {
+export function scrollPage(scroller: HTMLElement, top: () => number | null, place?: () => void): () => void {
   const target = top();
   if (target === null) return () => undefined;
-  const smooth = !prefersReducedMotion();
-  scroller.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
-  return smooth ? landOn(scroller, top) : () => undefined;
+  const landing = landOn(scroller, top, place);
+  scroller.scrollTo({ top: Math.max(0, target), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  return landing;
 }
 
 export interface ContentsHeading { id: string; text: string; level: number }
@@ -140,14 +146,19 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   // The pages read when the switcher opened; until then (and after it closes) the Wiki's own list.
   const [fresh, setFresh] = useState<DocSummary[] | null>(null);
   const docs = fresh ?? loaded;
+  // The space's saved sources are Wiki pages by their own address (#1419 item 20): listed here too, opening at their page (round 15 look-3 F5).
+  const [sources, setSources] = useState<{ id: string; title: string }[]>([]);
   const button = useRef<HTMLButtonElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  // A saved source is a page by its own address: it is followed as a reference, so its way back returns to this Wiki (round 15 confirm S2).
+  const follow = useFollow();
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
   useAway(open, () => close(false), surface, button);
+  useFitInWindow(open, surface, button);
   // The list as it is now: someone may have added a page since this one opened. A newer read replaces one still on its way.
   const reading = useRef<AbortController | null>(null);
   const read = useCallback(() => {
@@ -155,6 +166,7 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
     const controller = new AbortController();
     reading.current = controller;
     listProjectDocs(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setFresh(items); }, () => undefined);
+    listProjectSources(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setSources(items.map((item) => ({ id: item.materialId, title: item.title }))); }, () => undefined);
   }, [project.id]);
   useEffect(() => {
     if (!open) return;
@@ -164,7 +176,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   }, [open, read]);
   // A page deleted while the list is open leaves it at once (#1021): the event names the space, so the list is read again.
   useStreamEvents(userId, (event) => { if (open && event.kind === 'project.doc_deleted.v1' && event.objectId === project.id) read(); });
-  const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
+  const pages = useMemo(() => [...docs.map((doc) => ({ id: doc.id, title: doc.title, to: docUrl(project.id, doc.id) })),
+    ...sources.map((source) => ({ id: source.id, title: source.title, to: `/materials/${source.id}` }))].sort((a, b) => collator.compare(a.title, b.title)), [docs, sources, project.id]);
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(doc.title).includes(needle)) : pages;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -179,7 +192,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
       <h2 className="wiki-title__h" id={titleId}>
         <button ref={button} type="button" className="wiki-switch" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
           onClick={() => (open ? close() : setOpen(true))}>
-          <span className="wiki-switch__t">{title}</span><Icon name="chevron-down" size={20} />
+          {/* The chevron follows the last word, also when the title takes two lines (founder direction 2026-11-17 visual review). */}
+          <span className="wiki-switch__t">{title}{'\u2060'}<span className="wiki-switch__go"><Icon name="chevron-down" size={20} /></span></span>
         </button>
       </h2>
       {pop.mounted ? (
@@ -188,18 +202,18 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
             <Icon name="search" size={15} />
             <input ref={findRef} type="text" placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query}
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(docUrl(project.id, shown[0].id)); } }} />
+              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); void (isSource(shown[0].to) ? follow : navigate)(shown[0].to); } }} />
           </label>
           <ul className="wiki-menu__list" aria-label="Pages">
-            {shown.map((doc) => (
+            {shown.map((doc) => { const Row = isSource(doc.to) ? RefLink : Link; return (
               <li key={doc.id}>
-                <Link className="wiki-menu__row" to={docUrl(project.id, doc.id)} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
+                <Row className="wiki-menu__row" to={doc.to} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
                   onClick={() => close(false)}>
                   <span className="wiki-menu__t">{doc.title}</span>
                   {doc.id === docId ? <Icon name="check" size={15} /> : null}
-                </Link>
+                </Row>
               </li>
-            ))}
+            ); })}
           </ul>
           {needle && !shown.length ? <p className="wiki-menu__empty" role="status">No page matches “{query.trim()}”.</p> : null}
           <div className="wiki-menu__sep" />
@@ -299,6 +313,7 @@ function Contents({ headings, onHeading }: { headings: ContentsHeading[]; onHead
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); if (restore) button.current?.focus(); }, []);
   useAway(open, () => close(false), surface, button);
+  useFitInWindow(open, surface, button);
   useEffect(() => { if (open) (surface.current?.querySelector<HTMLElement>('[role="menuitem"]') ?? surface.current)?.focus(); }, [open]);
   const base = headings.length ? Math.min(...headings.map((heading) => heading.level)) : 1;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => menuKeys(event, surface.current, close);
@@ -350,6 +365,7 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setExporting(false); if (restore) buttonRef.current?.focus(); }, [buttonRef]);
+  useFitInWindow(open, surface, buttonRef);
   useAway(open, () => close(false), surface, buttonRef);
   useEffect(() => { if (open) surface.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus(); }, [open, exporting]);
   const fileName = pageFileName(shown.title, shown.current ? undefined : shown.version);
@@ -391,15 +407,15 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
             <MenuRow label={shown.current ? 'This page as Markdown' : `Version ${shown.version} as Markdown`} run={page} />
             <MenuRow label={busy ? 'Exporting the whole space…' : 'The whole space as .tar.gz'} run={() => void wholeSpace()} busy={busy} />
           </> : <>
-            <MenuRow label="History" run={() => { close(false); navigate(historyTo); }} />
-            <MenuRow label="Copy link" run={() => void copy()} />
+            <MenuRow icon="clock" label="History" run={() => { close(false); navigate(historyTo); }} />
+            <MenuRow icon="link" label="Copy link" run={() => void copy()} />
             {/* People who manage the space can also take the whole space; everyone else gets this page at once. */}
-            <MenuRow label="Export" run={() => (project.access === 'manager' ? setExporting(true) : page())} more={project.access === 'manager'} />
-            <MenuRow label={importing ? 'Importing…' : 'Import a Markdown file'} run={() => { close(); startImport(); }} busy={importing}
+            <MenuRow icon="download" label="Export" run={() => (project.access === 'manager' ? setExporting(true) : page())} more={project.access === 'manager'} />
+            <MenuRow icon="doc" label={importing ? 'Importing…' : 'Import a Markdown file'} run={() => { close(); startImport(); }} busy={importing}
               describedBy={importError ? importErrorId : undefined} />
-            {onRename ? <MenuRow label="Rename page" run={() => { close(false); onRename(); }} /> : null}
-            {/* The menu closes onto its button first, so the dialog gives focus back to it. */}
-            {onDelete ? <MenuRow label="Delete page" run={() => { close(); onDelete(); }} /> : null}
+            {onRename ? <MenuRow icon="edit" label="Rename page" run={() => { close(false); onRename(); }} /> : null}
+            {/* The menu closes onto its button first, so the dialog gives focus back to it. A line sets the destructive row apart, as every menu does. */}
+            {onDelete ? <><div className="wiki-menu__sep" role="separator" /><MenuRow icon="trash" label="Delete page" run={() => { close(); onDelete(); }} /></> : null}
           </>}
         </div>
       ) : null}
@@ -407,10 +423,11 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
   );
 }
 
-function MenuRow({ label, run, busy, more, describedBy }: { label: string; run(): void; busy?: boolean; more?: boolean; describedBy?: string }) {
+function MenuRow({ label, run, busy, more, describedBy, icon }: { label: string; run(): void; busy?: boolean; more?: boolean; describedBy?: string; icon?: IconName }) {
+  // A menu's rows lead with their icon, as the maps' and the "…" menus' do (founder direction 2026-11-17 visual review).
   return (
-    <button type="button" role="menuitem" className="wiki-menu__row" onClick={run} aria-busy={busy || undefined} aria-haspopup={more ? 'menu' : undefined}
-      aria-describedby={describedBy}><span className="wiki-menu__t">{label}</span></button>
+    <button type="button" role="menuitem" className={`wiki-menu__row${icon ? ' wiki-menu__row--icon' : ''}`} onClick={run} aria-busy={busy || undefined} aria-haspopup={more ? 'menu' : undefined}
+      aria-describedby={describedBy}>{icon ? <Icon name={icon} size={15} /> : null}<span className="wiki-menu__t">{label}</span>{more ? <Icon name="chevron-right" size={14} /> : null}</button>
   );
 }
 
@@ -459,12 +476,11 @@ export function NoPages() {
   const { project, importing, importError, importErrorId, startImport } = useWiki();
   return (
     <div className="wiki-page wiki-empty">
-      <h2 className="wiki-empty__t">No pages yet</h2>
-      <p className="doc-muted">Write down how things work in {project.name} and what you learned. Every change keeps the earlier version.</p>
-      <div className="wiki-empty__acts">
+      {/* The one empty state of the app (founder direction 2026-11-17 visual review): its icon, title, line and the two actions. */}
+      <EmptyState icon="book" title="No pages yet" action={<div className="wiki-empty__acts">
         <NewPage primary />
         <Button variant="outline" onClick={startImport} busy={importing} aria-describedby={importError ? importErrorId : undefined}>Import a Markdown file</Button>
-      </div>
+      </div>}>Write down how things work in {project.name} and what you learned. Every change keeps the earlier version.</EmptyState>
       {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
     </div>
   );

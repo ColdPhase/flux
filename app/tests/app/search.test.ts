@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { SearchWork } from '@flux/core';
 import type { Conversation, Decision, Dm, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, Workspace } from '@flux/contracts';
+import { searchTargetPath } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -116,7 +117,7 @@ describe('search: one query across Flux, only what you may read', () => {
     // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought on the map “Lamp shapes”');
-    assert.equal(byKind('decision')[0]!.label, 'Decision · proposed');
+    assert.equal(byKind('decision')[0]!.label, 'Decision · Proposed', 'one word per state, as the card says it (release audit ffcb07c)');
     // The matched word is marked, never as markup.
     const message = answer.items.find((item) => text(item.title).includes('5 lux'))!;
     assert.ok(message.title.some((part) => part.match && /sensor/i.test(part.text)), 'the match is highlighted');
@@ -157,6 +158,9 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.deepEqual(people.items[0]!.target, { type: 'person', userId: nia.id, workspaceId: ws.id });
     assert.deepEqual(people.items[0]!.place, { type: 'workspace', id: ws.id, name: 'Studio' });
     assert.equal((await search(gus, { q: 'Nia', type: 'person' })).items.length, 0, 'a guest cannot read the member list');
+    // A guest is "Guest" in one form everywhere (release audit ffcb07c): never "· guest" or "(guest)".
+    const guest = (await search(olek, { q: 'Gus', type: 'person' })).items.find((item) => item.target.type === 'person' && item.target.userId === gus.id);
+    assert.equal(guest?.label, 'Person · Guest');
     const byNia = await search(ari, { q: 'sensor', author: `human:${nia.id}` });
     assert.ok(byNia.items.length > 0);
     assert.ok(byNia.items.every((item) => item.author === 'Nia Berg'), 'only Nia’s writing');
@@ -231,14 +235,18 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal(first.items.length, 1);
     assert.equal(first.items[0]!.kind, 'doc');
     assert.equal(first.items[0]!.label, 'Wiki page');
-    assert.deepEqual(first.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
+    assert.deepEqual(first.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1, current: true });
     json(await patch(ari, `/api/v1/docs/${created.id}`, { body: 'Fit the brass collar first, then the switch.' },
       { 'if-match': `"${created.version}"` }), 200, 'edit doc');
     const edited = await search(nia, 'collar');
     assert.equal(edited.items[0]!.label, 'Wiki page');
-    assert.deepEqual(edited.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2 });
+    assert.deepEqual(edited.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2, current: true });
     const old = await search(nia, 'dimmer');
     assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2', 'the old text is found at its own version');
+    // Round 15 (new P2-4): the page as it is now opens itself, not "You are reading a saved version"; an earlier version opens as one.
+    assert.deepEqual(old.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
+    assert.equal(searchTargetPath(edited.items[0]!.target), `/projects/${lamp.id}/docs/${created.id}`);
+    assert.equal(searchTargetPath(old.items[0]!.target), `/projects/${lamp.id}/docs/${created.id}/versions/1`);
     const both = await search(nia, 'brass');
     assert.equal(both.items.filter((item) => item.kind === 'doc').length, 1, 'one result per doc');
     assert.deepEqual((await search(olek, 'brass')).items, [], 'not outside the project');
@@ -388,6 +396,25 @@ describe('search: plain words are ranked by BM25, the web search syntax stays ex
     assert.equal(ranked.items.length, 20, 'the page is full of the messages with the other word');
     assert.ok(ranked.next, 'and says there are more');
     assert.ok(ranked.items.slice(1).every((item) => /^Dach/.test(text(item.title))));
+  });
+
+  test('a result that holds all the words ranks above one that holds fewer, whatever its kind (personas-37)', async () => {
+    // "Antenna log 30" selected the decision "Shop opens at 6:30 on fair day", which holds only "30" (in its title, and rare), before the
+    // message that holds all three words: thirty messages also hold "antenna" and "log", so BM25 alone weighed them as almost nothing.
+    const space = await createProject(ari, ws.id, `Antenna ${randomUUID().slice(0, 8)}`, 'workspace');
+    const log = await conversation(ari, space.id, 'Antenna log 1');
+    await inBatches(29, (index) => say(ari, log.id, `Antenna log ${index + 2}`));
+    json<Decision>(await post(ari, `/api/v1/projects/${space.id}/decisions`, { title: 'Shop opens at 6:30 on fair day', rationale: 'The fair starts at 7.' }), 201, 'decision');
+    for (const q of ['Antenna log 30', 'antenna log 30 ', 'log 30 antenna']) {
+      const answer = await search(ari, { q, place: `project:${space.id}`, limit: 50 });
+      assert.equal(text(answer.items[0]!.title), 'Antenna log 30', `${q}: the message with every word first`);
+      assert.equal(answer.items[0]!.kind, 'message');
+      const decision = answer.items.findIndex((item) => item.kind === 'decision');
+      assert.ok(decision > 0, `${q}: the decision is still found, below what holds more of the words`);
+      assert.ok(answer.items.slice(1, decision).every((item) => /^Antenna log/.test(text(item.title))), `${q}: two words before one`);
+    }
+    // Among hits that hold as many words, the rarer word still decides: "30" alone puts the decision's title first.
+    assert.equal((await search(ari, { q: '30', place: `project:${space.id}` })).items[0]!.kind, 'decision');
   });
 
   test('the word being typed is a prefix of what is indexed, with or without its accents', async () => {

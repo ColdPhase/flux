@@ -24,6 +24,7 @@ import {
   type WorkspaceMember,
   type WorkspaceRole,
 } from '@flux/contracts';
+import { youLabel } from '../docs/youLabel';
 import { ApiError, NetworkError, request } from '../api/client';
 
 // People in the company and its spaces (#188, F-037). Only the existing access routes (#29): add, change and
@@ -51,7 +52,8 @@ export const removeMember = (workspaceId: string, userId: string) => request<nul
 export const listInvites = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceInvite[]>(workspaceInvitesPath(workspaceId), { signal });
 export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays; spaceId?: string | null }, idempotencyKey: string) =>
   request<WorkspaceInvite>(workspaceInvitesPath(workspaceId), { method: 'POST', body, headers: key(idempotencyKey) });
-export const revokeInvite = (workspaceId: string, inviteId: string) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE' });
+/** `keepalive`: the page is being left, and the link is turned off anyway. */
+export const revokeInvite = (workspaceId: string, inviteId: string, keepalive = false) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE', keepalive });
 export const previewInvite = (token: string, signal?: AbortSignal) => request<InvitePreview>(INVITE_PREVIEW_PATH, { method: 'POST', body: { token }, signal });
 export const acceptInvite = (token: string) => request<AcceptInviteResult>(INVITE_ACCEPT_PATH, { method: 'POST', body: { token } });
 /** A one-time password reset link for another person of the company (#1471), shown only in this answer. */
@@ -85,7 +87,47 @@ export const ROLE_HINT: Record<WorkspaceRole, string> = {
   member: 'Is in Everyone, starts spaces and sees the ones they’re added to.',
   guest: 'Sees only the spaces they’re added to, and never has AI.',
 };
+/**
+ * The one order of a list of people (audit 3274a05: Company and Space settings listed them differently): you first, then by the word the
+ * list gives each person, Owner, Admin, Member, Guest, then by name.
+ */
+export function peopleOrder<T extends { userId: string; name: string }>(meId: string, word: (person: T) => string) {
+  const rank = (person: T) => { const at = ['Owner', 'Admin', 'Member', 'Guest'].indexOf(word(person)); return at < 0 ? 4 : at; };
+  return (a: T, b: T) => (a.userId === meId ? -1 : b.userId === meId ? 1 : rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+/**
+ * `sorted` with each person already drawn in the place they had (`drawn`, their ids in order): a role changed on the page moves no row under the
+ * pointer (personas-33). Someone new to the list (restored, joined, added) takes their sorted place among them, after the person sorted just
+ * before them (round 15: a restored Tomek went to the end of People). The next visit sorts by role again.
+ */
+export function keepPlaces<T extends { userId: string }>(drawn: readonly string[], sorted: T[]): T[] {
+  const at = new Map(drawn.map((id, index) => [id, index]));
+  const out = sorted.filter((person) => at.has(person.userId)).sort((a, b) => at.get(a.userId)! - at.get(b.userId)!);
+  sorted.forEach((person, index) => {
+    if (at.has(person.userId)) return;
+    const before = sorted.slice(0, index).reverse().find((other) => out.includes(other));
+    out.splice(before ? out.indexOf(before) + 1 : 0, 0, person);
+  });
+  return out;
+}
+
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';
+
+/** A guest does not start spaces (AG-2, #555): nothing offers them New space, and no empty state points to it (#1424). */
+export const startsSpaces = (workspace: { role?: WorkspaceRole | null } | null | undefined) => workspace?.role !== 'guest';
+/**
+ * A guest does not start conversations (F-037 policy `dm.create`): they reply in the ones they are added to. The same rule as New space (#1424):
+ * nothing offers them New message, and a person's name does not lead to a conversation they could not start.
+ */
+export const startsConversations = startsSpaces;
+
+/**
+ * A person in a list to choose from (an owner, someone to wait for): the name, "(you)" for the reader (the one way a list marks you, #1424),
+ * and "· Guest" for a guest of the company, as every list of people says.
+ */
+export const personLabel = (person: { userId: string; name: string; guest?: boolean }, meId: string) =>
+  person.userId === meId ? youLabel(person.name, true) : person.guest ? `${person.name} · Guest` : person.name;
 
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;

@@ -17,7 +17,7 @@ import { toolError, toolResult } from './tool-results.js';
 /**
  * `flux_attach_image` (#1217, F-036 AG-8, C-59): an agent attaches a public picture to its answer to `/ai` in a space. The Flux server, never
  * the agent's process, downloads it with the web reads' guard and switch (`WebReader.picture`: public addresses only, the name resolved once
- * and that answer connected to, at most 3 redirects each judged again, short timeouts, at most 5 MiB read whole), keeps only the picture
+ * and that answer connected to, at most 5 redirects each judged again, short timeouts, at most 5 MiB read whole), keeps only the picture
  * (`cleanPicture`: PNG, JPEG, WebP or GIF by its bytes, never SVG, metadata and anything after its end dropped, a pixel bound), and stages
  * it as a file of the asker's, through the same stored-files path as a person's upload: only the asker can open it, in their private answer
  * card, until their Show everyone posts it with the answer as an ordinary attachment.
@@ -71,10 +71,11 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   if (!current?.reader.enabled) refuse(PICTURE_WORDS.off);
   const runId = claims.run?.id ?? claims.approval?.runId ?? null;
   if (!runId) refuse('Only an answer to /ai in a space can carry a picture.');
+  // The agent's private chat (founder decision on #1217, 2026-11-12): no space, no change log; the picture is part of its answer to its owner.
+  // It goes to the run's own answer, never to a space, so a project the call names (one the agent read in) changes nothing there.
+  if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, input, claims);
   // A run changes only its place (AST-5.3): the same refusal as every other change tool, before anything is read.
   if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
-  // The agent's private chat (founder decision on #1217, 2026-11-12): no space, no change log; the picture is part of its answer to its owner.
-  if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, input, claims);
   // What decides whether to fetch, read before anything is sent: the run, its space, and Ask me first. A run's own call checks its token
   // and place first; an owner's Approve is checked again by the change executor, and here only for what makes the fetch pointless.
   const facts = await db.transaction(async (tx) => {

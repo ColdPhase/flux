@@ -39,6 +39,8 @@ export interface DmMessageRecord {
   threadRootId: string | null;
   /** Replies of a root; always 0 for a reply. */
   replyCount: number;
+  /** When the newest reply of a root was written; null for a root without replies and for a reply. */
+  lastReplyAt: Date | null;
   /** When the author last changed the words (#1006); null when they never did. */
   editedAt: Date | null;
   /** When the author deleted the message (#1006): `body` is then the fixed marker; null otherwise. */
@@ -145,8 +147,16 @@ export interface DmRepository {
    * that is the first message of the level. Null when nothing is unread.
    */
   unreadFrom(dmId: string, viewerId: string, rootId: string | null): Promise<string | null>;
-  /** Display names of these people. */
-  names(userIds: string[]): Promise<DmPerson[]>;
+  /**
+   * How many root messages of each DM the viewer has not read (#1424 decision 10): by someone else, after the newest of what they observed,
+   * their own newest root and their "Mark all as read" mark; at most 99. A DM with nothing unread is absent.
+   */
+  unread(dmIds: string[], viewerId: string): Promise<Map<string, number>>;
+  /**
+   * Display names of these people, as the DM's workspace names them: someone who left the company or was removed, and has not come back, is
+   * "Stefan Kowal (removed)" (`removedName`, founder decision 2026-11-17, #1424).
+   */
+  names(workspaceId: string, userIds: string[]): Promise<DmPerson[]>;
 }
 
 export type DmEventKind = 'dm.created.v1' | 'dm.message_sent.v1' | 'dm.message_edited.v1' | 'dm.message_removed.v1' | 'dm.changed.v1' | 'dm.observed.v1';

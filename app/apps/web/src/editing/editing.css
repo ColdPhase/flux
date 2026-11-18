@@ -1,19 +1,25 @@
 /* The page being written (#869): the reader's type with no box around it; the marks show only where the caret is. */
 .wiki-editor .cm-editor { color: var(--t2); font: inherit; background: none; }
 .wiki-editor .cm-editor.cm-focused { outline: none; }
+/* CodeMirror draws its own selection (a lavender by default): the app's one --selection, focused or not. */
+.wiki-editor .cm-editor .cm-selectionLayer .cm-selectionBackground, .wiki-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: var(--selection); }
 /* The page's column holds the text: a wide table scrolls inside its own card, never the page. */
 .wiki-editor .cm-editor, .wiki-editor .cm-editor .cm-scroller { min-width: 0; }
 .wiki-editor .cm-editor .cm-scroller { font-family: var(--font); line-height: inherit; overflow: visible; }
-.wiki-editor .cm-editor .cm-content { min-width: 0; width: 100%; padding: 0 0 48px; caret-color: var(--t1); }
+.wiki-editor .cm-editor .cm-content { min-width: 0; width: 100%; padding: 0 0 48px; }
+/* CodeMirror hides the native caret and draws its own, black unless told (founder check, Hubert 2026-11-17: invisible on the dark page): the text token. */
+.wiki-editor .cm-editor .cm-cursor, .wiki-editor .cm-editor .cm-dropCursor { border-left-color: var(--t1); }
 .wiki-editor .cm-editor .cm-line { padding: 0; }
 /* A readable measure, as the reader keeps it (at most 90 characters a line in Chromium and WebKit); code and tables take the column. */
 .wiki-editor .cm-editor .cm-line:not(.cm-md-pre):not(.cm-md-table) { max-width: 62ch; }
 .wiki-editor .cm-editor .cm-placeholder { color: var(--t3); }
-.wiki-editor .cm-editor .cm-md-h { color: var(--t1); font-weight: 600; letter-spacing: -0.025em; line-height: 1.5; }
-.wiki-editor .cm-editor .cm-md-h1 { padding-top: 10px; font-size: var(--fs-2xl); line-height: 1.35; }
-.wiki-editor .cm-editor .cm-md-h2 { padding-top: 10px; font-size: var(--fs-xl); letter-spacing: -0.02em; }
+.wiki-editor .cm-editor .cm-md-h { color: var(--t1); font-weight: 600; line-height: 1.5; }
+.wiki-editor .cm-editor .cm-md-h1 { padding-top: 10px; font-size: var(--fs-2xl); line-height: 1.35; letter-spacing: var(--tracking-title); }
+.wiki-editor .cm-editor .cm-md-h2 { padding-top: 10px; font-size: var(--fs-xl); letter-spacing: var(--tracking-title); }
 .wiki-editor .cm-editor .cm-md-h3 { padding-top: 6px; font-size: var(--fs-lg); }
 .wiki-editor .cm-editor .cm-md-h4 { font-size: var(--fs-base); }
+/* The empty line under a heading is a short step (half the reader's 14 px under an H2 plus the heading's own leading), not a whole line. */
+.wiki-editor .cm-editor .cm-line.cm-md-after-h { line-height: 6px; font-size: .4em; }
 .wiki-editor .cm-editor .cm-md-setext { color: var(--t3); }
 .wiki-editor .cm-md-strong { font-weight: 600; color: var(--t1); }
 .wiki-editor .cm-md-em { font-style: italic; }

@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { youLabel } from '../docs/format';
 import type { AgentQuestion } from '@flux/contracts';
 import { AGENT_QUESTION_LIMITS } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -26,7 +27,7 @@ function failure(cause: unknown): string {
   return 'That didn’t send. Nothing changed; try again.';
 }
 
-const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /**
  * An agent's question with ready-made answers (S14). Under the agent's message it adds one-tap answers for the person asked
@@ -81,7 +82,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
         <p className="qcard__answer" role="status">
           <Icon name="check" size={14} />
           <span><span className="ui-vh">Answered: </span>{answered.text}</span>
-          <span className="qcard__by">{answered.by.id === meId ? 'You' : answered.by.name} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
+          <span className="qcard__by">{youLabel(answered.by.name, answered.by.id === meId)} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
         </p>
       ) : interactive ? (
         <>

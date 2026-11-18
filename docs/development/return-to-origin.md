@@ -91,7 +91,9 @@ linked decision, an Inbox item, an agent link) keep the control.
   one place. The panel's own "‹ back" (above) is a different thing: a step inside the panel. One case joins them: a page whose
   panel is a sheet or an overlay (a thread, an agent or a direct-message thread a reference led to, below 980 px) has the
   header covered, so that panel's back (`OwnedPanel.back`, the one back pattern) names the origin and goes to it; a docked
-  panel leaves the header free and shows only the header control.
+  panel leaves the header free and shows only the header control. A task or a decision a reference opened in the phone's
+  sheet (the Inbox's Discuss or Open, #1424) covers the header the same way, so its sheet's back names the origin too,
+  unless the panel has a step of its own to go back to ("‹ Task #4").
 - The label is the origin's name, truncated at 16 rem; the accessible name is "Back to <name>". It is a 32 px target
   (44 px on touch).
 

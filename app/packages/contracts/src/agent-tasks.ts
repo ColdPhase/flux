@@ -15,12 +15,17 @@ export type TaskAgentLine =
 
 export interface TaskAgentState {
   /** The agent that holds the task, or the one that last worked on it for a stopped, done or handed-back line. */
-  agent: { id: string; name: string; owner: { id: string; name: string } } | null;
+  agent: { id: string; name: string; owner: { id: string; name: string }; colour?: import('./agents.js').AgentColour } | null;
   line: TaskAgentLine | null;
   /** The line as the reader sees it: "Working…", "Claude limit reached, resumes at 14:00", "Stopped by Maja · the task is back with Ada". */
   text: string;
   /** With `paused_by_limit`. */
   resumesAt: string | null;
+  /**
+   * With `paused_by_limit`: it waits for the API key's next day, not a plan's limit, so the line says where the budget is raised (train 37 row 36).
+   * With `failed`: the key's budget had too little left for the run's next request, so it stopped there (v0.2.1 round 15 ai P2-1).
+   */
+  budget?: true;
   stoppedBy: { id: string; name: string } | null;
   /** Whether this reader may press Stop, Try again, or Take it back (the owner's own Owner field does the last). */
   canStop: boolean;
@@ -35,5 +40,6 @@ export interface TaskAgentState {
 /** `GET`: who is in a task (TA-1, C-10): its creator, its owner and anyone who wrote in its thread, with their agents that run on the server. */
 export const taskPeoplePath = (workId: string) => `/api/v1/work/${workId}/people`;
 export interface TaskPeople {
-  people: { id: string; name: string; agents: { id: string; name: string }[] }[];
+  /** Each agent with its colour (#1528). */
+  people: { id: string; name: string; agents: { id: string; name: string; colour?: import('./agents.js').AgentColour }[] }[];
 }

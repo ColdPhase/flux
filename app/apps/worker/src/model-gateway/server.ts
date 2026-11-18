@@ -238,7 +238,9 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
     } finally {
       clearTimeout(idle);
     }
-    const charge = await gateway.settle(ticket, complete ? meter.end() : null);
+    // Cut before its end: what it can have used so far counts when its run was stopped; otherwise all it held (#854, train 37 row 20).
+    // An answer that ended without its usage was cut too.
+    const charge = await gateway.settle(ticket, (complete ? meter.end() : null) ?? { cut: meter.cut() });
     done(answer.status, charge);
     if (complete) res.end(); else res.destroy();
   }

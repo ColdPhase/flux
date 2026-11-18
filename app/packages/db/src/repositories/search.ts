@@ -1,5 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { foldSearchWord } from '@flux/contracts';
+import { foldSearchWord, isSearchStopWord, removedName, type AgentColour } from '@flux/contracts';
+
+/** The mark after a removed person's name, " (removed)": the one helper's words. */
+const REMOVED_MARK = removedName('');
 import * as schema from '../schema.js';
 import { hybridMatched, vectorLiteral, type QueryVectors } from './search-vectors.js';
 import { cleanName } from '../display-name.js';
@@ -77,6 +80,8 @@ export interface SearchPlanRows {
   until?: Date | null;
   /** Plain words (F-042, #1293): any of them matches. Read by the in-memory search of encrypted workspaces; the BM25 statement is picked by the caller. */
   anyWord?: boolean;
+  /** People's search (⌘K): a hit that holds only the little words of a longer search is cut (`isSearchStopWord`). An agent's search keeps every hit. */
+  cutWeak?: boolean;
 }
 
 export interface SearchRowRecord {
@@ -105,10 +110,16 @@ export interface SearchRowRecord {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  /** The author is a person who left the company of the row's workspace or was removed from it, and has not come back (#1424, 2026-11-17). */
+  authorRemoved?: boolean;
+  /** An agent author's owner, for its one label "Planner · Ada's agent". */
+  agentOwnerName?: string | null;
   /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */
   via?: string | null;
   /** `via` names an agent whose answer its person showed everyone ("Ada's Assistant"), not a local client (#1424). */
   viaAgent?: boolean;
+  /** The agent's colour when the author is an agent, or when the message is an agent's answer its person showed everyone (#1528). */
+  agentColour?: AgentColour | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }
@@ -137,12 +148,21 @@ export function highlightParts(value: string): SearchText {
     rest = stop < 0 ? '' : rest.slice(stop + 1);
   }
   // Adjacent parts of the same kind read as one.
-  return parts.reduce<SearchText>((out, part) => {
+  const joined = parts.reduce<SearchText>((out, part) => {
     const last = out[out.length - 1];
     if (last && last.match === part.match) last.text += part.text;
     else out.push({ ...part });
     return out;
   }, []);
+  // Text left out of what is searched (a citation, a link's address) leaves no space before the punctuation after it: "5 lux. Interpretation",
+  // never "5 lux . Interpretation" (audit 3274a05).
+  // Each run of spaces is tried once, from its start (a run tried from each of its spaces is quadratic in its length, pre-review P3).
+  joined.forEach((part, at) => {
+    part.text = part.text.replace(/(?<!\s)\s+(?=[.,;:!?)])/g, '');
+    const next = joined[at + 1];
+    if (next && /^[.,;:!?)]/.test(next.text)) part.text = part.text.trimEnd();
+  });
+  return joined;
 }
 
 function tsquery(plan: SearchPlanRows): SQL {
@@ -181,9 +201,13 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
  */
 export type SearchRanking = 'prefix' | 'bm25' | 'latest';
 
-/** The BM25 index's text fields (migration 0065): title and body, each with a Polish and an English stemmer. */
-const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`];
-const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`];
+/**
+ * The BM25 index's text fields: title and body, each with a Polish and an English stemmer (migration 0065), and each with its hyphenated
+ * words joined (migration 0085: "mock-up" is also "mockup", so "mockup" finds it; the query joins its own, `joinHyphenatedWords`). A field
+ * is named by the expression the index holds, so the joined ones repeat `flux_joined_words`.
+ */
+const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`, sql`flux_joined_words(sd.title)::pdb.alias('title_joined')`];
+const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`, sql`flux_joined_words(sd.body)::pdb.alias('body_joined')`];
 /**
  * What a word counts in a hit (BM25F, F-042, #1387): each time it occurs in the title counts twice each time in the body, as in the exact
  * search. A hit that holds none of the query's whole words but matched only as the word being typed (a prefix of one) or as a title with one
@@ -201,7 +225,11 @@ const BM25_B = 0.1;
 const MATCH_WORDS = 12;
 const TYPO_MIN_LETTERS = 4;
 const TYPO_MAX_WORDS = 6;
-/** A position carries `rank / (rank + SQUASH)`, in (0, 1), so that an encrypted space's rows (ranked 0 to 1.5 in memory) merge with them. The order is the same. */
+/**
+ * A position carries `(words + rank / (rank + SQUASH)) / (counted + 1)`, in (0, 1), so that an encrypted space's rows (ranked the same way in
+ * memory) merge with them: `words` is how many of the query's counted words the hit holds, so one that holds all of them ranks above one that
+ * holds fewer, whatever its kind, and BM25 orders the hits that hold as many (personas-37).
+ */
 const SQUASH = 10;
 
 /** The word a person is still typing: the last word of the prefix query (`lamp & sens:*`), folded, when it has two letters or more. */
@@ -298,10 +326,11 @@ function lookedUpWords(plan: SearchPlanRows): { words: string[]; typed: string |
  * typed (a prefix) or as a title with a typo, which is not tied to one word.
  */
 interface RankedField { shift: number; bits: number }
-/** A clause of a scan: the query for a constant, and the field of the score that constant belongs to (null: the document-level partial match of the chunk). */
-interface RankedClause { query: (constant: SQL) => SQL; at: RankedField | null }
+/** A clause of a scan: the query for a constant, and the field of the score that constant belongs to. */
+interface RankedClause { query: (constant: SQL) => SQL; at: RankedField }
 interface RankedWord { w: number; word: string; title: RankedField; body: RankedField }
-interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; part: RankedField | null }
+/** `part`: matched as the word being typed (a prefix); `typo`: a title with a typo. Neither is tied to one word. */
+interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; part: RankedField | null; typo: RankedField | null }
 
 const bitsFor = (count: number) => Math.ceil(Math.log2(count + 1));
 /** The bits of a decoded score (see the evidence above): code bit `k` is the constant 2^(k − 12), so the largest is 2^10. */
@@ -309,19 +338,22 @@ const SCORE_BITS = 23;
 const FRACTION_BITS = 12;
 const constantOf = (bit: number) => 2 ** (bit - FRACTION_BITS);
 
-/** The clauses that match a word only partly: the word being typed as a prefix of what is indexed, and a title with one typo. */
-function partialClauses(plan: SearchPlanRows): RankedClause[] {
+type Clause = (constant: SQL) => SQL;
+
+/** The clauses that match a word only partly: the word being typed as a prefix of what is indexed (`prefix`), and a title with one typo (`typo`). */
+function partialClauses(plan: SearchPlanRows): { prefix: Clause[]; typo: Clause[] } {
   const { words, typed } = lookedUpWords(plan);
-  const prefix = typingWord(plan);
-  const clauses: RankedClause[] = [];
+  const word = typingWord(plan);
+  const prefix: Clause[] = [];
+  const typo: Clause[] = [];
   // "sens" finds "sensors": the index holds stems, so a prefix is looked up in them.
-  if (prefix && typed && words.includes(typed))
-    for (const field of [...BM25_TITLES, ...BM25_BODIES]) clauses.push({ at: null, query: (constant) => sql`${field} @@@ (pdb.regex(${`${prefix}.*`}::text)::pdb.const(${constant}))` });
+  if (word && typed && words.includes(typed))
+    for (const field of [...BM25_TITLES, ...BM25_BODIES]) prefix.push((constant) => sql`${field} @@@ (pdb.regex(${`${word}.*`}::text)::pdb.const(${constant}))`);
   // A person's search (`fuzzy`) also tolerates a typo in a title, in any of its longer words; a task number names one task.
-  const typos = plan.fuzzy && plan.number === null ? words.filter((word) => [...word].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS) : [];
+  const typos = plan.fuzzy && plan.number === null ? words.filter((one) => [...one].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS) : [];
   if (typos.length)
-    for (const field of BM25_TITLES) clauses.push({ at: null, query: (constant) => sql`${field} ||| ${typos.join(' ')}::text::pdb.fuzzy(1)::pdb.const(${constant})` });
-  return clauses;
+    for (const field of BM25_TITLES) typo.push((constant) => sql`${field} ||| ${typos.join(' ')}::text::pdb.fuzzy(1)::pdb.const(${constant})`);
+  return { prefix, typo };
 }
 
 const num = (value: number) => sql.raw(String(value));
@@ -329,10 +361,13 @@ const num = (value: number) => sql.raw(String(value));
 function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
   const { words } = lookedUpWords(plan);
   const partial = partialClauses(plan);
-  const chunks: RankedChunk[] = [{ words: [], clauses: [...partial], part: partial.length ? { shift: 0, bits: bitsFor(partial.length) } : null }];
-  let used = chunks[0]!.part ? chunks[0]!.part.bits : 0;
+  const part = partial.prefix.length ? { shift: 0, bits: bitsFor(partial.prefix.length) } : null;
+  const typo = partial.typo.length ? { shift: part?.bits ?? 0, bits: bitsFor(partial.typo.length) } : null;
+  const clauses = [...partial.prefix.map((query) => ({ query, at: part! })), ...partial.typo.map((query) => ({ query, at: typo! }))];
+  const chunks: RankedChunk[] = [{ words: [], clauses, part, typo }];
+  let used = (part?.bits ?? 0) + (typo?.bits ?? 0);
   words.forEach((word, w) => {
-    if (used + 4 > SCORE_BITS) { chunks.push({ words: [], clauses: [], part: null }); used = 0; }
+    if (used + 4 > SCORE_BITS) { chunks.push({ words: [], clauses: [], part: null, typo: null }); used = 0; }
     const chunk = chunks[chunks.length - 1]!;
     const title = { shift: used, bits: 2 };
     const body = { shift: used + 2, bits: 2 };
@@ -346,11 +381,12 @@ function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
 
 /** The scan of one chunk: each visible hit, read once, with the sum of the constants of the clauses it matched (decoded in `cand`), and its own tsvector. */
 function rankedScan(chunk: RankedChunk, plan: SearchPlanRows): SQL {
-  const clauses = chunk.clauses.map((clause) => clause.query(sql.raw(String(constantOf((clause.at ?? chunk.part!).shift)))));
+  const clauses = chunk.clauses.map((clause) => clause.query(sql.raw(String(constantOf(clause.at.shift)))));
   const numbered = plan.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`})`;
   // Only the audiences filter the scan; the caller's filters read these columns after it, in `cand` (see the evidence above `RankedField`).
+  // A task's number line ("#6", the first line of its body): a word of a longer query is not the task's number (personas-27, `numberLine`).
   return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, ${numbered} AS numbered,
-        sd.audience_key, sd.project_id, sd.parent_id, sd.author_kind, sd.author_id,
+        CASE WHEN sd.kind = 'work' THEN split_part(sd.body, E'\n', 1) END AS head, sd.audience_key, sd.project_id, sd.parent_id, sd.author_kind, sd.author_id,
         (pdb.score(sd.id)::float8 * ${num(2 ** FRACTION_BITS)})::bigint AS raw
       FROM search_documents sd WHERE NOT sd.sealed AND ${AUDIENCE_ANY} AND (${sql.join(clauses, sql` OR `)})`;
 }
@@ -375,10 +411,10 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   // The caller's filters and the work lifecycle, on each scan's rows (a MATERIALIZED scan keeps them out of pg_search's query and score).
   const keep = sql.join([WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `);
   const hits = chunks.length === 1
-    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, ${decoded(sql`sd.raw`)} AS c0 FROM chunk0 sd WHERE ${keep}`
+    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, sd.head, ${decoded(sql`sd.raw`)} AS c0 FROM chunk0 sd WHERE ${keep}`
     : sql`SELECT id, min(kind) AS kind, min(object_id) AS object_id, min(version) AS version, min(at) AS at, (array_agg(tsv))[1] AS tsv,
-        bool_or(numbered) AS numbered, ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
-      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered,
+        bool_or(numbered) AS numbered, min(head) AS head, ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
+      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, sd.head,
         ${decoded(sql`sd.raw`)} AS code FROM chunk${num(index)} sd WHERE ${keep}`), sql` UNION ALL `)}) u GROUP BY id`;
   const words = chunks.flatMap((chunk, index) => chunk.words.map((word) => ({ word, code: sql.raw(`coalesce(h.c${index}, 0)`) })));
   const field = (code: SQL, f: RankedField) => sql`((${code} >> ${num(f.shift)}) & ${num(2 ** f.bits - 1)}) > 0`;
@@ -388,8 +424,11 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   const own = words.map(({ word, code }) => {
     const title = sql`ts_rank_cd('{0,0,0,1}', h.tsv, q.q${num(word.w)}, 0)`;
     const body = sql`ts_rank_cd('{0,0,1,0}', h.tsv, q.q${num(word.w)}, 0)`;
+    // A number names a task only when it is the whole query ("#6", "6": `plan.number`). As one word of more ("6:30", "6 trays") a task's own
+    // number line ("#6") is not a match of it, so "6:30" never finds task #6 (personas-27); the number elsewhere in its words still counts.
+    const numberLine = plan.number === null && /^\d+$/.test(word.word) ? sql` - CASE WHEN h.head = ${`#${word.word}`} THEN 1 ELSE 0 END` : sql``;
     return sql`(CASE WHEN ${field(code, word.title)} THEN ${num(WEIGHT.title)} * greatest(${title}, 1) ELSE 0 END
-        + CASE WHEN ${field(code, word.body)} THEN ${num(WEIGHT.body)} * greatest(${body}, 1) ELSE 0 END)::float8 AS tf${num(word.w)}`;
+        + CASE WHEN ${field(code, word.body)} THEN ${num(WEIGHT.body)} * (greatest(${body}, 1)${numberLine}) ELSE 0 END)::float8 AS tf${num(word.w)}`;
   });
   const queries = words.map(({ word }) => {
     const typed = word.word.toLowerCase();
@@ -404,12 +443,30 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   const whole = sql.join(words.map((entry) => sql`${idf(entry)} * ${tf(entry)} * ${num(BM25_K1 + 1)} / (${tf(entry)} + ${norm})`), sql` + `);
   const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)} * ${num(BM25_K1 + 1)} / (1 + ${norm})`;
   const any = sql.join(words.map((entry) => sql`${tf(entry)} > 0`), sql` OR `);
+  // People's search cuts a hit that holds only the little words of the query ("the", "by" of "barrel by the shed", persona round 6) while the
+  // query has other words: it holds none of them whole, nor a longer form of the one being typed (`isSearchStopWord`).
+  const typing = typingWord(plan);
+  const content = words.filter((entry) => !isSearchStopWord(entry.word.word));
+  const cut = !!plan.cutWeak && content.length > 0 && content.length < words.length;
+  const holds = (entry: (typeof words)[number]) => foldSearchWord(entry.word.word) === typing ? sql`(${tf(entry)} > 0 OR c.prefixed)` : sql`${tf(entry)} > 0`;
+  const contentHit = sql.join(content.map(holds), sql` OR `);
+  // A hit that holds all the words ranks above one that holds fewer, whatever its kind (personas-37: "Antenna log 30" listed a decision
+  // that holds only "30", in its title, above the message that holds all three). The words counted are those that are not little words
+  // (all of them when every word is little); the word being typed counts as held as its prefix. BM25 orders the hits that hold as many.
+  const counted = content.length ? content : words;
+  const held = sql.join(counted.map((entry) => sql`CASE WHEN ${holds(entry)} THEN 1 ELSE 0 END`), sql` + `);
+  // A typo is a way to find what a word did not (v0.2.1 personas round: "price list" listed "Kasia Lis", one edit from "list", beside
+  // the price list itself). A hit found only by a typo in its title is shown only when no visible hit holds one of the words whole.
+  const first = chunks[0]!;
+  const code0 = sql.raw('coalesce(h.c0, 0)');
+  const prefixed = first.part ? field(code0, first.part) : sql`false`;
+  const typoed = first.typo ? field(code0, first.typo) : sql`false`;
   // With a query vector (the optional embeddings, #1294) the visible BM25 order above is one list of the fusion (see `hybridMatched`).
   const matched = vector
     ? hybridMatched({ vector, visible: sql`NOT sd.sealed AND ${AUDIENCE_ANY} AND ${keep}`, number: plan.number })
     : sql`matched AS (
       SELECT r.id, r.kind, r.object_id, r.version, r.at,
-        round((r.rank / (r.rank + ${num(SQUASH)}))::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
+        round(((r.held + r.rank / (r.rank + ${num(SQUASH)})) / ${num(counted.length + 1)})::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
         row_number() OVER (PARTITION BY r.kind, r.object_id ORDER BY r.version DESC NULLS LAST) AS newest
       FROM ranked r
     ),`;
@@ -418,19 +475,24 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
     `)}
     q AS MATERIALIZED (SELECT ${sql.join(queries, sql`, `)}),
     cand AS MATERIALIZED (
-      SELECT h.id, h.kind, h.object_id, h.version, h.at, h.numbered, length(h.tsv)::float8 AS dl, ${sql.join(own, sql`, `)}
+      SELECT h.id, h.kind, h.object_id, h.version, h.at, h.numbered, length(h.tsv)::float8 AS dl, ${sql.join(own, sql`, `)},
+        ${prefixed} AS prefixed, ${typoed} AS typoed
       FROM (${hits}) h CROSS JOIN q),
-    stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)} FROM cand c),
+    stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)},
+      count(*) FILTER (WHERE ${any}) AS whole FROM cand c),
     scored AS (
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
-        CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
-      FROM cand c CROSS JOIN stats st),
+        CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank, (${held})::float8 AS held
+      FROM cand c CROSS JOIN stats st
+      -- A hit holds a whole word, the word being typed or a typo; a task whose number line alone matched holds none of them and is not shown.
+      WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0) AND (${any} OR c.prefixed OR c.typoed OR c.numbered)
+        ${cut ? sql`AND (NOT (${any}) OR c.numbered OR ${contentHit})` : sql``}),
     -- A file is several rows, one for each part of its text (C-63): it counts once, by its best part, before the hybrid's lists take their first 50.
     ranked AS (
-      SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank FROM scored s WHERE s.kind <> 'file'
+      SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank, s.held FROM scored s WHERE s.kind <> 'file'
       UNION ALL
-      (SELECT DISTINCT ON (f.object_id) f.id, f.kind, f.object_id, f.version, f.at, f.numbered, f.rank FROM scored f WHERE f.kind = 'file'
-        ORDER BY f.object_id, f.rank DESC, f.version, f.id)),
+      (SELECT DISTINCT ON (f.object_id) f.id, f.kind, f.object_id, f.version, f.at, f.numbered, f.rank, f.held FROM scored f WHERE f.kind = 'file'
+        ORDER BY f.object_id, f.held DESC, f.rank DESC, f.version, f.id)),
     ${matched}`;
 }
 
@@ -472,6 +534,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
   const workJoin = bm25
     ? sql`wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)`
     : sql`h.kind = 'work' AND wi.id = h.object_id::uuid`;
+  // A direct message names someone who left the company or was removed as the sidebar does, "Piotr Lis (removed)" (round 15 look-1 P3-10).
+  const removedMark = sql`CASE WHEN EXISTS (SELECT 1 FROM workspace_removed_people r WHERE r.user_id = u.id AND r.workspace_id = coalesce(w.company_workspace_id, w.id)) THEN ${REMOVED_MARK}::text ELSE '' END`;
   return sql`
     WITH ${audience},
     ${matched}
@@ -479,21 +543,24 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name,
+      (au.id IS NOT NULL AND EXISTS (SELECT 1 FROM workspace_removed_people r WHERE r.user_id = au.id AND r.workspace_id = coalesce(w.company_workspace_id, w.id))) AS author_removed, ${cleanName(sql`agu.name`)} AS agent_owner_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
         WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
         ELSE ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${BODY_OPTIONS}) END AS body_headline,
       CASE WHEN d.id IS NULL THEN NULL WHEN d.title IS NOT NULL THEN d.title
-        WHEN d.kind = 'pair' THEN (SELECT ${cleanName(sql`u.name`)} FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
-        ELSE (SELECT string_agg(${cleanName(sql`u.name`)}, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
+        WHEN d.kind = 'pair' THEN (SELECT ${cleanName(sql`u.name`)} || ${removedMark} FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
+        ELSE (SELECT string_agg(${cleanName(sql`u.name`)} || ${removedMark}, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
       END AS dm_name
     FROM ${page} h
     LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
+    LEFT JOIN assistant_settings ags ON ags.agent_id = ag.id
+    LEFT JOIN auth_users agu ON agu.id = ag.owner_user_id
     LEFT JOIN project_messages pmv ON pmv.id = (CASE WHEN h.kind = 'message' THEN h.object_id::uuid END)
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
@@ -507,8 +574,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
 interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
-  current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
-  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null; via_agent: boolean | null;
+  current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; author_removed: boolean | null; agent_owner_name: string | null; has_body: boolean;
+  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null; via_agent: boolean | null; agent_colour: AgentColour | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
 
@@ -535,8 +602,11 @@ function toRecord(row: PageRow): SearchRowRecord {
     snippet: row.body_headline ? highlightParts(row.body_headline) : null,
     hasBody: row.has_body,
     authorName: row.author_name,
+    authorRemoved: !!row.author_removed,
+    agentOwnerName: row.agent_owner_name,
     via: row.via,
     viaAgent: !!row.via && !!row.via_agent,
+    agentColour: row.agent_colour,
     author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
     at: row.at instanceof Date ? row.at : new Date(row.at),
   };

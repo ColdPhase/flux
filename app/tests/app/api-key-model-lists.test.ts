@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, after, describe, test } from 'node:test';
-import { personalConnectionLookup } from '@flux/db';
-import type { Principal } from '@flux/core';
+import { accessPorts, personalConnectionLookup } from '@flux/db';
+import { joinCompany, type Principal } from '@flux/core';
 import { AI_MODEL_LISTS_PATH, defaultListedModel, groupModelsByFamily, type AiModelList, type AssistantModelListing, type BackgroundComputeConnection, type Conversation } from '@flux/contracts';
 import { listKeyModels, parsePrivateTargets, PUBLIC_ONLY } from '../../packages/agent-runtime/src/index.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -136,6 +136,20 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     assert.deepEqual(compatible.models.map((model) => model.id), ['llama3.1:8b', 'qwen2.5:7b-instruct']);
     assert.equal(compatible.priceList, null, 'Flux knows no price of an endpoint\'s models: their owner enters it');
   });
+
+  test('someone who left the company, still signed in, cannot make the server list a provider\'s models or test a key', async () => {
+    await person('model-list-company-first'); // the company exists before the leaver joins it, so they are never its only owner
+    const leaver = await person('model-list-leaver');
+    assert.equal(await joinCompany(leaver.id, { sso: true }, db, accessPorts), 'joined');
+    const companyId = (await pool.query<{ id: string }>('SELECT id FROM workspaces WHERE company')).rows[0]!.id;
+    const look = () => leaver.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'openai_compatible', baseUrl: `${MOCK}/openai/v1` } });
+    expectStatus(await look(), 200, 'in the company: listed');
+    expectStatus(await leaver.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${leaver.id}`), 204);
+    const refused = await look();
+    assert.deepEqual([refused.status, codeOf(refused)], [403, 'NOT_IN_COMPANY'], refused.text);
+    const saved = await leaver.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-opus-5-5', apiKey: keyOf('anthropic'), dailyBudgetCents: 500 } });
+    assert.deepEqual([saved.status, codeOf(saved)], [403, 'NOT_IN_COMPANY'], saved.text);
+  });
 });
 
 describe('a key, its models and its agents (#1218)', () => {
@@ -197,6 +211,9 @@ describe('a key, its models and its agents (#1218)', () => {
       ['claude-haiku-4-5-20251001', 'Haiku', true, 'Input $1, output $5 per 1M tokens'],
     ]);
     assert.equal(group.options.find((option) => option.id === 'claude-sonnet-5-7')!.name, 'Claude Sonnet 5.7', 'the provider\'s own name where Flux has none');
+    // The key names its model as the picker does, the provider's name (release audit ffcb07c: Your API keys said "Sonnet 5.5").
+    assert.equal(key.modelName, 'Claude Sonnet 5.5');
+    assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).find((item) => item.id === key.id)?.modelName, 'Claude Sonnet 5.5');
 
     await runs.enable(human(owner), { agentId, connection: key.id, model: 'claude-opus-5-5' });
     await assert.rejects(chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' }),

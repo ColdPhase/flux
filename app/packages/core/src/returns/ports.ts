@@ -68,7 +68,11 @@ export interface ReturnMessage {
   /** `via` names an agent whose answer its author showed everyone, not a local client: the summary says "Ada's Assistant" (#1424). */
   viaAgent?: boolean;
 }
-export interface ReturnConversation { id: string; projectId: string; createdBy: ActorRef; opening: string }
+export interface ReturnConversation {
+  id: string; projectId: string; createdBy: ActorRef; opening: string;
+  /** The decision this conversation is the discussion of (#1424): its title, and who its questions ask (`threadAskee`). */
+  decision?: { title: string; askee: string | null } | null;
+}
 export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }
 export interface ReturnSketch { id: string; workspaceId: string; projectId: string | null; title: string }
 /** A project doc (#112) as it reads now: its current version and that version's reason. */
@@ -115,8 +119,11 @@ export interface ReturnRepository {
   materials(ids: string[]): Promise<Map<string, ReturnMaterial>>;
   sketches(ids: string[]): Promise<Map<string, ReturnSketch>>;
   docs(ids: string[]): Promise<Map<string, ReturnDoc>>;
-  /** Display names keyed by `<kind>:<id>`. */
-  names(keys: string[]): Promise<Map<string, string>>;
+  /**
+   * Display names keyed by `<kind>:<id>`: a person's name, an agent's one label ("Planner · Ada's agent"). Someone who left the company of
+   * one of `workspaceIds` (the workspaces of the lines) is "Full Name (removed)" (#1424).
+   */
+  names(keys: string[], workspaceIds?: string[]): Promise<Map<string, string>>;
 }
 
 export interface ReturnPorts {

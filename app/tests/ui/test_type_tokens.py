@@ -139,6 +139,9 @@ class TypeTokens(unittest.TestCase):
         field = page.get_by_role("combobox", name="Search")
         expect(field).to_be_visible()
         close = page.locator(".jump__close")
+        # Close says its word, its key beside it (release audit ffcb07c P3; WCAG 2.5.3): the visible label is the accessible name.
+        expect(page.get_by_role("button", name="Close", exact=True)).to_have_count(1)
+        expect(close).to_contain_text("Close")
         heights = [round(field.bounding_box()["height"]), round(close.bounding_box()["height"])]
         self.assertEqual(heights[0], heights[1], f"the field and Close share one height: {heights}")
         box = close.bounding_box()

@@ -33,20 +33,21 @@ export function changeError(error: unknown, item: Pick<StateTarget, 'number' | '
   return `${name} could not be changed. Its current state is shown; try again.`;
 }
 
-/** The one phrasing of a state change, on the board, the list and the panel (#763 C2): "#6 done", "#6 is now in progress". */
-export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus) =>
-  status === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} moved to ${word(status)}`;
+/**
+ * The one phrasing of a state change, on the board, the list and the panel (#763 C2), the same for every state (personas-27): "#4 moved to
+ * Blocked", "#7 moved to Done".
+ */
+export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus) => `${taskNumber(item)} moved to ${word(status)}`;
 
 /** What Undo sends to put a task back as it was before a state change: a put-back blocker and person are not said again. */
 export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partial<Pick<StateTarget, 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt'>>) {
-  const blockedBack = item.status === 'blocked' && (item.blocker || item.waitingFor || item.waitingOn);
+  // Every Undo is a restore: what it puts back is not said again, and the conversation line of the move it undoes goes (personas-26).
   // Leaving Done clears "dropped" and its line, so they go back with the state (#868).
-  const doneBack = item.status === 'done' && (item.dropped || item.cameOfIt);
   return { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}),
     ...(item.status === 'blocked' && item.waitingFor ? { waitingFor: { kind: 'human' as const, id: item.waitingFor.id } } : {}),
     ...(item.status === 'blocked' && item.waitingOn ? { waitingOn: { kind: item.waitingOn.kind, id: item.waitingOn.id } } : {}),
     ...(item.status === 'done' && item.dropped ? { dropped: true } : {}), ...(item.status === 'done' && item.cameOfIt ? { cameOfIt: item.cameOfIt } : {}),
-    ...(blockedBack || doneBack ? { restore: true as const } : {}) };
+    restore: true as const };
 }
 
 /**
@@ -125,10 +126,13 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
   return useStateChanges(saved, done).change;
 }
 
+/** Said on the window when a task's creation was undone (`{ workId }`) or a proposal withdrawn (`{ decisionId }`, #1424 L) from its toast: a panel showing it closes (`AppLayout`). */
+export const WORK_CREATION_UNDONE_EVENT = 'flux:work-creation-undone';
+
 /**
  * The toast after a person creates a task (#763 B1, principle 6): "Task #13 created" with Undo (Z) on every create
  * path, while the server says this reader may still undo the creation. Undo is the #238 creation Undo: the task stays
- * as read-only history and leaves the board, counts and choosers. A window that created it passes `another`: "Add another" then
+ * as read-only history and leaves the board, counts and choosers. A window that created it passes `another`: "Another task" then
  * follows Undo (#1235), so entering several tasks is one step each, with no switch to remember.
  */
 export function useCreatedToast(done?: () => void) {
@@ -136,18 +140,21 @@ export function useCreatedToast(done?: () => void) {
   const currentScope = useToastScope();
   return useCallback((item: WorkItem, another?: () => void) => {
     const message = `Task ${taskNumber(item)} created`;
-    const next = another ? { label: 'Add another', onClick: another } : undefined;
+    const next = another ? { label: 'Another task', onClick: another } : undefined;
     if (!item.creationUndo?.eligible) { toast({ message, tone: 'success', timeout: next ? 8000 : 4000, ...(next ? { action: next } : {}) }); return; }
     const commandId = crypto.randomUUID();
     toast({
-      message, tone: 'neutral', timeout: 8000, ...(next ? { also: next } : {}),
+      message, tone: 'neutral', ...(next ? { also: next } : {}),
       action: {
         label: 'Undo', key: 'Z',
         onClick: () => {
           void (async () => {
             try {
               await undoTaskCreation(item, commandId);
-              if (currentScope()) toast({ message: `${taskNumber(item)} creation undone` });
+              // An undone creation closes the task's panel when it shows that task (audit 3274a05 P3 4): a panel that only said "Creation
+              // undone" three times was left. The shell closes it; focus goes where closing gives it back (F-026 §4).
+              window.dispatchEvent(new CustomEvent(WORK_CREATION_UNDONE_EVENT, { detail: { workId: item.id } }));
+              if (currentScope()) toast({ message: `Task ${taskNumber(item)} undone` });
             } catch (cause) {
               if (!currentScope()) return;
               toast({ tone: 'danger', message: cause instanceof ApiError && cause.status === 409

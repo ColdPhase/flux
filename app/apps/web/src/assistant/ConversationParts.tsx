@@ -12,6 +12,7 @@ import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 import { RefLink } from '../place/origin';
 import { MessageText, type NamedPerson } from '../app/MessageText';
+import { WebSources } from '../app/WebSources';
 import { useShellData } from '../app/data';
 import { plainWords } from '../work/messageWords';
 import { shownWords, stepWords, useLiveRun, useReducedMotion } from './liveRun';
@@ -103,7 +104,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, chang
           {working ? <WorkingWords run={run} /> : ended}
         </p>
         {/* A run that ended without an answer still says every web address it asked for (#953): nothing else would show them. */}
-        {!working && run.webSources ? <p className="assistant-working__sources" data-web-sources>{run.webSources}</p> : null}
+        {!working && run.webSources ? <WebSources block={run.webSources} /> : null}
         <p className="assistant-working__who"><Icon name="lock" size={12} />Only you see this · “{run.prompt.length > 90 ? `${run.prompt.slice(0, 90)}…` : run.prompt}”</p>
         {failed ? <p className="assistant-working__error" role="alert">{failed}</p> : null}
       </div>

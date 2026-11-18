@@ -31,6 +31,9 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
 }) {
   const toast = useToast();
   const own = useRef<HTMLTextAreaElement>(null);
+  const pressed = useRef(false);
+  /** Whether the field had the focus when Send was pressed. */
+  const writing = useRef(false);
   useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
   const hint = useFittingHint(own, typeof placeholder === 'string' ? [placeholder] : placeholder);
   // A toast stands above the highest composer on the screen, never on its hint (#1424).
@@ -55,8 +58,28 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
       <label className="ui-vh" htmlFor={id}>{label}</label>
       <textarea id={id} ref={own} rows={1} value={value} maxLength={maxLength} placeholder={hint} disabled={disabled}
         onChange={(event) => onChange(event.target.value, event.target.selectionStart)} onSelect={onSelect ? (event) => onSelect(event.currentTarget.selectionStart) : undefined}
-        onBlur={onBlur} onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
-      <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>
+        onBlur={() => { pressed.current = false; onBlur?.(); }} onPointerDown={() => { pressed.current = true; }}
+        // Tab into a kept draft puts the cursor at its end (F-026 §4): WebKit put it at the start, so typing went in front of the draft. A press
+        // places the cursor where it lands, as always.
+        // Read once the browser has placed it: WebKit places the cursor after the focus event (persona round 29), and a key typed in between
+        // is caught up by the move to the end.
+        // Read once the browser has placed it, never during the focus event: WebKit reports 0 there even when a selection is about to be
+        // restored (a field selected and then focused, to be written over), and a move then would put the new words after the old ones.
+        onFocus={(event) => {
+          const field = event.currentTarget;
+          if (pressed.current || !field.value) return;
+          const toEnd = () => { if (document.activeElement === field && !pressed.current && field.selectionStart === 0 && field.selectionEnd === 0) field.setSelectionRange(field.value.length, field.value.length); };
+          queueMicrotask(toEnd);
+          window.setTimeout(toEnd, 0);
+          requestAnimationFrame(toEnd);
+        }}
+        onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
+      {/* Send keeps the field focused (round 15 daily P2-4): the press never takes the focus from the field, and the field takes it back after
+          the send, so a phone's keyboard stays up for the next message, as in every messenger. */}
+      <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled}
+        onPointerDown={() => { writing.current = document.activeElement === own.current; }}
+        onMouseDown={(event) => { if (document.activeElement === own.current) event.preventDefault(); }}
+        onClick={() => { const back = writing.current; writing.current = false; onSend(); if (back && own.current && !own.current.disabled) own.current.focus({ preventScroll: true }); }}><Icon name="send" /></button>
       {menu}
     </div>
   );

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { messageLinkUrls, messagePreview, parseInline, parseMessage, plainMessageText, type MessageBlock, type MessageInline } from '@flux/contracts';
+import { messageLinkUrls, messagePreview, oneLinePreviewText, parseInline, parseMessage, plainMessageText, plainPreviewText, withoutCiteMarks, type MessageBlock, type MessageInline } from '@flux/contracts';
 import { plainWords } from '../../apps/web/src/work/messageWords.js';
+import { plainInstruction } from '../../apps/web/src/my-agents/plainInstruction.js';
 
 // The one parser of the message subset (#1247): `**bold**`, `*italic*`, `` `code` ``, fenced code, `- ` and `1. ` lists and `> ` quotes.
 // It reads text and returns plain data, so what it returns is all the renderer can draw: text, bold, italic, code, quote, list, code block.
@@ -101,6 +102,8 @@ describe('hostile bodies are read in linear time', () => {
     ['one long word', 'a'.repeat(99990)],
     ['many short links', 'http://a.example/x '.repeat(5000)],
     ['many wiki marks', '[[a *b* c]] '.repeat(8000)],
+    ['wiki marks that never close', '[['.repeat(49000)],
+    ['cite marks cut short', ' [task:00000000-0000-4000-8000-00000000000'.repeat(2300)],
     ['a text, 99,990 blank lines, a quote', `x${'\n'.repeat(99990)}> q`],
     ['a list, 50,000 blank lines, a text', `- a\n${'\n'.repeat(50000)}x`],
     ['a text, 50,000 blank lines, a list', `x${'\n'.repeat(50000)}- a`],
@@ -120,6 +123,7 @@ describe('hostile bodies are read in linear time', () => {
         const started = performance.now();
         parseMessage(body);
         plainMessageText(body);
+        messagePreview(body);
         best = Math.min(best, performance.now() - started);
       }
       assert.ok(best < BOUND_MS, `${name}: ${Math.round(best)} ms for ${body.length} characters`);
@@ -244,5 +248,30 @@ describe('nothing in the data can be HTML', () => {
         if (body.includes(needle)) assert.ok(strings.some((value) => value.includes(needle)), `${body}: ${needle} is kept as text`);
       }
     }
+  });
+});
+
+describe('an agent\'s cite marks are never words for a reader (C-62, v0.2.1 real-model gate rows 28 and 37)', () => {
+  const id = '40dc2d89-b0f0-411e-aa08-39e39094c2fa';
+  test('a mark goes with the space before it; anything that only looks like one stays', () => {
+    assert.equal(withoutCiteMarks(`A 300 EUR total [message:${id}], and the order [task:${id}]. See [doc:${id}#2].`), 'A 300 EUR total, and the order. See.');
+    assert.equal(withoutCiteMarks('items[0] and [task:not-an-id] and [1]'), 'items[0] and [task:not-an-id] and [1]');
+  });
+  test('a preview is plain words: no marks, a page by its title, a list on its lines', () => {
+    assert.equal(plainPreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200\n- It fits Fair contacts\n- Cheaper');
+    // A list reads as words in a one-line place (train 37 row 22: "Reasons: - Setup time…" in the Inbox); Copy text keeps it a list.
+    assert.equal(oneLinePreviewText(`**Why 200** [decision:${id}]\n- It fits [[Fair contacts]]\n- *Cheaper*`), 'Why 200 It fits Fair contacts; Cheaper');
+    assert.equal(oneLinePreviewText('Reasons:\n- Setup time: the stand needs 45 minutes.\n- Volunteers arrive at 8:00'), 'Reasons: Setup time: the stand needs 45 minutes. Volunteers arrive at 8:00');
+    assert.ok(!/(^|\s)- /.test(oneLinePreviewText('Reasons:\n- Setup\n- Power')), 'no list dash is left');
+    assert.equal(messagePreview(`Done [task:${id}]`), 'Done');
+  });
+});
+
+describe('a schedule card says what it does in plain words (train 37 row 16)', () => {
+  test('words about cite marks and tool names are left out; the rest is as the agent wrote it', () => {
+    assert.equal(plainInstruction('Give a short list: task name, what changed (new, status, due date), and the cite mark. If nothing changed, say so.'),
+      'Give a short list: task name, what changed (new, status, due date). If nothing changed, say so.');
+    assert.equal(plainInstruction('List open tasks with flux_list_work. Add the cite mark after each line. Keep it short.'), 'List open tasks with list work. Keep it short.');
+    assert.ok(!/cite/i.test(plainInstruction('Add cite marks to every line.')));
   });
 });

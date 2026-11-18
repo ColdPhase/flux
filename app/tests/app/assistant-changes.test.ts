@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import * as Y from 'yjs';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, decisionDiscussionPath, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, personalRunTokenPath, projectExportPath,
   type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
@@ -209,6 +209,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [lens.id])).rows[0].title, 'Jonas checks the lens today');
     // Skip closes it; a later Approve cannot revive it.
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'skip'), { body: {} }), 200);
+    // Round 15 ai P2-2: the Skip is heard at once by the owner's other screens (a task panel open on the computer), and by nobody else.
+    const heard = await pool.query(`SELECT a.recipient FROM events e JOIN event_audience a ON a.event_id = e.id WHERE e.kind = 'project.assistant_change_skipped.v1' AND e.data->>'changeId' = $1`, [declined!.id]);
+    assert.deepEqual(heard.rows.map((entry) => entry.recipient), [`human:${owner.id}`], 'the skip is a live event for its owner alone');
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'apply'), { body: {} }), 409);
     // Ada was removed from the space: refused, nothing changes; being added back cannot revive the saved change.
     await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
@@ -547,6 +550,27 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(listed?.undoable, true, 'the agent\'s line in a task\'s discussion keeps its owner\'s delete');
   });
 
+  test('delta review N1: Undo of a run that posted twice in one thread takes back both messages, its own later one being no reply', async () => {
+    // A run's two messages in one people's thread (it started one and replied in it): no run posts by itself today (#1063), so the two
+    // agent-authored lines are posted by a local client and then made one run's plain posts, as earlier runs left them.
+    const item = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Two lines in one thread' } }), 201) as { id: string };
+    const root = expectStatus(await owner.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'What is left?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    const first = await post('flux_reply_in_conversation', { conversationId: root.conversationId, message: { body: 'The probes are left' } });
+    const second = await post('flux_reply_in_conversation', { conversationId: root.conversationId, message: { body: 'And the lamp driver' } });
+    const run = await liveRun();
+    await complete(run.runId);
+    await pool.query(`UPDATE assistant_changes SET run_id = $2, connection_id = NULL, receipt = jsonb_set(receipt, '{undo,plan}', '{"kind":"removal"}')
+      WHERE id = ANY($1::uuid[])`, [[first.change.id, second.change.id], run.runId]);
+    const listed = await listRun(run.runId);
+    assert.deepEqual(listed.map((change) => change.undoable), [false, true], 'alone, the first is kept by the second; the run\'s Undo takes both');
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 2, undone.message);
+    assert.equal(undone.message, 'Undid 2 changes');
+    const removed = (await pool.query(`SELECT id, removed_at IS NOT NULL AS removed FROM project_messages WHERE id = ANY($1::uuid[])`, [[first.messageId, second.messageId]])).rows as { id: string; removed: boolean }[];
+    assert.deepEqual(removed.filter((row) => row.removed).length, 2, 'neither message stays behind');
+    assert.deepEqual([(await stateOf(first.change.id)).state, (await stateOf(second.change.id)).state], ['undone', 'undone']);
+  });
+
   test('#68 map: Undo removes an untouched map the assistant made and refuses once renamed, filled or cited', async () => {
     const run = await liveRun();
     const made = value(await run.call('flux_create_map', { title: 'Probe layout' }));
@@ -617,6 +641,25 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const [citedRow] = await changesOf(cited.runId);
     assert.equal((await undoOne(citedRow!.id)).message, 'Used since. Open it');
     assert.equal(await count('project_decisions', pinned.decisionId), 1);
+  });
+
+  test('a proposal people discussed stays: the run\'s Undo says so and their discussion keeps its decision (pre-review P2-2)', async () => {
+    const run = await liveRun();
+    const proposed = value(await run.call('flux_propose_decision', { decision: { title: 'Meet at 15:00', rationale: 'Everyone is free then' } }));
+    await complete(run.runId);
+    const asked = expectStatus(await peer.browser.request('POST', decisionDiscussionPath(proposed.decisionId), { body: { body: 'Why 15:00?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    // Round 15 ai P2-4: what people's discussion keeps is no longer offered for Undo, and the run's Undo does not count it as "changed since".
+    const listed = expectStatus(await owner.browser.request('GET', `/api/v1/assistant-runs/${run.runId}/changes`), 200) as { items: AssistantChange[] };
+    assert.deepEqual(listed.items.map((change) => [change.operation, change.undoable]), [['decision.propose', false]], 'no Undo is offered for a discussed proposal');
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 0, undone.message);
+    assert.deepEqual(undone.changedSince, [], 'the discussed proposal is not part of the run\'s Undo');
+    const [row] = await changesOf(run.runId);
+    assert.equal((await undoOne(row!.id)).message, 'Replies since. Open it');
+    assert.equal(await count('project_decisions', proposed.decisionId), 1, 'the decision stays');
+    assert.equal((await pool.query('SELECT conversation_id FROM project_decision_discussions WHERE decision_id = $1', [proposed.decisionId])).rows[0]?.conversation_id, asked.conversationId,
+      'its discussion is still its own, not a stray thread of the space');
+    assert.equal((await stateOf(row!.id)).state, 'applied');
   });
 
   test('#868 a task whose creation was undone holds nothing: Undo of the run still removes the decision it waited for', async () => {

@@ -38,8 +38,11 @@ MEASURE = """(root) => {
   const solid = (node) => { for (let n = node; n; n = n.parentElement) { const c = rgba(getComputedStyle(n).backgroundColor); if (c && c.a > 0) return c; } return null; };
   const surface = solid(root.parentElement);
   const structural = new Set(['DIV', 'SECTION', 'FORM', 'P', 'H3', 'H4', 'DL', 'DT', 'DD', 'FIELDSET', 'NAV', 'UL', 'LI', 'HEADER', 'ARTICLE']);
+  // The decision's content scrolls above its one discussion's field (#1424), as a task's does: the column is measured; the field at the
+  // panel's foot is the composer's own surface, as everywhere.
+  const col = root.querySelector(':scope > .wd__scroll') ?? root;
   const paints = [];
-  for (const el of [root, ...root.querySelectorAll('*')]) {
+  for (const el of [root, ...col.querySelectorAll('*')]) {
     if (!structural.has(el.tagName)) continue;
     const c = rgba(getComputedStyle(el).backgroundColor);
     if (!c || c.a === 0) continue;
@@ -49,7 +52,8 @@ MEASURE = """(root) => {
   }
   const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   const q = (sel) => root.querySelector(sel);
-  const edge = root.getBoundingClientRect().left, end = root.getBoundingClientRect().right;
+  const pad = getComputedStyle(col);
+  const edge = col.getBoundingClientRect().left + parseFloat(pad.paddingLeft), end = col.getBoundingClientRect().right - parseFloat(pad.paddingRight);
   // The left edge of every kind of content the panel shows: eyebrow, title, rows, headings, text, buttons.
   const lefts = [];
   const note = (name, el) => { if (el) lefts.push({ name, left: el.getBoundingClientRect().left - edge, right: end - el.getBoundingClientRect().right, submit: !!el.closest('.wd-submit') }); };
@@ -57,9 +61,16 @@ MEASURE = """(root) => {
   root.querySelectorAll('.wd-rows dt').forEach((el) => note('row ' + el.textContent.trim(), el));
   root.querySelectorAll('.details__sec > h4').forEach((el) => note('heading ' + el.textContent.trim(), el));
   root.querySelectorAll('.details__sec > p, .wd-accept-finish > p').forEach((el) => note('text ' + el.textContent.trim().slice(0, 24), el));
-  root.querySelectorAll('.wd-actions button, .wd-decide__foot .nyc__actions > button:first-child').forEach((el) => note('button ' + el.textContent.trim(), el));
+  // A text button (no fill, no border) that starts a line hangs its padding outside, so its icon is what stands on the edge (founder direction
+  // 2026-11-17 visual review, README "One look for the same element"); a filled or outlined button's edge is its box.
+  const noteButton = (name, el) => {
+    const s = getComputedStyle(el), r = el.getBoundingClientRect();
+    const text = rgba(s.backgroundColor)?.a === 0 && parseFloat(s.borderLeftWidth) === 0 && s.backgroundImage === 'none';
+    lefts.push({ name, left: r.left + (text ? parseFloat(s.paddingLeft) : 0) - edge, right: end - r.right, submit: !!el.closest('.wd-submit') });
+  };
+  root.querySelectorAll('.wd-actions button, .wd-decide__foot .nyc__actions > button:first-child').forEach((el) => noteButton('button ' + el.textContent.trim(), el));
   root.querySelectorAll('.wd-link > span:first-child').forEach((el) => note('link ' + el.textContent.trim().slice(0, 24), el));
-  const sections = [...root.children].filter((el) => el.matches('.details__sec'));
+  const sections = [...(root.querySelector(':scope > .wd__scroll') ?? root).children].filter((el) => el.matches('.details__sec'));
   return {
     surface: surface && surface.css, paints, lefts,
     identity: box(q('.wd-decision-identity')), accept: box(q('.wd-accept')), finish: box(q('.wd-accept-finish')),
@@ -166,7 +177,7 @@ class DecisionSurfaces(unittest.TestCase):
         for label, view, phone in VIEWS:
             for scheme in SCHEMES:
                 with self.subTest(proposal=kind, view=label, scheme=scheme):
-                    page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=decision:{decision_id}", phone=phone, scheme=scheme, view=view)
+                    page, panel = self.opened(f"/projects/{self.project_id}?open=decision:{decision_id}", phone=phone, scheme=scheme, view=view)
                     expect(panel.get_by_role("heading", level=3)).to_be_visible()
                     expect(panel.get_by_role("button", name="Accept", exact=True)).to_be_visible()
                     m = self.measure(panel)
@@ -187,6 +198,26 @@ class DecisionSurfaces(unittest.TestCase):
 
     def test_04_a_replacing_proposal_has_one_surface_and_one_left_edge(self) -> None:
         self.check_proposal("replacing", self.pivot_id)
+
+    # ---------------------------------------------------------------- v0.2.1 real-model gate rows 28, 37: reasons read as written
+
+    def test_05_reasons_show_their_list_and_page_and_never_an_id(self) -> None:
+        """An agent's reasons carry a list, a Wiki page `[[Title]]` and, from an older run, a cite mark: the panel shows the list as a list, the
+        page as its chip, and no id."""
+        page = self.context(view=DESKTOP, phone=False, scheme="light").new_page()
+        mark = "[message:40dc2d89-b0f0-411e-aa08-39e39094c2fa]"
+        reasons = f"Why 200 and not 500:\n- It fits the flyers line of the budget {mark}\n- [[Fair contacts]] names the order task\n- The stand hands them out one at a time"
+        decision = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Print 200 flyers, not 500", "rationale": reasons}, status=201)
+        page, panel = self.opened(f"/projects/{self.project_id}?open=decision:{decision['id']}", phone=False, scheme="light", view=DESKTOP)
+        lead = panel.locator(".details__lead")
+        expect(lead).to_contain_text("Why 200 and not 500:")
+        items = lead.get_by_role("listitem")
+        expect(items).to_have_count(3)
+        expect(items.nth(0)).to_have_text("It fits the flyers line of the budget")
+        expect(lead.locator("[data-ref='wiki']")).to_have_text("Fair contacts")
+        self.assertNotIn("40dc2d89", lead.inner_text())
+        self.assertNotIn("[[", lead.inner_text())
+        shot(page, "decision-reasons-list-1440")
 
 
 if __name__ == "__main__":

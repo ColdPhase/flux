@@ -57,6 +57,9 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `GET /api/v1/work/:workId/activity` | The task's history of status, owner, due date and title changes, newest first: `?limit=` 1-50 (30 when omitted) and `?before=` (the `nextBefore` of the page before). Read by exactly those who can read the task ([below](#due-date-and-activity-488)). |
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
+| `POST /api/v1/decisions/:id/unaccept` | Its accepter's Undo ([below](#accept-at-once-and-undo-takes-it-back-1424-round-8)). Needs `If-Match` (the version the accept returned); `200` with the decision, proposed again. |
+| `POST /api/v1/decisions/:id/withdraw` | Its proposer's Undo ([below](#a-proposal-reaches-everyone-at-once-and-undo-withdraws-it-1424-l)). Needs `If-Match`; `204`. |
+| `GET/POST /api/v1/decisions/:id/discussion` | The decision's one discussion ([below](#a-decisions-discussion-1424)): its messages, or a message written in it. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
 | `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished work in every project the policy's `visibleFilter` lets them read. |
 
@@ -64,6 +67,124 @@ Every POST/PATCH accepts `Idempotency-Key` (the shared runner in `app/apps/serve
 also introduced by #100); a replay re-checks current project read access. Responses with a version
 carry `ETag`. An object in a project the caller cannot see is `404 <TYPE>_NOT_FOUND`, the same as a
 missing one.
+
+## A proposal reaches everyone at once, and Undo withdraws it (#1424 L)
+
+Founder decision L (Hubert, 2026-11-15, #1424): a proposed decision is not held for its Undo toast. The Create window sends it at
+once, so its card, the Inbox items of those who can accept it and the notifications about it arrive at once, as a new task's do. The
+toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
+
+- **Who.** Only the person who proposed it (`403 DECISION_NOT_YOURS` for anyone else, the company's owner included; an agent's
+  proposal goes back only through its run's Undo), with write access to the space now (`404` without it, as for a missing decision).
+- **When.** While it is still proposed and unchanged (`If-Match`: `428` without it, `409 VERSION_CONFLICT` when stale,
+  `409 DECISION_NOT_PROPOSED` once accepted), within 10 minutes of proposing it (`409 DECISION_UNDO_ENDED`, the same bound as
+  Unaccept's below: the toast's Undo, not a way to take a proposal back later; it deletes notifications and Inbox choices others made
+  on it) and while nothing else names it: a link to it
+  (a task related to it, a Wiki page that mentions it), a task that waits for it or a decision that replaces it are `409 DECISION_IN_USE`,
+  and it stays. So is a decision someone has written about ([its discussion](#a-decisions-discussion-1424)). An agent's proposal
+  follows the same rule through its run's Undo: once someone wrote in its discussion, the Undo is refused with "Replies since. Open it"
+  and the decision stays, so the discussion never becomes a thread about nothing (pre-review P2-2).
+- **What goes.** The decision row, its own `source`/`affects` links, its notifications (their queued emails go with them) and the
+  Inbox choices made on it (`needs_you_states` `decision:<id>`), in one transaction. Its Inbox item is derived from the row, so it is gone
+  too, and so is its card ([`listObjectNotices`](#events)): a reader's next refresh of the newest notices drops a card the server no
+  longer has inside the span it read (`refreshNotices` in `ConversationStream.tsx`). The task and the message it came from stay. The
+  earlier `project.decision_proposed.v1` event stays in the log and finds nothing; one `project.decision_withdrawn.v1` (`{ decisionId }`)
+  tells readers to refetch. A second withdraw is `404`.
+- **Order.** It takes the project's graph lock and then the decision's row, as Accept does, so a withdrawal and an acceptance
+  serialize: the later one finds the decision decided (`409`) or gone (`404`).
+- **Not done.** A notification the generator is writing in the same instant may outlive the decision (its link then opens nothing);
+  the generator writes none for a decision that is already gone.
+
+## Accept at once, and Undo takes it back (#1424 round 8)
+
+Founder decision (Hubert, 2026-11-15, round 8, #1424): Accept works at once everywhere, in the Inbox (`A`, the button) and in the
+decision's panel, with a 10 s Undo; Undo of an acceptance that replaced an earlier decision brings that one back too. Before it, the
+Inbox held the accept until its toast left (so others saw nothing for 10 s) while the panel accepted at once with no Undo. Now both
+send `POST /decisions/:id/accept` at once and the toast's Undo is `POST /api/v1/decisions/:id/unaccept`:
+
+- **Who.** Only the person who accepted it (`decidedBy`; `403 DECISION_NOT_YOURS` for anyone else, the company's owner included), with
+  write access to the space now (`404` without it, as for a missing decision).
+- **When.** While it is still accepted and unchanged (`If-Match` with the version the accept returned: `428` without it, `409
+  VERSION_CONFLICT` when stale; `409 DECISION_NOT_ACCEPTED` once it is proposed again or replaced), within 10 minutes of the acceptance
+  (`409 DECISION_UNDO_ENDED`: the toast's 10 s pause while it is pointed at or focused, so the server allows more, but an Undo is not a
+  way to change direction later), and while nothing rests on it (`409 DECISION_IN_USE`): a task the acceptance let continue was changed
+  since (its version is no longer the one the acceptance left), or a newer proposal names it as the decision it replaces. A message in its
+  discussion, a link or a Wiki mention does not rest on the acceptance and does not stop the Undo.
+- **What it does,** in one transaction, under the project's graph lock and the decision rows in id order as Accept takes them: the
+  decision is `proposed` again (`decidedBy`, `decidedAt` cleared, version + 1); a decision it replaced is `accepted` again (its
+  `supersededBy`, `supersededAt` cleared); every task the acceptance resumed is `blocked` again, waiting for this decision with the reason it
+  had (kept by the acceptance), its "can continue" line in the conversation goes, its activity line of the resumption goes,
+  and the "can continue" notification its owner got is deleted with its queued email. The decision's Inbox items come back by themselves
+  (they are derived from its status). One `project.decision_unaccepted.v1` (`{ decisionId }`) tells readers to refetch; the card changes
+  back in place to Proposed.
+- **What the acceptance keeps for it.** `project_decision_resumptions` (migration 0091: `decision_id`, `work_id`, the task's
+  `version` right after it resumed and the `blocker` it waited with, sealed in an encrypted space as the task's own is; `ON DELETE
+  CASCADE`) is written by the accept for each task it resumed and read and cleared by the Undo. A later accept of the same decision
+  writes its own rows.
+- **Not done.** An agent whose task the acceptance resumed is woken as by any resumption; if it changed the task before the Undo, the
+  task is in use and the acceptance stays. A push already delivered for "can continue" is not recalled.
+
+The web client (`useAcceptDecision`, `work/acceptDecision.ts`) is the one way both places accept: the item leaves the Inbox at once,
+the toast is "Accepted" with Undo (`Z`); Undo restores the item and the card, or says "It is in use now, so it stays accepted" on `409`.
+
+## A decision's discussion (#1424)
+
+Founder decision (Hubert, 2026-11-15, recorded on #1424): Discuss starts a thread in the space's conversation on the decision's card, and
+the decision's panel shows the same thread's messages with a field to write: one discussion in both places, as a task's discussion is.
+Before it, Discuss put the cursor in the space's main composer, so the words joined an unrelated draft or went out as a plain message
+with no link to the decision.
+
+**Model: the task's.** A decision's discussion is modelled exactly as [a task's discussion](task-discussions.md) is, because a decision's
+card is a notice derived from the decision, not a message, so it cannot be a thread's root message. The first message written about a
+decision creates one ordinary conversation of the space and binds it to the decision in the same transaction
+(`project_decision_discussions`, migration 0090: `decision_id` the key, `conversation_id` and its sequence-1 `root_message_id` unique,
+with composite foreign keys to the decision, the conversation and the root, all `ON DELETE CASCADE`). Every later message is a reply in
+that conversation. So all the thread machinery applies unchanged: the thread panel (`GET /conversations/:id`, which names the decision as
+`decision: { decisionId, title }`), replies through `POST /conversations/:id/messages` (from the thread's own composer, an agent's
+`flux_reply_in_conversation` or anything else), edits and deletes, reading positions and "Seen by", typing, files, references, Search and
+the encryption of an encrypted space (the binding row holds ids only; the messages are sealed as any thread's). Like a task's discussion
+it is not a root of the stream (`conversation-roots` and the receipts' runs of roots leave it out): its place is the decision's card.
+
+- **`GET /api/v1/decisions/:id/discussion`** (`DecisionDiscussion`): `{ decisionId, workspaceId, projectId, conversationId, messages,
+  messagePage }`, the newest 50 messages oldest first (`?limit=`, `?beforeSequence=` as for a conversation); `conversationId: null` and
+  no messages before anyone has written. Reading the space is enough; a decision in a space the caller cannot read is `404
+  DECISION_NOT_FOUND`, like a missing one.
+- **`POST /api/v1/decisions/:id/discussion`** (a `SendMessageCommand`: `body`, `clientMessageId`, optional `attachmentIds`,
+  `references`): `201` with the stored message (`SentConversationMessage`). Writing in the space is needed (a guest of the space writes
+  as any member does). Under the space's access rows and the send's identity lock it locks the decision's row, so two first messages at
+  once make one thread: the first creates it, the second is its first reply. A retry with the same `clientMessageId` returns the stored
+  message; one used for other words is `409 IDEMPOTENCY_CONFLICT`. Both composers of the web (the panel's and the thread's) send here,
+  with one draft, `decision:<id>`.
+- **Events.** The first message records `project.conversation_created.v1`, later ones `project.message_sent.v1` (`{ conversationId,
+  messageId }`), as any thread's, and every message in a decision's discussion, however it was written, also records one
+  `project.decision_discussed.v1` (`{ decisionId }`), and so does an Edit or a Delete of a message there (beside
+  `project.message_edited.v1` / `project.message_removed.v1`): the stream's readers refetch the decision's card (its count) and an open
+  panel its messages, and no words travel on the stream.
+- **Where you left off.** The thread has no opening message (its head is the decision), so its `unreadFrom` may be its first message:
+  the New divider stands above the first message by someone else that the reader has not seen, from sequence 1, as above any reply.
+  The decision's panel records what it shows as viewed (`POST /projects/:id/observations`, the same 60 % for 700 ms rule as the thread),
+  so a message read in the panel is not new in the thread.
+- **The card's count.** The decision's object notice carries `discussion: { conversationId, replyCount, lastReplyAt } | null`: how many
+  messages the thread has (every one is a reply to the card) and when the newest was written.
+- **Notifications** follow a thread's rules (#1249): its starter and earlier writers follow it, Follow and Unfollow win, and a name or a
+  question in it reaches whom it names. **A question that names nobody asks the decision's proposer** (an agent's owner for an agent's
+  proposal), not the thread's first writer (persona round 8 P2 3, 2026-11-15): the generator's fact for the message carries the decision
+  (`decision: { title, askee }`), and its title says "Jonas asked you about “…”", a reply's "Jonas replied about “…”" (never the first
+  comment's words; a sealed space keeps its fixed words). The Inbox item of
+  a question or a mention in a decision's discussion carries `about: { decisionId, title }` (`NeedsYouItem.about`, read from the binding of
+  the notification's conversation), so its line reads "Question · Jonas · about “…”". Whoever proposed the decision follows it from its first message: binding the thread writes their
+  follow (`notification_follows`, only when they have made no choice), so they get its replies as its starter does. An agent's proposal
+  is its owner's: the agent's owner follows it the same way.
+- **Withdraw.** A proposal that has a discussion is in use (`409 DECISION_IN_USE`), as one that something names: what was written about
+  it stays.
+
+## A task from your own message is yours (#1424 M)
+
+Founder decision M (Hubert, 2026-11-15): `POST /projects/:id/work` with no `owner` field, by a person, with a `source` message of the
+space that this person wrote (and that is not removed), makes the task theirs (`owner` = the creator, so nobody is notified of it). An
+`owner` in the command wins, and `owner: null` keeps it without one; a task made from someone else's message keeps no owner. The
+Create window starts with you as Owner for your own message and your own `/task` words (`CreateRequest.ownerMe`) and always sends
+`owner` (`null` for No owner), so what the window shows is what is made.
 
 ## Contributions to the task conversation (#154)
 
@@ -106,7 +227,7 @@ when a prerequisite is still open, since Doing needs every one done):
 | --- | --- | --- |
 | a decision | the decision is accepted (`POST /decisions/:id/accept`) | the decision was accepted |
 | a task | that task becomes done, by `PATCH`, by a linked pull request's rule (#1055) or dropped | #7 is done / #7 was dropped |
-| a person | they say they are done: `POST /work/:id/waiting-done` (the Inbox item's Done, or the panel's) | Jonas is done |
+| a person | they say they are done: `POST /work/:id/waiting-done`. Their Done is one action wherever they take it (persona round 10, the founder's bar: the same action gives the same result): the Inbox item's Done and the task panel's Done are both the queue's `POST /api/v1/needs-you/blocked:<id>` `{ "action": "done" }`, which makes this change and keeps what it changed ([needs you](needs-you.md)), so both say "#4 can continue" with Undo (`Z`), both put the item in done today, and Undo or Put back make the task Blocked again for them with its reason | Jonas is done |
 
 A task that is Blocked when its agent's run ends is left as it is (the report says "Blocked: #4 …" in the agent's chat), in both "Do it and tell me" and "Ask me first": the drain does not mark it Done or hand it back, so the tasks that wait for it do not resume on a false Done. The agent takes the task up again when its wait is resolved and when a person moves it from Blocked to Doing (Resolve), as when it was given the task; moving it to To do does not start it.
 
@@ -137,6 +258,9 @@ the rule's author and is marked `automation: 'github_rule'`), at the time of the
 of the same `clientCommandId` or `Idempotency-Key`, a refused change and a change that leaves the fields as they were
 (its version still moves) keep nothing. Creation is not an entry (readers derive it from `createdBy`/`createdAt`), and
 neither are an outcome, criteria, prerequisites, a blocker edit alone or parking; tasks from before 0112 have no entries.
+An Undo (`restore: true`) takes back the task's latest entry of each kind it changes when that entry is the change it undoes, by the
+same principal, and keeps none of its own, as the conversation does with its moves (persona round 28): Z after "marked it done" leaves
+neither "marked it done" nor "marked it to do".
 `GET /api/v1/work/:workId/activity` returns `TaskActivityPage` (`{ workId, items, nextBefore }`), newest first with a
 stable keyset on (time, id). `status` entries say the reason and the person waited for when the task became blocked (an
 Undo that restores them is a status change too); `owner` entries name both owners, agents with the owner they show to
@@ -149,7 +273,12 @@ blocked/unblocked lines (`project_task_updates`, #550), which are unchanged.
 Each committed change records exactly one project event in its transaction (a contribution adds its own
 `project.conversation_created.v1` or `project.message_sent.v1`, all in the one final batch):
 `project.work_created.v1`, `project.work_updated.v1`, `project.decision_proposed.v1`,
-`project.decision_accepted.v1` or `project.link_created.v1`. The
+`project.decision_accepted.v1`, `project.decision_withdrawn.v1` or `project.link_created.v1`. A message in a decision's discussion
+adds `project.decision_discussed.v1` beside its message event ([above](#a-decisions-discussion-1424)).
+
+The conversation reads one notice per decision (`GET /projects/:id/object-notices`, #694): its card, where and when it was proposed,
+with its current state and `decided: { by, at }` once accepted. Accepting changes that card in place and adds no notice (founder
+decision D, #1424, 2026-11-15); there is no `decision.accepted` notice. The
 `object_id` is the project, `data` carries only the object id, so the stream reaches current
 project readers and the client refetches. Idempotent replays and failed changes record none.
 
@@ -176,7 +305,10 @@ revalidation and polling and does not subscribe to the stream yet.
 ## Tests
 
 `app/tests/app/work.test.ts` (API, two people, outsider and an agent principal through the
-use cases), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
+use cases; #1424 M, a task from your own message), `app/tests/app/object-notices.test.ts` (#694; #1424 D, the card changes in place;
+#1424 L, a proposal at once and its withdrawal with its notifications and Inbox items, and who may withdraw it),
+`app/tests/ui/test_undo_one_card.py` (#1424 D, L and M in the browser, both engines), `app/tests/app/decision-discussion.test.ts` and
+`app/tests/ui/test_decision_discussion.py` (a decision's one discussion, in the panel and on the card, both engines and the phone), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
 and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-runs.test.ts` (the assistant
 path), `app/tests/ui/test_decision_authority.py` (#250: a contributor accepts; the viewer's "Who decides" note went with the viewer role, #903)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard

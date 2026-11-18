@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, notExists, notInArray, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -81,7 +81,10 @@ export function agentStopRows(tx: DbExecutor) {
       const rows = await tx.select({ agentId: schema.agents.id, agentName: schema.agents.name, taskId: w.id, projectId: w.projectId, projectName: schema.projects.name,
         number: w.number, title: w.title }).from(w)
         .innerJoin(schema.agents, eq(schema.agents.id, w.ownerAgentId)).innerJoin(schema.projects, eq(schema.projects.id, w.projectId))
-        .where(and(eq(schema.agents.ownerUserId, userId), isNull(schema.agents.revokedAt), eq(w.status, 'in_progress')))
+        // A server agent (one with its AI set up) is not a client that signs in: its work on a task is its run, which the run's own card shows
+        // with the agent, the task and Stop (v0.2.1 release gate, M18). Listed here it read as a second card, "Has #9 · not signed in yet".
+        .where(and(eq(schema.agents.ownerUserId, userId), isNull(schema.agents.revokedAt), eq(w.status, 'in_progress'),
+          notExists(tx.select({ id: schema.assistantSettings.agentId }).from(schema.assistantSettings).where(eq(schema.assistantSettings.agentId, schema.agents.id)))))
         .orderBy(desc(w.updatedAt), desc(w.id)).limit(limit);
       // Online: an unrevoked connection of the agent has a session that is unexpired, on its binding's current generation, of an enabled client.
       const live = new Set<string>();

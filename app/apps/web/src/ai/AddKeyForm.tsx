@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -37,6 +37,8 @@ export function keyFailure(error: unknown) {
     if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
     // The model is refused, not the key (RT-1 rule 2, #1441): the key stays in its field for another model, so only the reason is said.
     if (error.code === 'AI_TOOLS_REQUIRED') return error.message;
+    // So is a daily budget below one request (v0.2.1 release gate, J31): the key stays in its field and only the budget changes.
+    if (error.code?.startsWith('AI_BUDGET')) return `${error.message.replace(/\.$/, '')}.`;
     // Provider, model, endpoint and price refusals carry a safe, specific reason.
     if ((error.status === 400 || error.status === 422) && error.code?.startsWith('AI_')) return `${error.message.replace(/\.$/, '')}. The key was cleared; enter it again.`;
     if (error.status === 401) return 'Your session ended. Sign in again before changing the connection.';
@@ -57,6 +59,8 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
   const [error, setError] = useState('');
   // No provider chosen yet, or the key in the field refused (#1218, #1424): Connect waits until there is something to connect.
   const [blocked, setBlocked] = useState(true);
+  // A line said about a model (Connect while the list was still being read) goes when the key is refused: no model field is on screen then.
+  const onBlocked = useCallback((next: boolean) => { setBlocked(next); if (next) setError(''); }, []);
   // The daily budget and the name are behind More (#1424). Both stay in the form, so a closed More still sends the budget's default;
   // it opens by itself when the problem is in it.
   const [more, setMore] = useState(false);
@@ -84,7 +88,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     const input = ownerPrice(data.get('inputPrice'));
     const output = ownerPrice(data.get('outputPrice'));
     if (Number.isNaN(input) || Number.isNaN(output) || (input === null) !== (output === null)) {
-      setError('Enter both prices as numbers of US dollars per 1M tokens.'); return;
+      setError('Enter both prices as numbers of US dollars for a million tokens.'); return;
     }
     const budget = budgetCents(data.get('dailyBudget'));
     if (budget === null) { setMore(true); setError(BUDGET_PROBLEM); return; }
@@ -105,12 +109,13 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
       dailyBudgetCents: budget, timeZone: browserZone(),
     };
     setBusy(true); setError('');
-    // A model that cannot use tools is refused with the key still good: the key stays in its field, so another model can be chosen.
+    // A model that cannot use tools, or a budget below one request, is refused with the key still good: the key stays in its field, so another
+    // model or budget can be chosen.
     let keepKey = false;
     try {
       onAdded(await connectBackgroundCompute(command));
     } catch (cause) {
-      keepKey = cause instanceof ApiError && cause.code === 'AI_TOOLS_REQUIRED';
+      keepKey = cause instanceof ApiError && (cause.code === 'AI_TOOLS_REQUIRED' || !!cause.code?.startsWith('AI_BUDGET'));
       if (cause instanceof ApiError && cause.code?.startsWith('AI_BUDGET')) setMore(true);
       setError(keyFailure(cause)); focusError.current = true;
     }
@@ -126,17 +131,20 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
     <form ref={formRef} onSubmit={(event) => void connect(event)}>
       <fieldset disabled={busy} className="background-settings__fields">
-        <ConnectionFields disabled={busy} onBlocked={setBlocked} keyHelpId="background-key-help" />
+        <ConnectionFields disabled={busy} onBlocked={onBlocked} keyHelpId="background-key-help" />
         <div className="background-settings__more-row">
           <Button variant="quiet" size="sm" icon={more ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={more} aria-controls="background-more"
             onClick={() => setMore(!more)}>More</Button>
           {more ? null : <span className="background-settings__help" data-testid="budget-line">Daily budget ${budgetText.trim() || '?'}</span>}
         </div>
-        <div id="background-more" className="background-settings__fields" hidden={!more}>
-          <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={DEFAULT_BUDGET}
-            onChange={(event) => setBudgetText(event.target.value)} aria-describedby="background-budget-help" />
-          <p id="background-budget-help" className="background-settings__help">Your agents stop for the day when this is used up.</p>
-          <label>Name (optional)<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
+        {/* The budget and the name side by side on the computer, so the window keeps Connect in view with More open (#1424). */}
+        <div id="background-more" className="background-settings__more" hidden={!more}>
+          <div className="background-settings__budget-field">
+            <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={DEFAULT_BUDGET}
+              onChange={(event) => setBudgetText(event.target.value)} aria-describedby="background-budget-help" />
+            <p id="background-budget-help" className="background-settings__help">Your agents stop for the day when this is used up.</p>
+          </div>
+          <Input label="Name (optional)" name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" />
         </div>
         {/* Cancel, then the one primary, on the right: the choose step's Cancel and Continue keep their side here (#1424). */}
         <div className="background-settings__actions background-settings__actions--end">

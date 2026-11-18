@@ -22,7 +22,7 @@ from message_gestures import open_message_menu
 from create_window import create_other, dialog, kind_tab, linked_labels, open_create as open_new, open_from_tasks, submit_button, title_field, window
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
 from touch_targets import has_minimum_touch_size
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, press_shortcut, shot, start_forwarder
 
 PASSWORD = "one way to create"
 EMAIL = f"ada.create+{int(time.time() * 1000)}@example.test"
@@ -110,7 +110,7 @@ class CreateWindow(unittest.TestCase):
             expect(window).to_be_visible()
             expect(title_field(page)).to_be_focused()
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
-                            window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
+                            window.get_by_role("button", name="+ From a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
             # A new task is always To do, so there is no Status to choose (#1424), and so no Waiting for either.
             expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
@@ -146,7 +146,7 @@ class CreateWindow(unittest.TestCase):
 
     def test_03_there_is_no_create_another_switch_and_add_another_and_c_open_the_window_on_the_same_space(self) -> None:
         """#1235: no switch in the window, on the computer or the phone. Create closes the window; the toast reads "Task #N created · Undo ·
-        Add another"; Add another, and `C` on the computer, open it again on the same space with an empty title."""
+        Another task"; Another task, and `C` on the computer, open it again on the same space with an empty title."""
         self.ensure_account()
         for phone in (False, True):
             with self.subTest(phone=phone):
@@ -170,7 +170,7 @@ class CreateWindow(unittest.TestCase):
                 actions = toast.locator(".ui-toast__action")
                 expect(actions).to_have_count(2)
                 expect(actions.nth(0)).to_contain_text("Undo")
-                expect(actions.nth(1)).to_have_text("Add another")
+                expect(actions.nth(1)).to_have_text("Another task")
                 shot(page, f"1235-toast-add-another-{'390' if phone else '1440'}")
                 actions.nth(1).click()
                 expect(dialog(page)).to_be_visible()
@@ -195,7 +195,8 @@ class CreateWindow(unittest.TestCase):
                     expect(page).not_to_have_url(re.compile(r"/tasks"))
                     expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
                     page.wait_for_timeout(300)  # the shortcut is bound again for the new place once it is shown
-                    page.keyboard.press("c")
+                    # The space's composer has the cursor (persona round 26): the person leaves it for the shortcut.
+                    press_shortcut(page, "c")
                     expect(dialog(page)).to_be_visible()
                     expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])
                     page.keyboard.press("Escape")
@@ -294,10 +295,10 @@ class CreateWindow(unittest.TestCase):
         expect(row.first).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
         field.press("Enter")
-        expect(page).to_have_url(re.compile(r"/tasks\?open=work:|/tasks$"))
+        expect(page).to_have_url(re.compile(r"/tasks\?open=work(:|%3A)|/tasks$"))
         # The footer says what Search finds in one sentence; there are no scopes to name.
         palette, field = self.jump(page, "")
-        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
 
     # ---------------------------------------------------------------- the phone's sheet
 
@@ -326,7 +327,7 @@ class CreateWindow(unittest.TestCase):
             choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
-                            window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
+                            window.get_by_role("button", name="+ From a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
             expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
             box = submit_button(page).bounding_box()
@@ -368,6 +369,11 @@ class CreateWindow(unittest.TestCase):
         self.assertFalse(tablist.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the tab bar has nothing to scroll to")
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
         self.assertLessEqual(window.bounding_box()["y"] + window.bounding_box()["height"], 568.5)
+        # The Task tab: its title field has room around its words (the placeholder is not on the field's edge), and "+ From a message or thought" stays in its card.
+        self.assertGreaterEqual(window.locator(".create__title:visible").evaluate("el => parseFloat(getComputedStyle(el).paddingLeft)"), 6, "room on the left of the words")
+        card = window.locator(".create__props:visible").bounding_box()
+        link = window.get_by_role("button", name="+ From a message or thought").bounding_box()
+        self.assertLessEqual(link["x"] + link["width"], card["x"] + card["width"] + 0.5, f"the link chip stays inside its card: {link} in {card}")
         shot(page, "1013-create-sheet-320")
 
     # ---------------------------------------------------------------- the phone's Search (S-P-Search, S-P-NoResults)
@@ -646,7 +652,7 @@ class CreateWindow(unittest.TestCase):
         """C on a project's conversation (or `path`): the window opens on Task with its title focused."""
         page.goto(path or f"/projects/{self.ids['project']}")
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(title_field(page)).to_be_focused()
 
     def test_17_the_kinds_are_tabs_in_one_window_and_the_title_goes_with_the_person(self) -> None:
@@ -720,7 +726,7 @@ class CreateWindow(unittest.TestCase):
         # A blank window keeps the text as this project's draft: closing never loses it.
         page.keyboard.press("Escape")
         expect(window(page)).to_have_count(0)
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(title_field(page)).to_have_value(f"{text} today")
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
 
@@ -734,7 +740,7 @@ class CreateWindow(unittest.TestCase):
         thought = page.get_by_role("dialog", name="New thought")
         expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_have_value(text)
         expect(thought.get_by_role("tabpanel").locator(".create__where")).to_contain_text("Only you")
-        expect(thought.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Added to My map")
+        expect(thought.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("It goes on My map")
         thought.get_by_role("button", name=re.compile("^Save thought")).click()
         expect(window(page)).to_have_count(0)
         expect(page.locator(".ui-toast").filter(has_text="Thought added to My map")).to_be_visible()
@@ -743,7 +749,7 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual([item["title"] for item in maps], ["My map"])
         first = self.api(page, "GET", f"/api/v1/sketches/{maps[0]['id']}", status=200)
         self.assertEqual([(item["text"]) for item in first["thoughts"] if item["text"] == text], [text])
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         create_other(page, "Thought")
         second = f"A second thought for My map {uuid.uuid4().hex[:6]}"
         page.get_by_role("dialog", name="New thought").get_by_role("textbox", name="Thought", exact=True).fill(second)
@@ -755,7 +761,7 @@ class CreateWindow(unittest.TestCase):
         self.assertNotEqual(placed[text], placed[second], "each thought has its own place")
         self.assertEqual(len(self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?scope=private&limit=100", status=200)["items"]), 1, "still one map")
         # What it was made from is done with: the next window starts blank.
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(title_field(page)).to_have_value("")
         page.keyboard.press("Escape")
 
@@ -791,7 +797,7 @@ class CreateWindow(unittest.TestCase):
         decision.get_by_label("Why", exact=True).fill("Resistive probes corrode within a season")
         decision.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(window(page)).to_have_count(0)
-        # #763 WF-3: "Decision proposed" with Undo; it reaches the people who can accept it when that window ends.
+        # #763 WF-3: "Decision proposed" with Undo; it reaches the people who can accept it at once (#1424 L).
         expect(page.locator(".ui-toast", has_text="Decision proposed").get_by_role("button", name="Undo")).to_be_visible()
         stored: list = []
         for _ in range(60):
@@ -843,12 +849,14 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len([item for item in self.work(page) if item["title"] == title]), 1)
         # The same guard holds in another tab.
         posts.clear()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         title_field(page).fill(f"Proposed once {uuid.uuid4().hex[:6]}")
         create_other(page, "Decision")
         page.evaluate(twice)
         expect(window(page)).to_have_count(0)
-        page.wait_for_timeout(7000)  # #763 WF-3: the proposal is sent when its Undo window ends
+        # #1424 L: the proposal is sent at once; closing its toast sends nothing more.
+        page.locator(".ui-toast").filter(has_text="Decision proposed").get_by_role("button", name="Dismiss notification").click()
+        page.wait_for_timeout(1500)
         self.assertEqual(posts, [f"projects/{self.ids['project']}/decisions"])
         # A message's link belongs to its project: another project starts without it, so the task is made there.
         made = self.thread(page, "Sources stay home: label the bed rows")
@@ -912,7 +920,7 @@ class CreateWindow(unittest.TestCase):
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
         expect(listbox.locator(".jump__sh")).to_have_text(["Recent", "Actions"])
         expect(options.nth(2).locator(".jump__key")).to_have_text(["G", "I"])
-        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
         shot(page, "521-empty-palette-1440-light")
         # ↑↓ move (and wrap), Enter opens, Esc closes.
         selected = palette.locator("[role=option][aria-selected=true]")
@@ -989,7 +997,7 @@ class CreateWindow(unittest.TestCase):
                         page.get_by_role("button", name="Create", exact=True).tap()
                     else:
                         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-                        page.locator("body").press("c")
+                        press_shortcut(page, "c")
                     expect(title_field(page)).to_be_visible()
                     title_field(page).fill("Order two spare capacitive probes")
                     shot(page, f"521-create-task-{size}-{scheme}-{engine}")
@@ -1023,7 +1031,7 @@ class CreateWindow(unittest.TestCase):
                     page.get_by_role("button", name="Create", exact=True).tap()
                 else:
                     expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-                    page.locator("body").press("c")
+                    press_shortcut(page, "c")
                 expect(title_field(page)).to_be_visible()
                 title_field(page).fill("Order two spare capacitive probes")
                 boxes: dict[str, dict] = {}
@@ -1083,7 +1091,7 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
-        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
 
     def test_18b_the_phone_plus_of_someone_with_no_space_opens_new_space_and_a_thought_asked_for_opens_as_a_thought(self) -> None:
         """#866 review: a thought needs no space (it goes on My map). #1438 point 8: the phone's "+" opens Create, which for someone with no space is
@@ -1105,8 +1113,8 @@ class CreateWindow(unittest.TestCase):
         expect(page.get_by_role("dialog", name="New space")).to_be_visible()
         expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
 
-    def test_20_a_guest_sees_why_the_space_tab_cannot_make_a_space(self) -> None:
-        """#555, #867: a guest does not start spaces, so the Space tab says so and cannot create one."""
+    def test_20_a_guest_is_not_offered_the_space_tab(self) -> None:
+        """#555, #867; persona round (#1424): a guest does not start spaces, so New has no Space tab; with no space yet it has Thought alone."""
         self.ensure_account()
         guest_email = f"guest.create+{int(time.time() * 1000)}@example.test"
         guest_context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw",
@@ -1127,10 +1135,12 @@ class CreateWindow(unittest.TestCase):
         expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
         guest.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()
         expect(window(guest)).to_be_visible()
-        kind_tab(guest, "Space").click()
-        made = guest.get_by_role("dialog", name="New space")
-        expect(made.get_by_role("alert")).to_contain_text("Guests can’t start spaces")
-        expect(made.get_by_role("button", name="Create space")).to_be_disabled()
+        # With no space yet a guest's New has Thought alone (persona round 26): a task, a decision and a page each need a space.
+        expect(guest.get_by_role("dialog", name="New thought")).to_be_visible()
+        expect(window(guest).get_by_role("tablist", name="Create").get_by_role("tab")).to_have_count(1)
+        expect(kind_tab(guest, "Thought")).to_be_visible()
+        expect(kind_tab(guest, "Space")).to_have_count(0)
+        expect(window(guest)).not_to_contain_text("New space")
         shot(guest, "555-create-space-guest-1440-light")
     def test_27_a_new_task_offers_undo_and_z_takes_it_back(self) -> None:
         """#763 B1, principle 6: "Task #N created" with Undo (Z) after creating, the panel still opening on the task."""
@@ -1150,7 +1160,7 @@ class CreateWindow(unittest.TestCase):
         expect(page.locator("#details").get_by_role("region", name="Undo task creation")).to_have_count(0)
         page.locator("#details .ui-panel__body").focus()
         page.keyboard.press("z")
-        expect(page.locator(".ui-toast").filter(has_text=f"#{made['number']} creation undone")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=f"Task #{made['number']} undone")).to_be_visible()
         stored = self.api(page, "GET", f"/api/v1/work/{made['id']}", status=200)
         self.assertEqual(stored["lifecycle"]["state"], "creation_reverted")
         self.assertNotIn("Undo me right after creating", [item["title"] for item in self.work(page)])
@@ -1178,7 +1188,7 @@ class CreateWindow(unittest.TestCase):
 
     def test_30_a_task_a_person_makes_in_the_window_counts_under_the_thought_it_links(self) -> None:
         """#1013 P3: with Create task gone from the Map, a thought's task count is not only agents' and the API's: the window's
-        "+ Link a message or thought" links a thought, and the Map counts the task under it."""
+        "+ From a message or thought" links a thought, and the Map counts the task under it."""
         self.ensure_account()
         page = self.page()
         words = f"Wire the second gateway {uuid.uuid4().hex[:6]}"
@@ -1188,7 +1198,7 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         title = f"Mount the gateway {uuid.uuid4().hex[:6]}"
         field.fill(title)
-        dialog(page).get_by_role("button", name="+ Link a message or thought").click()
+        dialog(page).get_by_role("button", name="+ From a message or thought").click()
         dialog(page).get_by_role("searchbox", name="Search messages and thoughts").fill(words)
         dialog(page).get_by_role("list", name="Messages and thoughts").get_by_role("button", name=re.compile(words)).click()
         expect(linked_labels(page)).to_have_count(1)

@@ -83,7 +83,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
     def open_decision(self, who: str, **kwargs) -> Page:
         """Opens the decision itself in the detail panel: there is no Decisions view to find it in (#342)."""
         page = self.page(who, **kwargs)
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.decision_id}")
         return page
 
     def details(self, page: Page, phone: bool = False):
@@ -122,24 +122,25 @@ class DecisionAuthorityJourney(unittest.TestCase):
         card = inbox.locator(".nyc", has_text=TITLE)
         expect(card).to_contain_text("Ada Lind")
         item = open_item(card)
-        expect(item.locator(".nyc__waiting")).to_contain_text("waiting for you")
-        expect(item.locator(".nyc__waiting")).to_contain_text("Ada Lind can accept too")
+        expect(item.locator(".nyc__waiting")).to_contain_text("Waiting for you")
+        # Ada proposed it, so she is not among those who can accept it (personas-27).
+        expect(item.locator(".nyc__waiting")).not_to_contain_text("Ada Lind")
         expect(item.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
         page = self.open_decision("kai")
         panel = self.details(page)
         expect(panel.get_by_role("region", name="Who decides")).to_have_count(0)
         expect(panel).to_contain_text("Ada Lind")
         panel.get_by_role("button", name="Accept", exact=True).click()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel).to_contain_text("Kai Berg")
         stored = self.decision(page)
         self.assertEqual((stored["status"], stored["decidedBy"]["id"], stored["proposedBy"]["id"]), ("accepted", KAI["id"], ADA["id"]))
 
         # The proposer now reads a current rule, with no pending note.
         proposer = self.page("ada")
-        proposer.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
+        proposer.goto(f"/projects/{self.project_id}?open=decision:{self.decision_id}")
         sheet = self.details(proposer)
-        expect(sheet.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(sheet.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(sheet).to_contain_text("Kai Berg")
         expect(sheet.get_by_role("region", name="Who decides")).to_have_count(0)
         # Accepted, it has left everyone's Inbox.

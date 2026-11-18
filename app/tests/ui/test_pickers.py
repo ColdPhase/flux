@@ -360,7 +360,10 @@ class DateAndTimePickers(unittest.TestCase):
         # The field takes the caret as it appears and the month is open under it, with nothing chosen yet.
         expect(field).to_be_focused()
         expect(field).to_have_value("")
-        expect(field).to_have_attribute("placeholder", re.compile(r"\d"))  # an empty field shows how a day is written
+        # An empty field says what it is for, in the Due row's words, never a made-up date (v0.2.1 personas round: "Nov 14, 2026" read as a
+        # date already set); how a day is typed is its accessible hint.
+        expect(field).to_have_attribute("placeholder", "Add a date")
+        expect(field).to_have_accessible_description(re.compile("Type a date"))
         dialog = page.get_by_role("dialog", name="Due date")
         expect(dialog).to_be_visible()
         expect(self.day(dialog, self.today(page))).to_have_attribute("data-today", "")
@@ -512,7 +515,7 @@ class DateAndTimePickers(unittest.TestCase):
         page = self.page()
         panel = self.open_task(page, task)
         dialog = page.get_by_role("dialog", name="Due date")
-        composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+        composer = panel.get_by_placeholder("Write about this task…")
         # The composer: pressed with the calendar open, then typed into.
         panel.get_by_role("button", name="Due, add a date").click()
         expect(dialog).to_be_visible()
@@ -602,7 +605,8 @@ class DateAndTimePickers(unittest.TestCase):
                       todayShadow: cs(today).boxShadow, todayBg: cs(today).backgroundColor,
                       plainColor: cs(plain).color, t1: probe('color', '--t1'), outsideColor: cs(outside).color, t3: probe('color', '--t3'),
                       fieldBg: cs(field).backgroundColor, fieldBorder: cs(field).borderTopColor, line2: probe('borderTopColor', '--line2'), fieldRadius: cs(field).borderTopLeftRadius,
-                      fieldFocus: cs(field).boxShadow,
+                      fieldFocus: cs(field).boxShadow, ring: probe('outlineColor', '--ring'),
+                      fieldRing: [cs(field).outlineStyle, cs(field).outlineWidth, cs(field).outlineOffset, cs(field).outlineColor],
                     };
                 }""", {})
                 self.assertEqual(read["popBg"], read["el"], "the month is the --el surface")
@@ -617,7 +621,10 @@ class DateAndTimePickers(unittest.TestCase):
                 self.assertEqual(read["fieldBg"], read["el"], "the field is the select's --el box")
                 self.assertEqual(read["fieldBorder"], read["line2"])
                 self.assertEqual(read["fieldRadius"], "14px")
-                self.assertIn("inset", read["fieldFocus"], "the field has the soft focus: a hairline inside and a halo outside")
+                # Founder direction 2026-11-17 visual review (README "One look for one element" / "One look for the same element"): a field
+                # being written in has the one 2 px --ring over its edge (offset -1 px), never a halo or a second frame.
+                self.assertEqual(read["fieldFocus"], "none", "the focused field draws no halo")
+                self.assertEqual(read["fieldRing"], ["solid", "2px", "-1px", read["ring"]], "the focused field's frame is the one --ring, over its edge")
                 shot(page, f"pickers-date-1440-{'dark' if dark else 'light'}-{UI_BROWSER}")
                 page.keyboard.press("Escape")
 

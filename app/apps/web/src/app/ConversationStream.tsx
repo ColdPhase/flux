@@ -1,9 +1,10 @@
-import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FORMER_MEMBER } from '../docs/format';
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FORMER_MEMBER, youLabel } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
+import { agentWords } from '@flux/contracts';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, REVEAL_EVENT, useArrivals, useClearOfToast } from '../ui';
 import { useSpareHeight } from '../ui/spareHeight';
-import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, ShownObjects, shownObjects, TaskObjectRow, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
 import { onMessageChanged, projectMessageEdits } from '../conversations/messageChanges';
@@ -11,12 +12,11 @@ import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork
 import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
-import { STATUS_LABEL } from '../work/format';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReaders, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts, type Receipt } from './receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, AuthorName, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, messageHue, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -26,12 +26,12 @@ import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
 import { CallLineItem } from '../live/callLines';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
-import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from './unreadReading';
+import { NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from './unreadReading';
 import { ObjectNoticeItem } from './ObjectNotices';
-import { followsProposal, objectTarget } from './objectNotices';
+import { objectTarget } from './objectNotices';
 import './conversation-final.css';
-import { RefLink } from '../place/origin';
 import { onFlush, remember } from '../place/memory';
+import { focusArrival } from '../ui/keys';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -53,6 +53,19 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 }
 
 /**
+ * A refresh of the newest notices: they are read from the newest on without a gap, so they are the whole truth for their span. A
+ * loaded notice inside that span that the refresh no longer has is gone from the server (a proposal its proposer withdrew, #1424 L)
+ * and leaves for this reader too; the older ones stay as they were. `complete`: the refresh read every notice there is.
+ */
+export function refreshNotices<T extends { id: string; createdAt: string }>(current: T[], incoming: T[], complete: boolean) {
+  const fresh = new Set(incoming.map((notice) => notice.id));
+  const oldest = incoming.reduce<string | null>((at, notice) => (at === null || notice.createdAt < at ? notice.createdAt : at), null);
+  const kept = current.filter((notice) => fresh.has(notice.id) || (!complete && oldest !== null && notice.createdAt < oldest)
+    || (!complete && oldest === null));
+  return mergeNotices(kept, incoming);
+}
+
+/**
  * One entry of the stream, in time order: a root, or one compact task-created announcement (UI116-3)
  * linking its task, or a decision. An announcement is never a root and
  * has no thread; the task's first genuine contribution is the root its discussion grows under.
@@ -63,9 +76,6 @@ export type StreamEntry =
   | { kind: 'object'; key: string; at: string; object: ObjectNotice }
   /** A call of the space as one line (F-041 point 6): an event, not a message. */
   | { kind: 'call'; key: string; at: string; call: LiveCallLine };
-
-/** The decision an entry announces, for the line that follows it. */
-const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
 
 const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, call: 0, root: 1 };
 
@@ -94,7 +104,18 @@ export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNo
  * forward until it meets them, so no announcement between is missed.
  */
 export function useTaskNotices(projectId: string, page: Page<TaskCreationNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
-  return useNoticeFeed(listTaskNotices, projectId, page, roots, hasOlderRoots, onDenied);
+  const notices = useNoticeFeed(listTaskNotices, projectId, page, roots, hasOlderRoots, onDenied);
+  return useMemo(() => shownTaskNotices(notices), [notices]);
+}
+
+/**
+ * The announcements a reader is shown (personas-27 P2 4, founder bar "nothing shown that was undone"): a task whose creation was undone is
+ * gone from the conversation for everyone, with every line about it (its creation, the Undo, any blocked line), so no fold lists or counts
+ * it. The feed keeps them as history with the task's lifecycle; the newest page carries the Undo, which names the task.
+ */
+export function shownTaskNotices(notices: TaskCreationNotice[]) {
+  const undone = new Set(notices.filter((notice) => notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted').map((notice) => notice.workId));
+  return undone.size ? notices.filter((notice) => !undone.has(notice.workId)) : notices;
 }
 /** The decisions the conversation announces (#694), kept and paged the same way as the task announcements. */
 export function useObjectNotices(projectId: string, page: Page<ObjectNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
@@ -125,7 +146,7 @@ function useNoticeFeed<T extends { id: string; createdAt: string }>(read: (proje
         latestTotal = next.total;
       }
       if (cancelled) return;
-      setNotices((current) => mergeNotices(current, incoming));
+      setNotices((current) => refreshNotices(current, incoming, incoming.length >= latestTotal));
       setTotal(latestTotal);
     })().catch((cause: unknown) => deniedRef.current(cause));
     return () => { cancelled = true; };
@@ -300,7 +321,7 @@ export interface StreamProps {
   audience: string;
   /** The root whose thread is open beside the stream. */
   openId: string | null;
-  /** What ends the stream: the person's own agent at work and its private answers, list items for the list below (#842). */
+  /** What ends the stream: the person's own agent at work and its private answers, list items for the list below (#842); null when there is none. */
   end?: ReactNode;
   /** A root to bring into view: a link named it, rather than the person choosing it here. */
   reveal: { conversationId: string; key: string } | null;
@@ -311,11 +332,13 @@ export interface StreamProps {
   /** A return to this entry: the stream comes back to where it was left, not to a link's root or to its latest. */
   restore?: StreamPlace | null;
   onOpen: (root: ConversationRoot, reply: boolean) => void;
+  /** A decision's card's "N replies" (#1424): its one discussion opens as a thread beside the stream. */
+  onOpenDiscussion?: (conversationId: string) => void;
   onDenied: (cause: unknown) => void;
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], calls = [], personName = () => 'Someone', author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied, end = null }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], calls = [], personName = () => 'Someone', author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onOpenDiscussion, onDenied, end = null }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -331,9 +354,16 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'object' | 'call' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
+  // A task or decision shows once (#1424): its card in the stream, never also a chip under the message it came from.
+  const shown = useMemo(() => shownObjects([
+    ...notices.filter((notice) => notice.kind === 'task.created' || notice.kind === 'task.creation_reverted').map((notice) => ({ kind: 'work' as const, id: notice.workId, sources: notice.sources })),
+    ...objects.filter((notice) => notice.kind === 'decision.proposed').map((notice) => ({ kind: 'decision' as const, id: notice.decisionId, sources: notice.sources })),
+  ]), [notices, objects]);
   const feedRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { feedRef.current = node; setFeedNode(node); }, []);
+  // The new task's card and the last message stay clear of a toast (#1424, B-8).
+  useClearOfToast(feedRef, feedNode);
   // Bounded native reads (#155), never the project's work collection: the chips of the roots around the
   // viewport (at most 100), and the current title and state of the tasks that visible announcements and
   // discussed-task chips name. This view keeps its own reading position (below); the reads never move it.
@@ -388,11 +418,15 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     onOpen(root, reply);
   };
   const stickRef = useRef(!reveal && !restore);
+  // Whether the view stands at the stream's end, as last seen (a scroll, or the layout settling). The stream may stand there without the
+  // person ever scrolling (it opened at "New" and everything new fits): an entry that joins the end then follows them, as for a reader who
+  // scrolled down (round 14: the card of a task just created stayed under the composer and the toast).
+  const atEndRef = useRef(false);
   // A place to come back to waits here until its message is on screen; nothing is written over it meanwhile.
   const pendingRestore = useRef<StreamPlace | null>(restore);
   const [failure, setFailure] = useState('');
   const makeWork = useCreateWorkFromMessage(project);
-  const { openDetails } = useShellActions();
+  const { openDetails, shownObject } = useShellActions();
 
   // Open on whole messages at the latest, unless a link names a root or the person is coming back to a place.
   const closeOpening = useRef<(() => void) | null>(null);
@@ -473,10 +507,32 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       // before is not, or the panel leaving would bring the stream back to it.
       pinRef.current = openRef.current === revealRoot.conversationId ? place : null;
     }
-    if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
+    if (arrived === revealRoot.message.id) focusArrival(element);
     // Once per link: later refreshes of the same root never move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot, revealed]);
+
+  // The decision the panel shows is opened here from everywhere (Search, the Inbox, a notification, a link): its card comes into view once it
+  // is loaded, unless some of it is on screen already (a person who opened it from the card stays where they were). A return to this entry
+  // keeps the place it left, with the same decision open.
+  const shownDecision = shownObject?.kind === 'decision' ? shownObject.id : null;
+  const shownCard = shownDecision ? objects.find((object) => object.kind === 'decision.proposed' && object.decisionId === shownDecision) ?? null : null;
+  const broughtRef = useRef<string | null>(restore ? shownDecision : null);
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!revealed || !shownDecision || !shownCard || !feed || broughtRef.current === shownDecision) return;
+    const element = document.getElementById(`object-${shownCard.id}`);
+    if (!element) return;
+    broughtRef.current = shownDecision;
+    const box = element.getBoundingClientRect();
+    const view = feed.getBoundingClientRect();
+    if (box.bottom > view.top && box.top < view.bottom) return;
+    closeOpening.current?.();
+    stopUnread.current?.();
+    stickRef.current = false;
+    element.scrollIntoView({ block: 'center' });
+    anchorRef.current = { id: element.id, offset: element.getBoundingClientRect().top - feed.getBoundingClientRect().top };
+  }, [revealed, shownDecision, shownCard]);
 
   // New entries follow the reader only while they are at the end. Anything else that joins the stream
   // (earlier roots from "Load earlier" or a link, or announcements that arrive on their own between roots
@@ -494,7 +550,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const changed = lastKey !== edge.last || firstKey !== edge.first || shownCount !== edge.count;
     edgeRef.current = { first: firstKey, last: lastKey, count: shownCount };
     if (!feed || !changed) return;
-    if (stickRef.current) { feed.scrollTop = feed.scrollHeight; return; }
+    if (stickRef.current || (atEndRef.current && lastKey !== edge.last)) { stickRef.current = true; feed.scrollTop = feed.scrollHeight; return; }
     const anchor = anchorRef.current;
     const element = anchor ? document.getElementById(anchor.id) : null;
     const drift = anchor && element ? element.getBoundingClientRect().top - feed.getBoundingClientRect().top - anchor.offset : 0;
@@ -509,13 +565,14 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
 
   // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
   // with earlier content is never moved; a quiet line says what is new below until they reach the end.
-  const newBelow = useNewBelow(feedNode);
   const entryIds = [...entries.flatMap((entry) => entry.kind === 'root' ? [domId(entry.root)] : entry.kind === 'notice' ? [`notice-${entry.notice.id}`] : entry.kind === 'object' ? [`object-${entry.object.id}`] : []), ...outbox.pending.map((item) => `pending-${item.id}`)];
+  // What left the stream again (a task whose creation was undone) is no longer counted (personas-28).
+  const newBelow = useNewBelow(feedNode, undefined, entryIds);
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
     const feed = feedRef.current;
     if (!feed || stickRef.current) return;
     // A decision line is neither a message nor a task update: it comes in quietly, uncounted.
-    newBelow.add(countBelow(feed, arrived.filter((id) => !id.startsWith('object-')), (id) => document.getElementById(id)));
+    newBelow.add(arrivedBelow(feed, arrived.filter((id) => !id.startsWith('object-')), (id) => document.getElementById(id)));
   });
   const toEnd = () => { stickRef.current = true; newBelow.toEnd(); };
 
@@ -525,6 +582,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const feed = feedRef.current;
     if (!feed) return;
     let width = feed.clientWidth;
+    let feedHeight = feed.clientHeight;
     let frame = 0;
     // Only the person's own scrolling moves the opened root's place. A width change (the thread or Details
     // docking) makes the browser clamp the scroll position and this view adjust it; those scroll events
@@ -538,6 +596,12 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const key = (event: KeyboardEvent) => {
       if (scrollKeys.has(event.key) && !(event.target as Element | null)?.closest?.('button, a, input, textarea, select, [contenteditable]')) person();
     };
+    // Tab is the keyboard reader's way through the stream: the browser scrolls each control it reaches into view, and that is the reader
+    // moving, as a wheel is. Without it the place a message link arrived at stayed pinned, and a panel leaving (Esc from a task opened
+    // from a card further down) put the stream back at the linked message (persona round 26, P2 #5).
+    let tabAt = -Infinity;
+    const tab = (event: KeyboardEvent) => { if (event.key === 'Tab') tabAt = performance.now(); };
+    const tabbedIn = () => { if (performance.now() - tabAt < 250) person(); };
     const column = columnRef.current;
     let height = column?.offsetHeight ?? 0;
     let settleUntil = 0;
@@ -546,7 +610,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const record = () => {
       frame = 0;
       const userMoved = performance.now() - personAt < 500;
-      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || performance.now() <= settleUntil)) return;
+      // A feed that got shorter since the observer last saw it (the composer grew) is not the reader moving away from the end: the observer
+      // keeps the end first (round 15: a scroll measured between the two left the newest message under the staged files).
+      if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || feed.clientHeight !== feedHeight || performance.now() <= settleUntil)) return;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
       if (userMoved) {
@@ -562,7 +628,23 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       }
       // The place is kept under this history entry as it changes (#592), but not by what the layout does while the next
       // screen loads after a reference was followed: that is not where the reader was, until they scroll.
-      if (!pendingRestore.current && (performance.now() > leavingUntil || personAt > leavingUntil - 3000)) remember('stream', stickRef.current || !anchorRef.current ? { atEnd: true } : { ...anchorRef.current, conv: anchorElement?.dataset.conversationId ?? null });
+      if (!pendingRestore.current && (performance.now() > leavingUntil || personAt > leavingUntil - 3000)) remember('stream', stickRef.current || !anchorRef.current ? { atEnd: true } : { ...anchorRef.current, conv: conversationNear(anchorElement) });
+    };
+    /**
+     * The conversation to read back to so the entry comes back on return: its own, or for a task card, a decision or a fold (which have none)
+     * the message just above it, which loads it with its range. Without it a phone that kept a task card as its place came back to the top of
+     * the newest messages, with the place never read back (round 15 look-2 P2-2).
+     */
+    const conversationNear = (element: HTMLElement | null): string | null => {
+      if (!element) return null;
+      if (element.dataset.conversationId) return element.dataset.conversationId;
+      let above: HTMLElement | null = null;
+      let below: HTMLElement | null = null;
+      for (const message of feed.querySelectorAll<HTMLElement>('[data-conversation-id]')) {
+        if (message.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) above = message;
+        else { below = message; break; }
+      }
+      return (above ?? below)?.dataset.conversationId ?? null;
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
     // The stream's own content also changes height: after a width change (the thread docking or becoming
@@ -570,7 +652,14 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const observer = new ResizeObserver(() => {
       const widened = feed.clientWidth !== width;
       const grown = !!column && column.offsetHeight !== height;
-      if (!widened && !grown) return;
+      // The feed itself gets shorter when the composer grows (two lines, a tray of staged files): a reader at the end stays at the end, so the
+      // newest message never hides under the tray (round 15 look-2 P2-1); a reader above keeps their place, which the top edge already holds.
+      const squeezed = feed.clientHeight !== feedHeight;
+      feedHeight = feed.clientHeight;
+      if (!widened && !grown) {
+        if (squeezed && (stickRef.current || atEndRef.current)) { stickRef.current = true; feed.scrollTop = feed.scrollHeight; }
+        return;
+      }
       width = feed.clientWidth;
       height = column?.offsetHeight ?? 0;
       // A row growing above the reader (a reply count appearing, a task chip after a refresh) must not
@@ -604,20 +693,48 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       }
       settleFrame = requestAnimationFrame(holdPin);
     };
+    // A card a closing panel gave the focus to (a new task's, Esc after Create) is where the person is now: it comes into view, and the place
+    // kept while the panel leaves is that card's, not the one read before, which would scroll it out of view again (personas-37).
+    const reveal = (event: Event) => {
+      const target = event.target as HTMLElement;
+      const item = target.closest<HTMLElement>('.project-convo__message, .convo-notice, .convo-object, .convo-fold');
+      if (!feed.contains(target)) return;
+      target.scrollIntoView({ block: 'nearest' });
+      person();
+      stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+      const place = item?.id ? { id: item.id, offset: item.getBoundingClientRect().top - feed.getBoundingClientRect().top } : null;
+      anchorRef.current = place;
+      pinRef.current = place;
+      heldReading = place;
+    };
     record();
     const unflush = onFlush(() => { record(); leavingUntil = performance.now() + 3000; });
     feed.addEventListener('scroll', onScroll, { passive: true });
+    // Measured after every scroll and after the observer above has kept the reader's place (observers run in the order they were made).
+    const atEnd = () => { atEndRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 2; };
+    const ends = new ResizeObserver(atEnd);
+    feed.addEventListener('scroll', atEnd, { passive: true });
     for (const name of ['wheel', 'touchmove'] as const) feed.addEventListener(name, person, { passive: true });
     feed.addEventListener('pointerdown', press, { passive: true });
     feed.addEventListener('keydown', key);
+    window.addEventListener('keydown', tab, true);
+    feed.addEventListener('focusin', tabbedIn);
+    feed.addEventListener(REVEAL_EVENT, reveal);
     observer.observe(feed);
     if (column) observer.observe(column);
+    ends.observe(feed);
+    if (column) ends.observe(column);
     return () => {
       unflush();
       feed.removeEventListener('scroll', onScroll);
+      feed.removeEventListener('scroll', atEnd);
+      ends.disconnect();
       for (const name of ['wheel', 'touchmove'] as const) feed.removeEventListener(name, person);
       feed.removeEventListener('pointerdown', press);
       feed.removeEventListener('keydown', key);
+      window.removeEventListener('keydown', tab, true);
+      feed.removeEventListener('focusin', tabbedIn);
+      feed.removeEventListener(REVEAL_EVENT, reveal);
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
       if (settleFrame) cancelAnimationFrame(settleFrame);
@@ -641,7 +758,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     : 'workId' in unread
     ? (entry.kind === 'notice' && entry.notice.workId === unread.workId) || (entry.kind === 'fold' && entry.notices.some((item) => item.notice.workId === unread.workId))
     : !unread.conversationId && entry.kind === 'root' && entry.root.message.id === unread.messageId);
-  return (<>
+  return (<ShownObjects value={shown}>
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
@@ -659,17 +776,25 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
                 const dayLine = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
                 const starts = startsUnread(entry);
-                const divider = starts ? <Fragment key={`unread-${key}`}>{dayLine}<UnreadDivider /></Fragment> : dayLine;
+                const divider = starts ? <UnreadDivider key={`unread-${key}`} day={dayLine ? label : null} /> : dayLine;
+                // The fold names people as the cards inside it do (personas-28): the full name, and "(you)" for the reader.
+                // An agent by its one label, "Assistant · Ola's agent", as its card says it (v0.2.1 release gate: two people's agents are told apart).
+                const foldName = (notice: TaskCreationNotice) => {
+                  const name = notice.createdBy.name ?? (notice.createdBy.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
+                  const owner = notice.createdBy.kind === 'agent' ? agentAuthorOwner(notice.createdBy, owners) : undefined;
+                  if (owner) return agentWords(name, owner);
+                  return youLabel(name, notice.createdBy.kind === 'human' && notice.createdBy.id === meId);
+                };
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
                 if (entry.kind === 'call') return [divider, <CallLineItem key={entry.key} line={entry.call} projectId={project.id} nameOf={personName} meId={meId} clock={clock} title={when} />];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
-                  follows={!divider && followsProposal(entry.object, previousObject(display[index - 1]))}
-                  onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
+                  onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }}
+                  onOpenDiscussion={onOpenDiscussion} openThread={openId} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
-                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} shown={revealed} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
+                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} shown={revealed} summary={foldSummary(folded, authorOf, foldName)}>{folded.map(noticeItem)}</NoticeFold>];
                 }
                 const { root } = entry;
                 const previous = display[index - 1], next = display[index + 1];
@@ -696,23 +821,24 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           ) : null}
           {/* The person's own agent at work and what it answered them: theirs alone, at the end like a message about to be sent (#842). */}
           {end}
-          {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
-          {roots.length || stream.hasOlder || outbox.pending.length ? null
-            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'You' && project.visibility !== 'workspace' ? 'For now you are the only one in this space; the people you add will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
+          {/* Only an empty conversation asks where to start: a task or a decision card is already a start (v0.2.1 audit), and so is the person's own
+              agent at work or its private answer (founder check, Hubert 2026-11-17: the empty state stood under the answer card and touched it). */}
+          {entries.length || stream.hasOlder || outbox.pending.length || end ? null
+            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write anything to start. {audience === 'You' && project.visibility !== 'workspace' ? 'The people you add to this space will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
     </div>
     {/* Static and announced once per change; it takes no layout space and moves nobody. */}
     <NewBelow count={newBelow.count} onClick={toEnd} />
     </div>
-    <MessageWorkPages read={messageWork} />
-  </>);
+    <MessageWorkPages read={messageWork} typed={!!composer.draft.body.trim() || composer.draft.files.length > 0} />
+  </ShownObjects>);
 }
 
 /**
- * One announcement that a task was created (UI116-3, F-026 P5): who made it and where it came from in one
- * line, then the task as a row with its current state and owner. It is information, not a message: it has
- * no replies or actions of its own.
+ * One announcement that a task was created (UI116-3, F-026 P5): the task's one card in the conversation (#1424), its row with the
+ * current state and owner, and inside the card one quiet line of who made it, from what and when ("from Jonas’s message" brings that
+ * message into view). It is information, not a message: it has no replies or actions of its own.
  */
 function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTask }: {
   notice: TaskCreationNotice; meId: string; owners: AgentOwners; row: NativeWorkRow | null;
@@ -728,14 +854,16 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') {
     const why = notice.kind === 'task.blocked' ? (notice.waitingFor ? `waiting for ${notice.waitingFor.name}` : notice.reason?.trim() ?? '') : '';
     // What it waited for is resolved (#868): "#4 can continue: the decision was accepted".
+    // A blocked task moved straight to Done says it is done (or dropped), not "unblocked" (personas-26).
+    const ended = notice.kind === 'task.unblocked' && (notice.reason === 'done' || notice.reason === 'dropped') ? notice.reason : null;
     const words = notice.kind === 'task.resumed' ? `#${notice.workNumber} can continue${notice.reason ? `: ${notice.reason}` : ''}`
-      : `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
+      : `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : ended ?? 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
     return (
       <li className="convo-notice convo-notice--update" id={`notice-${notice.id}`} data-work-id={notice.workId}>
-        <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} />
+        <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
         <div className="convo-notice__body">
           <p className="convo-notice__meta">
-            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{youLabel(name, mine)}</strong>}
             <button type="button" className="convo-notice__src" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>{words}</button>
             <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
           </p>
@@ -745,7 +873,6 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   }
   const source = noticeSource(notice, authorOf);
   const phrase = sourcePhrase(source, { name, mine });
-  const owner = current?.owner ?? null;
   const toMessage = () => {
     if (source.kind !== 'message') return;
     const message = document.getElementById(`message-${source.messageId}`);
@@ -754,28 +881,20 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
     message.focus({ preventScroll: true });
   };
   const reverted = notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted';
+  const task = <TaskObjectRow workId={notice.workId} number={notice.workNumber} title={title} row={current} reverted={reverted} onOpen={() => onOpenTask(notice.workId)} owners={owners} />;
   return (
     <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
-      <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} />
-      <div className="convo-notice__body">
+      <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
+      <div className="convo-notice__body convo-notice__card">
         <p className="convo-notice__meta">
-          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{youLabel(name, mine)}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
             ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           {notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted'
-            ? <span className="convo-notice__kind">Task creation undone</span> : null}
+            ? <span className="convo-notice__kind">Task undone</span> : null}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
-        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
-          <StatusGlyph status={current?.status} size={16} />
-          {/* The immutable announcement number names the task before and after the current row arrives. */}
-          <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
-          <span className="convo-notice__title">{title}</span>
-          {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
-          {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
-          <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
-          <Icon name="chevron-right" size={14} />
-        </button>
+        {task}
       </div>
     </li>
   );
@@ -796,7 +915,7 @@ function NoticeFold({ fold, summary, shown, children }: { fold: { key: string; n
   return (
     <li className="convo-fold" id={fold.key}>
       <button type="button" className="convo-fold__b" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((value) => !value)}>
-        <span className="convo-fold__faces" aria-hidden="true">{faces.map((who) => who.kind === 'agent' ? <Kreska key={who.id} size={20} /> : <Avatar key={who.id} name={who.name} id={who.id} size="sm" />)}</span>
+        <span className="convo-fold__faces" aria-hidden="true">{faces.map((who) => who.kind === 'agent' ? <Kreska key={who.id} size={20} hue={who.colour} /> : <Avatar key={who.id} name={who.name} id={who.id} size="sm" />)}</span>
         <span className="convo-fold__t"><b>{fold.notices.length} task updates</b><span className="convo-fold__s"> · {summary}</span></span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
       </button>
@@ -878,10 +997,10 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
-      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} {...(shown ? { hue: shown.colour } : {})} /> : null}
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} hue={messageHue(message)} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         {shown ? <ShownAnswerName shown={shown} asker={name} /> : <>
-          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
+          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <AuthorName workspaceId={project.workspaceId} authorId={message.authorId} name={name} removed={!!message.removedAuthorName} />}</strong>
           <ViaTag via={message.via} />
         </>}
       </div> : null}
@@ -893,8 +1012,10 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
-      <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
+      {/* The message's own time stays with its bubble, and the thread's line ("2 replies · last 9:40") comes after it, so the two times
+          never read as one said twice (visual review 2026-11-17). */}
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
+      <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions {...actions} />
       {touch.dots}{touch.node}
     </li>

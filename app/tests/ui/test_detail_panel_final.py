@@ -85,6 +85,8 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(page.get_by_role("complementary", name="Details")).to_be_visible()
                 expect(panel.locator(".ui-panel__kind")).to_have_text("Task")
                 expect(panel.locator(".wd__ref")).to_have_text(re.compile(r"^#2\s·\s.+"))
+                # Its words have no double space ("#2 ·  in …", personas-27).
+                self.assertNotIn("  ", panel.locator(".wd__ref").text_content())
                 # Rows of label and value; the blocker is a card; the one discussion and its composer follow. Empty Results are not shown.
                 rows = panel.locator(".wd-rows .wd-row")
                 expect(rows).to_have_count(4)
@@ -101,7 +103,7 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(panel.get_by_role("heading", name="Activity")).to_have_count(0)
                 expect(panel.get_by_role("region", name="Discussion")).to_be_visible()
                 expect(panel.get_by_role("button", name="Start the discussion")).to_have_count(0)
-                expect(panel.get_by_placeholder("Write about #2 · @ · /")).to_be_visible()
+                expect(panel.get_by_placeholder("Write about this task…")).to_be_visible()
                 # The conversation stays visible beside it.
                 expect(page.locator("#content")).to_be_visible()
                 box = panel.bounding_box()
@@ -151,7 +153,7 @@ class DetailPanelFinal(unittest.TestCase):
         expect(status).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
         # Typing a digit in a field never changes the state.
-        panel.get_by_placeholder(re.compile(r"^Write about #")).fill("5")
+        panel.get_by_placeholder("Write about this task…").fill("5")
         self.assertEqual(self.stored(task)["status"], "done")
 
     def test_03_title_is_edited_in_place(self):
@@ -192,7 +194,7 @@ class DetailPanelFinal(unittest.TestCase):
         task = self.new_task("Mount the rain gauge", owner=True, blocker="Waiting for the bracket from the supplier")
         page = self.page()
         panel = self.open_task(page, task)
-        panel.get_by_role("button", name="Resolve").click()
+        panel.get_by_role("button", name="Unblock").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("in_progress", None))

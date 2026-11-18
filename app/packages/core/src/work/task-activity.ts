@@ -1,4 +1,4 @@
-import { TASK_ACTIVITY_PAGE, type NamedPrincipal, type TaskActivityEntry, type TaskActivityPage, type TaskActivityQuery } from '@flux/contracts';
+import { TASK_ACTIVITY_PAGE, removedName, type NamedPrincipal, type TaskActivityEntry, type TaskActivityPage, type TaskActivityQuery } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import type { ActorRef, TaskActivityPosition, TaskActivityRecord, WorkPorts } from './ports.js';
 
@@ -35,7 +35,7 @@ export function activityWindow(query: TaskActivityQuery | undefined) {
 
 /**
  * One newest-first page of `workId`'s activity. People and agents are named as the task names its owner and creator: a
- * person who has left shows as a former member, and an agent carries its owner only from the current project audience.
+ * person who left the company or was removed is "Tomek Nowak (removed)", and an agent carries its owner only from the current project audience.
  * The caller has already authorized reading the task.
  */
 export async function readTaskActivity(ports: WorkPorts, task: { id: string; projectId: string; workspaceId: string }, query: TaskActivityQuery | undefined): Promise<TaskActivityPage> {
@@ -43,12 +43,15 @@ export async function readTaskActivity(ports: WorkPorts, task: { id: string; pro
   const { items, hasMore } = await ports.work.listTaskActivity(task.id, window);
   const waiting = (record: TaskActivityRecord): ActorRef | null => record.kind === 'status' && record.waitingForUserId ? { kind: 'human', id: record.waitingForUserId } : null;
   const people = items.flatMap((record) => [record.by, waiting(record), ...(record.kind === 'owner' ? [record.from, record.to] : [])].filter((who): who is ActorRef => who !== null));
-  const names = people.length ? await ports.work.names(people) : new Map<string, string>();
+  // Someone who left the company or was removed is "Tomek Nowak (removed)" in the history too, as on the task's board card and panel (personas-33).
+  const { names, gone } = !people.length ? { names: new Map<string, string>(), gone: new Set<string>() }
+    : ports.work.namesIn ? await ports.work.namesIn(people, task.workspaceId) : { names: await ports.work.names(people), gone: new Set<string>() };
   const agentIds = [...new Set(people.filter((who) => who.kind === 'agent').map((who) => who.id))];
   const owners = agentIds.length && ports.work.agentOwners ? await ports.work.agentOwners(task.projectId, task.workspaceId, agentIds) : new Map();
   const named = (who: ActorRef): NamedPrincipal => {
     const projectOwner = who.kind === 'agent' ? owners.get(who.id) : undefined;
-    return { ...who, name: names.get(key(who)) ?? (who.kind === 'agent' ? 'Agent' : 'Former member'), ...(projectOwner ? { projectOwner } : {}) };
+    const name = names.get(key(who));
+    return { ...who, name: name === undefined ? (who.kind === 'agent' ? 'Agent' : 'Former member') : gone.has(key(who)) ? removedName(name) : name, ...(projectOwner ? { projectOwner } : {}) };
   };
   const namedOrNull = (who: ActorRef | null) => who ? named(who) : null;
   const entries = items.map((record): TaskActivityEntry => {

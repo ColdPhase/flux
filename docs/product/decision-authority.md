@@ -46,8 +46,11 @@ decided.
 authority accepts a proposal that names it. Accepting marks the earlier decision
 `superseded` in the same transaction. The earlier decision keeps its title, rationale
 and decider. Superseding needs the same authority as any acceptance, whoever accepted
-the earlier decision. v0.1 has no other way to retire, reject or un-accept a decision:
-a change of direction is a new proposal that names the current rule.
+the earlier decision. There is no other way to retire or reject a decision: a change of
+direction is a new proposal that names the current rule. The one exception is the Undo of an
+acceptance (founder decision, Hubert, 2026-11-15, round 8, #1424): the person who accepted takes it
+back at once, while nothing rests on it yet, and the replaced decision is current again
+([work and decisions](../development/work-decisions.md#accept-at-once-and-undo-takes-it-back-1424-round-8)).
 
 **DA-4 — No silent acceptance.** Acceptance is one explicit command
 (`POST /api/v1/decisions/:id/accept` with `If-Match` or `expectedVersion`) sent by the

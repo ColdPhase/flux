@@ -71,8 +71,11 @@ export async function previewInvite(principal: Principal | null, token: unknown,
   const { invite } = found;
   const joined = Boolean(invite.acceptedAt);
   const member = !joined && self ? (await ports.invites(db).memberRole(invite.workspaceId, self)) !== null : false;
+  // The space the link adds the person to (#1424): named on the join page, as joining would add them to it (`addToSpace`'s same conditions).
+  const space = invite.spaceId ? await ports.projects(db).get(invite.spaceId) : null;
+  const spaceName = space && space.workspaceId === invite.workspaceId && space.visibility !== 'workspace' ? space.name : null;
   return {
-    workspaceName: found.workspaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
+    workspaceName: found.workspaceName, spaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
     emailLocked: invite.email !== null, email: invite.email, encrypted: found.encrypted, state: joined ? 'joined' : member ? 'member' : 'pending',
   };
 }
@@ -88,8 +91,9 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     const found = await find(signer, token, ports.invites(tx), true);
     const { invite } = found;
     const invites = ports.invites(tx);
-    // #1438: the join page opens a space with its composer ready: Everyone, unless the person is a guest, who opens the link's space.
-    const landing = async (role: WorkspaceRole, space: string | null) => (role === 'guest' ? space : await invites.everyoneSpace(invite.workspaceId));
+    // #1438, founder decision 2026-11-14 (#1424): the join page opens a space with its composer ready: the link's space when the person is in
+    // it, else Everyone (a guest, who is not in Everyone, opens Home).
+    const landing = async (role: WorkspaceRole, space: string | null) => space ?? (role === 'guest' ? null : await invites.everyoneSpace(invite.workspaceId));
     const result = async (status: AcceptInviteResult['status'], role: WorkspaceRole, space: string | null, needsUnlockPassword = false): Promise<AcceptInviteResult> => ({
       status, workspaceId: invite.workspaceId, workspaceName: found.workspaceName, role, encrypted: found.encrypted, needsUnlockPassword,
       landingSpaceId: await landing(role, space),

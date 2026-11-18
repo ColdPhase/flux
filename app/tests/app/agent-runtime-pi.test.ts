@@ -23,7 +23,7 @@ import { db, pool } from './support/db.js';
 import { startFakeGateway, type FakeGateway } from './support/fake-gateway.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
-import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { claimRuntimeSlot, portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
 // #1441 (RT-1, RT-5): with `pi` in FLUX_AGENT_RUNTIME every API-key agent runs in pi in the runtime, under the same contract as Claude Code
 // and Codex. End to end with the real worker, manager, supervisor and API, the REAL pinned pi (the test image's /opt/flux-runtime/pi,
@@ -64,11 +64,11 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     await app.listen({ port: 0, host: '127.0.0.1' });
     apiUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
     closeApp = () => app.close();
-    slot = await startTestSlot({ slot: `runtime-7${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${apiUrl}/mcp`, ownTools: true,
+    slot = await startTestSlot({ slot: await claimRuntimeSlot(pool, { state: 'unknown' }), enabled: [], mcpUrl: `${apiUrl}/mcp`, ownTools: true,
       pi: { modelOrigin: gateway.url, diagnostics: (what) => { lastPi = what; } } });
     slots.set(slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: managerUrl, secret: SECRET } };
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL`, [slot.config.slot]);
     // Other files leave runtimes of their own in this database: the owner's place is made on this one (pi needs no sign-in, only the place).
     owner = await person('rt-pi');
     ws = await createWorkspace(owner, 'Pi runs');

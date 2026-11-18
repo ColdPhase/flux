@@ -20,6 +20,26 @@ const SEALED_OF_PERSON = `SELECT w.id, w.name FROM workspaces w JOIN workspace_m
 
 const UUIDS = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
+/**
+ * Whether an item of a cross-workspace read belongs to one of `lockedIds`: it names, anywhere (a field, a source, a link), that workspace or
+ * one of its projects or DMs (#717 review P2-1: a mention's url is its only trace of the project). A `security` notice ("…'s encryption keys
+ * were changed outside Flux. It stays locked.", a rotation that cannot finish) is content-free by the notification guard and is about the
+ * lock itself: it stays readable (S2c).
+ */
+export async function lockedItemsOf(db: Database, lockedIds: readonly string[]): Promise<(item: unknown) => boolean> {
+  if (!lockedIds.length) return () => false;
+  const list = `{${lockedIds.join(',')}}`;
+  const places = new Set([...lockedIds, ...((await db.execute(sql`SELECT id FROM projects WHERE workspace_id = ANY(${list}::uuid[])
+    UNION ALL SELECT id FROM dms WHERE workspace_id = ANY(${list}::uuid[])`)).rows as { id: string }[]).map((row) => row.id)]);
+  return (item: unknown) => {
+    const reasonOf = (value: unknown) => (value && typeof value === 'object' ? (value as { reason?: unknown }).reason : undefined);
+    if (reasonOf(item) === 'security' || reasonOf((item as { notification?: unknown } | null)?.notification) === 'security') return false;
+    const text = JSON.stringify(item ?? null);
+    for (const match of text.matchAll(UUIDS)) if (places.has(match[0].toLowerCase())) return true;
+    return false;
+  };
+}
+
 export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: { db: Database; sessions: SessionResolver; keys: ProcessKeys }) {
   /**
    * F-030 `lockedWorkspaces` (S2a-2c): a cross-workspace read runs in `lockedReadScope`, so a sealed workspace that is
@@ -57,19 +77,10 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
       // one of its projects or DMs (#717 review P2-1: a mention's url is its only trace of the project).
       const lockedIds = [...new Set(locked.map((workspace) => workspace.id))];
       const list = `{${lockedIds.join(',')}}`;
-      const places = new Set([...lockedIds, ...((await db.execute(sql`SELECT id FROM projects WHERE workspace_id = ANY(${list}::uuid[])
-        UNION ALL SELECT id FROM dms WHERE workspace_id = ANY(${list}::uuid[])`)).rows as { id: string }[]).map((row) => row.id)]);
-      const ofLocked = (item: unknown) => {
-        // A `security` notice ("…'s encryption keys were changed outside Flux. It stays locked.", a rotation that cannot
-        // finish) is content-free by the notification guard and is about the lock itself: it stays readable (S2c).
-        const reasonOf = (value: unknown) => (value && typeof value === 'object' ? (value as { reason?: unknown }).reason : undefined);
-        if (reasonOf(item) === 'security' || reasonOf((item as { notification?: unknown } | null)?.notification) === 'security') return false;
-        const text = JSON.stringify(item ?? null);
-        for (const match of text.matchAll(UUIDS)) if (places.has(match[0].toLowerCase())) return true;
-        return false;
-      };
+      const ofLocked = await lockedItemsOf(db, lockedIds);
       const answer = { ...(payload as Record<string, unknown>) };
-      for (const key of ['items', 'results'] as const) {
+      // `later` and `done`: the lists behind the Inbox's "N for later" and "N done today" (#1424 E, pre-review P2-4).
+      for (const key of ['items', 'results', 'later', 'done'] as const) {
         if (!Array.isArray(answer[key])) continue;
         const kept = (answer[key] as unknown[]).filter((item) => !ofLocked(item));
         // The counts leave the locked workspaces' items out too (#717 review P3-1).

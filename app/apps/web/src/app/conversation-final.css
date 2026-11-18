@@ -17,28 +17,62 @@
 .convo-notice__src { padding: 0; border: 0; background: none; color: var(--t1); font: inherit; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 2px; }
 button.convo-notice__src { cursor: pointer; }
 button.convo-notice__src:hover { text-decoration-color: currentColor; }
-button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 3px; }
-/* Touch: the link in a notice line is 44 px tall without moving the line (#763 A9). */
-@media (pointer: coarse) { button.convo-notice__src { display: inline-block; padding: 12px 6px; margin: -12px -6px; } }
+button.convo-notice__src:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 3px; }
+/* Touch: the link in a notice line is 44 px tall without moving the line (#763 A9): whatever the line's height (12 px padding left the
+   card's 16.8 px line at 40.8 px), the padding makes up the rest of 44 px and the margin takes it back. */
+@media (pointer: coarse) {
+  button.convo-notice__src { display: inline-block; padding: 14px 6px; margin: -14px -6px; }
+  @supports (height: 1lh) { button.convo-notice__src { padding-block: max(12px, calc((44px - 1lh) / 2 + 0.5px)); margin-block: min(-12px, calc((1lh - 44px) / 2 - 0.5px)); } }
+}
 .convo-notice time { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
-.convo-notice__task { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 12px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card);
+.convo-notice__task { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 12px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card);
   color: var(--t1); font: inherit; font-size: var(--fs-base); text-align: left; cursor: pointer; transition: var(--tr); }
 .convo-notice__task:hover { background: var(--sub); }
-.convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.convo-notice__task:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .convo-notice__task > svg { flex: none; color: var(--t2); }
+/* A card whose row is not read yet keeps the glyph's and the state word's places, empty (personas-33: never a wrong "To do"). */
+.convo-notice__glyph-wait { flex: none; width: 16px; height: 16px; }
+.convo-notice__state--wait { min-width: 4ch; }
 .convo-notice__num { flex: none; color: var(--t3); }
-.convo-notice__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* In a list of task updates the numbers take one width, so the titles start at one edge whether the task is #8 or #10 (round 15 look-2
+   P3-8). The number is mono with tabular figures: 4ch holds "#999". */
+.convo-fold__list .convo-notice__num { min-width: 4ch; }
+/* A long title wraps instead of being cut to one line: whole on a computer (at 200 % text one line cut it to its first words), at most
+   two lines on a phone (#266 PF-6, below). */
+.convo-notice__title { flex: 1 1 auto; min-width: min(7em, 40%); overflow: hidden; white-space: normal; overflow-wrap: anywhere; }
 .convo-notice--undone .convo-notice__title { display: block; overflow: visible; text-overflow: clip; white-space: normal; }
-.convo-notice__owner { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
+/* The title keeps its room (#1424, audit P2-4: beside a docked panel at 1024 px the whole owner name squeezed it to nothing; the v0.2.1
+   audit: with no panel at 1440 px the whole name squeezed a long title to four lines). The owner's name gives way first (design L1066):
+   the owner shrinks long before the title (its shrink factor), and a name that no longer fits whole goes to a second line that is never
+   shown, so the owner is the face alone, never a cut name. */
+.convo-notice__owner { flex: 0 1000 auto; min-width: 20px; max-width: 40%; height: 20px; display: inline-flex; flex-wrap: wrap; align-items: center; align-content: flex-start;
+  justify-content: flex-end; column-gap: 6px; overflow: hidden; color: var(--t3); font-size: var(--fs-xs); }
+.convo-notice__owner > :not(.convo-notice__owner-name) { flex: none; }
+.convo-notice__owner-name { min-width: 0; overflow: hidden; white-space: nowrap; line-height: 20px; }
+/* Narrow for its text (beside a docked panel, at a large text size: em follows the text), the owner is the face alone. */
+@container task-notice (max-width: 30em) { .convo-notice__owner-name { display: none; } }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
 .convo-notice + .convo-notice { margin-top: 14px; }
+
+/* A task or a decision shows once, as one card (#1424): one quiet line of who made it, from what and when, beside the maker's face,
+   then the object's row, in the same card. The row is the button that opens the object; the line stays text a person can read, select and hover, with its
+   source link. */
+.convo-notice__card { position: relative; gap: 0; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card); transition: var(--tr); }
+.convo-notice__card:has(> .convo-notice__task:hover) { background: var(--sub); }
+.convo-notice__card:has(> .convo-notice__task:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+.convo-notice__card > .convo-notice__task { position: static; background: none; box-shadow: none; }
+.convo-notice__card > .convo-notice__task:hover { background: none; }
+.convo-notice__card > .convo-notice__task:focus-visible { outline: none; }
+.convo-notice__card > .convo-notice__meta { padding: 8px 12px 0; gap: 0 6px; font-size: var(--fs-sm); line-height: 1.4; color: var(--t3); }
+.convo-notice__card > .convo-notice__meta strong { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
+.convo-notice__card > .convo-notice__meta .convo-notice__src { color: var(--t2); }
 
 /* Several in a row: one line with who and what, opening to the notices themselves (S8). */
 .convo-fold { max-width: min(600px, 100%); margin: 24px 0; padding-left: 44px; list-style: none; }
 .convo-fold__b { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 14px 0 10px; border-radius: 14px; background: var(--sub); color: var(--t2);
   font-size: var(--fs-base); text-align: left; transition: var(--tr); }
 .convo-fold__b:hover { background: var(--hov); }
-.convo-fold__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.convo-fold__b:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .convo-fold__faces { display: inline-flex; flex: none; }
 /* Side by side, not stacked: a stacked face hid the second initial ("JB" read "JI", #763). */
 .convo-fold__faces { gap: 3px; }
@@ -55,8 +89,7 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 /* A long title wraps to two lines on a phone instead of being cut to one (#266 PF-6), and shows whole when the
    column is narrow for the reader's text size: container em units scale with it. */
 @media (max-width: 680px) {
-  .convo-notice__task { padding-block: 6px; }
-  .convo-notice__title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+  .convo-notice__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 }
 @container task-notice (max-width: 14em) {
   .convo-notice__task { align-items: flex-start; }
@@ -72,5 +105,6 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
   .convo-fold__list { margin-left: -42px; }
   .convo-notice__owner-name { display: none; }
   .convo-notice__meta, .convo-notice__task, .convo-fold__b { font-size: var(--fs-base); }
+  .convo-notice__card > .convo-notice__meta, .convo-notice__card > .convo-notice__meta strong { font-size: var(--fs-sm); }
 }
 @media (max-width: 680px) and (hover: none) { .project-convo__message { width: 100%; } }

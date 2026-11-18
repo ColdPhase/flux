@@ -3,14 +3,16 @@ import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentIdentity, Button, Icon, StatusGlyph, initials, useRowMotion } from '../ui';
+import { AgentIdentity, Button, Icon, PersonName, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
 import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
 import { getProjectWorkView, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
-import { useAgentOwners } from '../agents/owners';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
+import { useShellActions } from '../app/shellContext';
 import './board.css';
 
 // The Tasks board (#136, UI116-4, #868): four columns, the four states, and no
@@ -84,6 +86,8 @@ interface CardProps {
   agentOwner?: string;
   item: BoardTask; meId: string; writable: boolean; hintId: string;
   saving: boolean; dragged: boolean; lifted: boolean;
+  /** The task the one panel shows: its card is the open one (#763 IN-3), a soft fill (board.css). */
+  open: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => void;
   onClickCapture: (event: ReactMouseEvent) => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
@@ -97,7 +101,8 @@ interface CardProps {
  * A blocked card says what it waits for in one line. There is no ⋯: a card opens its task, whose panel holds the actions; a
  * mouse or pen drags it, and the keyboard moves it (Space, arrows, Space) or sets its state (1–4).
  */
-function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
+function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, open, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
+  const hue = useAgentHue();
   const blocked = item.status === 'blocked';
   const owner = item.owner;
   const dropped = item.status === 'done' && item.dropped;
@@ -109,9 +114,9 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
       <h3 className="tb-card__t">
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
-          aria-describedby={writable ? hintId : undefined}><span className="tb-card__title">{item.title}</span></button>
+          aria-describedby={writable ? hintId : undefined} aria-current={open ? 'true' : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
-      {blocked ? <p className="tb-card__blocker">{blockedLine(item) ?? 'Waiting for something not written down yet'}</p> : null}
+      {blocked ? <p className="tb-card__blocker">{blockedLine(item, meId)}</p> : null}
       <div className="tb-card__foot">
         <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
         {item.dueOn ? <span className="tb-card__due">{dueShort(item.dueOn)}</span> : null}
@@ -119,10 +124,11 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
         {owner ? (
           // A person is a face and a name; an agent is Kreska and its one label, "Planner · Ada's agent", on one line (#1364).
           owner.kind === 'agent'
-            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} /></span>
+            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} hue={hue(owner)} /></span>
             : <span className="tb-card__owner">
               <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>
-              <span className="tb-card__name">{owner.id === meId ? 'You' : owner.name}</span>
+              {/* "(you)" stays whole where the column is narrow (beside the open panel), and the name gives way (round 14 daily P2-3). */}
+              <PersonName className="tb-card__name" name={owner.name} mark={owner.id === meId ? 'you' : null} />
             </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
       </div>
@@ -172,6 +178,8 @@ const withStoredState = (row: BoardTask, saved: WorkItem): BoardTask => ({
 
 export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
   const owners = useAgentOwners(project);
+  const { shownObject } = useShellActions();
+  const shownWork = shownObject?.kind === 'work' ? shownObject.id : null;
   const hintId = useId();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -201,6 +209,12 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const blockedPage = loaded(blockedRead);
   const finishedPage = loaded(finishedRead);
   const unavailable = reads.some((read) => read.phase === 'unavailable');
+  // A column whose read failed says so; it never says "Loading" next to the error above the board (visual review 2026-11-17, core 8).
+  const failedRead: Record<ColumnId, boolean> = {
+    open: openRead.phase === 'unavailable', in_progress: progressRead.phase === 'unavailable',
+    blocked: blockedRead.phase === 'unavailable', done: finishedRead.phase === 'unavailable',
+  };
+  const allFailed = reads.every((read) => read.phase === 'unavailable');
   const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage, blocked: !blockedPage, done: !finishedPage };
   // A card that moves to another column slides there, a new one grows in and one that left collapses (#593 AC-4); the first
   // read of each column only replaces what the board showed.
@@ -480,7 +494,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       ) : null}
       {unavailable ? (
         <div className="tb-note tb-note--error" role="alert">
-          <Icon name="alert" size={14} /><span>Some of the board could not be loaded. The columns shown are current; the others are empty until they load.</span>
+          <Icon name="alert" size={14} /><span>{allFailed ? 'The board could not be loaded.' : 'Some columns could not be loaded. The others are current.'}</span>
           <button type="button" className="tb-note__x" onClick={refresh}>Refresh</button>
         </div>
       ) : null}
@@ -502,14 +516,14 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
               <div className="tb-col__head">
                 <StatusGlyph status={column.status} className="tb-col__g" />
                 <h2 className="tb-col__h" id={headingId}>{column.label}</h2>
-                <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>
+                {failedRead[column.id] ? null : <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>}
               </div>
               <div className={`tb-col__cards${highlight === column.id ? ' is-over' : ''}`}>
                 {list.length ? (
                   <ol className="tb-col__list">
                     {list.map((item) => (
-                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} meId={meId} writable={writable} hintId={hintId}
-                        saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
+                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? agentAuthorOwner(item.owner, owners) : undefined} meId={meId} writable={writable} hintId={hintId}
+                        saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id} open={shownWork === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
                         onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); } }}
                         onKeyDown={(event) => onCardKey(event, item, column.id)} onKeyUp={onCardKeyUp}
@@ -520,7 +534,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                   </ol>
                 ) : waitingFor[column.id] || !(filtered && !shown.length)
                   // One empty message for a search that matches nothing: the line above the board says it, not each column (#763 C7).
-                  ? <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
+                  ? <p className="tb-col__empty">{failedRead[column.id] ? 'Not loaded.' : waitingFor[column.id] ? `Loading ${column.label} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
                 {hidden[column.id] ? (
                   <button type="button" className="ws-none__b tb-col__more" onClick={() => showInList(column.group)}>
                     {hidden[column.id]} more in the List

@@ -5,9 +5,10 @@
 .dm__head { display: flex; align-items: center; gap: 12px; padding: 20px 0 18px; }
 .dm__faces { display: flex; flex: none; }
 .dm__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
-.dm__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
+/* Side by side with a gap, never overlapping: two overlapped faces read as one word ("BV ON", round 15 look-2 P3-3). */
+.dm__faces { gap: 4px; }
 .dm__who { flex: 1; min-width: 0; }
-.dm__who h2 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.dm__who h2 { font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
 .dm__who p { margin-top: 2px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .dm__who p svg { display: inline; vertical-align: -1px; }
 .dm__older { display: flex; justify-content: center; padding: 12px 0 0; }
@@ -20,6 +21,12 @@
 .dm-msg { --dm-lead: 1px; --dm-lh: 1.55; }
 .dm-msg__body { margin-top: var(--dm-lead); font-size: var(--fs-base); line-height: var(--dm-lh); color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 10px; }
+/* On a computer a direct message's composer is a space's (round 15 look-2 P2-4): no rule above it, and its box ends where a space's does (its
+   typing line, 1.4em, is part of the 31 px under the box); its thread's box ends 21 px above the panel's foot, as a space thread's. */
+@media (min-width: 641px) {
+  .dm__composer { border-top: 0; padding-top: 9px; padding-bottom: max(calc(31px - 1.4 * var(--fs-xs)), env(safe-area-inset-bottom)); }
+  .dm__composer.dm-thread__composer { padding-bottom: max(21px, env(safe-area-inset-bottom)); }
+}
 .dm__notice { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
 .dm__notice svg { flex: none; color: var(--t3); }
 .dm__error { display: flex; align-items: center; gap: 6px; margin: 6px 2px 0; font-size: var(--fs-sm); color: var(--t1); }
@@ -29,45 +36,36 @@
 .dm-gone h2 { font-size: var(--fs-lg); color: var(--t1); }
 .dm-gone p { margin: 4px 0 14px; font-size: var(--fs-md); }
 
-.dm { --dm-w: 1000px; --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
+.dm { --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
 /* --dm-pad is the bubble's padding (composer/attachments.css) and --dm-meta the author row above it: the check's offsets. */
 @media (max-width: 760px) { .dm { --dm-pad: 11px; } }
 .dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
 @keyframes dm-rise { from { opacity: 0; transform: translateY(8px); } }
 
-/* List of conversations */
-.dm-index__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
-.dm-index__head p { font-size: var(--fs-sm); color: var(--t3); }
-.dm-index { list-style: none; margin: 0; padding: 6px 0; }
-.dm-index__item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 10px; margin: 0 -10px; border-radius: var(--r); color: var(--t1); text-decoration: none; transition: var(--tr); }
-.dm-index__item:hover { background: var(--hov); }
-.dm-index__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.dm-index__text b { font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dm-index__text span { font-size: var(--fs-sm); color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dm-index__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--inv); }
-.dm-index__item time { flex: none; font-size: var(--fs-xs); color: var(--t3); }
+/* List of conversations: the Spaces list's card and rows (DmRows, app/settings.css), then New message and the privacy line under it. */
+.dm-index__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 12px; }
+.dm-index__foot .proj-index__lead { flex: 1 1 16em; }
 
 /* New message */
 .dm-new { max-width: 560px; }
-.dm-new h2 { padding-top: 16px; font-size: var(--fs-xl); letter-spacing: -0.015em; }
-.dm-new__lead { margin: 4px 0 18px; font-size: var(--fs-md); color: var(--t3); }
+.dm-new__lead { margin: 16px 0 18px; font-size: var(--fs-md); color: var(--t3); }
 .dm-new__space { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: var(--fs-sm); color: var(--t2); }
 .dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); }
 .dm-new__search { width: 100%; }
-.dm-new__search:focus-visible, .dm-new__title input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.dm-new__search:focus-visible, .dm-new__title input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .dm-new__note, .dm-new__opening { margin: 12px 2px; font-size: var(--fs-sm); color: var(--t3); }
 .dm-new__people { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(52vh, 440px); overflow-y: auto; }
 .dm-new__person { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; margin: 0 -10px; border-radius: var(--r); cursor: pointer; transition: var(--tr); }
 .dm-new__person:hover { background: var(--hov); }
 .dm-new__person.is-on { background: var(--sub); }
 .dm-new__person input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.dm-new__person:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: -2px; }
+.dm-new__person:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
 .dm-new__name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .dm-new__name b { font-size: var(--fs-md); font-weight: 500; }
 .dm-new__name span { font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-new__tick { color: var(--t1); }
 .dm-new__title { display: grid; gap: 6px; margin-top: 14px; font-size: var(--fs-sm); color: var(--t2); }
-.dm-new__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--line); background: var(--el); }
+.dm-new__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--line); background: var(--bg); }
 .dm-new__audience { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .dm-new__audience svg { color: var(--t3); }
 
@@ -82,16 +80,16 @@
   .dm__faces .ui-avatar--lg { width: 30px; height: 30px; }
   .dm__composer { padding-top: 6px; }
   .dm__composer .composer__hint:not(.dm__error) { display: none; }
-  .dm-index__head { align-items: center; }
-  .dm-index__head p { display: none; }
 }
 .dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--t1); border-radius: 2px; }
 .dm-msg:focus { outline: none; }
-.dm-msg:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.dm-msg:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
-/* Own messages on the right, the other people's on the left (#132/#136), in the pane's width. */
-.dm__in { max-width: var(--dm-w); }
-.dm__composer .composer__in { max-width: calc(var(--dm-w) - 48px); }
+/* Own messages on the right, the other people's on the left (#481), in a space's reading column: the column and the composer are as wide
+   as a space's, so the composer does not jump between a space and a direct message (round 14: 952 px against 790). */
+.dm__in { max-width: min(calc(var(--col) + 2 * var(--space-page)), 760px); }
+@media (min-width: 641px) { .dm__in { padding-inline: var(--space-page); } }
+.dm__composer .composer__in { max-width: var(--col); }
 .dm-msg__main { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .dm-msg__body { max-width: min(640px, 82%); padding: 7px 12px; border-radius: 4px 14px 14px 14px; background: var(--sub); }
 .dm-msg--cont .dm-msg__body { border-radius: 14px; }
@@ -105,7 +103,8 @@
 
 /* Shared bubble and clock, with the same author columns as project messages. */
 .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
-.dm-msg__face .ui-avatar { width: 32px; height: 32px; }
+/* The same face as in a space's conversation (project-conversation.css): grey, --t2 initials (visual review 2026-11-17: white with black initials here). */
+.dm-msg__face .ui-avatar { width: 32px; height: 32px; font-size: var(--fs-face-lg); font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
 .dm-msg.is-mine .dm-msg__row { display: flex; justify-content: flex-end; }
 .dm-msg.is-mine .dm-msg__face { display: none; }
 .dm-msg__main { max-width: min(600px, 100%); }
@@ -159,7 +158,7 @@
 .ui-overlay--center .dm-copy { top: 14vh; width: min(520px, calc(100% - 32px)); max-height: 76vh; overflow: auto; }
 .ui-overlay--bottom .dm-copy { inset: auto 0 0 0; max-height: 92dvh; overflow: auto; border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding-bottom: env(safe-area-inset-bottom); }
 .dm-copy__in { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
-.dm-copy__in h2 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; }
+.dm-copy__in h2 { font-size: var(--fs-lg); font-weight: 600; }
 .dm-copy__quote { margin: 0; padding: 10px 12px; max-height: 32vh; overflow: auto; border-radius: var(--r); background: var(--sub); color: var(--t1);
   font-size: var(--fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm-copy__row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; font-size: var(--fs-md); }
@@ -177,7 +176,7 @@
 
 /* "Ada used AI here (Claude)" (#842, F-036 AG-4): one quiet line for both people of a conversation in which `/ai` was used. */
 .dm-notice { list-style: none; display: flex; flex-direction: column; align-items: center; margin: 10px 0; }
-.dm-notice:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.dm-notice:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .dm-notice__line { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .dm-msg__via { color: var(--t3); font-weight: 400; }
 .dm-msg__meta b + .dm-msg__via::before { content: "· "; }

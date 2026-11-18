@@ -1,9 +1,10 @@
 /* Notices (#1243, docs/design/final/README.md "Notices"): one card about someone else's message, mention, task or call,
-   at the bottom right on a computer and at the top on a phone, apart from the Undo toasts at the bottom centre.
+   at the bottom right on a computer and at the top on a phone, apart from the Undo toasts at the bottom centre. Beside a docked panel it keeps
+   to the work: Notices.tsx sets --notice-right to 20 px left of the panel (audit P3 17).
    Only the tokens: --el, --sh-pop (with the dark theme's inset outline), --r-card, the type sizes, Button and Avatar. */
 .ui-notices {
-  position: fixed; z-index: var(--z-toast); right: 20px; bottom: max(20px, var(--notice-lift, 0px));
-  width: min(360px, calc(100vw - 40px)); pointer-events: none;
+  position: fixed; z-index: var(--z-toast); right: var(--notice-right, 20px); bottom: max(20px, var(--notice-lift, 0px));
+  width: min(360px, calc(100vw - var(--notice-right, 20px) - 20px)); pointer-events: none;
 }
 .ui-notice {
   pointer-events: auto; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 10px;

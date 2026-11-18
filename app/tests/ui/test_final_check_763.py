@@ -145,7 +145,8 @@ class FinalCheck763(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/tasks?open=work:{self.task['id']}")
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)
         expect(page.locator(".ui-overlay").get_by_text(TASK).first).to_be_visible()
-        page.wait_for_function("() => !new URLSearchParams(location.search).has('open')")
+        # F-026 §4: an object opened by `?open=` keeps that address while it is open.
+        self.assertEqual(page.evaluate("new URLSearchParams(location.search).get('open')"), f"work:{self.task['id']}")
 
     # ------------------------------------------------------------------ P2-1
 
@@ -272,7 +273,7 @@ class FinalCheck763(unittest.TestCase):
                 card = self.open_proposed(page)
                 line = card.locator(".nyc__waiting")
                 expect(line).to_contain_text("can accept too")
-                expect(line).to_contain_text("waiting for you")
+                expect(line).to_contain_text("Waiting for you")
                 text = line.inner_text()
                 self.assertEqual(text.count("Basia Wrona"), 1, text)
                 self.assertEqual(line.locator(".ui-avatar:not(.ui-avatar--me)").evaluate_all("els => els.map((el) => el.textContent)").count("BW"), 1)
@@ -288,10 +289,12 @@ class FinalCheck763(unittest.TestCase):
                 row = page.locator(".nyc--compact").filter(has=page.locator(".nyc__rowactions")).first
                 expect(row).to_be_visible()
                 title = row.locator(".nyc__open")
-                # Two lines before an ellipsis, and the project stays out of the one-line meta.
+                # Two lines before an ellipsis. The one-line meta says "Kind · who · space" as on the computer (personas-26: the phone dropped
+                # the space), cut short with "…" where the width ends, never pushing the row wider.
                 self.assertNotEqual(title.evaluate("el => getComputedStyle(el).whiteSpace"), "nowrap")
                 self.assertLessEqual(title.evaluate("el => el.scrollHeight - el.clientHeight"), 1, "the title is whole in two lines")
-                self.assertNotIn("Community garden sensors", row.locator(".nyc__eyebrow").inner_text())
+                self.assertIn("Community garden sensors", row.locator(".nyc__eyebrow").inner_text())
+                self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), viewport["width"], "no sideways scroll")
                 action = row.locator(".nyc__rowactions").bounding_box()
                 self.assertGreaterEqual(action["x"], title.bounding_box()["x"] + title.bounding_box()["width"] - 1, "the action has its own column")
 
@@ -307,6 +310,9 @@ class FinalCheck763(unittest.TestCase):
                 fab = page.locator(".phone-fab").bounding_box()
                 rect = last.bounding_box()
                 self.assertLessEqual(rect["y"] + rect["height"], fab["y"], "the last row ends above the + once scrolled")
+                # A-5/D-12: whatever Home ends with (the notification offer is a card, not a row) ends above the + too, never under it.
+                end = page.locator("#content .pane-in.home > *:last-child").bounding_box()
+                self.assertLessEqual(end["y"] + end["height"], fab["y"], "the last card of Home ends above the + once scrolled")
                 hit = last.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
                 self.assertTrue(hit, "the last row is tappable")
                 # The scroller runs to the dock: content passes under the + instead of stopping at a hard line above it.

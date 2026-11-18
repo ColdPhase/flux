@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import type { Project } from '@flux/contracts';
+import type { Project, WorkspaceInvite } from '@flux/contracts';
 import { PeoplePicker } from '../people/PeoplePicker';
+import { SomeoneNew } from '../people/SomeoneNew';
+import { isManagerRole, revokeInvite } from '../people/api';
+import { useShellData } from '../app/data';
 import { getEncryptionAvailability } from '../encryption/api';
 import { PasswordLength, passwordRefusal } from '../encryption/PasswordLength';
 import { checkPassword, downloadRecoveryCode, generatePassphrase, generateRecoveryCode, loadWords } from '../encryption/passphrase';
@@ -22,7 +25,27 @@ import { useCompanyCandidates, useNewProject } from './newProject';
  */
 export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initialName?: string; onCancel: () => void; onCreated: (project: Project) => void }) {
   const { space, allowed, busy, error, create, createEncrypted } = useNewProject();
-  const { candidates, loading, companyName } = useCompanyCandidates();
+  const { candidates, members, loading, companyName } = useCompanyCandidates();
+  const { me } = useShellData();
+  // #1424: a company owner or admin also invites someone new here, as in Space settings; the links made wait for Create space.
+  const inviter = !!space && isManagerRole(space.role ?? 'guest');
+  const [invites, setInvites] = useState<WorkspaceInvite[]>([]);
+  // A link made here belongs to the space this window makes (#1424): closed without Create (Cancel, ×, Escape), or made encrypted, which takes no
+  // link, the window revokes the links it made, so none is left working for the company alone.
+  const made = useRef<{ workspaceId: string | null; ids: string[]; tied: boolean }>({ workspaceId: null, ids: [], tied: false });
+  useEffect(() => { made.current.workspaceId = space?.id ?? null; made.current.ids = invites.map((invite) => invite.id); });
+  useEffect(() => {
+    const kept = made.current;
+    const revoke = (keepalive: boolean) => {
+      if (!kept.workspaceId || kept.tied) return;
+      for (const id of kept.ids) void revokeInvite(kept.workspaceId, id, keepalive).catch(() => undefined);
+    };
+    // A tab closed or reloaded with the window open runs no cleanup: the links go off on the way out, as Cancel turns them off. A page kept
+    // for Back (`persisted`) may come back with the window as it was, so it keeps them.
+    const leaving = (event: PageTransitionEvent) => { if (!event.persisted) revoke(true); };
+    window.addEventListener('pagehide', leaving);
+    return () => { window.removeEventListener('pagehide', leaving); revoke(false); };
+  }, []);
   const [name, setName] = useState(initialName);
   // The form says what is missing in its own words, like sign-in and sign-up, not with the browser's bubble (#763 FR-9).
   const [missing, setMissing] = useState(false);
@@ -78,8 +101,8 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
     if (!name.trim()) { setMissing(true); return; }
     const chosen = people.filter((id) => candidates.some((member) => member.userId === id));
     if (!encrypted) {
-      const project = await create(name, { ai, people: chosen });
-      if (project) onCreated(project);
+      const project = await create(name, { ai, people: chosen, invites: invites.map((invite) => invite.id) });
+      if (project) { made.current.tied = true; onCreated(project); }
       return;
     }
     if (check.problem) { refuse('password', passwordRefusal(check), passwordRef); return; }
@@ -103,16 +126,31 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
       <Input ref={nameRef} label="Name" aria-label="Space name" placeholder="e.g. Volunteer sign-up app" value={name} onChange={(event) => { setName(event.target.value); setMissing(false); }}
         maxLength={200} error={missing ? 'Give the space a name.' : undefined} />
       <div className="newspace__field">
-        <div className="newspace__label">People<span>You’re the admin of this space</span></div>
+        {/* You are in it without a chip: said in the one word every list of people then gives you (personas-28), Owner for the company's owner. */}
+        <div className="newspace__label">People<span>{space?.role === 'owner' ? 'You’re in it as the owner.' : 'You’re in it as its admin.'}</span></div>
         {loading ? <p className="pick__none" role="status">Loading people…</p>
-          : <PeoplePicker candidates={candidates} value={people} onChange={setPeople} disabled={busy} companyName={companyName} />}
+          : <PeoplePicker candidates={candidates} value={people} onChange={setPeople} disabled={busy} companyName={companyName}>
+            {/* An encrypted space takes only people of the company (C-24): no link joins it. */}
+            {inviter && space && !encrypted ? <SomeoneNew workspaceId={space.id} spaceId={null} spaceName={name.trim() || 'this space'} companyName={companyName} members={members}
+              inSpace={(id) => people.includes(id)} meId={me.user.id} onTick={(id) => setPeople((list) => (list.includes(id) ? list : [...list, id]))}
+              onMade={(invite) => setInvites((list) => [...list, invite])} links={invites} /> : null}
+          </PeoplePicker>}
+        {/* The links made here are listed while the window is open, also with Add people closed, and the window says what Cancel does to
+            them before it is pressed (personas-33/34): a link already copied is never turned off without a word. */}
+        {inviter && !encrypted && invites.length ? (
+          <p className="newspace__hint newspace__invited" data-new-space-invites="">
+            Invited with a link: {invites.map((invite) => invite.email ?? 'anyone').join(', ')}. The {invites.length === 1 ? 'link adds them' : 'links add them'} to {spaceName} once
+            you create it; Cancel turns {invites.length === 1 ? 'it' : 'them'} off.
+          </p>
+        ) : null}
       </div>
       <div className="newspace__switches">
-        {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). */}
+        {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). Neither row has an icon, as drawn, so their
+            words start at one edge (round 15, daily P2-5: only Encrypted had its lock, 36 px right of AI's). */}
         {encrypted
           ? <SwitchRow label="AI" detail="No AI in encrypted spaces" checked={false} onChange={() => undefined} disabled />
-          : <SwitchRow label="AI" detail="Agents can work here, with each person’s own AI" checked={ai} onChange={setAi} disabled={busy} />}
-        <SwitchRow label="Encrypted" icon={<Icon name="lock" size={16} />} checked={encrypted} onChange={chooseEncrypted} disabled={busy || (available === false && !encrypted)}
+          : <SwitchRow label="AI" detail="Let AI agents help in this space" checked={ai} onChange={setAi} disabled={busy} />}
+        <SwitchRow label="Encrypted" checked={encrypted} onChange={chooseEncrypted} disabled={busy || (available === false && !encrypted)}
           detail={available === false && !encrypted ? 'Not available on this server right now: its key service isn’t running.' : 'Can’t be turned off later'} />
       {encrypted ? (
         <div className="newspace__secret" data-encryption-password="">

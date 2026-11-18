@@ -5,15 +5,28 @@
 .convo-object time { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .convo-object + :is(.convo-object, .convo-notice) , .convo-notice + .convo-object { margin-top: 14px; }
 /* The state is a word, never a colour alone: the proposed one is the quiet "needs a person" mark, the rest recede. */
-.convo-object__state { flex: none; font-size: var(--fs-xs); color: var(--t3); letter-spacing: .01em; }
+.convo-object__state { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .convo-object__state[data-state="proposed"] { color: var(--t1); font-weight: 600; }
 .convo-object__card > svg { flex: none; color: var(--t2); }
 @media (max-width: 680px) {
   .convo-object { padding-left: 42px; margin: 18px 0; }
   .convo-object + :is(.convo-object, .convo-notice), .convo-notice + .convo-object { margin-top: 12px; }
   .convo-object .convo-notice__meta, .convo-object .convo-notice__task { font-size: var(--fs-base); }
+  .convo-object .convo-notice__card > .convo-notice__meta, .convo-object .convo-notice__card > .convo-notice__meta strong { font-size: var(--fs-sm); }
 }
-/* An acceptance right under its proposal (#763 H11-9) is one quiet line beneath that card, never a second card. */
-.convo-object + .convo-object.is-follow { margin-top: 6px; }
-/* In a thread the line sits among the replies at the replies' own column. */
+/* Who accepted it and when, inside its card (#1424 D): the card changes in place, so this is the card's own quiet line under its row,
+   in the type of the card's line above it, never a second line in the conversation. It starts under the title, past the flag. */
+.convo-object__decided { margin: -4px 0 0; padding: 0 12px 8px 38px; font-size: var(--fs-sm); line-height: 1.4; color: var(--t3); }
+.convo-object__decided time { font-size: inherit; }
+/* In a thread the card sits among the replies at the replies' own column. */
 .thread__list > .convo-object { margin: 14px 0; }
+/* The card of the decision open in the panel is the open one, with the open card's fill (the board's open card, --hov), from whatever
+   opened it: the card, Search, the Inbox or a notification. Its meta words (--t3) stay at least 4.5:1 on it (design L69, L2265): --pick
+   gave 4.4:1 in light and 4.0:1 in dark. Hovering the open card keeps it marked. High contrast keeps it as an outline. */
+.convo-notice__card.is-open, .convo-notice__card.is-open:has(> .convo-notice__task:hover) { background: var(--hov); }
+@media (forced-colors: active) { .convo-notice__card.is-open { outline: 2px solid Highlight; outline-offset: 2px; } }
+/* A decision's one discussion (#1424): "N replies" under its row, inside the card, as a root's replies sit under the root; it opens the
+   thread on the card. It starts under the title, past the flag, as the accepted line does. */
+.convo-replies.convo-object__replies { margin: -4px 0 0; padding: 0 12px 6px 31px; }
+/* The head of a decision's discussion in its thread: the decision's row, as its card draws it. */
+.thread__root--decision > .convo-notice__task { text-align: left; }

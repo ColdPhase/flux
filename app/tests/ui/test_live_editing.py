@@ -129,7 +129,7 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
         await field.click()
         await page.keyboard.press("Control+End")
         await page.keyboard.type(text)
-        await expect(page.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
+        await expect(page.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
 
     async def saved_doc(self, page, snippet, absent=None, timeout=60.0):
         """The saved page once a version holds `snippet` (and not `absent`): versions save by themselves when typing rests (#869)."""
@@ -243,7 +243,7 @@ class LiveEditingJourney(LiveFixture):
         field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute('contenteditable', 'true')
         await expect(field).to_contain_text('Reloaded before forty milliseconds 🚀.')
-        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         actual = [(header, chunk) for header, chunk in sent if header.get('uuid') == original['envelope']['uuid']]
         self.assertTrue(actual, 'Reload retransmitted the sealed original UUID')
         for header, _chunk in actual:
@@ -274,9 +274,14 @@ class LiveEditingJourney(LiveFixture):
         self.assertGreaterEqual(saved["version"], 2)
         immutable = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
         self.assertEqual(immutable["body"], original["body"])
+        current = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}")
         await kai.goto(self.doc_url + f"/versions/{saved['version']}")
-        await expect(kai.locator(".doc-prose")).to_contain_text("Kai’s independent observation.")
-        await expect(kai.locator('.cm-content')).to_have_count(0)
+        if saved["version"] == current["version"]:
+            # The current version is the page itself (round 15 new P2-4): its address opens the page.
+            await expect(kai).to_have_url(re.compile(re.escape(self.doc_url) + r"$"))
+        else:
+            await expect(kai.locator(".doc-prose")).to_contain_text("Kai’s independent observation.")
+            await expect(kai.locator('.cm-content')).to_have_count(0)
         self.assertTrue(any(row["header"].get("operation") == "text" for row in self.frames["ada"]), "Real Yjs transport used")
 
     async def test_02_a_person_who_only_reads_sees_typing_and_publishes_no_caret(self):
@@ -289,8 +294,9 @@ class LiveEditingJourney(LiveFixture):
         # One bold span can be drawn in pieces (the writer's underline marks part of it), so its pieces are read together.
         await kai.wait_for_function("() => [...document.querySelectorAll('.wiki-editor .cm-md-strong')].map((el) => el.textContent).join('') === 'as it is typed'")
         await expect(kai.get_by_role("status").filter(has_text="Ada is here too")).to_be_visible()
-        await kai.goto(self.doc_url + "/versions/1")
-        await expect(kai.locator(".doc-prose")).not_to_contain_text("Reader sees this")
+        # The saved version 1 does not hold what is being typed (the current version by its address opens the page itself, round 15).
+        saved = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
+        self.assertNotIn("Reader sees this", saved["body"])
         self.assertFalse(any(row["direction"] == "sent" and row["header"].get("type") == "cursor" for row in self.frames["kai"]),
                          "A page open without writing publishes no caret")
 
@@ -428,7 +434,7 @@ class LiveEditingJourney(LiveFixture):
         field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute("contenteditable", "true")
         await expect(field).to_contain_text("Exact recovered text 🚀.")
-        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         self.assertIsNone(await ada.evaluate("key => sessionStorage.getItem(key)", f"flux:wiki-live:{self.ada_id}:{self.doc_id}"))
         live = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/live")
         self.assertEqual(live["body"].count("Exact recovered text 🚀."), 1)
@@ -742,7 +748,7 @@ class LiveEditingJourney(LiveFixture):
         await field.click()
         await ada.keyboard.press('Control+Home')
         await ada.keyboard.press('Delete')
-        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         await expect(field).to_contain_text('A' * 32)
         deleted = await confirmed_body('ada')
         exact_text(deleted['body'], 'A' * 99_998 + 'B')
@@ -763,7 +769,7 @@ class LiveEditingJourney(LiveFixture):
         exact_text(await copied_document(kai, peer), before)
         await expect(field).to_contain_text('BK')
         await expect(peer).to_contain_text('BK')
-        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         after_undo = await confirmed_body('ada', exact_local=False)
         exact_text(after_undo['body'], before)
         self.assertEqual(after_undo['generation'], latest['generation'])
@@ -940,7 +946,7 @@ class LiveEditingJourney(LiveFixture):
                     await ada.evaluate('title => { document.title = title; }', previous_title)
 
         await compose(ada_field)
-        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         await expect(kai_field).to_contain_text("日本 notes")
         for page in (ada, kai):
             text = await page.locator('.cm-content[aria-label="Page text"]').inner_text()
@@ -964,7 +970,7 @@ class LiveEditingJourney(LiveFixture):
             await ada.keyboard.press('Shift+ArrowLeft')
         await ada.keyboard.press('Backspace')
         await compose(ada_field)
-        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         # The peer's100k editor virtualizes the beginning while its caret stays there.
         # Reach the committed end through its real keyboard before inspecting that text.
         await kai_field.click()
@@ -1347,7 +1353,7 @@ class LiveEditingJourney(LiveFixture):
         await ada.keyboard.insert_text("x")
         editor = ada.locator("[data-live-wiki-editor]")
         await expect(editor).to_have_attribute("data-live-input-revision", "1", timeout=3000)
-        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         self.assertEqual(await ada.get_by_role("alert").count(), 0, "No input was refused")
         last = await ada.evaluate("""() => {
           const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
@@ -1379,7 +1385,7 @@ class LiveEditingJourney(LiveFixture):
         for key in ("Shift+ArrowLeft", "ArrowRight", "ArrowLeft", "Shift+ArrowRight"):
             await ada.keyboard.press(key)
         await ada.keyboard.insert_text("E")
-        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=SAVED)).to_be_visible()
         arrows = await ada.evaluate("window.__arrows")
         # Control: the document end is still the editor's own move, which the probe sees.
         self.assertEqual(arrows[0], ["End", False, True], arrows)

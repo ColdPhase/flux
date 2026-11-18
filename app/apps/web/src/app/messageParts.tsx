@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { AgentColour, ConversationMessage } from '@flux/contracts';
+import { agentNamed, ownerInLabel, type AgentColour, type ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles } from '../composer/Outbox';
 import { getMaterialVersion } from '../materials/api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { RefLink } from '../place/origin';
+import { useShellData } from './data';
+import { startsConversations } from '../people/api';
 import { MessageText } from './MessageText';
 import { ReceiptFaces } from './ReceiptFaces';
 import { clock, when } from './timeFormat';
@@ -88,7 +90,7 @@ export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, sele
  * explicit public handoff. Ordinary replies show no marker.
  */
 export function ContributionMark({ contribution }: { contribution: NonNullable<ConversationMessage['contribution']> }) {
-  return <span className="project-convo__source project-convo__contribution" data-contribution={contribution.kind}>{contribution.kind === 'blocker' ? 'Saved as the task blocker' : contribution.kind === 'came_of_it' ? 'What came of it' : 'Instruction for an agent'}</span>;
+  return <span className="project-convo__source project-convo__contribution" data-contribution={contribution.kind}>{contribution.kind === 'blocker' ? 'Saved as why it’s blocked' : contribution.kind === 'came_of_it' ? 'What came of it' : 'Instruction for an agent'}</span>;
 }
 
 export function SourceCitation({ materialId, version, onDenied }: { materialId: string; version: number; onDenied: (cause: unknown) => void }) {
@@ -114,7 +116,8 @@ export { AuthorFace } from '../ui';
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
 export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
-  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} />;
+  // A message's name line carries the "Agent" tag, as an answer shown to everyone does (#1232): the same name and the same look (round 15 ai P2-5).
+  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} hue={message.author.colour} tag />;
 }
 
 /**
@@ -179,15 +182,36 @@ export function shownAnswer(message: { via?: string | undefined; viaColour?: Age
   return message.via && message.viaColour ? { agent: message.via, colour: message.viaColour } : null;
 }
 
-const firstWord = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** "Hubert's Assistant" (the asker's first name and the agent's own name), and what a screen reader reads: "Hubert's Assistant, shown by Hubert". */
+/**
+ * The colour of a message's face (#1528): a shown answer's agent's, or an agent author's own, which every read carries; none for a person.
+ */
+export function messageHue(message: { via?: string | undefined; viaColour?: AgentColour | undefined } & ({ authorId: string } | { authorId: null; author: { colour?: AgentColour | undefined } })): AgentColour | undefined {
+  return shownAnswer(message)?.colour ?? (message.authorId === null ? message.author.colour : undefined);
+}
+
 export function shownLabel(shown: { agent: string }, asker: string): { label: string; spoken: string } {
-  const first = firstWord(asker);
-  return { label: `${first}'s ${shown.agent}`, spoken: `${first}'s ${shown.agent}, shown by ${first}` };
+  // The asker as an agent's label names its owner (C-56, #1424): their first name, or the whole marked name of someone removed, "Marek Zieliński
+  // (removed)'s Assistant" (train 37 rows 32-33).
+  const first = ownerInLabel(asker);
+  // The agent's own one label (`agentNamed`): the same name its own messages have, so one agent has one name (round 15 ai P2-5).
+  return { label: agentNamed(shown.agent, asker), spoken: `${agentNamed(shown.agent, asker)}, shown by ${first}` };
 }
 
 /** The name line of a shown answer: its label and the "Agent" tag, with "shown by" for a screen reader. */
-export function ShownAnswerName({ shown, asker }: { shown: { agent: string }; asker: string }) {
+export function ShownAnswerName({ shown, asker }: { shown: { agent: string; colour?: AgentColour }; asker: string }) {
   const { label } = shownLabel(shown, asker);
-  return <><strong><AgentIdentity name={label} icon={false} /></strong><span className="ui-vh">, shown by {firstWord(asker)}</span></>;
+  return <><strong><AgentIdentity name={label} icon={false} hue={shown.colour} /></strong><span className="ui-vh">, shown by {ownerInLabel(asker)}</span></>;
+}
+
+/**
+ * A person's name over their message: it opens the direct message with them (#592), for whoever can start one. A guest cannot (F-037), so for
+ * them it is the name alone, never a link to a conversation that would refuse them at the end (#1424); `removed` (their message carries
+ * `removedAuthorName`) is the name alone too.
+ */
+export function AuthorName({ workspaceId, authorId, name, removed = false }: { workspaceId: string; authorId: string; name: string; removed?: boolean }) {
+  const { workspace } = useShellData();
+  // Nor for someone removed from the company, "Stefan Kowal (removed)" (#1424, 2026-11-17): no direct message can start with them.
+  if (removed || !startsConversations(workspace)) return <>{name}</>;
+  return <RefLink className="project-convo__person" to={`/dm/new?workspace=${workspaceId}&with=${authorId}`} title={`Message ${name} directly`}>{name}</RefLink>;
 }

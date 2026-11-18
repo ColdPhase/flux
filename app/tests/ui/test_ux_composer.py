@@ -161,17 +161,17 @@ class UxSimplicityPartAComposer(unittest.TestCase):
         expect(page.get_by_role("heading", name="Propose a decision")).to_have_count(0)
         expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value("Order from the second supplier")
         expect(window.get_by_placeholder("What is being decided?")).to_be_visible()
-        expect(window.get_by_placeholder("Why this is the right call (optional)")).to_be_visible()
+        expect(window.get_by_placeholder("Why (optional)")).to_be_visible()
         expect(window.locator(".create__source")).to_contain_text(OPENING)
-        expect(window.get_by_role("button", name="Replace an accepted decision…")).to_be_visible()
+        expect(window.get_by_role("button", name="This replaces an older decision…")).to_be_visible()
         expect(window).not_to_contain_text("write access")
         # The words stay in the composer until the decision is proposed (closing the window loses nothing).
         window.get_by_role("button", name="Close", exact=True).click()
         expect(reply).to_have_value("/decide Order from the second supplier")
         reply.press("Enter")
         window = page.get_by_role("dialog", name="New decision")
-        # Replace an accepted decision… is a choice in the same window, and the keyboard goes on to it.
-        window.get_by_role("button", name="Replace an accepted decision…").click()
+        # This replaces an older decision… is a choice in the same window, and the keyboard goes on to it.
+        window.get_by_role("button", name="This replaces an older decision…").click()
         expect(window.get_by_label("Does it replace an earlier decision?")).to_be_focused()
         window.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
@@ -189,7 +189,7 @@ class UxSimplicityPartAComposer(unittest.TestCase):
             if found:
                 break
             page.wait_for_timeout(250)
-        self.assertIsNotNone(found, "the proposal was sent when the Undo window ended")
+        self.assertIsNotNone(found, "the proposal was sent")
         self.assertEqual(found["status"], "proposed")
         expect(reply).to_have_value("")
 

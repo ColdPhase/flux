@@ -1,3 +1,5 @@
+import type { AgentRuntimeClient } from './agent-runtime.js';
+
 export const API_VERSION = 'v1';
 export const SAMPLE_COMMAND_PATH = '/api/v1/integration/sample';
 
@@ -87,8 +89,16 @@ export interface FirstSteps {
   joined: FirstStepJoined[];
   /** A member whose card has a step left: the browser may add "Get notifications on this device" while it is not subscribed. Never alone: with no step left there is no card. */
   offerPush: boolean;
-  /** Everyone, for "Write your first message" (opens it with the composer ready); null when there is none. */
-  everyoneSpaceId: string | null;
+  /**
+   * Where "Write your first message" opens, with the composer ready (#1424): the space the person's invite link added them to while they are still
+   * in it, else Everyone; null when there is neither.
+   */
+  firstSpaceId: string | null;
+  /**
+   * The plans this server's agent runtime offers while `connect_ai` is left, for that step's line ("A Claude or ChatGPT plan, or an API key"):
+   * the programs the operator turned on and this version runs; empty otherwise. In this read, so Home asks nothing more (one read per screen, #1109).
+   */
+  plans: AgentRuntimeClient[];
 }
 /**
  * Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. A sign-up also carries the link it comes from (#1471):

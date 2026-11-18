@@ -11,7 +11,7 @@ import type { PaneCore } from './paneCore';
 export function useComposerDrafts({ me, project, conversation, composerId, writable, aiOff }: PaneCore) {
   const [asking, setAsking] = useState(false);
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
-  const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
+  const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation?.decision ? `decision:${conversation.decision.decisionId}` : conversation ? `conversation:${conversation.id}` : 'new');
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   if (aiOff && asking) setAsking(false);
   const composer = asking ? helperComposer : publicComposer;

@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { DomainError, type Principal } from '@flux/core';
-import type { Agent, Conversation, Decision, Material, Page, Project, TaskDiscussion, Workspace, WorkItem } from '@flux/contracts';
+import type { Agent, Conversation, Decision, Material, Page, Project, ProjectWorkView, TaskActivityPage, TaskDiscussion, WorkDetailProjection, Workspace, WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
 // Work items, decisions and results linked to conversations (issue #101): access for two
@@ -46,6 +46,34 @@ describe('work, decisions and results in a project', () => {
     material = json<Material>(await post(owner, `/api/v1/projects/${lamp.id}/materials`,
       { clientMutationId: randomUUID(), title: 'Low-light test plan', body: '5 lux, 20 gestures' }), 201);
     agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Lab helper', owner: 'self' }), 201);
+  });
+
+  test('a task made from your own message is yours; one made from someone else\'s keeps no owner (#1424 M)', async () => {
+    // Its own space, so the other tests' lists keep their counts.
+    const bench = await createProject(owner, ws.id, 'Own tasks', 'restricted');
+    await grant(owner, bench.id, partner, 'contributor');
+    await grant(owner, bench.id, viewer, 'contributor');
+    const mine = json<Conversation>(await post(partner, `/api/v1/projects/${bench.id}/conversations`,
+      { body: 'I will order the PIR sensor today.', clientMessageId: randomUUID() }), 201).messages[0]!;
+    const fromMine = json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Order the PIR sensor', sources: [{ type: 'message', id: mine.id }] }), 201);
+    assert.deepEqual(fromMine.owner, { kind: 'human', id: partner.id, name: 'work-partner' }, 'made from your own message, it is yours');
+    // Nobody is told of a task they gave themselves.
+    const stored = (await pool.query("SELECT data FROM events WHERE kind = 'project.work_created.v1' AND data->>'workId' = $1", [fromMine.id])).rows[0].data as Record<string, unknown>;
+    assert.equal(stored.assignedTo, undefined);
+    // An owner named in the command wins, and so does "No owner" (null).
+    const nobody = json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Maybe order two', owner: null, sources: [{ type: 'message', id: mine.id }] }), 201);
+    assert.equal(nobody.owner, null);
+    const given = json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Check the order', owner: { kind: 'human', id: viewer.id }, sources: [{ type: 'message', id: mine.id }] }), 201);
+    assert.equal(given.owner?.id, viewer.id);
+    // Someone else's message keeps the plain rule: nobody owns it until someone is chosen, even when it names the maker.
+    const asked = json<Conversation>(await post(owner, `/api/v1/projects/${bench.id}/conversations`,
+      { body: 'work-viewer, can you bake the enclosure tonight?', clientMessageId: randomUUID() }), 201).messages[0]!;
+    const fromTheirs = json<WorkItem>(await post(viewer, `/api/v1/projects/${bench.id}/work`, { title: 'Bake the enclosure', sources: [{ type: 'message', id: asked.id }] }), 201);
+    assert.equal(fromTheirs.owner, null);
+    // A task with no message is as before.
+    assert.equal(json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Sweep the bench' }), 201).owner, null);
+    // Done, so the partner's assigned work below is only what the other tests give them.
+    json<WorkItem>(await patch(partner, `/api/v1/work/${fromMine.id}`, { status: 'done' }, { 'if-match': `"${fromMine.version}"` }), 200);
   });
 
   test('work is created from a message in one action and the message stays in place', async () => {
@@ -292,5 +320,44 @@ describe('work, decisions and results in a project', () => {
       assert.equal(after.total, 0, 'the list filter hides work in projects the owner can no longer read');
       assert.equal((await patch(partner, `/api/v1/work/${work.id}`, { status: 'done' }, { 'if-match': '"1"' })).status, 404);
     } finally { await Promise.all([partnerLive.close(), outsiderLive.close()]); }
+  });
+
+  test('a task owned by, or waiting for, someone removed from the company says so where the name is shown, until Restore (personas-33)', async () => {
+    const bench = await createProject(owner, ws.id, 'Removed people', 'restricted');
+    const tomek = await person('work-tomek');
+    await addMember(owner, ws.id, tomek, 'member');
+    await grant(owner, bench.id, tomek, 'contributor');
+    const given = json<WorkItem>(await post(owner, `/api/v1/projects/${bench.id}/work`, { title: 'Sand the lamp base', owner: { kind: 'human', id: tomek.id } }), 201);
+    const waiting = json<WorkItem>(await post(owner, `/api/v1/projects/${bench.id}/work`, { title: 'Paint the lamp base' }), 201);
+    json(await patch(owner, `/api/v1/work/${waiting.id}`, { status: 'blocked', waitingFor: { kind: 'human', id: tomek.id } }, { 'if-match': `"${waiting.version}"` }), 200);
+    const names = async () => {
+      const one = json<WorkItem>(await get(owner, `/api/v1/work/${given.id}`), 200);
+      const other = json<WorkItem>(await get(owner, `/api/v1/work/${waiting.id}`), 200);
+      const listed = json<{ items: WorkItem[] }>(await get(owner, `/api/v1/projects/${bench.id}/work`), 200).items;
+      // What the web board, List and panel read (personas-36 P3 2): the native rows and the task's detail, and the panel's history.
+      const board = json<ProjectWorkView>(await get(owner, `/api/v1/projects/${bench.id}/work-view?kinds=work&limit=100`), 200).items;
+      const row = (id: string) => board.find((item) => item.id === id);
+      const panel = json<WorkDetailProjection>(await get(owner, `/api/v1/projects/${bench.id}/work-objects/work/${given.id}`), 200);
+      const panelOwner = panel.object.kind === 'work' ? panel.object.owner?.name : undefined;
+      const history = json<TaskActivityPage>(await get(owner, `/api/v1/work/${waiting.id}/activity`), 200).items;
+      const waitedFor = history.find((entry) => entry.kind === 'status')?.status?.waitingFor?.name;
+      const rowOf = (id: string) => { const found = row(id); return found?.kind === 'work' ? found : undefined; };
+      return [one.owner?.name, other.waitingFor?.name, listed.find((item) => item.id === given.id)?.owner?.name, listed.find((item) => item.id === waiting.id)?.waitingFor?.name,
+        rowOf(given.id)?.owner?.name, rowOf(waiting.id)?.waitingFor?.name, panelOwner, waitedFor];
+    };
+    assert.deepEqual(await names(), Array(8).fill('work-tomek'));
+    // Tomek moves a task himself, so the history names him as who did it.
+    const done = json<WorkItem>(await post(tomek, `/api/v1/projects/${bench.id}/work`, { title: 'Oil the lamp base' }), 201);
+    json(await patch(tomek, `/api/v1/work/${done.id}`, { status: 'done' }, { 'if-match': `"${done.version}"` }), 200);
+    const doneBy = async () => json<TaskActivityPage>(await get(owner, `/api/v1/work/${done.id}/activity`), 200).items[0]?.actor.name;
+    assert.equal(await doneBy(), 'work-tomek');
+    await removeMember(owner, ws.id, tomek);
+    assert.deepEqual(await names(), Array(8).fill('work-tomek (removed)'), 'the panel, the board and the cards say who is gone');
+    assert.equal(await doneBy(), 'work-tomek (removed)', 'the history says who is gone: "work-tomek (removed) marked it done"');
+    const still = json<WorkItem>(await get(owner, `/api/v1/work/${given.id}`), 200);
+    assert.equal(still.owner?.id, tomek.id, 'the task stays theirs until someone gives it to another person');
+    expectStatus(await post(owner, `/api/v1/workspaces/${ws.id}/removed-people/${tomek.id}/restore`, {}), 201);
+    assert.deepEqual(await names(), Array(8).fill('work-tomek'), 'Restore brings the plain name back');
+    assert.equal(await doneBy(), 'work-tomek');
   });
 });

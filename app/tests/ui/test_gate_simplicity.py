@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 import unittest
 import uuid
 
@@ -16,6 +17,15 @@ from test_app_shell import ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 DESKTOP = {"width": 1440, "height": 900}
 THOUGHTS = ("Six sensors for twelve beds", "Far beds: test LoRa range first", "Borrow two sensors from the school?")
 TASKS = ("Buy two level sensors", "Mesh in front of the diverter", "Paint the rain barrel")
+# The map's title pill: its height, where its words start and how much room is left to their right (the empty map's title and a made map's switcher).
+HEAD_BOX = """() => {
+  const head = document.querySelector('.sk-head');
+  const label = head.querySelector('.sk-title, .wiki-switch__t');
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const text = range.getBoundingClientRect(), box = head.getBoundingClientRect();
+  return { height: box.height, left: text.left - box.left, right: box.right - text.right };
+}"""
 
 
 class GateSimplicity(unittest.TestCase):
@@ -51,8 +61,10 @@ class GateSimplicity(unittest.TestCase):
         assert response.status == status, f"{path}: {response.status} {response.text()}"
         return response.json() if response.text() else None
 
-    def page(self, phone: bool = False):
-        options = dict(viewport=PHONE, device_scale_factor=3, has_touch=True, is_mobile=True) if phone else dict(viewport=DESKTOP)
+    def page(self, phone: bool = False, zoomed: bool = False):
+        # `zoomed`: the computer at 200 % (a 1440 × 900 screen shows 720 × 450 CSS pixels).
+        options = dict(viewport=PHONE, device_scale_factor=3, has_touch=True, is_mobile=True) if phone \
+            else dict(viewport={"width": 720, "height": 450}, device_scale_factor=2) if zoomed else dict(viewport=DESKTOP)
         context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.state, locale="en-GB", **options)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -87,6 +99,10 @@ class GateSimplicity(unittest.TestCase):
         tools = page.get_by_role("toolbar", name="Map tools")
         expect(tools.get_by_role("button")).to_have_count(1)
         shot(page, "gate-empty-map-desktop")
+        # The title pill is the same box before and after the first thought (release audit P3 1): the words start at the same place, the pill is as
+        # tall, and the words are inside it with room to spare on the right.
+        empty_pill = page.evaluate(HEAD_BOX)
+        self.assertGreaterEqual(empty_pill["right"], 10, f"the title has room inside its pill: {empty_pill}")
         # Visiting made nothing; the first thought makes the map and opens a draft ready to type.
         self.assertEqual(self.maps_of(page, project), 0)
         tools.get_by_role("button", name="Thought", exact=True).click()
@@ -106,9 +122,97 @@ class GateSimplicity(unittest.TestCase):
         page.reload()
         expect(page.locator(".sk-node")).to_have_count(1)
         expect(page.locator(".sk-hint")).to_contain_text("Drag empty space to move around")
+        filled_pill = page.evaluate(HEAD_BOX)
+        self.assertAlmostEqual(filled_pill["height"], empty_pill["height"], delta=1, msg=f"the pill keeps its height: {empty_pill} then {filled_pill}")
+        self.assertAlmostEqual(filled_pill["left"], empty_pill["left"], delta=1, msg=f"the words keep their place: {empty_pill} then {filled_pill}")
         # Back leaves the tab instead of returning to the empty canvas.
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
+
+    def test_01b_the_first_thought_of_an_empty_map_keeps_the_focus_like_the_next(self):
+        """Personas-35 D11-30: after the first thought of an empty map, focus fell to the page's content instead of the new thought (its field
+        is disabled while it saves, and the page's arrival gave the focus away meanwhile); the second thought had it. Every save is held for a
+        moment here, as on a slow connection."""
+        page = self.page()
+        project = self.empty_space(page, f"Seed swap {uuid.uuid4().hex[:4]}")
+
+        def slow(route):
+            if route.request.method == "POST":
+                time.sleep(0.9)
+            route.continue_()
+        page.route(re.compile(r".*/api/v1/sketches/[0-9a-f-]{36}/thoughts(\?.*)?$"), slow)
+        page.goto(f"/projects/{project}/map")
+        tools = page.get_by_role("toolbar", name="Map tools")
+        tools.get_by_role("button", name="Thought", exact=True).click()
+        draft = page.get_by_role("textbox", name="Thought text")
+        expect(draft).to_be_focused()
+        draft.fill("Chairs: ask the school hall first")
+        draft.press("Enter")
+        first = page.locator(".sk-node").filter(has_text="Chairs: ask the school hall first")
+        expect(first).to_be_focused()
+        page.wait_for_timeout(800)
+        expect(first).to_be_focused()
+        self.assertEqual(page.evaluate("() => document.activeElement?.id"), "", "not the page's content")
+        # The second thought takes it the same way.
+        tools.get_by_role("button", name="Thought", exact=True).click()
+        draft = page.get_by_role("textbox", name="Thought text")
+        expect(draft).to_be_focused()
+        draft.fill("Tables: the fair committee has twelve")
+        draft.press("Enter")
+        second = page.locator(".sk-node").filter(has_text="Tables: the fair committee has twelve")
+        expect(second).to_be_focused()
+
+    def test_01c_the_first_thought_of_an_empty_map_lands_in_plain_view(self):
+        """personas-37 P2: Map › Thought › words › Enter on an empty map drew the draft in the bottom-right corner (the canvas scrolled to
+        it) and the saved thought under the minimap and the zoom (Chromium) or under the dock with "Added … · Saved" over its title
+        (WebKit): it had the focus but could not be seen. The map's camera and the thought's place must agree, at 100 % and 200 % and on
+        the phone."""
+        overlaps = """(node) => {
+          const r = node.getBoundingClientRect(), canvas = document.querySelector('.sk-canvas').getBoundingClientRect();
+          const hit = (o) => r.left < o.right && r.right > o.left && r.top < o.bottom && r.bottom > o.top;
+          const over = [...document.querySelectorAll('.sk-head, .sk-corner, .sk-minimap, .sk-zoom, .sk-dock__row, .sk-dock .sk-line, .sk-phone-tools, .ui-toast')]
+            .filter((o) => { const b = o.getBoundingClientRect(); return b.width && b.height && hit(b); }).map((o) => o.className);
+          const inside = r.left >= canvas.left - 1 && r.right <= canvas.right + 1 && r.top >= canvas.top - 1 && r.bottom <= canvas.bottom + 1 && r.bottom <= innerHeight;
+          return { inside, over, box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] };
+        }"""
+        for phone, zoomed, label in ((False, False, "computer"), (False, True, "computer at 200 %"), (True, False, "phone")):
+            with self.subTest(label):
+                page = self.page(phone=phone, zoomed=zoomed)
+                project = self.empty_space(page, f"Repair café {uuid.uuid4().hex[:4]}")
+                page.goto(f"/projects/{project}/map")
+                expect(page.locator(".sk-first")).to_be_visible()
+                page.get_by_role("button", name="Thought", exact=True).last.click()
+                draft = page.get_by_role("textbox", name="Thought text")
+                expect(draft).to_be_focused()
+                if not phone:
+                    # The draft is drawn where the thought will be, in view: the canvas does not scroll away to find it.
+                    ghost = page.locator(".sk-ghost--draft")
+                    expect(ghost).to_be_visible()
+                    where = ghost.evaluate(overlaps)
+                    self.assertTrue(where["inside"] and not where["over"], f"{label}: the draft is in plain view: {where}")
+                text = f"Ask the library for the back room {uuid.uuid4().hex[:4]}"
+                draft.fill(text)
+                draft.press("Enter")
+                node = page.locator(".sk-node").filter(has_text=text)
+                expect(node).to_be_focused()
+                for wait in (100, 1200):
+                    page.wait_for_timeout(wait)
+                    expect(node).to_be_focused()
+                    where = node.evaluate(overlaps)
+                    self.assertTrue(where["inside"], f"{label}: the new thought is inside the visible map: {where}")
+                    self.assertEqual(where["over"], [], f"{label}: nothing floats over the new thought: {where}")
+                if not phone:
+                    # The next thought lands in view too, clear of the first.
+                    page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
+                    draft = page.get_by_role("textbox", name="Thought text")
+                    second = f"Tables: the fair committee has twelve {uuid.uuid4().hex[:4]}"
+                    draft.fill(second)
+                    draft.press("Enter")
+                    node = page.locator(".sk-node").filter(has_text=second)
+                    expect(node).to_be_focused()
+                    page.wait_for_timeout(600)
+                    where = node.evaluate(overlaps)
+                    self.assertTrue(where["inside"] and not where["over"], f"{label}: the second thought is in plain view: {where}")
 
     def test_02_a_double_click_on_the_empty_canvas_starts_the_map_too(self):
         page = self.page()
@@ -124,6 +228,11 @@ class GateSimplicity(unittest.TestCase):
         project = self.empty_space(page, f"Phone ideas {uuid.uuid4().hex[:4]}")
         page.goto(f"/projects/{project}/map")
         expect(page.locator(".sk-first")).to_have_text("An empty map. Start with Thought.")
+        # The map keeps its title on the phone too (README §7 Maps), and the hint is one line, not a half-width column (release audit P3 2, 3).
+        expect(page.locator(".sk-head")).to_contain_text("Untitled map")
+        hint = page.locator(".sk-first").bounding_box()
+        self.assertGreater(hint["width"], 180, f"the hint has the room it needs, not a half-width column: {hint}")
+        self.assertLess(hint["height"], 30, f"the hint is one line: {hint}")
         expect(page.get_by_text("Map ideas for")).to_have_count(0)
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
         # One add on the screen: the phone's floating "+" steps aside for it.

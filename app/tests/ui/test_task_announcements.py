@@ -196,7 +196,7 @@ class TaskAnnouncements(unittest.TestCase):
         assert_author_column(self, made, DESKTOP["width"], "task event author")
         expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
-        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
         # Authored events share the creator's column, while retaining no message actions or replies.
         for work_id in (self.ids["from_message"], self.ids["measure"]):
             item = self.notice(page, work_id)
@@ -221,9 +221,9 @@ class TaskAnnouncements(unittest.TestCase):
         made.get_by_role("button", name=opens_task(FROM_MESSAGE)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
-        # The task made from the question also shows under the question itself, as before.
+        # The task shows once (#1424): its card, not also a chip under the question it was made from.
         question = page.locator(f"#message-{self.ids['question']}")
-        expect(question.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FROM_MESSAGE) + "$"))).to_be_visible()
+        expect(question.locator(".ws-chip")).to_have_count(0)
 
     def test_03_the_first_contribution_is_the_tasks_root_in_its_discussion(self) -> None:
         page = self.page("ada")
@@ -244,6 +244,9 @@ class TaskAnnouncements(unittest.TestCase):
         composer.fill("Numbers at 5 lux: 97% of waves caught.")
         page.locator("#details").get_by_role("button", name="Send to task").click()
         expect(activity.locator("li[data-message-id]").filter(has_text="Numbers at 5 lux")).to_be_visible()
+        # Every discussion lists oldest first (round 8, #1424): the root first, the newest at the bottom above the field.
+        expect(activity.locator("li[data-message-id]").first).to_contain_text(FIRST_WORD)
+        expect(activity.locator("li[data-message-id]").last).to_contain_text("Numbers at 5 lux")
         # Sending is instant (#264): the message shows at once and is stored a moment later.
         expect(page.locator("#details [data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['measure']}/discussion", status=200)
@@ -297,7 +300,7 @@ class TaskAnnouncements(unittest.TestCase):
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
         made = next(item for item in work["items"] if item["title"] == LATER)
         expect(self.notice(page, made["id"])).to_have_count(1)
-        expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
         self.assertEqual(self.counts(page), (before[0] + 1, before[1] + 1, before[2]), "one task and one announcement; no root")
 
     def test_07_another_member_sees_announcements_and_opens_the_task(self) -> None:

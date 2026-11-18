@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
+import { isSearchStopWord, joinHyphenatedWords } from '@flux/contracts';
 import { AUDIENCE_KEYS, type SearchAudienceRows, type SearchKindRow, type SearchPlanRows, type SearchRowRecord, type SearchTextRow } from './repositories/search.js';
 import type { DbExecutor } from './repositories/push.js';
 import { openRows, sealOf } from './sealing.js';
@@ -16,8 +17,8 @@ import { cleanName } from './display-name.js';
  * configuration's: lowercase, no stemming, the last word also as a prefix, websearch quotes, `or` and `-word`, and a title
  * trigram match that tolerates typos. Plain words (`plan.anyWord`, F-042, #1293) match as they do in a plain space, but without
  * stems and accents: any of the words, the word being typed also as a prefix, and a title with a typo in a word of four letters or
- * more; a document ranks by the words it holds, a rarer word (within the audience's own documents) weighing more, a word in the
- * title more than one in the body. Scores approximate `ts_rank` and `word_similarity`, so order between the two sources is
+ * more; a document ranks first by how many of the words it holds, then by which, a rarer word (within the audience's own documents)
+ * weighing more, a word in the title more than one in the body. Scores approximate `ts_rank` and `word_similarity`, so order between the two sources is
  * approximate. Access is decided before this runs: only the partitions of the audience keys the reader may see are read.
  */
 
@@ -57,6 +58,13 @@ const REBUILD_AFTER_MS = 23 * 3_600_000;
 
 const WORD = /[\p{L}\p{N}]+/gu;
 const wordsOf = (text: string) => text.toLowerCase().match(WORD) ?? [];
+/**
+ * A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). A match starts only
+ * where a word starts: without the look-behind, a 100,000-letter word with no hyphen was tried from every letter to its end, seconds of the API's
+ * time per message (pre-review P2-1); the matches are the same, since a match from inside a word would start at that word's beginning anyway.
+ */
+const HYPHENATED = /(?<![\p{L}\p{N}])[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
+export const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
 
 /** Trigrams of `text` in order, with duplicates, as pg_trgm pads each word: two spaces before, one after. */
 function trigramsOf(text: string): string[] {
@@ -213,8 +221,9 @@ export class Partition {
         if (list) { list.push(index); postings += POSTING_COST; } else { map.set(item, [index]); postings += POSTING_COST + TERM_COST + 2 * item.length; }
       }
     };
-    post(this.title, wordsOf(doc.title));
-    post(this.body, wordsOf(doc.body.slice(0, BODY_CHARS)));
+    post(this.title, [...wordsOf(doc.title), ...joinedOf(doc.title)]);
+    const body = doc.body.slice(0, BODY_CHARS);
+    post(this.body, [...wordsOf(body), ...joinedOf(body)]);
     post(this.grams, trigramsOf(doc.title));
     doc.indexCost = postings;
     this.cost += doc.cost + postings;
@@ -288,7 +297,8 @@ function clauseDocs(clause: Clause, lookup: Lookup): Set<number> {
   }));
 }
 
-interface Hit { doc: IndexDoc; score: number }
+/** `whole`: it holds one of the words whole; `typoOnly`: only a typo in its title found it (shown only when no hit holds a word whole). */
+interface Hit { doc: IndexDoc; score: number; whole?: boolean; typoOnly?: boolean }
 
 /** The matches of a plan in one partition (before kinds and the cursor), with their scores. */
 function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRows, accept: (doc: IndexDoc) => boolean, work: SealedSearchWork): Hit[] {
@@ -300,6 +310,8 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     for (const clause of group.negative) for (const index of clauseDocs(clause, lookup)) found.delete(index);
     for (const index of found) matched.add(index);
   }
+  const whole = new Set(compiled.any ? matched : []);
+  const typoOnly = new Set<number>();
   if (compiled.prefix) {
     const sets = compiled.prefix.exact.map((word) => lookup.both(word, false));
     sets.push(lookup.both(compiled.prefix.last, true));
@@ -318,14 +330,19 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     for (const [index, count] of shared) {
       if (count < needed || matched.has(index)) continue;
       const value = wordSimilarity(grams, trigramsOf(part.docs[index]!.title));
-      if (value >= SIMILARITY) { matched.add(index); similarity.set(index, Math.max(similarity.get(index) ?? 0, value)); }
+      if (value >= SIMILARITY) { matched.add(index); typoOnly.add(index); similarity.set(index, Math.max(similarity.get(index) ?? 0, value)); }
     }
   }
   // Plain words: a word's weight is how rare it is among this audience's documents (the BM25 idf), so a document with the rare word ranks first.
   const weights = new Map<string, number>();
   if (compiled.any) for (const term of compiled.terms) { const held = lookup.both(term.word, term.prefix).size; weights.set(term.word, Math.log(1 + (part.live - held + 0.5) / (held + 0.5))); }
   const hits: Hit[] = [];
+  const at = new Map<Hit, number>();
   const queryGrams = compiled.queryGrams;
+  // As in the BM25 statement, a hit that holds all the words ranks above one that holds fewer, whatever its kind (personas-37): the words that
+  // are not little words count (all of them when every word is little), and the score is `(held + rank) / (counted + 1)`, in (0, 1).
+  const content = compiled.terms.filter((term) => !isSearchStopWord(term.word));
+  const counted = compiled.any ? (content.length ? content : compiled.terms) : [];
   for (const index of matched) {
     const doc = part.docs[index]!;
     if (!accept(doc)) continue;
@@ -339,11 +356,19 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     }
     rank = total ? rank / total : 0;
     const closeness = similarity.get(index) ?? (doc.title ? Math.max(0, ...(compiled.any ? compiled.typoGrams : [queryGrams]).map((grams) => wordSimilarity(grams, trigramsOf(doc.title)))) : 0);
-    let score = Math.round((rank + 0.5 * closeness) * 1e6);
+    const own = rank + 0.5 * closeness;
+    const held = counted.filter((term) => lookup.both(term.word, term.prefix).has(index)).length;
+    let score = Math.round((counted.length ? (held + Math.min(own / 1.5, 0.999999)) / (counted.length + 1) : own) * 1e6);
     if (plan.number !== null && doc.kind === 'work' && doc.body.split('\n', 1)[0] === `#${plan.number}`) score += 10 * 1e6;
-    hits.push({ doc, score });
+    const hit: Hit = { doc, score, whole: whole.has(index), typoOnly: typoOnly.has(index) };
+    hits.push(hit);
+    at.set(hit, index);
   }
-  return hits;
+  // People's search cuts a hit that holds only the little words of the query while it has other words, as the BM25 statement does
+  // (`isSearchStopWord`, persona round 6): a hit holding whole words must hold one of the others (the word being typed as its prefix).
+  if (!plan.cutWeak || !compiled.any || !content.length || content.length === compiled.terms.length) return hits;
+  const numbered = (hit: Hit) => plan.number !== null && hit.doc.kind === 'work' && hit.doc.body.split('\n', 1)[0] === `#${plan.number}`;
+  return hits.filter((hit) => !hit.whole || numbered(hit) || content.some((term) => lookup.both(term.word, term.prefix).has(at.get(hit)!)));
 }
 
 function mark(text: string, compiled: Compiled, range?: [number, number]): SearchTextRow {
@@ -453,7 +478,10 @@ export class SealedSearchIndex {
       if (!visible.has(audience) || !part.live) continue;
       hits.push(...searchPartition(part, compiled, plan, accept, work));
     }
-    return { hits, work };
+    // A hit found only by a typo in its title is left out when another (of the kinds asked for) holds one of the words whole: the BM25
+    // statement's rule ("price list" does not list "Kasia Lis", one edit from "list", beside the price list itself).
+    const anyWhole = hits.some((hit) => hit.whole && (!plan.kinds?.length || plan.kinds.includes(hit.doc.kind)));
+    return { hits: anyWhole ? hits.filter((hit) => !hit.typoOnly) : hits, work };
   }
 }
 
@@ -520,6 +548,12 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
       break;
     case 'thought':
       for (const r of await rowsOf(db, 'sketch_thoughts', sql`SELECT id, workspace_id, text FROM sketch_thoughts WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.text), body: '' });
+      break;
+    // A file of an encrypted space is found by its name only (#1424 B, migration 0088): its row is the name's placeholder, never its text.
+    case 'file':
+      for (const r of await rowsOf(db, 'project_files', sql`SELECT id, workspace_id, name FROM project_files WHERE id = ANY(${uuids(ids)}) AND published_at IS NOT NULL`)) {
+        found.set(String(r.id), { title: str(r.name), body: '' });
+      }
       break;
     default: break;
   }
@@ -731,10 +765,17 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   const workspaceNames = new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, name FROM workspaces WHERE id = ${index.workspaceId}::uuid`)).map((r) => [r.id, r.name]));
   const humans = ids((doc) => (doc.author?.kind === 'human' ? doc.author.id : null));
   const people = humans.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, ${cleanName(sql`name`)} AS name FROM auth_users WHERE id = ANY(${sql.param(humans)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
+  // Who of them left the company or was removed, as the SQL path reads it (#1424, 2026-11-17): named "Stefan Kowal (removed)".
+  const removed = humans.length ? new Set((await get<{ user_id: string }>(sql`SELECT r.user_id FROM workspaces w JOIN workspace_removed_people r
+    ON r.workspace_id = coalesce(w.company_workspace_id, w.id) WHERE w.id = ${index.workspaceId}::uuid AND r.user_id = ANY(${sql.param(humans)}::text[])`)).map((r) => r.user_id)) : new Set<string>();
   const agentIds = ids((doc) => (doc.author?.kind === 'agent' ? doc.author.id : null)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
   const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, ${cleanName(sql`name`)} AS name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));
   const versions = materialIds.length ? new Map((await get<{ id: string; current_version: number }>(sql`SELECT id::text AS id, current_version FROM project_materials WHERE id = ANY(${uuids(materialIds)})`)).map((r) => [r.id, Number(r.current_version)])) : new Map<string, number>();
+  // A file hit opens its message (the SQL path reads it beside the row).
+  const fileIds = ids((doc) => (doc.kind === 'file' ? doc.objectId : null));
+  const fileMessages = fileIds.length ? new Map((await get<{ id: string; message_id: string | null }>(sql`SELECT id::text AS id, message_id::text AS message_id FROM project_files
+    WHERE id = ANY(${uuids(fileIds)})`)).map((r) => [r.id, r.message_id])) : new Map<string, string | null>();
   // A DM is named by its title (sealed), else by the other people in it.
   const dmIds = ids((doc) => (doc.kind === 'dm_message' ? doc.parentId : null));
   const dmNames = new Map<string, string | null>();
@@ -763,7 +804,9 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
       sketchTitle: doc.kind === 'thought' && doc.parentId ? index.doc(`sketch:${doc.parentId}`)?.title ?? null : null,
       workNumber: doc.number, version: doc.version, currentVersion: versions.get(doc.objectId) ?? null, status: doc.status, title, snippet, hasBody: doc.body.length > 0,
       authorName: doc.author ? (doc.author.kind === 'human' ? people.get(doc.author.id) : agents.get(doc.author.id)) ?? null : null,
+      authorRemoved: doc.author?.kind === 'human' && removed.has(doc.author.id),
       author: doc.author, at: doc.at,
+      ...(doc.kind === 'file' ? { messageId: fileMessages.get(doc.objectId) ?? null } : {}),
     };
   });
 }

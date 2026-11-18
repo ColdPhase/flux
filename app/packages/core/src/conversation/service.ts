@@ -1,5 +1,5 @@
 import type {
-  AgentColour, Conversation, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
+  AgentColour, Conversation, DecisionDiscussion, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
   CreateMaterialCommand, EditMessageCommand, Material, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, SentConversationMessage, UpdateMaterialCommand,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
@@ -18,6 +18,10 @@ export interface ConversationPort {
   createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<Conversation>;
   /** A person's reply also answers what they were asked or mentioned in this conversation (#1170): `answered` names those Inbox items. */
   sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<SentConversationMessage>;
+  /** A decision's one discussion (#1424): the thread on its card, read by whoever reads its space; empty before anyone wrote. */
+  decisionDiscussion(principal: Principal, decisionId: string, window: ReturnType<typeof normalizeConversationWindow>): Promise<DecisionDiscussion>;
+  /** A message about a decision (#1424): the first starts the thread on its card, the others are replies in it. */
+  discussDecision(principal: Principal, decisionId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<SentConversationMessage>;
   /** The author changes the words of their own message in place (#1006); only the author, with write access, on a plain message. */
   editMessage(principal: Principal, conversationId: string, messageId: string, input: ReturnType<typeof normalizeMessageEdit>): Promise<ConversationMessage>;
   /** The author deletes their own message (#1006): a marker stays in its place; the words, its files and its notices go. */
@@ -42,6 +46,10 @@ export function conversationUseCases(port: ConversationPort) {
       port.createConversation(principal, projectId, { ...normalizeMessage(command), via: via ?? null, viaColour: via ? viaColour ?? null : null }),
     sendMessage: (principal: Principal, conversationId: string, command: SendMessageCommand, via?: string, viaColour?: AgentColour) =>
       port.sendMessage(principal, conversationId, { ...normalizeMessage(command), via: via ?? null, viaColour: via ? viaColour ?? null : null }),
+    decisionDiscussion: (principal: Principal, decisionId: string, query?: ConversationWindowQuery) =>
+      port.decisionDiscussion(principal, decisionId, normalizeConversationWindow(query)),
+    discussDecision: (principal: Principal, decisionId: string, command: SendMessageCommand) =>
+      port.discussDecision(principal, decisionId, { ...normalizeMessage(command), via: null, viaColour: null }),
     editMessage: (principal: Principal, conversationId: string, messageId: string, command: EditMessageCommand) =>
       port.editMessage(principal, conversationId, messageId, normalizeMessageEdit(command)),
     removeMessage: (principal: Principal, conversationId: string, messageId: string) => port.removeMessage(principal, conversationId, messageId),

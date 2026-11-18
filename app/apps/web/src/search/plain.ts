@@ -7,16 +7,29 @@ import type { SearchText } from '@flux/contracts';
 const OPEN = '\uE000';
 const CLOSE = '\uE001';
 
+/** Tags out, repeated until none is left (a tag can hide inside another: `<<b>script>`), then any `<` or `>` a cut tag left at either end of
+ * the slice, so no tag survives the cleaning (CodeQL js/incomplete-multi-character-sanitization). The row shows text, never HTML. */
+function withoutTags(text: string): string {
+  let current = text;
+  for (;;) {
+    const next = current.replace(/<[^<>]*>/g, '');
+    if (next === current) break;
+    current = next;
+  }
+  return current.replace(/[<>]/g, '');
+}
+
 function clean(text: string): string {
-  return text
-    .replace(/\r\n?/g, '\n')
-    .replace(/<[^>]+>/g, '')
+  return withoutTags(text.replace(/\r\n?/g, '\n'))
     // Block markers at the start of a line: headings, quotes, list bullets, numbered lists.
     .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)/gm, '')
     // Table separator rows, then the cell pipes.
     .replace(/^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*$/gm, '')
     .replace(/^[ \t]*\|/gm, '').replace(/\|[ \t]*$/gm, '')
     .replace(/[ \t]*\|[ \t]*/g, ' · ')
+    // A Wiki page named in a message, `[[Opening checklist]]`, is its title; a slice can cut it at either end.
+    .replace(/\[\[([^\]\n]{1,160})\]\]/g, '$1')
+    .replace(/^\[\[|\]\]$/g, '')
     // Images and links keep their words; code, emphasis and strike-through markers go.
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     // A slice can start or end inside a link (CW-4): its target goes, its words stay. `Pickup ideas](flux:sketch/…)` reads

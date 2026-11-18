@@ -13,7 +13,7 @@ import { callSupervisor, createRuntimeManagerClient, runtimeManagerPort, CONSOLE
 import WebSocket from 'ws';
 import { Browser } from './support/http.js';
 import { pool,db,connectionString } from './support/db.js';
-import { startTestSlot, portOf, slotSecret } from './support/runtime-slot.js';
+import { claimRuntimeSlot, startTestSlot, portOf, slotSecret } from './support/runtime-slot.js';
 import { pastedLine } from './support/runtime-login.js';
 
 const origin='http://127.0.0.1:18279';
@@ -54,7 +54,7 @@ async function socket(browser:Browser) {
 }
 
 test('two actual API processes share one-use tickets and operation ownership across restart and real PTY disconnect', { timeout:40_000 },async()=>{
-  const slot=await startTestSlot({ slot:'runtime-998',enabled:['claude_code'] }),managerSecret=slotSecret();
+  const slot=await startTestSlot({ slot:await claimRuntimeSlot(pool,{ state:'unknown' }),enabled:['claude_code'] }),managerSecret=slotSecret();
   const manager=createManagerServer({ secret:managerSecret,log:()=>undefined,slots:new Map([[slot.config.slot,{ host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret }]]) });
   await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
   const managerUrl=`http://127.0.0.1:${(manager.address() as {port:number}).port}`;
@@ -108,12 +108,12 @@ test('two actual API processes share one-use tickets and operation ownership acr
     assert.equal((await b.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}})).status,409,'disconnect never grants same-binding replacement');
   } finally {
     for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
-    await slot.close();if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+    await slot.close();if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1',[slot.config.slot]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
 
 test('a held real manager response arriving after a second HTTP process requests sign-out is explicitly superseded', { timeout:30_000 },async()=>{
-  const slot=await startTestSlot({ slot:'runtime-998',enabled:['claude_code'] }),managerSecret=slotSecret();
+  const slot=await startTestSlot({ slot:await claimRuntimeSlot(pool,{ state:'unknown' }),enabled:['claude_code'] }),managerSecret=slotSecret();
   const manager=createManagerServer({ secret:managerSecret,log:()=>undefined,slots:new Map([[slot.config.slot,{ host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret }]]) });
   // Controlled network barrier around the actual manager result, after real CLI status finished.
   // No fake DB result/clock and no product test hook. Admission tx must already be released.
@@ -158,13 +158,13 @@ test('a held real manager response arriving after a second HTTP process requests
   }finally{
     release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));await slot.close();
-    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1',[slot.config.slot]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
 
 
 test('API crash with an undelivered old logout requires full recovery; late logout cannot delete the fresh login', { timeout:30_000 },async()=>{
-  const slot=await startTestSlot({slot:'runtime-998',enabled:['claude_code']}),managerSecret=slotSecret();
+  const slot=await startTestSlot({ slot:await claimRuntimeSlot(pool,{ state:'unknown' }),enabled:['claude_code'] }),managerSecret=slotSecret();
   const target={host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret};
   let holdLogout=false,enter!:()=>void,release!:()=>void,lateCode:string|undefined;
   const reached=new Promise<void>(r=>{enter=r;}),held=new Promise<void>(r=>{release=r;});
@@ -217,7 +217,7 @@ test('API crash with an undelivered old logout requires full recovery; late logo
     release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
     await slot.close();
-    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1',[slot.config.slot]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
 
@@ -247,7 +247,7 @@ test('well-shaped console result for another status client is refused without pe
   });
   await new Promise<void>(r=>rogue.listen(0,'127.0.0.1',r));
   const managerSecret=slotSecret(),target={host:'127.0.0.1',port:(rogue.address()as{port:number}).port,secret:slotSecret()};
-  const names=['runtime-997','runtime-998'],manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map(names.map(name=>[name,target]))});
+  const names=[await claimRuntimeSlot(pool,{ state:'unknown' }),await claimRuntimeSlot(pool,{ state:'unknown' })],manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map(names.map(name=>[name,target]))});
   await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
   let child:ChildProcess|undefined;
   const owners:string[]=[],sockets:WebSocket[]=[];
@@ -258,8 +258,16 @@ test('well-shaped console result for another status client is refused without pe
       const signup=await browser.request('POST','/api/auth/sign-up/email',{body:{email:`client-frame-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Client frame owner'}});
       assert.equal(signup.status,200);const owner=(signup.json as{user:{id:string}}).user.id;owners.push(owner);
       const binding=randomUUID(),bootId=randomUUID();
-      await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)`,[names[index],bootId]);
-      await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
+      // One transaction: the slot is never visible as ready and free, so the shared stack's binder can't hand it to another test's user.
+      const tx=await pool.connect();
+      try{
+        await tx.query('BEGIN');
+        // The API saves the slots its manager reports (saveSlot upserts), so this may race it: upsert the same way.
+        await tx.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)
+          ON CONFLICT (slot) DO UPDATE SET state='ready',out_of_pool_reason=NULL,boot_id=excluded.boot_id`,[names[index],bootId]);
+        await tx.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
+        await tx.query('COMMIT');
+      }catch(error){await tx.query('ROLLBACK');throw error;}finally{tx.release();}
       const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify(fixture.diagnostics));
       const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
       assert.equal(await view.closed,index===0?4503:1000);
@@ -276,6 +284,8 @@ test('well-shaped console result for another status client is refused without pe
   }finally{
     for(const ws of sockets)ws.terminate();if(child)await stop(child);manager.closeAllConnections();rogue.closeAllConnections();
     await Promise.all([new Promise<void>(r=>manager.close(()=>r())),new Promise<void>(r=>rogue.close(()=>r()))]);
-    for(const owner of owners)await pool.query('DELETE FROM auth_users WHERE id=$1',[owner]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=ANY($1)',[names]);
+    for(const owner of owners)await pool.query('DELETE FROM auth_users WHERE id=$1',[owner]);
+    // The shared stack's binder may have given these ready slots to another test's user meanwhile (#860: no cap), so release every binding first.
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=ANY($1)',[names]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=ANY($1)',[names]);
   }
 });

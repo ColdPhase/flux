@@ -1,5 +1,6 @@
 import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { removedName } from '@flux/contracts';
 import { assignmentNotificationActive, assignmentNotificationsReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
 import { hiddenNotice, notificationHiddenWhileAiOff } from './space-ai.js';
@@ -46,6 +47,7 @@ export function toNotificationRecord(row: NotificationRow) {
     createdAt: row.createdAt,
     readAt: row.readAt,
     reason: row.reason ?? null,
+    ...(row.answer ? { answer: true } : {}),
   };
 }
 
@@ -86,42 +88,59 @@ export function pushSubscriptionRepository(db: DbExecutor) {
   };
 }
 
-/**
- * Who a notification comes from (#1243): the actor of the event it was made from, as a person's or an agent's name, for the notice's
- * face. Null for a notification made directly, or when the actor is gone.
- */
-async function sender(db: DbExecutor, eventId: string | null): Promise<{ kind: 'human' | 'agent'; name: string } | null> {
-  if (!eventId) return null;
-  const [event] = await db.select({ actorId: schema.events.actorId }).from(schema.events).where(eq(schema.events.id, eventId));
-  const [kind, actor] = event ? [event.actorId.slice(0, event.actorId.indexOf(':')), event.actorId.slice(event.actorId.indexOf(':') + 1)] : [];
-  if (kind === 'human' && actor) {
-    const [user] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, actor));
-    return user ? { kind: 'human', name: user.name } : null;
-  }
-  if (kind === 'agent' && actor && /^[0-9a-f-]{36}$/i.test(actor)) {
-    const [agent] = await db.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, actor));
-    return agent ? { kind: 'agent', name: agent.name } : null;
-  }
-  return null;
-}
+type Sender = { kind: 'human' | 'agent'; id: string; name: string };
 
 /**
- * Who each of a page of notifications comes from, read together (#1424): the actor of the event a notification was made from, with the id the
- * Inbox draws a face from. Two reads however long the page; a notification made directly, or whose actor is gone, has none.
+ * Who each of a page of notifications comes from, read together (#1243, #1424): the one its title names, as the generator recorded it
+ * (`from_actor`, personas-28: a question reaching someone who joined later comes from its asker, not from the joiner), else the actor of the
+ * event it was made from; with the id the Inbox draws a face from. Three reads however long the page; a notification made directly, or whose
+ * sender is gone, has none.
  */
-async function sendersOf(db: DbExecutor, eventIds: (string | null)[]): Promise<Map<string, { kind: 'human' | 'agent'; id: string; name: string }>> {
-  const ids = [...new Set(eventIds.filter((id): id is string => !!id))];
-  const found = new Map<string, { kind: 'human' | 'agent'; id: string; name: string }>();
-  if (!ids.length) return found;
-  const events = await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events).where(inArray(schema.events.id, ids));
-  const actors = events.map((event) => ({ event: event.id, kind: event.actorId.slice(0, event.actorId.indexOf(':')), id: event.actorId.slice(event.actorId.indexOf(':') + 1) }));
+async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'id' | 'eventId' | 'fromActor' | 'workspaceId'>[]): Promise<Map<string, Sender>> {
+  const found = new Map<string, Sender>();
+  const eventIds = [...new Set(rows.flatMap((row) => !row.fromActor && row.eventId ? [row.eventId] : []))];
+  const actorOf = new Map(eventIds.length ? (await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events)
+    .where(inArray(schema.events.id, eventIds))).map((event) => [event.id, event.actorId]) : []);
+  const actors = rows.flatMap((row) => {
+    const principal = row.fromActor ?? (row.eventId ? actorOf.get(row.eventId) : undefined);
+    return principal ? [{ row: row.id, workspaceId: row.workspaceId, kind: principal.slice(0, principal.indexOf(':')), id: principal.slice(principal.indexOf(':') + 1) }] : [];
+  });
+  if (!actors.length) return found;
   const humans = [...new Set(actors.filter((actor) => actor.kind === 'human' && actor.id).map((actor) => actor.id))];
+  // An agent with its id, so the answer gives it its colour (#1528).
   const agents = [...new Set(actors.filter((actor) => actor.kind === 'agent' && /^[0-9a-f-]{36}$/i.test(actor.id)).map((actor) => actor.id))];
   const userNames = new Map(humans.length ? (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, humans))).map((row) => [row.id, row.name]) : []);
   const agentNames = new Map(agents.length ? (await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents))).map((row) => [row.id, row.name]) : []);
+  // Someone who left the notification's company or was removed, and has not come back, is "Stefan Kowal (removed)" (founder decision, Hubert,
+  // 2026-11-17, #1424), as the conversation it came from names them; the same rule as `formerMembers`.
+  const spaces = [...new Set(actors.filter((actor) => actor.kind === 'human').map((actor) => actor.workspaceId))];
+  const gone = humans.length && spaces.length ? new Set(((await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
+    JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+    WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(humans)}::text[])`)).rows as { workspace_id: string; user_id: string }[])
+    .map((row) => `${row.workspace_id}:${row.user_id}`)) : new Set<string>();
   for (const actor of actors) {
     const name = actor.kind === 'human' ? userNames.get(actor.id) : actor.kind === 'agent' ? agentNames.get(actor.id) : undefined;
-    if (name && (actor.kind === 'human' || actor.kind === 'agent')) found.set(actor.event, { kind: actor.kind, id: actor.id, name });
+    if (name && (actor.kind === 'human' || actor.kind === 'agent'))
+      found.set(actor.row, { kind: actor.kind, id: actor.id, name: actor.kind === 'human' && gone.has(`${actor.workspaceId}:${actor.id}`) ? removedName(name) : name });
+  }
+  return found;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The task each of a page of `assigned` notifications gave its recipient (#1424 C), by notification id: the event it was made from named
+ * the recipient as `assignedTo`. One read however long the page; "waiting for you" and "can continue" notifications are absent.
+ */
+async function givenTasks(db: DbExecutor, rows: readonly Pick<NotificationRow, 'id' | 'userId' | 'reason' | 'eventId'>[]): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const eventIds = [...new Set(rows.flatMap((row) => row.reason === 'assigned' && row.eventId ? [row.eventId] : []))];
+  if (!eventIds.length) return found;
+  const data = new Map((await db.select({ id: schema.events.id, data: schema.events.data }).from(schema.events).where(inArray(schema.events.id, eventIds)))
+    .map((event) => [event.id, event.data as { workId?: unknown; assignedTo?: unknown } | null]));
+  for (const row of rows) {
+    const event = row.reason === 'assigned' && row.eventId ? data.get(row.eventId) : undefined;
+    if (event && event.assignedTo === row.userId && typeof event.workId === 'string' && UUID.test(event.workId)) found.set(row.id, event.workId.toLowerCase());
   }
   return found;
 }
@@ -147,7 +166,7 @@ export function notificationRows(db: DbExecutor) {
       const [row] = await db.select({ notification: n }).from(n)
         .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenNotice(n)}`));
       if (!row) return null;
-      return { ...(await withHistories([row]))[0]!, from: await sender(db, row.notification.eventId) };
+      return { ...(await withHistories([row]))[0]!, from: (await sendersOf(db, [row.notification])).get(row.notification.id) ?? null };
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
@@ -160,11 +179,65 @@ export function notificationRows(db: DbExecutor) {
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
       const records = await withHistories(rows);
       if (!options.from) return records;
-      const senders = await sendersOf(db, rows.map((row) => row.notification.eventId));
+      const senders = await sendersOf(db, rows.map((row) => row.notification));
+      const given = await givenTasks(db, rows.map((row) => row.notification));
       return records.map((record, at) => {
-        const from = senders.get(rows[at]!.notification.eventId ?? '');
-        return from ? { ...record, from } : record;
+        const id = rows[at]!.notification.id;
+        const from = senders.get(id);
+        const task = given.get(id);
+        return { ...record, ...(from ? { from } : {}), ...(task ? { given: task } : {}) };
       });
+    },
+    /**
+     * The notifications that can be items of the Inbox's "Needs you" queue (#342), newest first, however many other notifications are newer
+     * (an ordinary message never pushes a question out): mentions and invitations since `since` that are unread or in `keep` (done today),
+     * questions since `since` read or not (an agent question finds the notification that announced it), and `assigned` ones that are unread or
+     * in `keep`. With each unread `assigned` one come the read ones that gave the same task later (the newest gives the item). Read from the
+     * partial index `notifications_needs_idx` (migration 0094), which holds only these four reasons, with who each row comes from and its task.
+     */
+    async listNeeds(userId: string, audience: SQL, options: { since: Date; keep: readonly string[]; limit: number }) {
+      const keep = options.keep.filter((id) => UUID.test(id));
+      const kept = keep.length ? sql`${n.id} = ANY(${sql.param(keep)}::uuid[])` : sql`false`;
+      // The index's own predicate, written as it is there, so the planner reads the index whatever the parameters.
+      const wanted = and(eq(n.userId, userId), sql`${n.inInbox} AND ${n.reason} IN ('mention', 'question', 'invitation', 'assigned')`, audience,
+        sql`NOT ${hiddenNotice(n)}`);
+      const rows = await db.select({ notification: n }).from(n)
+        .where(and(wanted, sql`((${n.reason} IN ('mention', 'question', 'invitation') AND ${n.createdAt} >= ${options.since}
+          AND (${n.readAt} IS NULL OR ${n.reason} = 'question' OR ${kept})) OR (${n.reason} = 'assigned' AND (${n.readAt} IS NULL OR ${kept})))`))
+        .orderBy(desc(n.createdAt), desc(n.id)).limit(options.limit);
+      const given = await givenTasks(db, rows.map((row) => row.notification));
+      const open = rows.filter((row) => !row.notification.readAt && given.has(row.notification.id));
+      if (open.length) {
+        const tasks = [...new Set(open.map((row) => given.get(row.notification.id)!))];
+        const oldest = open.reduce((least, row) => (row.notification.createdAt < least ? row.notification.createdAt : least), open[0]!.notification.createdAt);
+        const listed = rows.map((row) => row.notification.id);
+        const e = schema.events;
+        const later = await db.select({ notification: n, workId: sql<string>`lower(${e.data}->>'workId')` }).from(n).innerJoin(e, eq(e.id, n.eventId))
+          .where(and(wanted, eq(n.reason, 'assigned'), sql`${n.readAt} IS NOT NULL`, sql`${n.createdAt} > ${oldest}`,
+            sql`NOT (${n.id} = ANY(${sql.param(listed)}::uuid[]))`, sql`lower(${e.data}->>'workId') = ANY(${sql.param(tasks)}::text[])`,
+            sql`${e.data}->>'assignedTo' = ${userId}`))
+          .orderBy(desc(n.createdAt), desc(n.id)).limit(options.limit);
+        for (const row of later) given.set(row.notification.id, row.workId);
+        rows.push(...later.map((row) => ({ notification: row.notification })));
+        rows.sort((a, b) => b.notification.createdAt.getTime() - a.notification.createdAt.getTime() || b.notification.id.localeCompare(a.notification.id));
+      }
+      const records = await withHistories(rows);
+      const senders = await sendersOf(db, rows.map((row) => row.notification));
+      return records.map((record, at) => {
+        const id = rows[at]!.notification.id;
+        const from = senders.get(id);
+        const task = given.get(id);
+        return { ...record, ...(from ? { from } : {}), ...(task ? { given: task } : {}) };
+      });
+    },
+    /**
+     * The recipient's newest `limit` unread notifications in their Inbox, however many read ones are newer: why each exists and its link
+     * (#1243 `notifying`). Read from the partial index `notifications_unread_idx` (migration 0094), which holds only unread rows.
+     */
+    async unreadNewest(userId: string, audience: SQL, limit: number) {
+      return db.select({ reason: n.reason, url: n.url }).from(n)
+        .where(and(eq(n.userId, userId), sql`${n.inInbox} AND ${n.readAt} IS NULL`, audience, sql`NOT ${hiddenNotice(n)}`))
+        .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,

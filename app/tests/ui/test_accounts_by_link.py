@@ -100,6 +100,34 @@ class AccountsByLink(unittest.TestCase):
         expect(page.get_by_role("alert")).to_contain_text("This setup link doesn’t work. Open the whole link that ./flux up printed on the server.")
         self.assertEqual([(body.get("setupToken"), body.get("email")) for body in sent], [(SETUP_TOKEN, f"owner.setup+{STAMP}@example.test")])
 
+    def test_01b_the_owner_goes_on_to_name_the_company(self) -> None:
+        """B-2: "You name the company next." is true: the owner's account leads to Settings › Company with the name field open."""
+        page = self.page()
+        # Setup is open until the account is made; the test answers the sign-up, so it closes the setup then and nobody is signed in.
+        setup = {"open": True}
+        page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={**INSTALL, "setup": setup["open"]}))
+        def made(route: Route) -> None:
+            setup["open"] = False
+            route.fulfill(json={"token": None})
+        page.route("**/api/auth/sign-up/email", made)
+        page.goto(f"/setup#{SETUP_TOKEN}")
+        page.get_by_label("Name").fill("Owner Person")
+        page.get_by_label("Email").fill(f"owner.named+{STAMP}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create owner account").click()
+        # Nobody is signed in here (the sign-up is answered by the test), so the app asks for sign-in and keeps where it was going.
+        expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fsettings%2Fcompany%3Fname%3D1$"))
+
+    def test_01c_a_setup_link_pasted_into_an_open_setup_tab_is_read_at_once(self) -> None:
+        """personas-30: the link's fragment changed in a /setup tab already open, which reads no loader, so it needed a reload."""
+        page = self.page()
+        self.capabilities(page, setup=True)
+        page.goto("/setup")
+        expect(page.get_by_role("heading", level=1, name="Open the setup link")).to_be_visible()
+        page.evaluate(f"location.hash = '{SETUP_TOKEN}'")
+        expect(page.get_by_role("heading", level=1, name="Set up Flux")).to_be_visible()
+        self.assertEqual(page.evaluate("location.hash"), "", "the token leaves the address")
+
     def test_02_setup_once_the_company_exists_has_no_form(self) -> None:
         page = self.page(phone=True)
         page.goto(f"/setup#{SETUP_TOKEN}")
@@ -133,13 +161,15 @@ class AccountsByLink(unittest.TestCase):
         page = self.page(phone=True)
         page.goto(made.json()["link"])
         expect(page.get_by_role("heading", level=1, name=f"Join {company['name']}")).to_be_visible()
-        expect(page.get_by_role("note")).to_contain_text(f"This link works only for {NEWCOMER[1]}.")
+        # The address is said once (persona round 6): the form's Email field, not also a note above it.
+        expect(page.get_by_role("note")).to_have_count(0)
+        expect(page.get_by_text(NEWCOMER[1], exact=True)).to_have_count(0)
         # #1438: the join page is the create-account form; #1471: the link's address is filled in, read-only.
         form = page.get_by_role("form", name="Create account and join")
         email = form.get_by_label("Email")
         expect(email).to_have_value(NEWCOMER[1])
         expect(email).not_to_be_editable()
-        expect(form.get_by_text("This invite is for this address.")).to_be_visible()
+        expect(form.get_by_text("You join with this email.")).to_be_visible()
         shot(page, "join-locked-address-phone-390")
         form.get_by_label("Name").fill(NEWCOMER[0])
         form.get_by_label("Password").fill(PASSWORD)
@@ -153,19 +183,27 @@ class AccountsByLink(unittest.TestCase):
     def test_05_the_owner_makes_a_reset_link_next_to_the_person_and_it_works_once(self) -> None:
         owner = self.page(owner=True)
         owner.goto("/settings/company")
-        owner.get_by_role("button", name=f"Change {NEWCOMER[0]}, Member").click()
+        # Founder decision 2026-11-14 (#1424): Reset link is on the person's row, not inside the role button.
+        owner.get_by_role("button", name=f"Reset link for {NEWCOMER[0]}").click()
         group = owner.get_by_role("group", name="Password")
         expect(group.get_by_text("Make a one-time link that lets Rosa choose a new password.")).to_be_visible()
         group.get_by_role("button", name="Make reset link").click()
         field = group.get_by_label(f"Reset link for {NEWCOMER[0]}")
         expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/reset-password#[A-Za-z0-9_-]{{24}}$"))
-        expect(group.get_by_role("status")).to_contain_text("It stops working when it is used or in 1 hour.")
+        # Persona round (#1424): what happened is said once, in the status line; the field has no second hint, and Close puts it away.
+        expect(group.get_by_role("status")).to_contain_text("It works once, for 1 hour.")
+        expect(group.get_by_text(re.compile("works once"))).to_have_count(1)
         shot(owner, "reset-link-company-desktop-1440")
         link = field.input_value()
+        group.get_by_role("button", name="Close").click()
+        expect(owner.get_by_role("group", name="Password")).to_have_count(0)
+        expect(owner.get_by_role("button", name=f"Reset link for {NEWCOMER[0]}")).to_be_focused()
 
         page = self.page(phone=True)
         page.goto(link)
         expect(page.get_by_role("heading", level=1, name="Choose a new password")).to_be_visible()
+        # D-9: the page says whose password it is.
+        expect(page.get_by_text(f"Reset the password for {NEWCOMER[1]}.")).to_be_visible()
         self.assertEqual(page.evaluate("location.hash"), "", "the token leaves the address")
         page.get_by_label("New password", exact=True).fill(NEW_PASSWORD)
         page.get_by_label("Repeat new password").fill(NEW_PASSWORD)
@@ -186,6 +224,67 @@ class AccountsByLink(unittest.TestCase):
         self.capabilities(page)
         page.goto("/forgot-password")
         expect(page.get_by_text("Ask an owner or admin of your company for a reset link: they make one in Settings › Company.")).to_be_visible()
+
+    # ---------------------------------------------------------------- someone who is no longer in the company
+
+    def test_07_someone_removed_while_signed_in_is_told_they_are_no_longer_in_the_company(self) -> None:
+        """D-7: Home and Spaces said "You're not in a company here yet" and "No spaces yet. Create one…" with a Create that could only fail."""
+        owner = self.page(owner=True)
+        company = next(item for item in owner.request.get("/api/v1/workspaces").json() if item.get("company"))
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB", service_workers="block")
+        self.addCleanup(context.close)
+        signed = context.request.post("/api/auth/sign-in/email", data={"email": NEWCOMER[1], "password": NEW_PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        page = context.new_page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        me = context.request.get("/api/v1/me").json()["user"]["id"]
+        removed = owner.request.delete(f"{ORIGIN}/api/v1/workspaces/{company['id']}/members/{me}", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 204, removed.text())
+        # The shell hears it at once and reads itself again; a reload says the same.
+        page.reload()
+        expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}")).to_be_visible()
+        expect(page.get_by_text("Ask an owner or admin of the company for an invite link to come back.")).to_be_visible()
+        expect(page.get_by_text("You’re not in a company here yet")).to_have_count(0)
+        page.goto("/projects")
+        expect(page.get_by_text(f"You’re no longer in {company['name']}.")).to_be_visible()
+        expect(page.get_by_role("button", name="Create a space")).to_have_count(0)
+        # personas-37 P3-4: the Inbox (still in the rail) said "Nothing needs you right now". Every page of the company they can reach says
+        # what Home says, the Inbox, My tasks and My map alike, also when the address is typed.
+        for path in ("/inbox", "/tasks", "/map"):
+            page.goto(path)
+            expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}"), path).to_be_visible()
+            expect(page.get_by_text("Ask an owner or admin of the company for an invite link to come back."), path).to_be_visible()
+            expect(page.get_by_text("Nothing needs you right now"), path).to_have_count(0)
+        page.goto("/")
+        expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}")).to_be_visible()
+        # Nothing to make without a company (personas-30): no New, no C, no Messages "+".
+        expect(page.locator(".side__new")).to_have_count(0)
+        expect(page.get_by_role("link", name="New message")).to_have_count(0)
+        page.evaluate("() => (document.activeElement instanceof HTMLElement) && document.activeElement.blur()")
+        page.keyboard.press("c")
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        shot(page, "removed-from-the-company-desktop-1440")
+        # Round 14 (new P3-c, daily P3-2, look-a B14): Settings said "You're not in a company … yet", offered Connect AI and the
+        # notification choices. Company says where they stand; AI and Notifications are not offered, and their addresses say what Home says.
+        page.goto("/settings/company")
+        # Round 15 (daily P3-6): Company says it as every other page does, the heading, its line and Go to Home, not a small grey line.
+        expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}")).to_be_visible()
+        expect(page.locator("[data-no-longer-in]")).to_contain_text("Ask an owner or admin of the company for an invite link to come back.")
+        expect(page.locator("[data-no-longer-in]").get_by_role("link", name="Go to Home")).to_be_visible()
+        self.assertEqual(page.get_by_role("navigation", name="Settings sections").get_by_role("link").all_inner_texts(),
+                         ["Account", "Appearance", "Company", "Shortcuts"])
+        for path in ("/settings/notifications", "/settings/agents"):
+            page.goto(path)
+            expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}"), path).to_be_visible()
+            expect(page.get_by_role("switch"), path).to_have_count(0)
+            expect(page.get_by_role("button", name="Connect AI"), path).to_have_count(0)
+        # Without New, the sidebar's Search is its row's one button and says its name, not a lone square.
+        self.assertGreater(page.locator(".side__actions").get_by_role("button", name="Search").evaluate("el => el.getBoundingClientRect().width"), 100)
+        shot(page, "removed-from-the-company-settings-desktop-1440")
+        # Restored, the person is told nothing of it.
+        restored = owner.request.post(f"{ORIGIN}/api/v1/workspaces/{company['id']}/removed-people/{me}/restore", headers={"origin": ORIGIN})
+        self.assertEqual(restored.status, 201, restored.text())
 
 
 if __name__ == "__main__":

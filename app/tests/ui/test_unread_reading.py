@@ -3,7 +3,8 @@
 One behaviour in five surfaces: a space's conversation, a direct message, a thread, a task's discussion and an agent's chat (and a direct message's
 thread). Each opens on its first new message with a quiet "New" divider above it, or at its end when nothing is new, or at its very first message when
 the person has never opened it (founder decision on #1246); while the reader is above the end, what arrives is counted in "↓ N new", which a click or
-tap (and End) takes to the end; and nothing moves under the reader.
+tap (and End) takes to the end; and nothing moves under the reader. Opening with what is new running below the visible part shows that line at once,
+counting all of it (personas-35 D11-54: a long conversation never opened said nothing of what was below it).
 
 Ada reads and Bob writes. What Ada had seen is set through the API the app itself writes (a return point for the space, viewing observations for a
 direct message, a thread and a discussion), then Bob writes 30 more and Ada opens the surface. The agent's chat has no way to post a line from a test, so
@@ -209,7 +210,8 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         page, feed = self.open(surface, phone=phone)
         divider = feed.get_by_role("separator", name="New")
         expect(divider).to_have_count(1)
-        expect(divider).to_have_text("New")
+        # "New", or "New · Today" where what is new also starts a day: one divider, never a day line stacked over it (round 14).
+        expect(divider).to_have_text(re.compile(r"^New( · \w.*)?$"))
         first = page.locator(surface["first"])
         # The first new message starts its own group: its author is named, whoever wrote the message above the divider.
         expect(first).to_contain_text(surface.get("author", "Bob"))
@@ -224,14 +226,24 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             self.assertGreater(feed.evaluate("el => el.scrollTop"), 100, f"{label}: it did not open at the top")
         self.assertGreater(self.at_end(feed), 200, f"{label}: it did not open at the end, 30 messages are new")
         self.assertTrue(divider.evaluate("(el, selector) => el.nextElementSibling?.matches(selector)", surface["first"]), f"{label}: the divider is right above the first new message")
-        expect(self.pill(feed)).to_have_count(0)
+        # What is new runs below the screen: the line says so from the start, counting all of it (personas-35): the 30, and in the agent's chat
+        # also what it answered in this test class's real runs since the time the chat was last read.
+        expect(self.pill(feed)).to_have_text(re.compile(r"^\d+ new$"))
+        opened = int(self.pill(feed).inner_text().split()[0])
+        # No words of the feed are under the line (train 37 row 18): it stands below the feed's visible part, not over it.
+        overlap = self.pill(feed).evaluate("(el, feed) => feed.getBoundingClientRect().bottom - el.getBoundingClientRect().top", feed.element_handle())
+        self.assertLessEqual(overlap, 0.5, f"{label}: the line covers {overlap}px of the feed")
+        if surface.get("starts"):
+            self.assertGreaterEqual(opened, NEW, f"{label}: all that is new is counted on opening")
+        else:
+            self.assertEqual(opened, NEW, f"{label}: all that is new is counted on opening")
         # Something arrives while Ada reads above the end: it is counted, and nothing moves under her.
         before = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
         self.arrive(page, surface)
         pill = self.pill(feed)
-        expect(pill).to_have_text("1 new")
+        expect(pill).to_have_text(f"{opened + 1} new")
         expect(pill).to_be_visible()
-        self.assertEqual(pill.get_attribute("aria-label"), "1 new. Go to the newest")
+        self.assertEqual(pill.get_attribute("aria-label"), f"{opened + 1} new. Go to the newest")
         page.wait_for_timeout(600)
         after = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
         self.assertLess(abs(after - before), 2.01, f"{label}: the reader stays put ({before} -> {after})")
@@ -371,11 +383,37 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             expect(page.locator(f"#message-{sent[0]}")).to_be_in_viewport()
             expect(feed.locator(".dm__head")).to_be_in_viewport()
             self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a direct message never opened opens at its very top")
+            # It says at once how much is new below, and leads to the end (personas-35 D11-54: nothing did until something arrived).
+            pill = self.pill(feed)
+            expect(pill).to_have_text("60 new")
+            expect(pill).to_be_in_viewport()
             name = f"unread-never-opened-dm-{'390' if phone else '1440'}"
             shot(page, f"{name}-light")
             page.emulate_media(color_scheme="dark")
             shot(page, f"{name}-dark")
             page.emulate_media(color_scheme="light")
+            if phone:
+                pill.tap()
+            else:
+                # It opens with the cursor in its composer (F-026 §4), which is where a reader presses End first (personas-36 P3 4).
+                composer = page.locator("#dm-composer")
+                expect(composer).to_be_focused()
+                # With words in it, End is the field's own: the cursor goes to the end of the words, and the feed stays where it is.
+                page.keyboard.type("Reading first")
+                page.keyboard.press("Home")
+                page.keyboard.press("End")
+                self.assertEqual(composer.evaluate("el => [el.selectionStart, el.value.length]"), [13, 13], f"{label}: End in the words moves the cursor")
+                expect(pill).to_have_text("60 new")
+                self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: End in the words leaves the feed alone")
+                # Empty, End goes to the end of the conversation and the cursor stays in the composer.
+                composer.fill("")
+                expect(composer).to_be_focused()
+                page.keyboard.press("End")
+                expect(composer).to_be_focused()
+            expect(self.pill(feed)).to_have_count(0)
+            page.wait_for_timeout(300)
+            self.assertLess(self.at_end(feed), 48, f"{label}: {'the line' if phone else 'End'} took the reader to the end of the direct message")
+            expect(page.locator(f"#message-{sent[-1]}")).to_be_in_viewport()
             # A thread never opened opens at its root, whole, with the divider under it above the first reply.
             page, feed = self.open({"url": f"/projects/{project}/conversations/{root['id']}", "feed": ".thread__feed", "ready": f"#message-{replies[-1]}"}, phone=phone)
             divider = feed.get_by_role("separator", name="New")
@@ -383,17 +421,64 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", replies[0]), f"{label}: the divider is right above the first reply")
             self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a thread never opened opens at its root")
             expect(feed.locator(".thread__root")).to_be_in_viewport()
-            expect(page.locator(f"#message-{replies[0]}")).to_be_in_viewport()
-            # "↓ N new" leads to the end.
+            expect(divider).to_be_in_viewport()
+            if not phone:
+                expect(page.locator(f"#message-{replies[0]}")).to_be_in_viewport()
+            # On the phone's half sheet the "N new" line takes its own room under the divider (train 37 row 18: it covered the first reply there),
+            # so the first reply starts just below it rather than under it.
+            # "↓ N new" counts the 20 replies below from the start, then what arrives, and leads to the end.
+            pill = self.pill(feed)
+            expect(pill).to_have_text("20 new")
             page.evaluate("() => window.dispatchEvent(new Event('focus'))")
             self.call("bob", f"/api/v1/conversations/{root['id']}/messages", {"body": words("Later", 99), "clientMessageId": str(uuid.uuid4())})
             page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-            pill = self.pill(feed)
-            expect(pill).to_have_text("1 new")
+            expect(pill).to_have_text("21 new")
             pill.tap() if phone else pill.click()
             expect(self.pill(feed)).to_have_count(0)
             page.wait_for_timeout(300)
             self.assertLess(self.at_end(feed), 48, f"{label}: the line took the reader to the end")
+
+    # ------------------------------------------------------------------ the task panel reads the discussion too
+
+    def test_10_a_task_discussion_read_in_its_panel_is_read_when_opened_as_a_thread(self) -> None:
+        """personas-36 P3: reading a task's discussion in its panel did not count, so the same discussion opened as a thread (from Search) showed
+        "New" above lines Ada had already read. The panel views what it shows as the thread does: only what arrived after is new there."""
+        project = self.ids["project"]
+        task = self.call("ada", f"/api/v1/projects/{project}/work", {"title": "Calibrate the soil probes", "clientCommandId": str(uuid.uuid4())})
+        say = lambda index, kind: self.call("bob", f"/api/v1/work/{task['id']}/discussion", {"body": words(kind, index), "clientMessageId": str(uuid.uuid4())})["id"]  # noqa: E731
+        # Taller than the panel, so the panel opens at its newest line. A short discussion moves nothing and keeps its rows at the top (F-026 §7
+        # "Both panels open the same way"): at 1440 x 900 the rows push the fourth of four such lines below the panel's foot, unseen, so it is
+        # rightly not viewed until the reader scrolls to it.
+        seen = [say(index, "Panel") for index in range(12)]
+        talk = self.call("ada", f"/api/v1/work/{task['id']}/discussion", method="GET")
+        page = self.page()
+        # The panel opens at the newest line; what it shows is viewed after a moment, as in a thread (in one write or a few).
+        viewed: list[str] = []
+        page.on("response", lambda response: viewed.extend(response.request.post_data_json["messageIds"])
+                if response.ok and response.request.method == "POST" and response.url.endswith(f"/api/v1/projects/{project}/observations") else None)
+        page.goto(f"/projects/{project}/tasks?open=work:{task['id']}")
+        expect(page.locator(f'.wd-act [data-message-id="{seen[-1]}"]')).to_be_in_viewport()
+        for _ in range(60):
+            if seen[-1] in viewed:
+                break
+            page.wait_for_timeout(250)
+        self.assertIn(seen[-1], viewed, "the panel viewed the newest line it showed")
+        # Opened as a thread, what the panel showed is not new.
+        thread = f"/projects/{project}/conversations/{talk['conversationId']}"
+        page.goto(thread)
+        expect(page.locator(f"#message-{seen[-1]}")).to_be_attached()
+        page.wait_for_timeout(600)
+        expect(page.locator(".thread__feed").get_by_role("separator", name="New")).to_have_count(0)
+        # What Bob writes after is: the divider stands right above it. (The open thread would view it as it arrives, so it is closed first.)
+        page.close()
+        later = say(9, "After")
+        other = self.page()
+        other.goto(thread)
+        feed = other.locator(".thread__feed")
+        expect(other.locator(f"#message-{later}")).to_be_attached()
+        divider = feed.get_by_role("separator", name="New")
+        expect(divider).to_have_count(1)
+        self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", later), "the divider is right above what came after")
 
 
 if __name__ == "__main__":

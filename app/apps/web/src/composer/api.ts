@@ -1,4 +1,4 @@
-import { agentChatFilesPath, dmFilesPath, projectFilesPath, taskDiscussionPath, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
+import { agentChatFilesPath, decisionDiscussionPath, dmFilesPath, projectFilesPath, taskDiscussionPath, type DecisionDiscussion, type SendMessageCommand, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
 /** Every view sends the same task command through this operation, including conversation replies. */
@@ -11,6 +11,17 @@ export const getTaskDiscussion = (workId: string, options: { limit?: number; bef
 /** A message in a task's discussion; `answered` names what it answered in the person's Inbox (#1170). */
 export const contributeToTask = (workId: string, command: TaskContributionCommand) =>
   request<SentConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
+
+/** A decision's one discussion (#1424): the thread on its card, which its panel shows too. */
+export const getDecisionDiscussion = (decisionId: string, options: { limit?: number; beforeSequence?: number; signal?: AbortSignal } = {}) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set('limit', String(options.limit));
+  if (options.beforeSequence) query.set('beforeSequence', String(options.beforeSequence));
+  return request<DecisionDiscussion>(`${decisionDiscussionPath(decisionId)}${query.size ? `?${query}` : ''}`, { signal: options.signal });
+};
+/** A message about a decision (#1424), from its panel or from the thread on its card: the first one starts that thread. */
+export const discussDecision = (decisionId: string, command: SendMessageCommand) =>
+  request<SentConversationMessage>(decisionDiscussionPath(decisionId), { method: 'POST', body: command });
 
 /**
  * Raw authenticated bytes; upload UUID is retained after a lost response. It goes by XMLHttpRequest, the
@@ -33,7 +44,7 @@ export function stageFile(place: FilePlace, uploadId: string, file: File, onProg
       type Answer = StagedFile & { code?: string; message?: string; error?: string };
       let data: Answer;
       try { data = JSON.parse(xhr.responseText) as Answer; } catch { reject(new ApiError(xhr.status, null, xhr.statusText)); return; }
-      // The server says why in `error` ("A video is at most 200 MiB"), which is what the person should read.
+      // The server says why in `error` ("A video is at most 200 MB"), which is what the person should read.
       if (xhr.status < 200 || xhr.status >= 300) { reject(new ApiError(xhr.status, data.code ?? null, data.message ?? data.error ?? xhr.statusText, data)); return; }
       resolve(data);
     };

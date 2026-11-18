@@ -36,7 +36,7 @@ from pathlib import Path
 from playwright.sync_api import BrowserContext, Locator, Page, TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 
 from record_demo import CREATE_TASK, EMAIL, PARTNER, PASSWORD, VIEWPORT, jonas_replies, sign_in
-from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, press_shortcut, start_forwarder
 
 LANG = os.environ.get("FLUX_VIDEO_LANG", "en")
 VERSION = os.environ.get("FLUX_VIDEO_VERSION", "pre-release")
@@ -236,14 +236,14 @@ def journey(take: Take) -> None:
     expect(moisture).to_be_visible()
     take.hover(moisture)
     # The one Create window (C), on its Decision tab (#345, #867): a message has no Propose a decision.
-    page.locator("body").press("c")
+    press_shortcut(page, "c")
     take.click(page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True))
     window = page.get_by_role("dialog", name="New decision")
     expect(window).to_be_visible()
     take.type(window.get_by_role("textbox", name="Decision", exact=True), "Measure soil moisture first; frost warnings later")
     take.type(window.get_by_label("Why", exact=True), "Volunteers overwater the raised beds; frost is a spring problem")
     take.click(window.get_by_role("button", name=re.compile("^Propose decision")))
-    # "Decision proposed" waits a few seconds for Undo; the card appears under the message when that window ends.
+    # "Decision proposed" is sent at once (#1424 L); the card appears under the message.
     take.settle(1.2)
     proposal = moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first"))
     expect(proposal).to_be_visible(timeout=20000)
@@ -252,7 +252,7 @@ def journey(take: Take) -> None:
     expect(accept).to_be_visible()
     take.settle(1.0)
     take.click(accept)
-    expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+    expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
     take.settle(1.6)
     take.click(panel.get_by_role("button", name="Thread"))
     take.move_to(moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first)

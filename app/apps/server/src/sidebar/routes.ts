@@ -34,6 +34,9 @@ export async function sidebarRoutes(app: FastifyInstance, { db, sessions }: Opti
       spaces: { type: 'array', maxItems: SPACE_ORDER_LIMIT, items: uuid },
       chats: { type: 'array', maxItems: 100, items: { type: 'object', required: ['agentId', 'before', 'now'], additionalProperties: false,
         properties: { agentId: uuid, before: { type: ['string', 'null'], maxLength: 64 }, now: stamp } } },
+      // The direct messages Mark all as read read (#1424 decision 10), with the mark each had before and the one it set.
+      dms: { type: 'array', maxItems: 1000, items: { type: 'object', required: ['dmId', 'before', 'now'], additionalProperties: false,
+        properties: { dmId: uuid, before: { type: ['integer', 'null'], minimum: 0 }, now: { type: 'integer', minimum: 0 } } } },
     },
   } } }, async (request, reply) => {
     await use.undoReadAll(await principal(request), request.body);

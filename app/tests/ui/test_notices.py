@@ -108,12 +108,12 @@ class NoticeJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
-    def home(self, who: str = "ada", **kwargs) -> Page:
+    def home(self, who: str = "ada", path: str = "/", **kwargs) -> Page:
         page = self.page(who, **kwargs)
         # The live stream is open before anyone writes (the notice rides on it, #1243): wait for its socket's first frame.
         frames: list[str] = []
         page.on("websocket", lambda socket: socket.on("framereceived", lambda payload: frames.append(str(payload))) if "/api/v1/stream" in socket.url else None)
-        page.goto("/")
+        page.goto(path)
         expect(page.locator(".app__pane")).to_be_visible()
         for _ in range(150):
             if any('"ready"' in frame for frame in frames):
@@ -140,8 +140,13 @@ class NoticeJourney(unittest.TestCase):
 
     def test_01_a_direct_message_shows_a_notice_within_2_s_and_open_reads_it(self) -> None:
         page = self.home()
+        # Home gives the focus to its content once it has arrived with nothing else taking it (AppLayout, persona round 29); the stream can be
+        # ready before that, so what had the focus is read once the page has given it: the notice must leave it there.
+        page.wait_for_function("() => document.activeElement && document.activeElement !== document.body")
         focused = page.evaluate("() => document.activeElement?.tagName")
-        sent = self.dm("Can you check the probe readings before Friday? Two of them look off since the rain.")
+        # A plain message, not a question: in a direct message between two people every question is a Question for the other person
+        # ("Jonas Berg asked you", founder decision 2026-11-15, #1424 A), and this journey is the ordinary direct message's notice.
+        sent = self.dm("Two of the probe readings look off since the rain. I would check them before Friday.")
         card = self.card(page)
         expect(card).to_be_visible(timeout=5000)
         took = time.monotonic() - sent
@@ -194,6 +199,25 @@ class NoticeJourney(unittest.TestCase):
         expect(page.get_by_text("I'm in the shed now.")).to_be_visible()
         page.wait_for_timeout(2500)
         expect(self.card(page)).to_have_count(0)
+
+    def test_03b_nothing_over_the_inbox_for_an_item_it_lists(self) -> None:
+        """personas-33: a question showed its notice over the Inbox it had just arrived in. The Inbox lists it in front of the person, so
+        no notice repeats it there; a plain direct message is no Inbox item, so its notice still shows."""
+        # As the persona met it: the Inbox open a while, then a question in a direct message reaches it.
+        page = self.page("ada")
+        page.goto("/inbox")
+        expect(page.get_by_role("heading", level=1, name=re.compile("^Inbox"))).to_be_visible()
+        page.wait_for_timeout(3000)
+        self.dm("Could you open the seed shed at eight tomorrow?")
+        # Before this rule its notice stood over the Inbox from about 0.5 s to 6 s after the send. Sampled, not awaited: a retrying
+        # expectation would wait for the card to leave by itself.
+        for _ in range(14):
+            self.assertEqual(self.card(page).count(), 0, "the item reaches the list on screen: no notice for it")
+            page.wait_for_timeout(500)
+        expect(page.locator(".nyc", has_text="open the seed shed")).to_be_visible(timeout=8000)
+        self.dm("Plain words: the shed key is under the pot.")
+        expect(self.card(page)).to_contain_text("Jonas Berg sent you a message", timeout=5000)
+        self.card(page).get_by_role("button", name="Close").click()
 
     # ---------------------------------------------------------------- a mention, a task, a burst
 
@@ -379,6 +403,85 @@ class NoticeJourney(unittest.TestCase):
         expect(self.card(page)).to_be_visible(timeout=5000)
         page.wait_for_timeout(500)
         self.assertEqual(page.evaluate("window.__tones"), 0, "no sound while Sounds is off")
+
+
+    # ---------------------------------------------------------------- beside a docked panel
+
+    def test_12_beside_a_docked_panel_it_floats_over_the_work_never_over_the_panel(self) -> None:
+        """UI audit P3 17: at 1024 px the card stood over the bottom of the docked panel, its composer and controls. While a panel is
+        docked the notice stands at the bottom right of the work column, 20 px left of the panel, at 1024 x 768 as at 1440 x 900."""
+        task = self.post("ada", f"/api/v1/projects/{self.project_id}/work", {"title": "Re-seal the junction box in bed 2", "owner": {"kind": "human", "id": self.ids["ada"]}})
+        for viewport in ({"width": 1024, "height": 768}, {"width": 1440, "height": 900}):
+            context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, device_scale_factor=1, locale="en-GB", timezone_id="Europe/Warsaw",
+                                               storage_state=self.states["ada"], service_workers="block")
+            self.addCleanup(context.close)
+            page = context.new_page()
+            frames: list[str] = []
+            page.on("websocket", lambda socket: socket.on("framereceived", lambda payload: frames.append(str(payload))) if "/api/v1/stream" in socket.url else None)
+            page.goto(f"/projects/{self.project_id}/tasks?open=work:{task['id']}")
+            panel = page.locator("#details")
+            expect(panel).to_contain_text("Re-seal the junction box in bed 2")
+            for _ in range(150):
+                if any('"ready"' in frame for frame in frames):
+                    break
+                page.wait_for_timeout(100)
+            # Every frame from the one the card is first drawn in: it never stands over the panel, not even for a frame before it is placed
+            # (on a busy page that frame came late, and the card's entrance had ended over the panel, in the full suite).
+            page.evaluate("""() => {
+                window.__noticeFrames = [];
+                const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+                const step = () => {
+                    const card = document.querySelector('.ui-notices .ui-notice'), panel = document.querySelector('#details');
+                    if (card && panel) window.__noticeFrames.push({ card: rect(card), panel: rect(panel) });
+                    if (window.__noticeFrames.length < 600) requestAnimationFrame(step);
+                };
+                requestAnimationFrame(step);
+            }""")
+            self.dm(f"The junction box in bed 2 is open again ({viewport['width']} px).")
+            card = self.card(page)
+            expect(card).to_be_visible(timeout=5000)
+            card.get_by_role("button", name="Close").focus()
+            found = page.evaluate("""async () => {
+                const card = document.querySelector('.ui-notices .ui-notice');
+                await Promise.all(card.getAnimations().map((animation) => animation.finished));
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+                return { card: rect(card), panel: rect(document.querySelector('#details')), frames: window.__noticeFrames };
+            }""")
+            box, docked, frames = found["card"], found["panel"], found.pop("frames")
+            label = f"{viewport['width']} x {viewport['height']}: {found}"
+            self.assertTrue(frames, f"the card was seen beside the panel frame by frame, {label}")
+            over = [frame for frame in frames if frame["card"]["right"] > frame["panel"]["left"] - 20 + 1]
+            self.assertEqual(over, [], f"the card never stands over the docked panel, from its first frame, {label}")
+            self.assertAlmostEqual(box["right"], docked["left"] - 20, delta=1, msg=f"20 px left of the docked panel, {label}")
+            self.assertGreaterEqual(box["left"], 0, label)
+            self.assertLessEqual(box["bottom"], viewport["height"] - 19, label)
+            page.mouse.move(10, 10)
+            shot(page, f"notices-desktop-{viewport['width']}-beside-docked-panel")
+            card.get_by_role("button", name="Close").click()
+            expect(card).to_have_count(0)
+
+    # ---------------------------------------------------------------- never over a menu
+
+    def test_13_it_waits_while_a_menu_is_open_and_shows_when_it_closes(self) -> None:
+        """v0.2.1 audit: a notice stood over an open menu. While a menu is open it waits, as it does for a dialog or a sheet, and shows
+        when the menu closes (docs/design/final/README.md "Notices", Where)."""
+        page = self.home()
+        page.get_by_role("button", name="More for Spaces").click()
+        menu = page.get_by_role("menu", name="More for Spaces")
+        expect(menu).to_be_visible()
+        self.dm("Are the seed jars labelled yet?")
+        # The notice comes within 2 s when nothing holds it (test_01); here it waits for the menu, never standing over it.
+        for _ in range(25):
+            self.assertEqual(self.card(page).count(), 0, "no notice over the open menu")
+            page.wait_for_timeout(200)
+        expect(menu).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
+        expect(self.card(page)).to_be_visible(timeout=5000)
+        expect(self.card(page)).to_contain_text("Are the seed jars labelled yet?")
+        self.card(page).get_by_role("button", name="Close").click()
+        expect(self.card(page)).to_have_count(0)
 
 
 if __name__ == "__main__":

@@ -220,12 +220,13 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(blocked_column, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
         expect(order.locator(".tb-card__owner")).to_contain_text("Kai Berg")
-        expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text("You")
+        # The reader is named as every view names them (personas-33): the full name and "(you)", never "You" alone.
+        expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text(f"{ADA['name']} (you)")
         expect(self.card(doing, CALIBRATE).locator(".tb-av")).to_have_css("width", "20px")
         owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
-        expect(owner.locator(".agent-id__name")).to_have_text("Codex")
+        expect(owner.locator(".agent-id__name")).to_have_text(f"{ADA['name'].split()[0]}'s Codex")
         expect(owner.locator(".agent-id > .kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
-        expect(owner.locator(".agent-tag, .agent-for")).to_have_count(1)  # one label: "Codex · Ada's agent", or the tag while the owner is unknown (#1364)
+        expect(owner.locator(".agent-tag, .agent-for")).to_have_count(1)  # one label: "Ada's Codex", or the tag while the owner is unknown (#1364)
         # A due day shows on its card (#868).
         expect(self.card(open_, MOUNT).locator(".tb-card__due")).to_have_text(re.compile(r"^Due "))
         # A dropped task is Done with a "dropped" note (#868).
@@ -439,10 +440,21 @@ class TasksBoardJourney(unittest.TestCase):
     # ---------------------------------------------------------------- refused moves
 
     def test_07_a_refused_move_restores_the_stored_state(self) -> None:
-        page = self.board("ada")
+        # Kai changes the task meanwhile; Ada's board still shows the earlier version. Her tab hears changes on the live stream and reads
+        # the board again at once, so "meanwhile" is made exact: the stream's work changes wait while she moves the card (WebKit read
+        # Kai's change before the keys and the move it refused was never made).
+        held = {"on": True}
+
+        def stream(socket) -> None:
+            server = socket.connect_to_server()
+            server.on_message(lambda message: None if held["on"] and isinstance(message, str) and '"kind":"project.work_' in message else socket.send(message))
+
+        page = self.page("ada")
+        page.route_web_socket(re.compile(r".*/api/v1/stream.*"), stream)
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        expect(page.locator(".tb-board")).to_be_visible()
         open_, doing = self.column(page, "To do"), self.column(page, "Doing")
         expect(self.card(open_, DIFFUSER)).to_be_visible()
-        # Kai changes the task meanwhile; Ada's board still shows the earlier version.
         kai = self.page("kai")
         before = self.task(kai, "diffuser")
         self.api(kai, "PATCH", f"/api/v1/work/{self.ids['diffuser']}", {"status": "in_progress", "clientCommandId": str(uuid.uuid4())}, status=200,
@@ -456,6 +468,7 @@ class TasksBoardJourney(unittest.TestCase):
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(f"/api/v1/work/{self.ids['diffuser']}")) as refused:
             page.keyboard.press("Space")
         self.assertEqual(refused.value.status, 409)
+        held["on"] = False
         alert = page.get_by_role("alert").filter(has_text=DIFFUSER)
         expect(alert).to_contain_text("was changed by someone else a moment ago, so it was not moved")
         # The true, stored state: in progress, as Kai left it, and not done.
@@ -549,7 +562,9 @@ class TasksBoardJourney(unittest.TestCase):
         mine = bar.get_by_role("button", name="Mine", exact=True)
         in_list = mine.bounding_box()
         solder = rows.filter(has_text=SOLDER)
-        expect(solder.locator(".ui-pill--inv")).to_have_text("Blocked")
+        # The line says Blocked; the row has no second, dark "Blocked" pill (release audit P3 9).
+        expect(solder.locator(".ui-pill--inv")).to_have_count(0)
+        expect(solder.locator(".ws-item__s")).to_contain_text("Blocked")
         expect(solder.locator(".ui-task-number")).to_have_text(f"#{self.numbers['solder']}")
         self.assertGreaterEqual(solder.locator(".ui-task-number").evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone metadata remains readable")
         self.no_sideways_scroll(page, PHONE["width"], "phone")
@@ -564,7 +579,7 @@ class TasksBoardJourney(unittest.TestCase):
         order.locator(".ws-task__glyph").tap()
         toast = page.locator(".ui-toast")
         forward = {"open": "in_progress", "in_progress": "done", "done": "open", "blocked": "in_progress"}[before["status"]]
-        expect(toast).to_contain_text(f"#{self.numbers['order']} " + {"in_progress": "moved to Doing", "done": "done", "open": "moved to To do"}[forward])
+        expect(toast).to_contain_text(f"#{self.numbers['order']} " + {"in_progress": "moved to Doing", "done": "moved to Done", "open": "moved to To do"}[forward])
         self.assertEqual(self.task(page, "order")["status"], forward)
         toast.get_by_role("button", name="Undo").tap()
         expect(toast).to_have_count(0)
@@ -629,7 +644,22 @@ class TasksBoardJourney(unittest.TestCase):
                     measured.append(value)
                     self.assertGreaterEqual(value["ratio"], minimum, value)
                 shot(page, f"tasks-board-1440-{theme.lower()}")
-        self.assertEqual(len(measured), 2 * 14)
+                # The task open in the panel keeps every word at 4.5:1 on its fill (v0.2.1 audit P2-1: --pick put its number and owner
+                # under 4.5:1; design L69).
+                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['mount']}")
+                opened = '.tb-card:has(.tb-card__open[aria-current="true"])'
+                expect(page.locator(opened)).to_have_count(1)
+                page.wait_for_function("""(sel) => {
+                    const el = document.querySelector(sel), shut = document.querySelector('.tb-card:not(:has(.tb-card__open[aria-current="true"]))');
+                    return !!el && !!shut && !el.getAnimations().some((a) => a.playState === 'running')
+                      && getComputedStyle(el).backgroundColor !== getComputedStyle(shut).backgroundColor;
+                }""", arg=opened, timeout=5000)
+                for part in (".tb-card__id", ".tb-card__title", ".tb-card__due", ".tb-card__name"):
+                    value = page.evaluate(MEASURE, {"selector": f"{opened} {part}"})
+                    value.update(theme=theme, minimum=4.5, open=True)
+                    measured.append(value)
+                    self.assertGreaterEqual(value["ratio"], 4.5, value)
+        self.assertEqual(len(measured), 2 * (14 + 4))
 
     def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
         for phone in (False, True):  # True: a narrow board whose columns scroll sideways

@@ -5,11 +5,13 @@
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--t1); }
-.brand__name { font-size: var(--fs-logo); font-weight: 600; letter-spacing: -.04em; line-height: 1; }
+.brand__name { font-size: var(--fs-logo); font-weight: 600; letter-spacing: var(--tracking-wordmark); line-height: 1; }
 
 /* ---------- Sign-in and recovery ---------- */
 .auth { min-height: calc(100% - var(--pwa-update-h, 0px)); display: flex; flex-direction: column; background: var(--side); }
-.auth__main { flex: 1; display: flex; justify-content: center; align-items: center; padding: 40px 16px 48px; outline: none; }
+/* The column starts at one height on every sign-in, invite, reset and setup page, so the logo and the title never move from one to the next
+   (visual review 2026-11-17, core 25): pinned to the top, not centred on a page whose height depends on its form. */
+.auth__main { flex: 1; display: flex; justify-content: center; align-items: flex-start; padding: clamp(40px, 12vh, 112px) 16px 48px; outline: none; }
 .auth__col { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 22px; }
 .auth__col--connection { max-width: 560px; }
 .auth .brand { align-self: flex-start; gap: 8px; margin: 0 0 0 -6px; }
@@ -17,7 +19,10 @@
 .auth__head { display: flex; flex-direction: column; gap: 6px; }
 .auth__head > * { margin: 0; }
 .auth__company { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.auth__title { font-size: var(--fs-2xl); line-height: 1.2; font-weight: 600; letter-spacing: -1px; }
+.auth__title { font-size: var(--fs-2xl); line-height: 1.2; font-weight: 600; letter-spacing: var(--tracking-title); text-wrap: balance; }
+/* A sign-in page that is an error (a reset link that no longer works) has the pages' one title size, never a 15 px heading among them,
+   and a title that wraps never leaves "(demo)" alone on its line (round 14, look-a B15). */
+.auth .ui-error__title { font-size: var(--fs-2xl); line-height: 1.2; letter-spacing: var(--tracking-title); text-wrap: balance; }
 .auth__lead { font-size: var(--fs-base); color: var(--t2); line-height: var(--lh); }
 .auth__card, .auth__form { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .auth__card .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; }
@@ -77,7 +82,7 @@ body:has(.app) { background: var(--side); }
 .side__brand { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 0 0 0 8px; }
 .side__logo { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; color: var(--t1); flex: 1; min-width: 0; }
 .side__glyph { display: grid; place-items: center; color: var(--t1); }
-.side__word { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.04em; line-height: 1; }
+.side__word { font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-wordmark); line-height: 1; }
 .side__toggle { color: var(--t2); }
 .side__actions { display: flex; gap: 6px; margin: 6px 0 10px; }
 .side__new, .side__search {
@@ -86,11 +91,16 @@ body:has(.app) { background: var(--side); }
   font-size: var(--fs-base); font-weight: 500; white-space: nowrap; transition: var(--tr);
 }
 .side__new { flex: 1; justify-content: flex-start; }
+/* New and Search answer a hovering pointer as the rows under them do (round 14, look-a B1). */
+@media (hover: hover) { .side__new:hover, .side__search:hover { background: var(--hov); } }
+/* One key hint everywhere: a 1 px --line2 outline on the surface it stands on, the same in light and dark (it was a fill that vanished on the
+   light sidebar and a box in dark, visual review 2026-11-17, core 34). */
 .side__new kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
-  border-radius: 5px; background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2); font: 500 var(--fs-glyph)/1 var(--mono); color: var(--t2);
+  border-radius: 5px; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); font: 500 var(--fs-glyph)/1 var(--mono); color: var(--t2);
 }
 .side__search { width: var(--ctl); padding: 0; flex: none; }
+.side__search.side__search--wide { flex: 1; width: auto; justify-content: flex-start; padding: 0 12px; }
 .newmenu { position: relative; display: flex; flex: 1; }
 .newmenu--compact { flex: none; margin: 10px 0 6px; }
 .newmenu--compact .side__new { width: var(--ctl); height: var(--ctl); padding: 0; justify-content: center; }
@@ -116,7 +126,7 @@ body:has(.app) { background: var(--side); }
   border-radius: 8px; color: var(--t2); text-decoration: none; font-size: var(--fs-base); font-weight: 500; text-align: left;
   transition: var(--tr);
 }
-.side__item:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .side__item:hover { background: var(--hov); color: var(--t1); } }
 /* The current place is a raised white pill (F-026 §4): only one row is marked. */
 .side__item[aria-current="page"], .side__project.is-open, .side__dm[aria-current="page"] {
   background: var(--el); color: var(--t1); box-shadow: var(--sh-raise);
@@ -138,9 +148,17 @@ body:has(.app) { background: var(--side); }
 /* A project name keeps its full length in the 248 px sidebar where it can ("Community garden sensors", #763 NV-9). */
 .side__project { gap: 8px; padding-inline: 8px 6px; }
 .side__project:has(.side__names) { padding-block: 4px; }
+/* A locked space's row has a space row's metrics: its lock tile and name start where every space's tile and name start (visual review
+   2026-11-17, core 14); only its second line ("Locked, unlock it", C-26) makes it taller. */
+.side__locked { gap: 8px; padding-inline: 8px 6px; padding-block: 4px; }
 .side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); font-weight: 400; color: var(--t2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side__label--removed { display: flex; gap: .25em; }
+.side__label--removed > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.side__removed { flex: none; }
 .side__dm .ui-avatar, .side__agent .kreska { flex: none; }
+/* A conversation's face and name start where a space's tile and name start (round 14: names at 52 px against 48). */
+.side__dm { gap: 8px; padding-inline: 8px 6px; }
 /* Assistant is pinned first in Messages (F-036 AG-4); its pin sits where an unread dot would. */
 .side__pin { margin-left: auto; flex: none; color: var(--t3); }
 /* An encrypted space has a small lock after its name, at the row's end as drawn (F-026 §4); a dot of news follows it. */
@@ -153,6 +171,8 @@ body:has(.app) { background: var(--side); }
 /* A space with unread messages (#1250): its name in the primary colour and semibold; a read space keeps the quiet colour. The dot is for
    what needs the person, not for news. A muted space stays quiet (#1249). */
 .side__project.is-unread { color: var(--t1); font-weight: 600; }
+/* A conversation with something unread is bold, as a space (#1424 decision 10): a person's message, an agent's answer or report. */
+.side__dm.is-unread { color: var(--t1); font-weight: 600; }
 /* A space's row holds the link and, after it, its ⋯ (Move up, Move down, #1250): shown while the pointer is over the row or the ⋯ has focus,
    on the end slot it covers (the lock and the dot), and never on Everyone. A touch screen shows it always, as a 44 px target after the
    name: a long press moves too, but a gesture is never the only way (#343). */
@@ -162,6 +182,9 @@ body:has(.app) { background: var(--side); }
 .side__row:hover > .top__more, .side__row > .top__more:is(:focus-within, :has([aria-expanded="true"])) { opacity: 1; }
 .side__row:hover :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet) { opacity: 0; }
 .side__more { width: 24px; height: 24px; }
+/* While the ⋯ shows (the pointer over the row, its keyboard focus, its menu open) the name ends before it, so its "…" and the ⋯'s ring never
+   overlap ("Community garden sen…" under the ring, round 15 look-1 P3-12). */
+@media (pointer: fine) { .side__row:has(> .top__more):is(:hover, :has(> .top__more:is(:focus-within, :has([aria-expanded="true"])))) > .side__item { padding-right: 34px; } }
 .side__row:hover .side__more { background: var(--hov); }
 .side__row:has(.is-open):hover .side__more { background: var(--el); }
 @media (pointer: coarse) {
@@ -185,6 +208,8 @@ body:has(.app) { background: var(--side); }
 /* An agent's row keeps the pin where it is: the unread dot sits in its own slot at the end of the row, so neither moves the other. */
 .side__agent { position: relative; }
 .side__agent .side__pin { margin-right: 16px; }
+/* A conversation's face and name start where a space's tile and name start (round 14, look-b P19: names at x 52 against 48). */
+.side__dm { gap: 8px; padding-inline: 8px 6px; }
 .side__agent .side__dot { position: absolute; right: 10px; top: 50%; margin: -3px 0 0; }
 
 /* A working agent with Stop (S13): only while a real run executes. */
@@ -220,11 +245,24 @@ body:has(.app) { background: var(--side); }
 @media (max-height: 480px) {
   .side--rail { padding-top: max(8px, env(safe-area-inset-top)); }
   .side--rail, .side__rail-places, .side__rail-middle { gap: 2px; }
+}
+/* Home, Inbox, My tasks and My map stay pinned while there is room for them and a few tiles (round 14 P2, 200 % zoom on a 900 px screen, 450 px:
+   the band scrolled the open space into view and took Home off the top); only a window too short for that (a phone on its side) scrolls them too. */
+@media (max-height: 419px) {
   .side__rail-middle { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0; }
   .side__rail-middle::-webkit-scrollbar { width: 4px; }
   .side__rail-middle > .side__rail-scroll { flex: none; overflow: visible; }
   /* The band's end has room to clear its fade (below, #1375). */
   .side__rail-middle[data-scrolls] { padding-bottom: 20px; }
+  /* A tile half under the fade is never next to the account face (persona round 29, 200 %: a press on the Messages tile's faded edge
+     opened the account menu): a clear gap below the band, and a tile reached by Tab or the arrows scrolls clear of the fade. */
+  .side__rail-middle[data-scroll-down] { margin-bottom: 10px; }
+  /* Nothing in the band is ever half out of view under Search (personas-36, 200 %: on a space page the band brought the space into view
+     and Home stood half under Search): it scrolls a whole place or tile at a time and rests with a whole one at its top. Its upper edge
+     has no fade, which would fade that whole tile; a hairline says there is more above. The lower edge fades as before (more below). */
+  .side__rail-middle { scroll-snap-type: y mandatory; scroll-padding-block: 4px 28px; border-top: 1px solid transparent; }
+  .side__rail-middle :is(.side__ib, .side__rail-project, .side__rail-dm) { scroll-snap-align: start; }
+  .side--rail .side__rail-middle[data-scroll-up] { --fade-top: 0px; border-top-color: var(--line); }
 }
 /* Where a list can still scroll to, that edge fades softly (#1375): the expanded sidebar's and the drawer's list, the rail's lists. Static,
    set only when the size, the contents or the position change (Sidebar.tsx `useScrollEdges`), so a row cut by the edge reads as "more". */
@@ -247,7 +285,16 @@ body:has(.app) { background: var(--side); }
 .side__ib { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
-.side__count--rail { position: absolute; top: 0; right: 0; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
+/* The rail's Inbox count sits beside the icon's corner, on the rail's own colour, never on the icon's lines (personas-33/34, 200 %). */
+/* It is pinned to the Inbox button's top-right corner, inside the button's own height, so it reads as the Inbox's and never floats in the gap
+   towards Home (visual review 2026-11-17, core 12); it starts 1 px past the 18 px icon's right edge, so the glyph's lines stay clear
+   whatever the number's width (personas-33/34, 200 %). */
+.side__count--rail { position: absolute; top: -1px; left: calc(50% + 10px); right: auto; margin: 0; min-width: 16px; height: 16px; padding: 0 2px; line-height: 16px; background: var(--side); box-shadow: 0 0 0 2px var(--side); }
+/* Two digits stay inside the rail at every zoom (round 15 look-1 P3-2: "10" reached past the rail's edge into the panel at 200 %): the count is
+   as narrow as its figures, and the rail's tooltips start beyond the count, past the rail's own edge, so "Inbox" never touches it. */
+.side--rail .side__ib[data-tip-side="end"]::after { left: calc(100% + (var(--rail-w) - var(--ctl)) / 2 + 8px); }
+/* A space tile's dot for what needs you sits on its corner, as on a person's face in the rail. */
+.side__rail-project .side__dot { position: absolute; top: 1px; right: 1px; box-shadow: 0 0 0 2px var(--side); }
 .side__rail-project { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
@@ -268,10 +315,12 @@ body:has(.app) { background: var(--side); }
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--ctl); padding: 4px 8px; border-radius: var(--r);
   text-align: left; transition: var(--tr);
 }
-.me__btn:hover { background: var(--hov); }
+@media (hover: hover) { .me__btn:hover { background: var(--hov); } }
 /* The whole row, face and name, is the one way into Settings, on every device (#1419; the phone's drawer #266 PF-5). */
 a.me__btn { color: inherit; text-decoration: none; }
-a.me__btn[aria-current="page"] { background: var(--sub); }
+/* On Settings the row is the current place, drawn as the sidebar's current row in both themes: --sub was the sidebar's own grey in light, so
+   only dark showed it (visual review 2026-11-17, core 28). */
+a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-raise); }
 .me__text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .me__text b { font-weight: 500; font-size: var(--fs-md); color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .me--compact { flex: none; margin: 0; padding: 0; }
@@ -325,7 +374,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 /* ---------- Header and views: one block at the top of the panel ---------- */
 .top { display: flex; align-items: center; gap: 8px; min-height: var(--header-h); flex: none; padding: 14px var(--space-page) 6px; }
 .top__title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
-.top__title h1 { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top__title h1 { font-size: var(--fs-title); font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* An agent's chat (#1419): its Kreska before its name, centred on the title line. */
 .top__title > .kreska { flex: none; align-self: center; }
 /* A count beside a place's title: a quiet number, never a pill (README §2, §7 Inbox). */
@@ -354,7 +403,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 /* From 1001 px, where the details panel docks, the people and Call move into More under a 48.5 rem (776 px) header, so the name keeps its slot (#873). */
 @media (min-width: 1001px) { @container main (max-width: 48.5rem) { .top--project.top--row { --name-rest: 28.75rem; } } }
 .top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 20%); }
-.top--row .top__title h1 { letter-spacing: -0.2px; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
 .top--row .top__right > .top__actions:empty { display: none; }
 /* The views never shrink (a squeezed track cut "Agents" at 1024 px with "+ Task" beside it, #763 sweep), and a space's name slot is set by the width alone (above). */
@@ -368,9 +416,10 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .top__faces-slot { display: inline-flex; flex: none; justify-content: flex-end; }
 .top__audience.top__faces { max-width: none; min-height: 32px; margin: 0; padding: 0 6px; gap: 0; border-radius: var(--r-pill); }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; }
-.top__face .ui-avatar, .top__face.kreska { background: var(--el); }
+.top__face .ui-avatar { background: var(--face); }
+.top__face.kreska { background: var(--el); }
 /* "+N" is a face of the same size, as drawn: a circle for one digit, a short pill for two. Which one shows is the header pane's width (project-header.css). */
-.top__more-faces { place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-face); font-weight: 600; line-height: 1; color: var(--t1); }
+.top__more-faces { place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--face); box-shadow: inset 0 0 0 1px var(--line2), var(--sh-1); font-size: var(--fs-face); font-weight: 600; line-height: 1; color: var(--t1); }
 .top__face--wide, .top__more-faces--wide { display: none; }
 .top__more-faces--narrow { display: inline-grid; }
 .top__more { position: relative; display: inline-flex; }
@@ -379,10 +428,17 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   width: max-content; min-width: 208px; max-width: min(320px, calc(100vw - 24px)); padding: 6px; border: 1px solid var(--line);
   border-radius: 14px; background: var(--el); box-shadow: var(--sh-pop); white-space: nowrap;
 }
+/* Taller than the room on its side, the menu scrolls (useFitInWindow); its rows keep their own height. */
+.top__more-menu > * { flex-shrink: 0; }
+.top__more-menu { overscroll-behavior: contain; }
+/* One look for a menu's rows (round 15 look-2 P3-6): the message menu's 14 px words, 40 px rows and the icon first, in --t2. */
 .top__more-menu .newmenu__item {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
-  color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 0 12px; border-radius: 10px;
+  color: var(--t1); font: inherit; font-size: var(--fs-base); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
 }
+/* One look for a menu (round 15 look-2 P3-6): the message menu's words (14 px) and its icon leading each row in `--t2`. */
+.top__more-menu .newmenu__item > svg { flex: none; color: var(--t2); }
+.top__more-menu .newmenu__item:has(.top__more-text) > svg { margin-top: 1px; }
 /* A row with a hint (Mute, #1249): the label and one small muted line under it, wrapping inside the menu's width. */
 .top__more-menu .newmenu__item:has(.top__more-text) { align-items: flex-start; padding-block: 6px; }
 .top__more-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: normal; }
@@ -395,10 +451,11 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
    show them at every width. The narrow container rule below still shows them (higher specificity). */
 .top__more-menu .top__more-narrow { display: none; }
 .top__more-menu .newmenu__item:hover { background: var(--hov); }
-.top__more-menu .newmenu__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.top__more-menu .newmenu__item > svg { flex: none; color: var(--t2); }
+.top__more-menu .newmenu__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .top__more-menu .newmenu__item kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
-  border-radius: 5px; background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2); font: 500 var(--fs-glyph)/1 var(--mono); color: var(--t2);
+  border-radius: 5px; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); font: 500 var(--fs-glyph)/1 var(--mono); color: var(--t2);
 }
 @media (pointer: coarse) { .top__more-menu .newmenu__item { min-height: 44px; } }
 @media (pointer: coarse) { .top__audience.top__faces { min-height: 44px; } }
@@ -434,27 +491,38 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .view-empty { padding: 36px 0 32px; }
 /* Home's Tasks (#190 HOME-2): your unfinished work grouped by project, in calm rows. */
 .home-tasks { padding: 24px 0 32px; }
-.home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); letter-spacing: -.01em; }
+.home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); }
 .home-tasks__note { margin: 4px 0 8px; color: var(--t1); font-size: var(--fs-sm); }
 .home-tasks__place { margin-top: 16px; }
-.home-tasks__name { margin: 0 0 2px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
-.home-tasks__list { list-style: none; margin: 0; padding: 0; }
+/* The first space's name starts the list, under the page's own top room: no second gap (70 px of nothing on the phone, visual review
+   2026-11-17, core 17). */
+.home-tasks__h + .home-tasks__place { margin-top: 0; }
+@media (max-width: 640px) { .home-tasks { padding-top: 12px; } }
+.home-tasks__name { margin: 0 0 6px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
+/* A space's tasks are one card of rows, as Home's lists are, so a row and its chevron belong together instead of floating 680 px apart on the
+   page; the glyph, the word and the chevron sit on the row's centre line (round 14, look-a B6). */
+.home-tasks__list { list-style: none; margin: 0; padding: 0; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); overflow: hidden; }
+.home-tasks__list > li + li { border-top: 1px solid var(--line); }
 .home-tasks__item {
-  display: flex; align-items: baseline; gap: 12px; min-height: 40px; padding: 8px; margin: 0 -8px; border-radius: var(--r);
+  display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 10px 16px;
   color: var(--t1); text-decoration: none; font-size: var(--fs-md); line-height: 1.45;
 }
-.home-tasks__item:hover { background: var(--hov); }
-.home-tasks__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
-.home-tasks__status { flex: none; min-width: 88px; color: var(--t3); font-size: var(--fs-sm); }
+@media (hover: hover) { .home-tasks__item:hover { background: var(--hov); } }
+.home-tasks__item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.home-tasks__status { display: inline-flex; flex: none; align-items: center; gap: 6px; min-width: 88px; height: calc(var(--fs-md) * 1.45); color: var(--t3); font-size: var(--fs-sm); line-height: 1; }
+.home-tasks__glyph { flex: none; }
+.home-tasks__num { color: var(--t3); }
 .home-tasks__status.is-blocked { color: var(--t1); }
 .home-tasks__body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .home-tasks__title { overflow-wrap: anywhere; }
 .home-tasks__why { color: var(--t3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
-.home-tasks__go { flex: none; align-self: center; color: var(--t3); }
+.home-tasks__go { flex: none; display: block; height: calc(var(--fs-md) * 1.45); color: var(--t3); }
 .home-tasks__more { margin-top: 14px; color: var(--t3); font-size: var(--fs-sm); }
 .home-tasks__center { display: flex; justify-content: center; padding: 48px 0; }
 @media (pointer: coarse) { .home-tasks__item { min-height: 44px; } }
-@media (max-width: 640px) { .home-tasks__status { min-width: 0; } }
+/* The status is a column of one width on the phone too, so every title starts at one x (visual review 2026-11-17, core 17): the glyph and
+   "Blocked", the longest word, fit 72 px. Glyph, word and arrow sit on the first line's middle. */
+@media (max-width: 640px) { .home-tasks__status { min-width: 72px; } }
 
 /* Conversation: column + pinned composer */
 .composer { flex: none; padding: 8px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
@@ -463,7 +531,9 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border-radius: var(--r-composer);
   box-shadow: var(--sh-field); background: var(--el); transition: var(--tr);
 }
-.composer__box:focus-within { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
+/* The composer is a text field: its ring is its edge, 2 px of --ring over its hairline (offset -1 px, as .ui-input), never a second outline
+   with a gap round the card (round 14: a grey ring, a white gap and the border read as a double frame after a click), nor a dark frame. */
+.composer__box:focus-within { outline: 2px solid var(--ring); outline-offset: -1px; }
 .composer__box[aria-disabled="true"] { background: var(--sub); }
 .composer__box textarea {
   field-sizing: content; flex: 1; min-height: 32px; max-height: 180px; padding: 6px 4px; border: 0; resize: none; background: transparent;
@@ -472,7 +542,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__box textarea::placeholder { color: var(--t3); opacity: 1; }
 .composer__box textarea:disabled { cursor: not-allowed; }
 /* The button keeps its full hit area; only its fill scales, so enabling reads as a soft arrival. */
-.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: var(--r); color: var(--t1);
+/* Send is a circle, concentric with the round composer it sits in (visual review 2026-11-17); on touch its fill keeps a 4 px inset inside the 44 px target. */
+.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: 50%; color: var(--t1);
   transition: color var(--dur-1) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
 .composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--own);
   transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
@@ -486,7 +557,14 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .composer__attach:disabled { opacity: .5; cursor: default; }
 .composer__attach[aria-disabled="true"] { opacity: .45; cursor: default; }
 .composer__attach[aria-disabled="true"]:hover { background: transparent; color: var(--t3); }
-.composer__attach:focus-visible { outline: 2px solid var(--t1); outline-offset: 0; }
+.composer__attach:focus-visible { outline: 2px solid var(--ring); outline-offset: 0; }
+/* A composer sits at the bottom of its pane: its tooltips open above it, never over its edge or under the window's (visual review
+   2026-11-17, core 34). */
+@media (hover: hover) and (pointer: fine) {
+  .composer [data-tip]::after { top: auto; bottom: calc(100% + 8px); }
+}
+/* The composer sits at the window's foot: its tools' tooltips open above them, never cut by the window's edge (visual review 2026-11-17). */
+.composer__box [data-tip]::after { top: auto; bottom: calc(100% + 8px); }
 /* ✦ Ask my assistant (#57): one quiet button in the box; no connection means an honest note. */
 .composer__ask { display: grid; place-items: center; width: 32px; height: 32px; flex: none; margin-left: -8px; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
 .composer__ask:hover { background: var(--hov); color: var(--t1); }
@@ -511,13 +589,13 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 
 /* ---------- Details panel ---------- */
 .details__eyebrow { font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-.details__title { margin: 6px 0 10px; font-size: var(--fs-xl); line-height: 1.35; letter-spacing: -0.015em; }
+.details__title { margin: 6px 0 10px; font-size: var(--fs-xl); line-height: 1.35; letter-spacing: var(--tracking-title); }
 .details__lead { font-size: var(--fs-md); color: var(--t2); line-height: 1.6; }
 .details__sec { margin-top: 28px; }
 .details__sec h4 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .details__sec p { font-size: var(--fs-md); color: var(--t2); line-height: 1.6; }
 .details__back { display: inline-flex; align-items: center; gap: 4px; min-height: var(--ctl); margin: -6px 0 10px -6px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--t3); transition: var(--tr); }
-.details__back:hover { background: var(--hov); color: var(--t1); }
+@media (hover: hover) { .details__back:hover { background: var(--hov); color: var(--t1); } }
 .details__rows { list-style: none; margin: 0; padding: 0; }
 .details__rows li { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; font-size: var(--fs-md); line-height: 1.45; }
 .details__rows li + li { border-top: 1px solid var(--line); }
@@ -551,7 +629,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (pointer: coarse) {
   .side__item { min-height: 44px; }
   .side__new, .side__search { min-height: 44px; }
-  .side__search { width: 44px; }
+  .side__search:not(.side__search--wide) { width: 44px; }
   .side__ib, .side__rail-project, .side__rail-dm, .newmenu--compact .side__new, .me--compact .me__btn { width: 44px; height: 44px; min-height: 44px; }
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */
@@ -561,6 +639,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .composer__box { padding: 4px 4px 4px 6px; }
   .composer__box textarea { min-height: 44px; padding: 10px 4px; }
   .composer__send, .composer__ask, .composer__attach { width: 44px; height: 44px; }
+  .composer__send::before { inset: 4px; }
   /* 16px text: iOS zooms the page into any smaller field on focus. */
   .composer__box textarea { font-size: var(--fs-input-touch); }
   .composer__ask { margin-left: -10px; }
@@ -606,13 +685,15 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead {
   display: flex; align-items: center; gap: 10px; flex: none; box-sizing: border-box; min-height: 56px; padding: calc(6px + env(safe-area-inset-top)) 14px 6px;
 }
+/* Scrolled, the page meets the header at a hairline (AppLayout `data-scrolled`, round 14, look-a B4). */
+.app__main:has(.app__pane[data-scrolled]) .phead:not(.phead--space) { box-shadow: 0 1px 0 var(--line); position: relative; z-index: 1; }
 .phead__id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .phead__logo { display: inline-flex; flex: none; }
 .phead__title { flex: 1; min-width: 0; }
-.phead__title h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
+.phead__title h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; line-height: 1.25; }
 /* The narrowest phones keep the view's name whole; the people are in Details. */
 @media (max-width: 340px) { .phead__people { display: none; } }
-.phead__word { font-size: var(--fs-logo); font-weight: 600; letter-spacing: -.04em; }
+.phead__word { font-size: var(--fs-logo); font-weight: 600; letter-spacing: var(--tracking-wordmark); }
 .phead--agent .phead__sub { color: var(--t3); }
 .phead__sub { margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__meta-slot:empty { display: none; }
@@ -674,7 +755,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__avatar .ui-avatar { box-shadow: none; }
 /* The live mark on More sits on the page, not on a filled button (More has no fill now). */
 .phead .phead__right .top__live-cue { background: var(--bg); }
-.phead--large .phead__title h1 { font-size: var(--fs-xl); letter-spacing: -.02em; line-height: 1.2; }
+.phead--large .phead__title h1 { font-size: var(--fs-xl); letter-spacing: var(--tracking-title); line-height: 1.2; }
 .phead--large { min-height: 56px; align-items: center; }
 .phead--large .phead__sub { margin-top: 0; }
 
@@ -702,12 +783,16 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   background: var(--el); color: var(--t1); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
 }
 .phone-dock--solo { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); height: 0; padding: 0; }
+/* The "+" keeps one place on every screen (Spokój rule 7): without the capsule (a space's views) it stands where it stands above the
+   capsule, the capsule's 62 px and the dock's 6 px above it higher (visual review 2026-11-17, core 36: it jumped 66 px down in a space). */
+:root { --fab-lift: 68px; }
+.phone-dock--solo .phone-fab { bottom: calc(100% + 4px + var(--fab-lift)); }
 .phone-fab {
   position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
   display: grid; place-items: center; background: var(--own); color: var(--t1); transition: var(--tr);
 }
 /* The phone's "+" is a soft fill like Send, so a screen's one dark button is its own (founder, 2026-10-31, #763). */
-.phone-fab:hover { background: var(--hov); }
+@media (hover: hover) { .phone-fab:hover { background: var(--hov); } }
 .phone-fab:active { background: var(--pick); }
 /* A phone on its side (short landscape, F-015): the header and the capsule step down to 44 px targets so
    the work keeps its room; the subtitle gives way. */
@@ -719,6 +804,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .phone-dock { padding-top: 4px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
   .phone-dock__bar .ui-bottomnav__item { min-height: 44px; }
   .phone-dock__search { width: 54px; height: 54px; }
+  :root { --fab-lift: 58px; }
 }
 @media (max-width: 640px) {
   .app__main { position: relative; }
@@ -727,10 +813,19 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .app--fab .app__pane { padding-bottom: 64px; }
   .app--fab .app__pane:has(.pane-scroll) { padding-bottom: 0; }
   .app--fab .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) { padding-bottom: 72px; scroll-padding-bottom: 72px; }
+  /* Without the capsule (a space's views) the "+" floats over the page itself, its own bottom room (the safe area, at least 14 px) above
+     the screen's edge: the end of the page clears it by that much more, so no control is ever left under it (personas-35). */
+  .app--fab:has(.phone-dock--solo) .app__pane { padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--fab-lift) + 64px); }
+  .app--fab:has(.phone-dock--solo) .app__pane:has(.pane-scroll) { padding-bottom: 0; }
+  .app--fab:has(.phone-dock--solo) .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) {
+    padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--fab-lift) + 72px); scroll-padding-bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--fab-lift) + 72px);
+  }
 }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: var(--fs-base); font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }
+/* "+ New message" starts where the line above it starts, its padding taken back (round 14, look-a B5; "One look for one element"). */
+.proj-index__dms > .ui-btn--secondary:last-child { margin-inline-start: -14px; }
 
 /* Home as drawn (#342): no header row on the computer; the name stays for assistive technology. */
 .top.top--bare { height: 0; min-height: 0; padding: 0; margin: 0; border: 0; overflow: visible; }
@@ -749,9 +844,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   /* "Forgot password?" sits between the Email and the Password fields, with 5 px under it and the form's gap above it, so a 44 px area
      cannot fit without covering an input. Its hit area stays in that gap, 7 px short of the Email's bottom edge and ending with the
      line: a touch browser takes a tap within a few px of a link for the link, so a tap on either input's edge must stay at least
-     that far from it. It is wider than the text to the left, and covers neither input. */
-  .auth__form .ui-field__aside .ui-link { position: relative; }
-  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(5px - var(--auth-gap)); bottom: 0; }
+     that far from it. It is wider than the text to the left, and covers neither input. The area is placed against the aside's own box (the
+     top of the Password field and the label's line), not the link's text box, so a change of the line's height or font never moves it
+     towards the Email field. */
+  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(7px - var(--auth-gap)); bottom: 0; }
 }
 
 /* F-029 (#614): "Not in <workspace>: AI is off there." is its own line under its card, not the caption of the next heading. */

@@ -24,11 +24,20 @@ const ROLE_SENTENCE: Record<InviteRole, string | null> = {
 function readToken(): string {
   const fromHash = window.location.hash.replace(/^#/, '').trim();
   try {
-    if (fromHash) sessionStorage.setItem(STORE, fromHash);
+    if (fromHash) { sessionStorage.setItem(STORE, fromHash); forgetJoined(); }
     return fromHash || sessionStorage.getItem(STORE) || '';
   } catch { return fromHash; }
 }
 function forgetToken() { try { sessionStorage.removeItem(STORE); } catch { /* nothing kept */ } }
+
+/**
+ * This tab joined with its link (#1424, persona A-2): the landing replaced `/join` in the history, and a reload, a restored tab or Back that
+ * still reaches `/join` opens Flux, never "Open the invite link again" to someone who is already in. A new link opened here clears it.
+ */
+const JOINED = 'flux.invite-joined';
+function markJoined() { try { sessionStorage.setItem(JOINED, '1'); } catch { /* nothing kept */ } }
+function joinedHere() { try { return sessionStorage.getItem(JOINED) === '1'; } catch { return false; } }
+function forgetJoined() { try { sessionStorage.removeItem(JOINED); } catch { /* nothing kept */ } }
 
 type State =
   | { kind: 'loading' }
@@ -58,13 +67,15 @@ function landingOf(result: AcceptInviteResult) {
 }
 
 export function JoinPage() {
-  const [state, setState] = useState<State>(() => (readToken() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
+  const [state, setState] = useState<State>(() => (readToken() || joinedHere() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const revalidator = useRevalidator();
   const created = useActionData() as FormResult | undefined;
+  // Back on `/join` after this tab joined, with no new link: Flux opens in its place.
+  useEffect(() => { if (!readToken() && joinedHere()) navigate('/', { replace: true }); }, [location.key, navigate]);
 
   /** What the page shows for the link and this tab's session; `madeHere`: the account was just made on this page, so it joins at once. */
   function show([me, preview, capabilities]: [MeResponse | null, InvitePreview, IdentityCapabilities | null], madeHere: boolean) {
@@ -119,6 +130,7 @@ export function JoinPage() {
     try {
       const result = await acceptInvite(token);
       forgetToken();
+      markJoined();
       // F-030: an admin of an encrypted space without an unlock password is told so before it opens; a toast would not outlive the change of pages.
       if (result.needsUnlockPassword) { setState({ kind: 'joined', result }); return; }
       revalidator.revalidate();
@@ -162,20 +174,23 @@ export function JoinPage() {
 
   const { preview, me, ssoOnly } = state;
   const roleLine = ROLE_SENTENCE[preview.role];
-  const notes = preview.emailLocked || preview.encrypted ? (
+  // The address a link is for is said once (persona round 6): on the create-account form it is the Email field itself, so the note leaves it out.
+  const notesFor = (address: boolean) => (address && preview.emailLocked) || preview.encrypted ? (
     <div className="auth__notice" role="note">
       <Icon name={preview.encrypted ? 'lock' : 'mail'} />
       <div>
-        {preview.emailLocked ? <p>This link works only for {preview.email ? <strong>{preview.email}</strong> : 'the email address it was sent to'}.</p> : null}
+        {address && preview.emailLocked ? <p>This link works only for {preview.email ? <strong>{preview.email}</strong> : 'the email address it was sent to'}.</p> : null}
         {preview.encrypted ? <p>{preview.workspaceName} is encrypted. After a restart it stays locked until an owner or admin unlocks it.
           {preview.role === 'admin' ? ' As an admin you get your own unlock password only when someone who has one lets you set it.' : ''}</p> : null}
       </div>
     </div>
   ) : null;
+  const notes = notesFor(true);
   const head = (
     <div className="auth__head">
       <h1 className="auth__title">{`Join ${preview.workspaceName}`}</h1>
-      <p className="auth__lead">{`${preview.invitedBy} invited you.`}{roleLine ? ` ${roleLine}` : ''}</p>
+      {/* A link made from a space names it (#1424): the person learns where they will land, not only the company. */}
+      <p className="auth__lead">{preview.spaceName ? `${preview.invitedBy} invited you to ${preview.spaceName}.` : `${preview.invitedBy} invited you.`}{roleLine ? ` ${roleLine}` : ''}</p>
     </div>
   );
   const expires = <p className="auth__alt">Expires on {new Date(preview.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.</p>;
@@ -229,7 +244,7 @@ export function JoinPage() {
   return (
     <>
       {head}
-      {notes}
+      {notesFor(preview.email === null)}
       <JoinSignUp result={created} token={readToken()} lockedEmail={preview.email} />
       {/* The form's "An account with this email already exists" offers Sign in to join itself: the way is said once. */}
       {created?.accountExists ? null : <p className="auth__alt">Already have an account? <Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link></p>}
@@ -260,10 +275,10 @@ function JoinSignUp({ result, token, lockedEmail }: { result: FormResult | undef
       <input type="hidden" name="inviteToken" value={token} />
       <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
         readOnly={lockedEmail !== null} defaultValue={lockedEmail ?? result?.values?.email} error={result?.fieldErrors?.email}
-        hint={lockedEmail !== null ? 'This invite is for this address.' : undefined} />
+        hint={lockedEmail !== null ? 'You join with this email.' : undefined} />
       <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
         onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
-        hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
+        hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} />
       <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Joining…' : 'Create account and join'}</Button>
     </Form>
   );

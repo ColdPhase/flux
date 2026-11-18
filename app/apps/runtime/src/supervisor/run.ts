@@ -445,12 +445,21 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       }
       textPending = '';
     };
+    let notedTurn = 0;
     const sayText = (turn: number, words: string) => {
       const clean = words.split('\u0000').join('');
-      if (!clean || turn < 1) return;
+      if (!clean || turn < 1 || turn === notedTurn) return;
       if (turn !== textTurn) { flushText(); textTurn = turn; }
       textPending += clean;
       if (!textTimer) { textTimer = setTimeout(flushText, TEXT_BATCH_MS); textTimer.unref(); }
+    };
+    /** Message `turn` calls a tool (founder check, Hubert 2026-11-17): its words were a working note, not the answer; dropped, and the asker's view told. */
+    const noteText = (turn: number) => {
+      if (turn < 1 || turn !== textTurn || turn === notedTurn) return;
+      notedTurn = turn;
+      if (textTimer) { clearTimeout(textTimer); textTimer = null; }
+      textPending = '';
+      send({ t: 'run', e: 'note', turn });
     };
     let idle = later(request.caps.idleSeconds * 1000, () => terminate('no_event'));
     later(request.caps.wallClockSeconds * 1000, () => terminate('wall_clock'));
@@ -471,6 +480,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         const item = isObject(event.item) ? event.item : null;
         const kind = item && typeof item.type === 'string' ? item.type : '';
         if (kind === 'reasoning') return;
+        // Anything else than a message comes after the message before it: that one was a working note (founder check, Hubert 2026-11-17).
+        if (kind !== 'agent_message') noteText(codexMessages);
         if (kind === 'agent_message') {
           if (type === 'item.completed' && typeof item!.text === 'string') {
             lastMessage = item!.text;
@@ -566,6 +577,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         if (event.parent_tool_use_id) return;
         const inner = isObject(event.event) ? event.event : null;
         if (inner?.type === 'message_start') { claudeMessages += 1; return; }
+        // A tool call in the message: the words before it were a working note (founder check, Hubert 2026-11-17).
+        if (inner?.type === 'content_block_start' && isObject(inner.content_block) && inner.content_block.type === 'tool_use') { noteText(Math.max(1, claudeMessages)); return; }
         const delta = inner?.type === 'content_block_delta' && isObject(inner.delta) ? inner.delta : null;
         if (delta?.type === 'text_delta' && typeof delta.text === 'string') sayText(Math.max(1, claudeMessages), delta.text);
         return;

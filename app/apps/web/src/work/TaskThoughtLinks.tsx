@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getSketch } from '../api/sketches';
 import { listProjectSketches } from '../project/data';
-import { Button, Icon, Select, Option } from '../ui';
+import { Button, Icon } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { linkObjects } from './api';
 import { RefLink } from '../place/origin';
 
@@ -23,7 +24,7 @@ interface TaskThoughtLinksProps {
 const LINK_FAILURE = 'Could not link it. Try again.';
 
 /**
- * The task's thought linking as one state two places share (#488): the "Link thought" action in the panel's one row of
+ * The task's thought linking as one state two places share (#488): the "Add to a thought" action in the panel's one row of
  * actions, and the linked thoughts with their picker below it, which appear only once there is something to show.
  */
 export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLinksProps) {
@@ -69,6 +70,19 @@ export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLin
   }, [open, mapId, reloads]);
 
   const close = () => { setOpen(false); toggle.current?.focus(); };
+  // After a link, focus goes back to "Add to a thought" once it can take it (personas-35 D11-32): the button is disabled while the link is
+  // saved and the thought chosen leaves with the picker, so focusing it at once left the focus to the page's content outside the panel. For a
+  // moment, while the panel reads its links again, focus that falls to nothing is given back to it; focus the person moved stays where it is.
+  const refocus = useRef(0);
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    if (Date.now() - refocus.current > 2000) { refocus.current = 0; return; }
+    const button = toggle.current;
+    const active = document.activeElement;
+    const nowhere = !active || active === document.body || active === document.getElementById('content');
+    if (!button || button.disabled || !nowhere) return;
+    button.focus({ preventScroll: true });
+  });
   // Escape closes the open picker from its button as well as from inside it; the Details panel keeps its own Escape otherwise.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (open && event.key === 'Escape' && !busy) { event.preventDefault(); event.stopPropagation(); close(); }
@@ -85,7 +99,7 @@ export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLin
       setStatus(`Linked “${thought.text}” to this task.`);
       setOpen(false);
       reload();
-      toggle.current?.focus();
+      refocus.current = Date.now();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 403) setError('You can read this task but not change it.');
       else if (cause instanceof ApiError && cause.status === 404) setError('That thought is no longer on a map you can read. Choose another.');
@@ -104,17 +118,21 @@ export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLin
 
 export type ThoughtLinks = ReturnType<typeof useThoughtLinks>['links'];
 
-/** "Link thought": one small action beside Hand off and Result. */
+/** "Add to a thought": one small action beside Hand off and Result. */
 export function LinkThoughtButton({ links, toggle }: { links: ThoughtLinks; toggle: RefObject<HTMLButtonElement | null> }) {
   return (
     <Button ref={toggle} variant="secondary" size="sm" icon="link" disabled={links.busy} aria-expanded={links.open} aria-controls={links.panelId}
-      onKeyDown={links.onKeyDown} onClick={() => { links.setError(''); links.setStatus(''); links.setOpen((value) => !value); }}>Link thought</Button>
+      onKeyDown={links.onKeyDown} onClick={() => { links.setError(''); links.setStatus(''); links.setOpen((value) => !value); }}>Add to a thought</Button>
   );
 }
 
 /** The thoughts the task is linked to and the picker that adds one; empty and closed it shows nothing (Spokój rule 4). */
 export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
   const { item, project, open, maps, mapId, setMapId, current, candidates, busy, error, status, sectionId, panelId, mapFieldId, listed, close, onKeyDown, link } = links;
+  // The chooser opens where it is seen (founder direction 2026-11-17 visual review): a phone's half sheet ends above it, so it scrolls into view,
+  // and again as its maps and thoughts arrive.
+  const pick = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) pick.current?.scrollIntoView({ block: 'nearest' }); }, [open, maps, mapId, current]);
   if (!listed.length && !open && !status && !error) return null;
   return (
     <section className="details__sec" aria-labelledby={sectionId} onKeyDown={onKeyDown}>
@@ -128,7 +146,7 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
         </ul>
       ) : null}
       {open ? (
-        <div id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
+        <div ref={pick} id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
           <div className="wd-actions wd-pick__cancel">
             <Button variant="secondary" disabled={busy} onClick={close}>Cancel</Button>
           </div>

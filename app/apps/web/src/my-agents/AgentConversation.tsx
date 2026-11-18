@@ -5,7 +5,7 @@ import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
-import { END_SLACK, NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { END_SLACK, NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { AnswerBody, AnswerTools, WritingWords } from '../assistant/ConversationParts';
 import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion } from '../assistant/liveRun';
 import { MessageText } from '../app/MessageText';
@@ -67,14 +67,14 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
   const prepared = run.answer ? schedules.jobs?.find((job) => job.preparedRunId === run.id) ?? null : null;
   return (
     <>
-      <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="">
+      <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="" tabIndex={-1}>
         {newDay ? <MessageDay as="p" label={day(run.createdAt)} /> : null}
         {/* The files its owner sent with it (#1438 point 10, C-64), as a message's: photos above, file rows in the bubble; no empty words above them. */}
         <div className="dm-msg__row"><div className="dm-msg__main is-mine">{run.files?.length
           ? <MessageContent files={run.files} body={run.prompt ? <div className="dm-msg__body">{run.prompt}</div> : null} context={{ author: 'You', at: run.createdAt, caption: run.prompt }} />
           : <MessageBubble><div className="dm-msg__body">{run.prompt}</div></MessageBubble>}</div></div>
       </li>
-      <li className="dm-msg agc__turn" data-run-id={run.id} data-chat-agent="" aria-live="polite">
+      <li className="dm-msg agc__turn" data-run-id={run.id} data-chat-agent="" aria-live="polite" tabIndex={-1}>
         <div className="dm-msg__row">
           <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
           <div className="dm-msg__main">
@@ -151,8 +151,8 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
     setUndoing(true); setFailed(false); setNote('');
     try {
       const result = await undoRunChanges(line.runId);
-      // What changed since is not taken back: say which, as a task's change line does.
-      if (result.changedSince.length) setNote(result.message);
+      // What changed since is not taken back: say which, as a task's change line does. When the Done went with it, say the task is back (AG-7).
+      if (result.changedSince.length || result.back !== null) setNote(result.message);
       onChanged();
     } catch { setFailed(true); } finally { setUndoing(false); }
   };
@@ -171,7 +171,7 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
               {line.words ? <div className="assistant-answer__body"><MessageText body={line.words} people={lookups.people} /></div> : null}
               {line.task ? (
                 <Link className="agc__chip" to={`/projects/${line.task.projectId}/tasks?open=work:${line.task.id}`}>
-                  <Icon name="tasks" size={13} />#{line.task.number} {line.task.title} · {line.task.projectName}
+                  <Icon name="tasks" size={13} /><span className="agc__chip-t">#{line.task.number} {line.task.title} · {line.task.projectName}</span>
                 </Link>
               ) : null}
             </div></MessageBubble>
@@ -283,10 +283,11 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const newBelow = useNewBelow(feedNode, () => { following.current = true; });
   const elementFor = (key: string) => feed.current?.querySelector<HTMLElement>(key.startsWith('run-') ? `[data-run-id="${key.slice(4)}"][data-chat-agent]` : `[data-line-id="${key.slice(5)}"]`) ?? null;
   useArrivals(feed, entries.map((entry) => entry.key), elementFor, (keys, atEnd) => {
-    if (!atEnd) newBelow.add(countBelow(feed.current, keys, elementFor));
+    if (!atEnd) newBelow.add(arrivedBelow(feed.current, keys, elementFor));
   }, { animate: false });
   useLayoutEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; } }, [draft]);
-  useEffect(() => { field.current?.focus({ preventScroll: true }); }, [agent.id]);
+  // Arriving puts the cursor at the end of a kept draft (F-026 §4).
+  useEffect(() => { const el = field.current; if (!el) return; el.focus({ preventScroll: true }); el.setSelectionRange(el.value.length, el.value.length); }, [agent.id]);
 
   async function send() {
     const prompt = draft.trim();
@@ -330,7 +331,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                   const item = entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} schedules={schedules} first newDay={newDay && entry.key !== newFrom} />
                     : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay && entry.key !== newFrom} onChanged={chat.refresh} />;
                   // Where what is new begins (#1246): its day line first, then the divider, then what the agent said.
-                  return entry.key === newFrom ? [newDay ? <MessageDay key={`day-${entry.key}`} label={day(entry.at)} /> : null, <UnreadDivider key="unread" />, item] : item;
+                  return entry.key === newFrom ? [<UnreadDivider key="unread" day={newDay ? day(entry.at) : null} />, item] : item;
                 })}
               </ol>
             </>) : chat.incomplete ? <p className="agc__empty" role="alert">This chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p>

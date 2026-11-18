@@ -28,6 +28,9 @@
   --act: #d2d2d6;
   /* The fill of a chosen message row: clearly apart from the page, from other people's bubbles and from --own */
   --pick: #dcdce0;
+  /* A person's face (the avatar circle): white in light; in dark one step above the raised surface, so a face stays a disc on the
+     sidebar, the page and a card alike (visual review 2026-11-17, core 5: dark faces almost matched the page). */
+  --face: var(--el);
   /* A segmented control (#1238): the selected option is a raised pill clearly apart from its track in both themes (the fill at least
      1.4:1, measured, and a 1 px edge), its label --t1 and an unselected label --seg-off. Roles over existing colours, no new colour. */
   --seg: var(--act); --seg-on: var(--el); --seg-off: var(--t2);
@@ -37,19 +40,29 @@
   --t1: #18181b;
   --t2: #4a4a4a;
   --t3: #636363;
-  /* Inverted: the one primary button of a screen or region, chosen chips, toasts */
+  /* Inverted: the one primary button of a screen or region, chosen chips */
   --inv: #18181b;
   --oninv: #ffffff;
+  /* The keyboard focus ring (founder direction, Hubert 2026-11-17, #1424): 2 px of the mid-grey --t3 everywhere, never a black
+     frame, at least 3:1 on every surface in both themes and never the selection's fill. --ring-inv is the same ring inside an
+     inverted fill. Both are transparent after a tap or a click (ui.css, data-input on <html>), so only the keyboard draws them. */
+  --ring: var(--t3);
+  --ring-inv: var(--oninv);
+  /* Selected text (founder direction 2026-11-17 visual review): a grey wash of --t3 behind the text's own colour, the same in every field,
+     the Wiki's editor and the map, in both themes; never the browser's blue or a lavender. */
+  --selection: color-mix(in srgb, var(--t3) 34%, transparent);
   --scrim: rgba(0, 0, 0, .28);
   --dot: #d4d4d8;
   /* Volume: layers get lighter as they rise */
   --sh-1: 0 1px 2px rgba(0, 0, 0, .06);
   --sh-card: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -6px rgba(0, 0, 0, .12);
   --sh-pop: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 30px -10px rgba(0, 0, 0, .22);
-  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
+  /* A field's edge is the strong hairline (--line2): a white field on a white card was almost invisible (visual review 2026-11-17, core 24). */
+  --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .06);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
-  /* Inverted surfaces that are not buttons (own bubbles, toasts, chosen chips). Buttons are flat (direction C, #763). */
+  /* An inverted surface that is not a button. Nothing draws it now: own bubbles are --own, chosen chips flat --inv, and a toast is a raised
+     --el card (founder direction, Hubert 2026-11-17, #1424). Buttons are flat (direction C, #763). */
   --grad-inv: linear-gradient(#3b3b3f, #18181b);
   /* Buttons, direction C "quiet, one accent per screen" (founder, 2026-10-31, #763): flat, no shadow, radius 10.
      --choice is the 1 px outline of an option button (an agent's ready answers, a pick among a few). */
@@ -87,8 +100,12 @@
   --fs-input-touch: 16px; /* fields on touch: 16 px exactly, so iOS does not zoom on focus (px on purpose) */
   --lh: 1.43;           /* 14/20 */
   --lh-tight: 1.3;
-  --tracking: 0;
-  --tracking-title: -.02em;
+  /* Letter spacing, one rule (README §2, founder direction 2026-11-17, #1424): text at --fs-lg and below is 0, display sizes
+     (--fs-xl and up) are -.02em. A component never sets its own value. Two marks that are not text keep their own. */
+  --tracking: 0;              /* every text at --fs-lg (16) and below, regular or bold */
+  --tracking-title: -.02em;   /* titles at --fs-xl (20) and up */
+  --tracking-wordmark: -.04em; /* the "flux" wordmark */
+  --tracking-code: .06em;     /* a code read one character at a time (device code, recovery key) */
 
   /* Space (4px grid) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px;
@@ -137,7 +154,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045; --face: #2c2c2c;
     --seg: var(--sub); --seg-on: var(--pick); --seg-off: var(--t3);
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
@@ -145,7 +162,7 @@
     --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
     --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
     --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
-    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+    --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .4);
     --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
@@ -156,7 +173,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045; --face: #2c2c2c;
   --seg: var(--sub); --seg-on: var(--pick); --seg-off: var(--t3);
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
@@ -164,7 +181,7 @@
   --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
   --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
   --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
-  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .4);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);

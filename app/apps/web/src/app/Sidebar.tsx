@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
 import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, FluxLogo, Icon, IconButton, Kreska, choosesInPlace, useTravelingHighlight } from '../ui';
 import { useKeyboardMove, useReorder } from '../ui/reorder';
+import { useScrollEdges } from '../ui/scrollEdges';
 import { MoreMenu, type MoreItem } from './HeaderParts';
 import { useNeedsYouSpaces } from '../notifications/dot';
 import { useMarkAllRead } from './markAllRead';
@@ -15,12 +16,15 @@ import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
+import { useDmUnread } from '../dm/dmUnread';
 import type { SpaceIcon } from '@flux/contracts';
 import { SpaceFace } from '../ui/SpaceFace';
 import { useLiveSpaces } from '../live/spaces';
-import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
+import { lockedLine, useEncryptedWorkspaceIds, useLockedPlace, useLockedWorkspaces } from '../encryption/state';
+import '../encryption/waiting.css';
 import { usePlaceMutes } from '../notifications/mutes';
-import { inComposer } from '../ui/keys';
+import { isTyping } from '../ui/keys';
+import { startsConversations } from '../people/api';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -50,29 +54,6 @@ function LockTile({ size = 20 }: { size?: number }) {
 }
 
 /**
- * Where a list that scrolls can still go (#1375): its lower edge fades while there is more below, its upper edge while it is scrolled, so
- * a row cut by the edge reads as "more", not as the end. The marks are set when the size, the contents or the position change; the
- * fade itself is static (app.css `data-scroll-down`, `data-scroll-up`).
- */
-function useScrollEdges(ref: RefObject<HTMLElement | null>, deps: readonly unknown[]) {
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-    const check = () => {
-      el.toggleAttribute('data-scroll-down', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
-      el.toggleAttribute('data-scroll-up', el.scrollTop > 1);
-    };
-    check();
-    el.addEventListener('scroll', check, { passive: true });
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    for (const child of el.children) observer.observe(child);
-    return () => { el.removeEventListener('scroll', check); observer.disconnect(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, ...deps]);
-}
-
-/**
  * The place the person is in stays in view in a list that scrolls: a long list opens on it, and moving to it scrolls only as far as needed,
  * clear of the fades, once for each place. It moves this list's own `scrollTop` and nothing else: `scrollIntoView` would also scroll the folding sidebar's
  * clipped frame sideways while it animates its width.
@@ -87,8 +68,18 @@ function useCurrentInView(ref: RefObject<HTMLElement | null>, key: string, deps:
     shown.current = { list, key };
     const box = list.getBoundingClientRect();
     const at = current.getBoundingClientRect();
-    if (at.top < box.top + 28) list.scrollTop += at.top - box.top - 28;
-    else if (at.bottom > box.bottom - 32) list.scrollTop += at.bottom - box.bottom + 32;
+    let by = at.top < box.top + 28 ? at.top - box.top - 28 : at.bottom > box.bottom - 32 ? at.bottom - box.bottom + 32 : 0;
+    if (!by) return;
+    // A band that rests only on a whole tile (the short rail, app.css) goes to the tile's resting place at or beyond that, so the snap
+    // that follows never pulls the current place back under the fade.
+    if (getComputedStyle(list).scrollSnapType.includes('mandatory')) {
+      const pad = parseFloat(getComputedStyle(list).scrollPaddingTop) || 0;
+      const stops = [...list.querySelectorAll<HTMLElement>('.side__ib, .side__rail-project, .side__rail-dm')]
+        .map((tile) => Math.round(tile.getBoundingClientRect().top - box.top - list.clientTop - pad));
+      const stop = by > 0 ? Math.min(...stops.filter((offset) => offset >= by)) : Math.max(...stops.filter((offset) => offset <= by));
+      if (Number.isFinite(stop)) by = stop;
+    }
+    list.scrollTop += by;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, key, ...deps]);
 }
@@ -110,13 +101,21 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   const location = useLocation();
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const lockedHere = useLockedPlace();
+  const lockedOpen = (workspaceId: string) => location.pathname.startsWith(`/spaces/${workspaceId}`) || lockedHere === workspaceId;
   // The person's own order (#1250): Everyone first, then the spaces they moved, then the rest as they were made.
   const projects = useOrderedProjects();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   // The places this person muted (#1249): a small muted mark after the name; what is new there is a quiet count, never bold.
   const { muted } = usePlaceMutes();
+  // What the person has not read in each direct message (#1424 decision 10), kept fresh from the server.
+  const dmUnread = useDmUnread();
   // The dot is for what needs the person: a space that holds an Inbox item (a question to them, a decision, a blocked task).
-  const needing = useNeedsYouSpaces(useShellData().me.user.id);
+  const shell = useShellData();
+  // Someone in no company (removed, or not invited yet) can make nothing here (personas-30): no New, no C, no New message.
+  const company = !!shell.workspace;
+  const starts = company && startsConversations(shell.workspace);
+  const needing = useNeedsYouSpaces(shell.me.user.id);
   // A call is on in the space (F-041): the call glyph after its name, before the muted mark and the unread mark.
   const calls = useLiveSpaces();
   const navigate = onClose ? () => onClose() : undefined;
@@ -143,8 +142,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   // The row's own ⋯ keeps the focus, wherever the row went.
   const moveBy = (id: string, step: -1 | 1) => move(() => { moves.moveTo(id, projects.findIndex((project) => project.id === id) + step); }, `[data-space-id="${CSS.escape(id)}"] .side__more`);
   const moveItems = (id: string, at: number): MoreItem[] => [
-    ...(at > moves.fixed ? [{ label: 'Move up', run: () => moveBy(id, -1) }] : []),
-    ...(at < projects.length - 1 ? [{ label: 'Move down', run: () => moveBy(id, 1) }] : []),
+    ...(at > moves.fixed ? [{ label: 'Move up', icon: 'chevron-up' as const, run: () => moveBy(id, -1) }] : []),
+    ...(at < projects.length - 1 ? [{ label: 'Move down', icon: 'chevron-down' as const, run: () => moveBy(id, 1) }] : []),
   ];
   const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   // The collapsed rail (a tablet's sidebar, or `[` on a computer) has the same highlight over its project tiles; only one
@@ -169,71 +168,97 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   useScrollEdges(scroller, lists);
   useScrollEdges(railScroll, lists);
   useScrollEdges(railMiddle, lists);
-  useCurrentInView(scroller, location.pathname, lists);
-  useCurrentInView(railScroll, location.pathname, lists);
-  useCurrentInView(railMiddle, location.pathname, lists);
+  // A locked space is known to be the open place a moment after its page (the route's boundary says so): its tile comes into view then too.
+  const here = `${location.pathname}|${lockedHere ?? ''}`;
+  useCurrentInView(scroller, here, lists);
+  useCurrentInView(railScroll, here, lists);
+  useCurrentInView(railMiddle, here, lists);
   const railProjects = useRef<HTMLElement>(null);
   const railGlide = useRef<HTMLSpanElement>(null);
   const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
   const searchKeys = mac ? 'Meta+K' : 'Control+K';
+  // The rail's controls name themselves in the one tooltip, beside the rail (round 14, look-a B1): no native `title` there.
+  const searchTip = mac ? 'Search · ⌘K' : 'Search · Ctrl K';
   useEffect(() => {
     // "C" opens New from anywhere outside a field or dialog (F-026 §4 keyboard); the drawer has its own.
     if (onClose) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      if (!company || event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]') || inComposer(target)) return;
+      // A menu that is open (Status, a message's ⋯) has the keys: C never opens New over it.
+      if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"]') || document.querySelector('[role="menu"]:not([inert])')) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, openCreate, projectId]);
+  }, [company, onClose, openCreate, projectId]);
   const onNew = () => openCreate(projectId ? { projectId } : {});
+  // The arrow keys move between the sidebar's rows (F-026 §4); Enter or a click arrives in the place.
+  const onRowKeys = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || event.metaKey || event.ctrlKey || event.altKey) return;
+    const from = (event.target as HTMLElement).closest('a[href]');
+    if (!from) return;
+    const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href]')].filter((row) => row.getClientRects().length > 0 && !row.closest('[inert]'));
+    const at = rows.indexOf(from as HTMLElement);
+    const next = rows[at + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (at < 0 || !next) return;
+    event.preventDefault();
+    next.focus();
+  };
 
   if (collapsed && !onClose) {
     return (
-      <div className="side side--rail">
+      <div className="side side--rail" onKeyDown={onRowKeys}>
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
-        <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
-        <NewMenu compact onNew={onNew} />
+        <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" data-tip-side="end" onClick={onToggleCollapsed} />
+        {company ? <NewMenu compact onNew={onNew} /> : null}
+        {/* Search stays beside New, outside the band that scrolls: on a short window (200 % zoom) it was half under New, cut by the band's
+            edge as the band brought the open space into view (personas-33/34). */}
+        <button type="button" className="side__ib side__rail-search" aria-label="Search" aria-keyshortcuts={searchKeys} data-tip={searchTip} data-tip-side="end" onClick={openSearch}><Icon name="search" size={18} /></button>
         {/* Places and the lists share one middle band: on a short window (a phone on its side) the whole band scrolls, so
-            projects keep room; the toggle, New, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
+            projects keep room; the toggle, New, Search, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
         <div className="side__rail-middle" ref={railMiddle}>
         <nav className="side__rail-places" aria-label="Places">
-          <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
-          <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
-          <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} aria-current={inbox ? 'page' : undefined}>
+          <Link to="/" className="side__ib" aria-label="Home" data-tip="Home" data-tip-side="end" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
+          <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} data-tip="Inbox" data-tip-side="end" aria-current={inbox ? 'page' : undefined}>
             <Icon name="inbox" size={18} />{inboxUnread ? <span className="side__count side__count--rail" aria-hidden="true">{inboxUnread}</span> : null}
           </Link>
-          <Link to="/tasks" className="side__ib" aria-label="My tasks" aria-current={myTasks ? 'page' : undefined}><Icon name="tasks" size={18} /></Link>
-          <Link to="/map" className="side__ib" aria-label="My map" title="Only you can see your map" aria-current={sketchbook ? 'page' : undefined}><Icon name="map" size={18} /></Link>
+          <Link to="/tasks" className="side__ib" aria-label="My tasks" data-tip="My tasks" data-tip-side="end" aria-current={myTasks ? 'page' : undefined}><Icon name="tasks" size={18} /></Link>
+          <Link to="/map" className="side__ib" aria-label="My map" data-tip="My map" data-tip-side="end" aria-current={sketchbook ? 'page' : undefined}><Icon name="map" size={18} /></Link>
         </nav>
         <div className="side__rail-scroll" ref={railScroll}>
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
-            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}${calls.has(project.id) ? ', call on' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
+            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}${calls.has(project.id) ? ', call on' : ''}${needing.has(project.id) && !muted.has(`project:${project.id}`) ? ', needs you' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
               onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
               data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
               <ProjectTile name={project.name} icon={project.icon} size={28} />
               {calls.has(project.id) ? <span className="side__rail-live" aria-hidden="true"><Icon name="call" size={12} /></span> : null}
+              {/* The rail keeps the list's dot for what needs you on the tile's corner, as a DM's face has it (visual review 2026-11-17, core 12). */}
+              {needing.has(project.id) && !muted.has(`project:${project.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
           ))}
           {locked.map((space) => (
-            <NavLink key={space.id} to={`/spaces/${space.id}`} end={false} className="side__rail-project side__rail-locked" aria-label={`${space.name}, ${lockedLine(space).toLowerCase()}`} title={`${space.name} · ${lockedLine(space)}`}>
+            // A locked space is the open place on its own address and on its project's (round 14: on /projects/… its tile was not marked, so the
+            // rail never brought it into view).
+            <Link key={space.id} to={`/spaces/${space.id}`} className={`side__rail-project side__rail-locked${lockedOpen(space.id) ? ' is-open' : ''}`} aria-current={lockedOpen(space.id) ? 'page' : undefined}
+              aria-label={`${space.name}, ${lockedLine(space).toLowerCase()}`} title={`${space.name} · ${lockedLine(space)}`}>
               <LockTile size={28} />
-            </NavLink>
+            </Link>
           ))}
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
-          <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link>
+          {directMessages.length || agents.length || starts
+            ? <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link> : null}
           {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
-              aria-label={`${dm.title}${muted.has(`dm:${dm.id}`) ? ', muted' : ''}${dm.hasNew && !muted.has(`dm:${dm.id}`) ? ', new messages' : ''}`} title={`${dm.title}${muted.has(`dm:${dm.id}`) ? ' · Muted' : ''}`}>
+              aria-label={`${dm.title}${muted.has(`dm:${dm.id}`) ? ', muted' : ''}${dmUnread.has(dm.id) && !muted.has(`dm:${dm.id}`) ? ', new messages' : ''}`} title={`${dm.title}${muted.has(`dm:${dm.id}`) ? ' · Muted' : ''}`}>
               <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
-              {dm.hasNew && !muted.has(`dm:${dm.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
+              {/* The rail has no names to make bold: an unread conversation has the dot on its face (#1424 decision 10). */}
+              {dmUnread.has(dm.id) && !muted.has(`dm:${dm.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
           ))}
         </nav>
@@ -246,7 +271,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   }
 
   return (
-    <div className="side">
+    <div className="side" onKeyDown={onRowKeys}>
       <div className="side__brand">
         {/* The wordmark names the drawer; Home is the first place below, so the mark is not a second link. */}
         <span className="side__logo">
@@ -254,12 +279,13 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           <span className="side__word" aria-hidden="true">flux</span>
         </span>
         {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} />
-          : <IconButton icon="sidebar" label="Collapse sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />}
+          : <IconButton icon="sidebar" label="Collapse sidebar" aria-keyshortcuts="[" className="side__toggle" data-tip-side="end" onClick={onToggleCollapsed} />}
       </div>
       <div className="side__actions">
-        <NewMenu onNew={onNew} />
-        <button type="button" className="side__search" aria-label="Search" aria-keyshortcuts={searchKeys} title={mac ? 'Search (⌘K)' : 'Search (Ctrl K)'} onClick={() => { onClose?.(); openSearch(); }}>
-          <Icon name="search" size={16} />
+        {company ? <NewMenu onNew={onNew} /> : null}
+        {/* Without New (no company: never invited, or removed) Search is the row's one button and says its name (round 14: a lone square). */}
+        <button type="button" className={`side__search${company ? '' : ' side__search--wide'}`} aria-label="Search" aria-keyshortcuts={searchKeys} title={mac ? 'Search (⌘K)' : 'Search (Ctrl K)'} onClick={() => { onClose?.(); openSearch(); }}>
+          <Icon name="search" size={16} />{company ? null : <span aria-hidden="true">Search</span>}
         </button>
       </div>
       <div className="side__scroll" ref={scroller}>
@@ -287,7 +313,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
             <h2 className="side__h" id="side-projects">Spaces</h2>
             <span className="side__head-end">
               {/* One action for everything unread (#1250), in the heading's ⋯ and in the Inbox's. */}
-              {projects.length ? <MoreMenu label="More for Spaces" size={14} className="side__add side__more-head" items={[{ label: 'Mark all as read', run: markAll }]} /> : null}
+              {projects.length ? <MoreMenu label="More for Spaces" size={14} className="side__add side__more-head" items={[{ label: 'Mark all as read', icon: 'check', run: markAll }]} /> : null}
             </span>
           </div>
           {projects.length || locked.length ? (
@@ -320,13 +346,13 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
               })}
               {locked.map((space) => (
                 <li key={space.id}>
-                  <NavLink to={`/spaces/${space.id}`} end={false} className="side__item side__locked" onClick={navigate} title={`${space.name} · ${lockedLine(space)}`} data-locked-space={space.id}>
+                  <Link to={`/spaces/${space.id}`} className="side__item side__locked" aria-current={lockedOpen(space.id) ? 'page' : undefined} onClick={navigate} title={`${space.name} · ${lockedLine(space)}`} data-locked-space={space.id}>
                     <LockTile />
                     <span className="side__names">
                       <span className="side__label">{space.name}</span>
                       <span className="side__sub">{lockedLine(space)}</span>
                     </span>
-                  </NavLink>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -334,28 +360,36 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         </nav> : null}
 
-        <nav className="side__sec" aria-labelledby="side-dms">
+        {/* A guest with no conversation and no agent has no Messages heading over nothing (audit P3 5): they start none, and the
+            first one someone starts with them brings the heading with it. */}
+        {directMessages.length || agents.length || starts ? <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
-            {/* New (C) creates, in the drawer too (#1375); only a Messages heading over nothing offers its "+" (New message), on the computer and in the drawer alike (#1424). */}
-            {!(directMessages.length || agents.length) ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
+            {/* New (C) creates, in the drawer too (#1375); only a Messages heading over nothing offers its "+" (New message), on the computer and in the drawer alike (#1424).
+                A guest does not start conversations, so they are not offered one (#1424, as New space). */}
+            {!(directMessages.length || agents.length) && starts ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {directMessages.length || agents.length ? (
             <ul className="side__list">
               {agents.map((agent, index) => <ListAgent key={agent.id} agent={agent} pinned={index === 0} onNavigate={navigate} />)}
-              {directMessages.map((dm) => (
-                <li key={dm.id}>
-                  <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={dm.title}
-                    aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
-                    <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><span className="side__label">{dm.title}</span>
-                    {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" />
-                      : dm.hasNew ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
-                  </NavLink>
-                </li>
-              ))}
+              {directMessages.map((dm) => {
+                // Unread is bold, as a space's; a muted conversation is never bold, its unread is the quiet count (#1424 decision 10, #1249).
+                const quiet = muted.has(`dm:${dm.id}`);
+                const fresh = dmUnread.get(dm.id) ?? 0;
+                return (
+                  <li key={dm.id}>
+                    <NavLink to={`/dm/${dm.id}`} end={false} className={`side__item side__dm${fresh && !quiet ? ' is-unread' : ''}`} onClick={navigate} title={dm.title}
+                      aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
+                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><SideName title={dm.title} />
+                      {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}
+                      {quiet && fresh ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : null}
+                    </NavLink>
+                  </li>
+                );
+              })}
             </ul>
           ) : null /* Its heading leads to Messages; an empty list says nothing (#763 FR-4). */}
-        </nav>
+        </nav> : null}
       </div>
       <WorkingAgent />
       <UserMenu id={user.id} name={user.name} onNavigate={onClose} />
@@ -374,16 +408,24 @@ function RailAgent({ agent }: { agent: MyAgent }) {
   );
 }
 
-/** An agent in Messages, with a dot while its chat has something unread. */
+/** An agent in Messages, its name bold while its chat has something unread, as every conversation (#1424 decision 10). */
 function ListAgent({ agent, pinned, onNavigate }: { agent: MyAgent; pinned: boolean; onNavigate?: () => void }) {
   const unread = useAgentUnread(agent.id);
   return (
     <li>
-      <NavLink to={`/agents/${agent.id}`} end={false} className="side__item side__dm side__agent" onClick={onNavigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
+      <NavLink to={`/agents/${agent.id}`} end={false} className={`side__item side__dm side__agent${unread ? ' is-unread' : ''}`} onClick={onNavigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
         <Kreska size={20} hue={agent.colour} /><span className="side__label">{agent.name}</span>
         {pinned ? <Icon name="pin" size={12} className="side__pin" aria-label="Pinned" /> : null}
-        {unread ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
+        {unread ? <span className="ui-vh">, new messages</span> : null}
       </NavLink>
     </li>
   );
 }
+
+/** A conversation's name in its row: a long name ends in "…" before "(removed)", which always stays whole (round 14: "Tomek Wiśniewski (remo…"). */
+function SideName({ title }: { title: string }) {
+  const removed = title.endsWith(REMOVED_MARK) ? REMOVED_MARK.trim() : null;
+  if (!removed) return <span className="side__label">{title}</span>;
+  return <span className="side__label side__label--removed"><span>{title.slice(0, -REMOVED_MARK.length)}</span> <span className="side__removed">{removed}</span></span>;
+}
+const REMOVED_MARK = ' (removed)';

@@ -59,13 +59,28 @@ describe('where the person left off (#1246)', () => {
       await observe(ada, dm.id, [third.id]);
       assert.equal((await readDm(ada, dm.id)).unreadFrom, null, 'caught up');
       // Ada's own message is nobody's to read; the read is each person's own, and a conversation of one's own words has nothing new.
-      await say(ada, dm.id, 'Mine');
+      const mine = await say(ada, dm.id, 'Mine');
       assert.equal((await readDm(ada, dm.id)).unreadFrom, null);
-      assert.equal((await readDm(carol, dm.id)).unreadFrom, first.id, 'Carol has observed nothing');
+      // Carol observed nothing, but her own "Third" read what came before it: what is new to her is what came after (personas-26).
+      assert.equal((await readDm(carol, dm.id)).unreadFrom, mine.id, 'Carol\'s own message read what came before it');
       assert.equal((await readDm(bob, dm.id)).unreadFrom, third.id, 'Bob\'s first message by someone else is Carol\'s');
       const lonely = await dmOf(ada, [bob, carol], 'Notes to self');
       await say(ada, lonely.id, 'Only mine');
       assert.equal((await readDm(ada, lonely.id)).unreadFrom, null, 'nothing by anyone else');
+    });
+
+    test('your own reply reads what came before it: the New line never stands above it (personas-26)', async () => {
+      const dm = expectStatus(await bob.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [ada.id] } }), 201) as Dm;
+      await say(bob, dm.id, 'Do you have time for the fair table next week?');
+      // Ada answers without the conversation having observed Bob's line (from a notification, another device, the Inbox).
+      await say(ada, dm.id, 'Yes, Tuesday or Wednesday.');
+      assert.equal((await readDm(ada, dm.id)).unreadFrom, null, 'nothing is new above or after her own reply');
+      const later = await say(bob, dm.id, 'Can you send me the rota?');
+      assert.equal((await readDm(ada, dm.id)).unreadFrom, later.id, 'what came after her reply is new');
+      const root = await say(bob, dm.id, 'Lamp?');
+      await reply(bob, dm.id, root.id, 'Wave to dim?');
+      await reply(ada, dm.id, root.id, 'A knob.');
+      assert.equal((await readThread(ada, dm.id, root.id)).unreadFrom, null, 'the same in a thread');
     });
 
     test('a thread keeps its own level, and a removed message and the AI line never count', async () => {

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
-import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, StatusGlyph, useMediaQuery } from '../ui';
 import { listAssignedWork } from '../work/api';
-import { STATUS_LABEL } from '../work/format';
+import { STATUS_LABEL, blockedLine, taskNumber } from '../work/format';
 import { getProject } from '../project/api';
 import { useShellData } from './data';
+import { startsSpaces } from '../people/api';
 import { useShellActions } from './shellContext';
 import { RefLink } from '../place/origin';
 
@@ -23,7 +24,7 @@ interface Loaded { userId: string; items: WorkItem[]; total: number; failed: boo
  * visible and on project events, without polling.
  */
 export function HomeTasks() {
-  const { me, workspaces, projects } = useShellData();
+  const { me, workspace, workspaces, projects } = useShellData();
   const { openNavigation, openCreate } = useShellActions();
   const narrow = useMediaQuery(MEDIA.navDrawer);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -87,18 +88,19 @@ export function HomeTasks() {
       );
     }
     const action = !projects.length
-      ? <Button variant="primary" icon="plus" onClick={() => openCreate({ kind: 'space' })}>Create a space</Button>
+      ? startsSpaces(workspace) ? <Button variant="primary" icon="plus" onClick={() => openCreate({ kind: 'space' })}>Create a space</Button> : null
       : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">
-        <EmptyState icon="tasks" title="Nothing is waiting for you" action={action} />
+        <EmptyState icon="tasks" title="No tasks of yours are open" action={action}><p>Tasks you own, in every space, show up here.</p></EmptyState>
       </div>,
     );
   }
 
   return pulling(
     <section className="home-tasks" aria-labelledby="home-tasks-h">
-      <h2 id="home-tasks-h" className="home-tasks__h">Your tasks</h2>
+      {/* The page's header already says "My tasks": the list is named the same, for a screen reader only (one name for one place). */}
+      <h2 id="home-tasks-h" className="home-tasks__h ui-vh">My tasks</h2>
       {shown.failed ? (
         <p className="home-tasks__note" role="alert">Some of your tasks could not be loaded. <button type="button" className="ui-link" onClick={again}>Try again</button></p>
       ) : null}
@@ -109,10 +111,11 @@ export function HomeTasks() {
             {group.items.map((item) => (
               <li key={item.id}>
                 <RefLink className="home-tasks__item" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
-                  <span className={`home-tasks__status is-${item.status}`}>{STATUS_LABEL[item.status]}</span>
+                  {/* A task reads as in every other list (personas-33): its state glyph with its word, then its number and title. */}
+                  <span className={`home-tasks__status is-${item.status}`}><StatusGlyph status={item.status} size={16} className="home-tasks__glyph" />{STATUS_LABEL[item.status]}</span>
                   <span className="home-tasks__body">
-                    <span className="home-tasks__title">{item.title}</span>
-                    {item.status === 'blocked' ? <span className="home-tasks__why">{item.blocker || 'No reason was recorded.'}</span> : null}
+                    <span className="home-tasks__title"><span className="home-tasks__num ui-task-number">{taskNumber(item)}</span> {item.title}</span>
+                    {item.status === 'blocked' ? <span className="home-tasks__why">{blockedLine(item, me.user.id)}</span> : null}
                   </span>
                   <Icon name="chevron-right" size={14} className="home-tasks__go" />
                 </RefLink>

@@ -43,7 +43,9 @@ export function useOriginLabel(label: string | null) {
 /** What a place is called in the control, from its address, when the screen has not named itself. */
 export function labelFor(pathname: string): string {
   if (/^\/projects\/[^/]+\/conversations\//.test(pathname)) return 'Thread';
-  if (/^\/projects\/[^/]+\/tasks(\/|$)/.test(pathname) || /^\/tasks(\/|$)/.test(pathname)) return 'Tasks';
+  // My tasks is named as the sidebar and its own header name it, never by the word of a space's Tasks view.
+  if (/^\/tasks(\/|$)/.test(pathname)) return 'My tasks';
+  if (/^\/projects\/[^/]+\/tasks(\/|$)/.test(pathname)) return 'Tasks';
   if (/^\/projects\/[^/]+\/map(\/|$)/.test(pathname)) return 'Map';
   if (/^\/projects\/[^/]+\/docs(\/|$)/.test(pathname) || /^\/docs(\/|$)/.test(pathname) || /^\/materials\//.test(pathname)) return 'Wiki';
   if (/^\/projects\/[^/]+\/agents(\/|$)/.test(pathname)) return 'Agents';

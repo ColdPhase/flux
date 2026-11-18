@@ -8,6 +8,7 @@ import './app/app.css';
 import { applyStoredSmallMoments } from './app/smallMoments';
 import { installMotionGuards } from './ui/motion';
 import { installPress } from './ui/press';
+import { installInputMode } from './ui/inputMode';
 import { applyStoredTheme } from './app/theme';
 import { registerServiceWorker, watchInstallPrompt } from './pwa';
 import { router } from './router';
@@ -17,6 +18,8 @@ applyStoredSmallMoments();
 // Motion pauses while the page is hidden, and every pressable control takes the one press (#593).
 installMotionGuards();
 installPress();
+// Only the keyboard draws a focus ring: a tap or a click turns the rings off until the next key (#1424).
+installInputMode();
 // Chromium offers installation once per load, possibly before Settings is open (#20 MOB-1).
 watchInstallPrompt();
 

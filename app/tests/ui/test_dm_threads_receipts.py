@@ -36,6 +36,9 @@ CHOSEN = "dim with a wave"
 FILLERS = 24
 
 
+# "1 reply · last 9:40": the count and when the newest reply was written, as under a space's root (round 14).
+ONE_REPLY = re.compile(r"^1 reply\s*· last \d{1,2}:\d{2}$")
+
 class DmThreadsReceipts(unittest.TestCase):
     """Tests run in name order and share the accounts, the workspace and the group message."""
 
@@ -240,8 +243,8 @@ class DmThreadsReceipts(unittest.TestCase):
         expect(panel.locator("[data-client-message-id]")).to_have_count(0)
         shot(ada, "dm-threads-desktop-thread-light")
         # The count stays visible under the root, for everyone in the conversation, live.
-        expect(row.locator(".dm-replies")).to_have_text("1 reply")
-        expect(self.row(kai, self.root).locator(".dm-replies")).to_have_text("1 reply", timeout=15000)
+        expect(row.locator(".dm-replies")).to_have_text(ONE_REPLY)
+        expect(self.row(kai, self.root).locator(".dm-replies")).to_have_text(ONE_REPLY, timeout=15000)
         status = self.get(ada, f"/api/v1/dms/{self.dm_id}/threads/{self.root}")
         self.assertEqual([m["body"] for m in status["replies"]], ["Yes. A wave, and a long hold to switch off."])
         # The reply is not a message of the conversation itself.
@@ -250,7 +253,7 @@ class DmThreadsReceipts(unittest.TestCase):
         # Reload: the same canonical state, with the thread still open.
         ada.reload()
         expect(ada.locator("[data-dm-thread] .dm-msg__body", has_text="long hold to switch off")).to_be_visible()
-        expect(self.row(ada, self.root).locator(".dm-replies")).to_have_text("1 reply")
+        expect(self.row(ada, self.root).locator(".dm-replies")).to_have_text(ONE_REPLY)
         # Esc closes it and the message that opened it takes focus back.
         ada.locator("#dm-thread-composer").focus()
         ada.keyboard.press("Escape")
@@ -410,7 +413,7 @@ class DmThreadsReceipts(unittest.TestCase):
         row.scroll_into_view_if_needed()
         self.scrolled(page)
         # The thread count row is visible without any gesture.
-        expect(row.locator(".dm-replies")).to_have_text("1 reply")
+        expect(row.locator(".dm-replies")).to_have_text(ONE_REPLY)
         # A swipe right the way a finger makes it: each step waits for the row to have followed the one before.
         body = row.locator(".dm-msg__body")
         x, y = centre(body)
@@ -542,7 +545,8 @@ class DmThreadsReceipts(unittest.TestCase):
             # A click leaves nothing behind and the hand-over from one reply to the next never shows two.
             replies.nth(1).locator(".message-bubble").click(position={"x": 20, "y": 6})
             page.mouse.move(2, 2)
-            page.wait_for_timeout(200)
+            # The pointer's toolbar stays a moment after it leaves (founder check 2026-11-17, work/messageActions.tsx LINGER_MS); then none is left.
+            page.wait_for_timeout(700)
             self.assertEqual(showing(page), [], f"{who}: a click leaves no toolbar")
             replies.nth(1).locator(".message-bubble").hover()
             expect(replies.nth(1).locator(".msg-acts")).to_have_css("opacity", "1")

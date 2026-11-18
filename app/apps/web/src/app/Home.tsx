@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, useToast } from '../ui';
 import { Face, kindWord } from '../notifications/NeedsYouCard';
-import { useNeedsYou } from '../notifications/needsYou';
+import { bareAgent, fromWords, useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
-import { WaitingSpaces } from '../encryption/LockedSpace';
+import { WaitingSpaces } from '../encryption/WaitingSpaces';
 import { SourceLink } from '../returns/SourceLink';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL, dueLabel } from '../work/format';
@@ -18,10 +18,12 @@ import './home.css';
 import { RefLink } from '../place/origin';
 import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
-import type { FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import type { AgentRuntimeClient, FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
 import { openDm } from '../api/direct-messages';
-import { attemptKeys, firstName } from '../people/api';
+import { awaitField, stopAwaitingField } from '../ui/keys';
+import { attemptKeys, firstName, startsSpaces } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
+import { onPlacesForgotten } from '../place/memory';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -49,8 +51,15 @@ interface HomeReads {
  * its due day, #763 H11-5), best first, and how many tasks are yours, for "My tasks (N)". Home shows the first one that
  * "Waiting for you" does not already show (#1424).
  */
+/** Home's last good read in this tab, for the one person who read it: offline, Home shows it as the line above promises (round 15). */
+let lastContinue: { userId: string; choices: Continue[]; tasks: number | null } | null = null;
+/** The first steps this tab last read: a read that fails (offline) keeps them, so they never leave and stay gone (round 15 look-1 P2-5). */
+let lastFirstSteps: { userId: string; read: FirstStepsRead } | null = null;
+onPlacesForgotten(() => { lastContinue = null; lastFirstSteps = null; });
+
 function useContinue(userId: string, workspaceIds: string[]): HomeReads {
-  const [state, setState] = useState<{ userId: string; choices: Continue[]; tasks: number | null; failed: boolean } | null>(null);
+  const [state, setState] = useState<{ userId: string; choices: Continue[]; tasks: number | null; failed: boolean } | null>(
+    () => lastContinue?.userId === userId ? { ...lastContinue, failed: false } : null);
   const [attempt, setAttempt] = useState(0);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   const spaces = workspaceIds.join(',');
@@ -67,15 +76,23 @@ function useContinue(userId: string, workspaceIds: string[]): HomeReads {
       const summary = first ? null : read;
       try {
         const assigned = await listAssignedWork(spaces ? spaces.split(',') : [], 50, controller.signal);
-        tasks = assigned.total;
+        // A read that failed in part is no count: "My tasks (0)" is never said for tasks that could not be read (round 15 look-1 P2-5).
+        if (assigned.failed) failed = true; else tasks = assigned.total;
         const active = assigned.items.filter((item) => item.status === 'in_progress').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
         if (active) choices.push({ kind: 'task', item: active });
       } catch { failed = true; }
       if (summary?.nextStep) choices.push({ kind: 'step', step: summary.nextStep, mark: summary.mark });
-      if (!controller.signal.aborted) setState({ userId, choices, tasks, failed: failed && !choices.length });
+      if (controller.signal.aborted) return;
+      // What could not be read now is what this tab last read, while there is one (offline: "Flux shows what it last loaded").
+      const kept = failed && lastContinue?.userId === userId ? lastContinue : null;
+      if (kept) { setState({ ...kept, failed: false }); return; }
+      if (!failed) lastContinue = { userId, choices, tasks };
+      setState({ userId, choices, tasks, failed: failed && !choices.length });
     })();
     return () => controller.abort();
   }, [userId, spaces, attempt]);
+  // Back online, Home reads again by itself (round 14, look-a A7).
+  useEffect(() => { window.addEventListener('online', reload); return () => window.removeEventListener('online', reload); }, [reload]);
   const mine = state?.userId === userId ? state : null;
   return { choices: mine?.choices ?? [], tasks: mine?.tasks ?? null, failed: mine?.failed ?? false, reload };
 }
@@ -189,7 +206,7 @@ export function waitingRows(items: NeedsYouItem[], limit = 3): WaitingRow[] {
 }
 
 /** One line of a Home card: a face, two lines of words and the arrow every row ends in. */
-function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
+function HomeRow({ to, state, face, title, meta, metaFirst = false, line, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; line?: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
   return (
     <li>
       <Link className="home__row" to={to} state={state} onClick={onClick}>
@@ -198,6 +215,7 @@ function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: {
           {metaFirst && meta ? <span className="home__row-k">{meta}</span> : null}
           <span className="home__row-t">{title}</span>
           {!metaFirst && meta ? <span className="home__row-k">{meta}</span> : null}
+          {line ? <span className="home__row-k home__row-line">{line}</span> : null}
         </span>
         <Icon name="chevron-right" size={16} className="home__row-go" />
       </Link>
@@ -209,7 +227,8 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   if ('decisions' in row) {
     const { decisions } = row;
     const places = [...new Set(decisions.map((item) => item.project?.name).filter((name): name is string => !!name))];
-    const from = nameList(decisions.map((item) => item.from?.name).filter((name): name is string => !!name));
+    // Each by its one label: two people's agents both called "Assistant" are told apart by whose they are (v0.2.1 release gate).
+    const from = nameList(decisions.flatMap((item) => (item.from?.name ? [fromWords(item.from)] : [])));
     return (
       <HomeRow to="/inbox" state={{ select: decisions[0]!.key }} face={<span className="nyc__face nyc__face--icon"><Icon name="flag" size={16} /></span>}
         title={`${decisions.length} ${decisions.length === 1 ? 'decision' : 'decisions'} waiting`}
@@ -218,20 +237,35 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   }
   const { item } = row;
   const run = item.assistantChanges ?? null;
-  const project = item.project?.name ?? null;
-  // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion says only "Agent", as the Inbox does.
+  // A question in a decision's discussion says which decision it is about, as the Inbox does (#1424, persona round 8).
+  const project = item.about ? `about “${item.about.title}”` : item.project?.name ?? null;
+  // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion names it by its one label,
+  // "Reviewer · Ada's agent", as the Inbox does (only an agent whose owner the read does not name says "Agent").
   const meta = (run ? [run.agentName, 'Your agent', project]
-    : [kindWord(item), item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');
-  return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
+    : [kindWord(item), item.from ? fromWords(item.from) : null, bareAgent(item.from) ? 'Agent' : null, project]).filter(Boolean).join(' · ');
+  // A blocked task says what it waits for under its title, in the words the board, the List and the Inbox use ("Waiting for Basia Wrona · the
+  // new seals", persona round 6): one blocked line everywhere.
+  return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst
+    line={item.kind === 'blocked' && item.detail ? item.detail : undefined} />;
 }
 
 type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
 
-const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
+/**
+ * What Connect AI offers on this server, in the step's one line (v0.2.1 release gate, O01): a plan only where the server runs it, else an API key or
+ * the person's own Claude Code or Codex. The plans come with the first steps (`FirstSteps.plans`), so Home reads nothing more for them.
+ */
+function connectOffer(offered: AgentRuntimeClient[]): string {
+  const plans = [offered.includes('claude_code') ? 'Claude' : null, offered.includes('codex') ? 'ChatGPT' : null].filter(Boolean);
+  return plans.length ? `A ${plans.join(' or ')} plan, or an API key` : 'An API key, or Claude Code or Codex on your computer';
+}
+
+const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead, spaceName: (id: string | null) => string, offer: string) => StepRow> = {
   name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
   invite_people: () => ({ key: 'invite_people', icon: 'people', title: 'Invite people', meta: 'Make a link and send it to them', to: '/settings/company?invite=1' }),
-  connect_ai: () => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: 'A Claude or ChatGPT plan, or an API key', to: '/settings/agents?connect=1' }),
-  first_message: (read) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: 'Say hello in Everyone', to: `/projects/${read.everyoneSpaceId}`, state: { focusComposer: true } }),
+  connect_ai: (_read, _space, offer) => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: offer, to: '/settings/agents?connect=1' }),
+  // Said in the space the person landed in (their link's space, else Everyone), by its name (#1424).
+  first_message: (read, spaceName) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: `Say hello in ${spaceName(read.firstSpaceId)}`, to: `/projects/${read.firstSpaceId}`, state: { focusComposer: true } }),
   photo: () => ({ key: 'photo', icon: 'person', title: 'Add your photo', meta: 'So people know it’s you', to: '/settings/account' }),
 };
 
@@ -239,11 +273,16 @@ const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
  * The card's rows, at most three: the steps left, with the people who joined with the person's links ("Nia joined · Say hello", #1424) in the place of
  * "Invite people", which is done once a link was made. The steps come first, so a person who joined never pushes one out.
  */
-function firstStepRows(read: FirstStepsRead): StepRow[] {
-  const steps = read.steps.map((step) => STEP_ROWS[step](read));
+function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => string, offer: string): StepRow[] {
+  const steps = read.steps.map((step) => STEP_ROWS[step](read, spaceName, offer));
   const room = Math.max(0, 3 - steps.length);
   const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
-  const joined = read.joined.slice(0, room).map((person): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`, meta: 'Say hello' }));
+  // Everyone who joined is told, in one row (personas-26: the third person who joined was dropped; round 14, new P3-g: one batch of five
+  // read as two different rows, "Ana joined · Say hello" and "Leo joined · Say hello · Stefan, Kasia and 1 more joined too"). The row names
+  // who joined, "Ana, Leo and 3 more joined", and greets the first; once greeted, it greets the next, until everyone was greeted.
+  const first = room > 0 ? read.joined[0] : undefined;
+  const joined: StepRow[] = first ? [{ key: `joined:${first.userId}`, icon: 'chat', title: `${nameList(read.joined.map(names))} joined`,
+    meta: read.joined.length > 1 ? `Say hello to ${names(first)}` : 'Say hello' }] : [];
   const lead = steps.findIndex((row) => row.key !== 'name_company');
   return [...steps.slice(0, lead < 0 ? steps.length : lead), ...joined, ...(lead < 0 ? [] : steps.slice(lead))];
 }
@@ -253,12 +292,18 @@ function firstStepRows(read: FirstStepsRead): StepRow[] {
  * (the server decides who is new and still has a step left), at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
  * where push is available and it is not on yet: the one-time offer then waits (`onPushRow`).
  */
-function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; workspaceId: string; onPushRow: (shown: boolean) => void }) {
+function FirstStepsCard({ phone, workspaceId, userId, onPushRow }: { phone: boolean; workspaceId: string; userId: string; onPushRow: (shown: boolean) => void }) {
   const navigate = useNavigate();
   const toast = useToast();
   const keys = useRef(attemptKeys());
+  const touch = useMediaQuery(MEDIA.touch);
   const [greeting, setGreeting] = useState<string | null>(null);
-  const [read, setRead] = useState<FirstStepsRead | null>(null);
+  const [read, setReadState] = useState<FirstStepsRead | null>(() => lastFirstSteps?.userId === userId ? lastFirstSteps.read : null);
+  const setRead = (next: FirstStepsRead | null | ((current: FirstStepsRead | null) => FirstStepsRead | null)) => setReadState((current) => {
+    const value = typeof next === 'function' ? next(current) : next;
+    lastFirstSteps = value ? { userId, read: value } : null;
+    return value;
+  });
   const [pushKey, setPushKey] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -272,23 +317,28 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
       if (!controller.signal.aborted && push?.state === 'prompt') setPushKey(push.publicKey);
     }, () => undefined);
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const rows: StepRow[] = read && !hidden ? firstStepRows(read) : [];
+  const { projects } = useShellData();
+  const spaceName = (id: string | null) => projects.find((project) => project.id === id)?.name ?? 'your space';
+  const rows: StepRow[] = read && !hidden ? firstStepRows(read, spaceName, connectOffer(read.plans)) : [];
   if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
   const shown = rows.slice(0, 3);
   const pushShown = shown.some((row) => row.key === 'push');
   useEffect(() => { onPushRow(pushShown); }, [onPushRow, pushShown]);
   if (!shown.length) return null;
-  const hide = () => { setHidden(true); void hideFirstSteps().catch(() => undefined); };
+  const hide = () => { setHidden(true); lastFirstSteps = null; void hideFirstSteps().catch(() => undefined); };
   /** "Say hello" opens the direct message with the person who joined (made now if there is none); that is what takes the row away. */
   const sayHello = (userId: string) => {
     if (greeting) return;
     setGreeting(userId);
+    // What is typed while the conversation opens is the greeting (P2 #2): kept until its composer takes focus, never a shortcut.
+    if (!touch) awaitField();
     openDm(workspaceId, [userId], keys.current.for(userId)).then((dm) => {
       keys.current.done();
       setRead((current) => current && { ...current, joined: current.joined.filter((person) => person.userId !== userId) });
       navigate(`/dm/${dm.id}`);
-    }, () => { setGreeting(null); toast({ message: 'Couldn’t open the conversation. Try again.' }); });
+    }, () => { stopAwaitingField(); setGreeting(null); toast({ message: 'Couldn’t open the conversation. Try again.' }); });
   };
   const turnOn = (publicKey: string) => {
     // Called in the tap itself: the browser asks only after a gesture.
@@ -300,7 +350,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
     <section className="home__steps" aria-labelledby="home-steps" data-first-steps="">
       <div className="home__sech">
         <h3 id="home-steps">First steps</h3>
-        <Button variant="link" size="sm" onClick={hide}>Hide</Button>
+        <Button variant="quiet" size="sm" onClick={hide}>Hide</Button>
       </div>
       <ul className="home__rows" aria-label="First steps">
         {shown.map((row) => row.key === 'push' ? (
@@ -323,13 +373,15 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
 /** Home (F-026 §7, P1, #865): the date and a greeting, what waits for you (the top of the Inbox), and where to continue. */
 export function Home() {
   const moments = useSmallMoments();
-  const { me, workspace, workspaces, projects, lockedWorkspaces } = useShellData();
+  const { me, workspace, removedFrom, workspaces, projects, lockedWorkspaces } = useShellData();
   const { openCreate } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
   const now = useMemo(() => new Date(), []);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const rows = waitingRows(queue.items ?? []);
+  // The items the count holds that no row stands for (Home lists the top three rows).
+  const beyond = (queue.items?.length ?? 0) - rows.reduce((sum, row) => sum + ('decisions' in row ? row.decisions.length : 1), 0);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
   const reads = useContinue(me.user.id, workspaceIds);
   // A person with no space yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
@@ -347,7 +399,7 @@ export function Home() {
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
       {/* #1438: first steps for every new person but a guest, above what waits (it replaces the new member's empty Home line). */}
-      {firstRun || !workspace ? null : <FirstStepsCard phone={phone} workspaceId={workspace.id} onPushRow={setPushRow} />}
+      {firstRun || !workspace ? null : <FirstStepsCard phone={phone} workspaceId={workspace.id} userId={me.user.id} onPushRow={setPushRow} />}
 
       {firstRun ? (
         <section className="home__card home__first" aria-labelledby="home-first">
@@ -355,22 +407,34 @@ export function Home() {
           {joinedSpace ? <>
             {/* #763 FT-3, F-037: someone in the company with only Everyone is told how other spaces reach them. */}
             <h3 id="home-first">You’re in {joinedSpace.name}</h3>
-            <p>When someone adds you to a space, it appears here at once. You can also start your own.</p>
-            {joinedSpace.role === 'guest' ? null : <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button>}
+            {/* A guest does not start spaces, so they are not told they can (#1424). A new space is listed under Spaces, the sidebar's heading
+                and the phone's tab alike, not on Home (#1424). */}
+            <p>When someone adds you to a space, it appears under Spaces at once.{startsSpaces(joinedSpace) ? ' You can also start your own.' : ''}</p>
+            {startsSpaces(joinedSpace) ? <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button> : null}
           </> : <>
           {/* F-037: an account nobody has invited yet joins through a link from the company's admin. */}
-          <h3 id="home-first">You’re not in a company here yet</h3>
-          <p>Flux is where a company’s people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
-          <p className="home__first-note">Got an invite link? Open it to join your company.</p>
+          {removedFrom ? <>
+            {/* A person who was in the company and is not any more (they left or were removed) is told so, and how to come back. */}
+            <h3 id="home-first">You’re no longer in {removedFrom}</h3>
+            <p>Ask an owner or admin of the company for an invite link to come back.</p>
+          </> : <>
+            <h3 id="home-first">You’re not in a company here yet</h3>
+            <p>Flux is where a company’s people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
+            <p className="home__first-note">Got an invite link? Open it to join your company.</p>
+          </>}
           </>}
         </section>
       ) : (
         <section className="home__need" aria-labelledby="home-need">
           <div className="home__sech">
             <h3 id="home-need">Waiting for you{queue.count ? <span className="home__n">{queue.count}</span> : null}</h3>
-            <Link className="home__all" to="/inbox" aria-keyshortcuts="G I">Open Inbox</Link>
+            {/* The same small text button as Hide in the same slot of First steps. What the count holds beyond the rows is named on it, so
+                "Waiting for you 4" over three rows adds up (personas-26). */}
+            <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/inbox" aria-keyshortcuts="G I">Open Inbox{beyond > 0 ? ` · ${beyond} more` : ''}</Link>
           </div>
-          {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
+          {/* A read that failed says so, with Try again, as Continue does below; it never keeps saying it is looking (round 14, look-a A6). */}
+          {queue.items === null && queue.failed ? <div className="home__card home__quiet" role="alert">This couldn’t be loaded. <Button variant="link" size="sm" onClick={queue.reload}>Try again</Button></div>
+            : queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
             : rows.length ? (
               <ul className="home__rows" aria-label="Top of your Inbox">
                 {rows.map((row) => <WaitingItem key={row.key} row={row} />)}
@@ -393,9 +457,11 @@ export function Home() {
         </ul>
       ) : null}
 
-      <ContinueSection reads={reads} covered={queue.items === null && !queue.failed ? null : waitingIds(rows)} />
+      {/* Nothing appears twice (#1424 C): Continue offers nothing the Inbox holds, its rows here or the items beyond them. */}
+      <ContinueSection reads={reads} covered={queue.items === null && !queue.failed ? null : waitingIds(waitingRows(queue.items ?? [], Infinity))} />
       {/* The one-time offer to turn notifications on (#1243): last on the page, since it may not come (motion rule 6). */}
-      <PushOffer userId={me.user.id} hidden={pushRow} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
+      {/* Someone removed from the company (or not in one yet) is told nothing here: the offer is not made to them (personas-34). */}
+      <PushOffer userId={me.user.id} hidden={pushRow || !workspace} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
     </div></div>
   );
 }

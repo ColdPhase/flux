@@ -17,7 +17,8 @@ export { createRuntimeRunProcessor, localToolInInit, type KeyRunGateway } from '
 export { KEY_SEARCH_LIMITS, KEY_SEARCH_SYSTEM, keySearchHoldMicros, keySearchOffered, searchWithKey, WEB_SEARCH_TOOL, type KeySearchMeter, type KeySearchOutcome } from './key-search.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
 export { answerCleaner, type AnswerCleaner } from './answer-addresses.js';
-export { withoutInventedMarks, withoutOwnSources } from './answer-marks.js';
+export { withoutCitationMarks, withoutInventedMarks, withoutOwnSources } from './answer-marks.js';
 export { answerWithSchedule, preparedAnswer, type PreparedAnswer } from './schedule-request.js';
+export { inOwnersLanguage, languageOf } from './schedule-language.js';
 export { answerWithWebSources, endedSourcesLine, endedWithWebSources, webSourcesAt, webSourcesLine, WEB_SOURCES_HEADINGS, type ListedRead } from './web-sources.js';
-export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, defangedAddresses, joinsAddress, boundedWebSearch, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, privateFragmentsIn, PrivateTextIndex, privateTextIndex, withoutPrivateAddresses, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';
+export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, defangedAddresses, joinsAddress, boundedWebSearch, comparableText, insideAddress, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, privateFragmentsIn, PrivateTextIndex, privateTextIndex, withoutPrivateAddresses, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';

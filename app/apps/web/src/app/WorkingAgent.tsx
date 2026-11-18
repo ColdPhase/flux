@@ -4,12 +4,13 @@ import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } 
 import { onPageLive, pageLeaving } from '../api/pageLeaving';
 import { streamLive, useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
-import { isWorking } from '../assistant/format';
+import { BUDGET_WAITING, budgetWaitText, isWorking, waitsForBudget } from '../assistant/format';
 import { Icon, Kreska, agentHue, useToast, type KreskaExpression } from '../ui';
 import { useSmallMoments } from './smallMoments';
 import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { holdsLine, workingLine } from '../agents/status';
+import { useAgentHue } from '../agents/hues';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
 import { useAllAiBlocked, useProjectAiBlocked } from '../ai/spaceAi';
@@ -125,10 +126,11 @@ function useWorkingRun(identity: string) {
 }
 
 const face = (run: AssistantRun): KreskaExpression =>
-  run.stopRequested ? 'idle' : run.status === 'queued' ? 'waiting' : run.status === 'reading' ? 'reading' : 'thinking';
+  run.stopRequested ? 'idle' : waitsForBudget(run) ? 'asleep' : run.status === 'queued' ? 'waiting' : run.status === 'reading' ? 'reading' : 'thinking';
 
 const doing = (run: AssistantRun) =>
-  run.stopRequested ? 'stopping…' : run.status === 'queued' ? 'getting ready'
+  // A run that waits for the API key's next day says so, never "getting ready" (train 37 row 36).
+  run.stopRequested ? 'stopping…' : waitsForBudget(run) ? BUDGET_WAITING : run.status === 'queued' ? 'getting ready'
     // F-027 AST-10: the owner's own Claude Code reads for itself; one plain word while it works.
     : run.engine === 'runtime' ? 'working…' : run.status === 'reading' ? 'reading the conversation' : 'writing an answer';
 
@@ -258,33 +260,44 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
 
 /** Own-assistant Stop uses its existing permission-backed command. */
 export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
-  const { me } = useShellData();
+  const { me, agents } = useShellData();
   const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
   const stopButton = useRef<HTMLButtonElement>(null);
   const moments = useSmallMoments();
+  const hue = useAgentHue();
   const aiOff = useProjectAiBlocked();
   if (!run || (run.projectId !== null && aiOff(run.projectId))) return null;
-  const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
-  // Where the person asked (#842): a conversation, a space's main conversation, a direct message or the agent's own chat.
-  const destination = run.projectId !== null ? (run.conversationId !== null ? `/projects/${run.projectId}/conversations/${run.conversationId}` : `/projects/${run.projectId}`)
+  // A run on a task is the agent's work on it (AG-5): one card names the agent and the task and opens the task, with Stop (v0.2.1 release gate,
+  // M18), in the words every place uses for an agent on a task ("Working on #9 · …").
+  const task = run.task && run.projectId !== null ? run.task : null;
+  const name = task ? agents.find((agent) => agent.id === run.agentId)?.name ?? 'Your agent' : 'Your assistant';
+  const waits = waitsForBudget(run) && !run.stopRequested;
+  const line = task ? (run.stopRequested ? 'stopping…' : waits ? BUDGET_WAITING : workingLine(task.number, task.title)) : doing(run);
+  // Its name says the whole truth: when it starts again and where the budget is raised.
+  const label = stopping ? `Stopping ${task ? name : 'your assistant'}…` : waits && run.resumesAt ? `${name} · ${budgetWaitText(run.resumesAt)}`
+    : task ? `${name} · ${line}` : `Your assistant is ${doing(run)}`;
+  const stopLabel = task ? `Stop ${name}` : 'Stop your assistant';
+  // Where the person asked (#842): a conversation, a space's main conversation, a direct message or the agent's own chat; a task run, its task.
+  const destination = task ? `/projects/${run.projectId}/tasks?open=work:${task.id}`
+    : run.projectId !== null ? (run.conversationId !== null ? `/projects/${run.projectId}/conversations/${run.conversationId}` : `/projects/${run.projectId}`)
     : run.dmId !== null ? `/dm/${run.dmId}${run.dmThreadRootId ? `?thread=${run.dmThreadRootId}` : ''}` : `/agents/${run.agentId}`;
   return (
     <>
-    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant">
+    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant" data-task={task?.id}>
       {compact ? (
         <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}>
-          {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
+          {moments ? <Kreska size={24} expression={face(run)} hue={hue(run.agentId)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
         </RefLink>
       ) : (
         <>
-          {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
+          {moments ? <Kreska size={24} expression={face(run)} hue={hue(run.agentId)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
           <RefLink className="agentlive__text" to={destination}>
-            <b>Your assistant</b>
-            <span>{stopping ? 'requesting Stop…' : doing(run)}</span>
+            <b>{name}</b>
+            <span>{stopping ? 'requesting Stop…' : line}</span>
           </RefLink>
         </>
       )}
-      <button ref={stopButton} type="button" className="agentlive__stop" aria-label="Stop your assistant" title={stopping || run.stopRequested ? 'Stopping…' : 'Stop your assistant'}
+      <button ref={stopButton} type="button" className="agentlive__stop" aria-label={stopLabel} title={stopping || run.stopRequested ? 'Stopping…' : stopLabel}
         disabled={stopping || run.stopRequested} onClick={() => void stop()}>
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg>
       </button>

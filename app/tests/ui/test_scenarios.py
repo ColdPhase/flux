@@ -609,15 +609,15 @@ class ScenarioJourney:
 
         # A person proposes the first rule and accepts it.
         page = self.page("ada")
-        # A message has no Propose a decision (#867); the one Create window proposes it (#1419), held for Undo until that window ends.
+        # A message has no Propose a decision (#867); the one Create window proposes it (#1419), sent at once (#1424 L).
         page.goto(f"/projects/{lamp}/tasks")  # the phone's "+" is on the lists and views, not in the conversation
         propose_decision(page, D1, why=WHY1)
         d1 = self.wait_for("the proposal", lambda: next((item for item in self.api("ada", "GET", f"/api/v1/projects/{lamp}/decisions?limit=100", status=200)["items"] if item["title"] == D1), None))
         page.goto(f"/projects/{lamp}?open=decision:{d1['id']}")
         panel = self.details(page)
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed")
         self.tap(panel.get_by_role("button", name="Accept", exact=True))
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         d1 = self.decision_titled("ada", D1)
         self.assertEqual((d1["status"], d1["proposedBy"]["id"], d1["decidedBy"]["id"]), ("accepted", self.ids["ada"], self.ids["ada"]))
         s["d1"] = d1["id"]
@@ -659,7 +659,7 @@ class ScenarioJourney:
         with jonas.expect_file_chooser() as chooser:
             self.tap(jonas.get_by_role("button", name="Attach files", exact=True))
         chooser.value.set_files([{"name": "lux-readings.csv", "mimeType": "text/csv", "buffer": CSV}])
-        expect(jonas.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(jonas.get_by_text("Ready to send", exact=False)).to_have_count(1)
         self.tap(jonas.get_by_role("button", name="Send message", exact=True))
         expect(jonas.get_by_label("Write a message", exact=True)).to_have_value("")
         run = self.root_of("jonas", lamp, RUN_ROOT)
@@ -800,7 +800,7 @@ class ScenarioJourney:
         section = card.get_by_role("region", name="Linked thoughts")
         # Nothing is linked, so there is no Linked thoughts section yet: the action is in the one row of actions.
         expect(section).to_have_count(0)
-        control = card.get_by_role("button", name="Link thought")
+        control = card.get_by_role("button", name="Add to a thought")
         picker = card.get_by_role("group", name=re.compile("^Thoughts to link to "))
         if self.phone:
             self.tap(control)
@@ -918,7 +918,8 @@ class ScenarioJourney:
         card = open_item(jonas.locator(".nyc", has_text=D2))
         expect(card.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
         expect(card.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
-        expect(card.locator(".agent-tag").first).to_be_visible()
+        # Who proposed it by the agent's one label, whose agent it is: "Ada's Claude Code" (design guide principle 5, round 15 ai P2-5).
+        expect(card).to_contain_text("Ada's Claude Code")
         accept = card.get_by_role("button", name=re.compile("^Accept"))
         accept.scroll_into_view_if_needed()
         self.shot(jonas, "3-replaces")
@@ -951,17 +952,20 @@ class ScenarioJourney:
         s, lamp = self.s, self.s["lamp"]
         page = self.page("ada")
         page.goto("/")
-        # Home continues with the one next step (F5, #342); the changes themselves are in the summary.
-        card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
-        expect(card).to_be_visible()
-        expect(card).to_contain_text("Answer Jonas's question")
+        # The one next step (F5, #342) is Jonas's question. Home shows each thing once (#1424): it waits in "Waiting for you", so
+        # "Continue where you left off" does not repeat it. The changes themselves are in the summary.
+        summary = self.api("ada", "GET", "/api/v1/return?place=home", status=200)
+        self.assertEqual(summary["nextStep"]["text"], "Answer Jonas's question")
+        waiting = page.get_by_role("region", name=re.compile("^Waiting for you"))
+        expect(waiting.get_by_role("link").filter(has_text="solder the VL53L1X board")).to_be_visible()
+        expect(page.get_by_role("region", name="Continue where you left off")).to_have_count(0)
         changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Decision changed: {D2}"]
         self.assertEqual([item["detail"] for item in changed], [f"Previously: {D1}"])
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
         # The changed decision opens in the one panel, without AI.
-        page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d2']}")
+        page.goto(f"/projects/{lamp}?open=decision:{s['d2']}")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=D2)).to_be_visible()
         expect(panel.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
@@ -973,8 +977,8 @@ class ScenarioJourney:
         expect(page.get_by_text(CAMERA_TASK).first).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(ORDER_TASK)
         expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
-        page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d1']}")
-        expect(self.details(page)).to_contain_text("Decision · replaced")
+        page.goto(f"/projects/{lamp}?open=decision:{s['d1']}")
+        expect(self.details(page)).to_contain_text("Replaced")
         expect(self.details(page)).to_contain_text(D1)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?open=work:{s['experiment']}")

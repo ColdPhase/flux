@@ -19,7 +19,7 @@ import { db, pool } from './support/db.js';
 import { startFakeGateway, type FakeGateway } from './support/fake-gateway.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FAKE_PRICE, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
-import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { claimRuntimeSlot, portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
 // #1441 (RT-5): pi has no web search of its own, so an API-key agent in pi searches with Flux's `flux_web_search`: the Flux server runs it
 // with the owner's key through the provider's hosted search, holds the key's budget before it and charges the run after it, and records
@@ -62,11 +62,11 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
     closeApp = () => app.close();
     gateway = await startFakeGateway();
-    slot = await startTestSlot({ slot: `runtime-8${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${base}/mcp`, ownTools: true, pi: { modelOrigin: gateway.url } });
+    slot = await startTestSlot({ slot: await claimRuntimeSlot(pool, { state: 'unknown' }), enabled: [], mcpUrl: `${base}/mcp`, ownTools: true, pi: { modelOrigin: gateway.url } });
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL`, [slot.config.slot]);
     owner = await person('rt-pi-search');
     ws = await createWorkspace(owner, 'Pi search');
     place = await createProject(owner, ws.id, 'Research', 'workspace');

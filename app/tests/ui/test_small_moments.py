@@ -96,11 +96,11 @@ class SmallMomentsJourney(unittest.TestCase):
                     page = self.page(phone=phone, scheme=scheme)
                     page.goto("/inbox")
                     expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
-                    expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
+                    expect(page.get_by_text("When someone asks you something, it shows up here.")).to_be_visible()
                     face = page.locator(".nyq__clear .kreska")
                     expect(face).to_have_attribute("data-expression", "done")
                     box = face.bounding_box()
-                    self.assertEqual((round(box["width"]), round(box["height"])), (96, 96))
+                    self.assertEqual((round(box["width"]), round(box["height"])), (80, 80))  # one empty state, founder direction 2026-11-17 visual review
                     # It never covers the words and sits above them.
                     title = page.get_by_role("heading", name="Nothing needs you right now").bounding_box()
                     self.assertLess(box["y"] + box["height"], title["y"])
@@ -157,7 +157,7 @@ class SmallMomentsJourney(unittest.TestCase):
         page.goto("/inbox")
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
         expect(page.locator(".kreska")).to_have_count(0)
-        expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
+        expect(page.get_by_text("When someone asks you something, it shows up here.")).to_be_visible()
         dialog = self.search_nothing(page, False)
         expect(dialog.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
         expect(dialog.locator(".kreska")).to_have_count(0)
@@ -231,7 +231,7 @@ class SmallMomentsJourney(unittest.TestCase):
             tasks[key] = self.api(self.page(), "POST", f"/api/v1/projects/{project}/work", {"title": title, "owner": owner})
 
         def assert_one_wink(page: Page, task: dict) -> None:
-            toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))
+            toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Done"))
             expect(toast).to_have_count(1)
             expect(toast.locator(".kreska")).to_have_attribute("data-expression", "wink")
             expect(toast.get_by_role("button", name="Undo")).to_be_visible()
@@ -242,7 +242,7 @@ class SmallMomentsJourney(unittest.TestCase):
         page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         page.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Done").click()
-        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))
+        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Done"))
         expect(toast).to_have_count(1)
         expect(toast.locator(".kreska")).to_have_attribute("data-expression", "wink")
         shot(page, "352-toast-wink")
@@ -267,9 +267,9 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page(phone=True)
         page.goto("/tasks")
-        # The header names the page "Your tasks" (#763 NV-1) at once; the pull belongs to the list, so wait for the list's own
+        # The list is named "My tasks", as its header (#763 NV-1) at once; the pull belongs to the list, so wait for the list's own
         # heading (level 2), not the header's, before the gesture.
-        expect(page.get_by_role("heading", level=2, name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name=re.compile("My tasks|No tasks of yours are open")).first).to_be_visible()
         reads = []
         page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)
         cdp = page.context.new_cdp_session(page)
@@ -347,9 +347,9 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page(phone=True)
         page.goto("/tasks")
-        # The header names the page "Your tasks" (#763 NV-1) at once; the pull belongs to the list, so wait for the list's own
+        # The list is named "My tasks", as its header (#763 NV-1) at once; the pull belongs to the list, so wait for the list's own
         # heading (level 2), not the header's, before the gesture.
-        expect(page.get_by_role("heading", level=2, name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name=re.compile("My tasks|No tasks of yours are open")).first).to_be_visible()
         page.wait_for_load_state("networkidle")
         # Only API reads of the work count: the lazily loaded `work-*.css` asset chunk is not a read.
         reads: list[str] = []

@@ -338,7 +338,7 @@ class DocsJourney(unittest.TestCase):
     def test_05_add_a_decision_to_the_doc(self) -> None:
         page = self.page("partner")
         before = self.doc(page)["version"]
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.finding_id}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.finding_id}")
         panel = page.locator("#details")
         expect(panel).not_to_contain_text("Shown on the Wiki page")  # a decision on no page says nothing about the Wiki (#871)
         panel.get_by_role("button", name="Add to a Wiki page").click()
@@ -356,7 +356,7 @@ class DocsJourney(unittest.TestCase):
         decision = self.api(page, "GET", f"/api/v1/decisions/{self.finding_id}", status=200)
         self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in decision["links"]))
         # The decision now shows the doc it is in.
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.finding_id}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.finding_id}")
         expect(page.locator("#details").get_by_role("link", name=re.compile(TITLE))).to_be_visible()
 
     # ---------------------------------------------------------------- phone
@@ -398,7 +398,11 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(prose.locator("img:not(.cm-widgetBuffer), script, iframe, [onerror]").count(), 0)
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
         expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
-        # The saved version reads as the server sanitized it, and says which link leads nowhere.
+        # The saved version reads as the server sanitized it, and says which link leads nowhere. Version 1 is an earlier version once the page
+        # has a second one (the current version opens the page itself).
+        current = self.api(page, "GET", f"/api/v1/docs/{doc['id']}", status=200)
+        self.api(page, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": current["body"] + "\n\nForwarded on Monday.\n"}, status=200,
+                 headers={"if-match": f'"{current["version"]}"', "idempotency-key": str(uuid.uuid4())})
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/versions/1")
         prose = page.locator(".doc-prose")
         expect(prose).to_contain_text("<script>alert('script')</script>")
@@ -424,13 +428,14 @@ class DocsJourney(unittest.TestCase):
         page.get_by_role("button", name="Page actions").click()
         page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="History").click()
 
-        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · +N −M".
+        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · 9 words added, 2 removed" (round 15
+        # daily P3-7: the count is the words the comparison marks).
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
         expect(versions.first).to_contain_text("Edited the text")
         expect(versions.first).to_contain_text(f"v2 · {OWNER['name']}")
         expect(versions.last).to_contain_text("v1 · ")
-        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+$"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \d+ words? (added(, \d+ removed)?|removed)$"))).to_be_visible()
         expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Edited the text")
 
         # AC-1: the changes are the page itself, in its typography: headings, a list, a table.
@@ -448,10 +453,14 @@ class DocsJourney(unittest.TestCase):
         expect(table.locator("tr.wiki-chg--added")).to_contain_text("Shed")
         for raw in ("| ---", "## ", "- Shed gateway"):
             self.assertNotIn(raw, diff.inner_text(), "the rendered view shows no raw Markdown")
-        # Added text has a soft fill and an underline; removed text is struck through in --t3.
+        # Added text is an underline only, with no fill or grey bar (coordinator review of the #1424 look round, 2026-11-17);
+        # removed text is struck through in --t3.
         look = diff.locator("p ins").evaluate("""el => { const s = getComputedStyle(el); return { line: s.textDecorationLine, fill: s.backgroundColor }; }""")
         self.assertIn("underline", look["line"])
-        self.assertNotIn(look["fill"], ("rgba(0, 0, 0, 0)", "transparent"))
+        self.assertIn(look["fill"], ("rgba(0, 0, 0, 0)", "transparent"))
+        heading = diff.locator("h2.wiki-chg--added, .wiki-chg--added h2").first
+        if heading.count():
+            self.assertIn(heading.evaluate("el => getComputedStyle(el).backgroundColor"), ("rgba(0, 0, 0, 0)", "transparent"), "an added heading has no grey bar")
         struck = diff.locator("p del").evaluate("""el => { const s = getComputedStyle(el); const probe = document.createElement('span'); probe.style.color = 'var(--t3)'; document.body.append(probe);
             const t3 = getComputedStyle(probe).color; probe.remove(); return { line: s.textDecorationLine, color: s.color, t3 }; }""")
         self.assertIn("line-through", struck["line"])
@@ -467,8 +476,27 @@ class DocsJourney(unittest.TestCase):
         shot(page, "wiki-history-rendered-desktop-1440-dark")
         page.emulate_media(color_scheme="light")
 
+        # Restore lives on the chosen version's row, only for a version that is not the page (founder direction, Hubert 2026-11-17,
+        # #1424): none while the current version is chosen, and no Restore at the top right.
+        expect(page.get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        versions.last.locator(".doc-version").click()
+        expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("v1 · ")
+        expect(versions.last.get_by_role("button", name="Restore this version")).to_be_visible()
+        expect(versions.first.get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        expect(page.locator(".wiki-head").get_by_role("button", name=re.compile(r"^Restore"))).to_have_count(0)
+        # The timeline is one line from dot to dot: the first row's line ends at the centre of the next row's dot.
+        joined = page.evaluate("""() => {
+          const rows = [...document.querySelectorAll('.doc-versions > li')];
+          const line = getComputedStyle(rows[0], '::before'), top = rows[0].getBoundingClientRect().top;
+          const end = top + parseFloat(line.top) + parseFloat(line.height);
+          const start = top + parseFloat(line.top);
+          const dot = (row) => { const r = row.querySelector('.doc-version__dot').getBoundingClientRect(); return r.top + r.height / 2; };
+          return { start: start - dot(rows[0]), end: end - dot(rows[1]) };
+        }""")
+        self.assertLessEqual(abs(joined["start"]), 1, f"the line starts at the first dot: {joined}")
+        self.assertLessEqual(abs(joined["end"]), 1, f"the line reaches the next dot: {joined}")
         # Restore brings the earlier text back as the page, for everyone writing in it, as the next version that says so.
-        page.get_by_role("button", name="Restore version 1").click()
+        versions.last.get_by_role("button", name="Restore this version").click()
         expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
         expect(page).to_have_url(re.compile(re.escape(f"/docs/{doc['id']}") + "$"))
         restored = self.doc(owner, doc["id"])

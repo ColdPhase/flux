@@ -8,8 +8,9 @@ what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844
 * D1: a proposed decision's panel is its Inbox card first: Accept / Not now / Discuss and who is still waiting, with no "Needs you"
   pill (#1367); on a phone the answer is inside the half sheet; Not now is one button with no menu: back tomorrow morning.
 * D2: no empty "Based on", "Evidence" or "Reports on" sections; "Shown on the Wiki page …" is a sentence drawn only when it applies (#871).
-* D3: Discuss opens the decision's thread with its reply field focused, or the conversation with the
-  composer focused and the decision beside it, from the panel and from the Inbox.
+* D3: Discuss opens the decision's panel with the cursor in its one discussion's field, "Write about this decision…", from the panel
+  and from the Inbox, whether or not it came from a message (founder decision, Hubert, 2026-11-15, #1424: before, it opened the
+  message's thread or the space's own composer, where the words had no link to the decision).
 * D4/D6: "Add to a Wiki page" closes the form back to the decision, says "Shown on the Wiki page …"
   and says where it went with one toast and Open.
 * B2: (gone with #867: a message has no "Hand off to an agent")
@@ -122,9 +123,21 @@ class DecisionFlows(unittest.TestCase):
         message = root["messages"][0]["id"]
         rule = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": RULE, "rationale": "Ten minutes shows a watering"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
-        sourced = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": FROM_MESSAGE, "rationale": "Capacitive probes do not corrode",
-                                                                                 "sources": [{"type": "message", "id": message}]}, status=201)
-        bare = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": NO_SOURCE, "rationale": "Less evaporation"}, status=201)
+        # The two proposals are Jonas's: your own proposal is never in your own Inbox (personas-30), so Ada is asked about his.
+        jonas = self.browser.new_context(base_url=ORIGIN)
+        self.addCleanup(jonas.close)
+        jonas_email = f"jonas.flows+{STAMP}@example.test"
+        signed = jonas.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"name": "Jonas Berg", "email": jonas_email, "password": PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        jonas_id = jonas.request.get(f"{ORIGIN}/api/v1/me").json()["user"]["id"]
+        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": jonas_email, "role": "member"}, status=201)
+        self.api(page, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": jonas_id}, "role": "contributor"}, status=201)
+        def propose(body: dict) -> dict:
+            response = jonas.request.post(f"{ORIGIN}/api/v1/projects/{pid}/decisions", data=body, headers={"origin": ORIGIN})
+            self.assertEqual(response.status, 201, response.text())
+            return response.json()
+        sourced = propose({"title": FROM_MESSAGE, "rationale": "Capacitive probes do not corrode", "sources": [{"type": "message", "id": message}]})
+        bare = propose({"title": NO_SOURCE, "rationale": "Less evaporation"})
         # The proposal without a source is also in a Wiki page: that link to it is not what it is based on (D2). A page mentions
         # it in a sentence; "Add to a Wiki page" itself refuses a proposal (F-034).
         self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Watering", "body": f"We may water at dawn: [{NO_SOURCE}](flux:decision/{bare['id']})."}, status=201)
@@ -135,18 +148,19 @@ class DecisionFlows(unittest.TestCase):
 
     def test_01_a_proposed_decision_is_its_inbox_card_first(self) -> None:
         page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['sourced']}")
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['sourced']}")
         panel = self.panel(page)
         expect(panel.locator(".wd-decision-identity")).not_to_contain_text("Needs you")
         answer = panel.get_by_role("region", name="Your answer")
         expect(answer.get_by_role("button", name="Accept", exact=True)).to_be_visible()
         expect(answer.get_by_role("button", name="Not now")).to_be_visible()
         expect(answer.get_by_role("button", name="Discuss", exact=True)).to_be_visible()
-        expect(answer).to_contain_text("waiting for you")
+        expect(answer).to_contain_text("Waiting for you")
         # "Based on" draws after the panel does: wait for it, or the order is read before it exists (#1133).
         expect(panel.get_by_role("heading", name="Based on")).to_be_visible()
         # The answer comes right after the reason and what it rests on, before the record rows.
-        order = panel.evaluate("""(root) => [...root.children].map((el) => el.matches('.wd-decide') ? 'answer' : el.matches('.wd-rows') ? 'rows'
+        # The panel scrolls above its one discussion's field (#1424), as a task's does: the order is read in that scrolling column.
+        order = panel.evaluate("""(root) => [...(root.querySelector(':scope > .wd__scroll') ?? root).children].map((el) => el.matches('.wd-decide') ? 'answer' : el.matches('.wd-rows') ? 'rows'
           : el.matches('.details__lead') ? 'lead' : el.querySelector('#wd-based') ? 'based' : null).filter(Boolean)""")
         self.assertEqual(order, ["lead", "based", "answer", "rows"])
         expect(panel.get_by_text("Agents can propose decisions; only people accept them.")).to_have_count(0)
@@ -176,15 +190,17 @@ class DecisionFlows(unittest.TestCase):
     def test_03_no_empty_sections(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['bare']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['bare']}")
         panel = self.panel(page)
         expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page Watering"))).to_be_visible()
         expect(panel.get_by_role("link", name=re.compile("Watering"))).to_be_visible()
         expect(panel.get_by_role("heading", name="Based on")).to_have_count(0)
         expect(panel).not_to_contain_text("No source linked")
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['rule']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['rule']}")
         panel = self.panel(page)
-        expect(panel.locator(".details__eyebrow")).to_contain_text("accepted")
+        # The panel's head says "Decision" once; the eyebrow is the state alone, "Accepted 14 Nov" (#1424 P3 17), and a decision accepted
+        # today says "Accepted today", never today's date (personas-27).
+        expect(panel.locator(".details__eyebrow")).to_have_text(re.compile(r"^Accepted (today|\d{1,2} [A-Z][a-z]{2})$"))
         # On no page, so no sentence about the Wiki (#871).
         expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page"))).to_have_count(0)
         expect(panel.get_by_role("heading", name="At this pivot")).to_have_count(0)
@@ -192,27 +208,28 @@ class DecisionFlows(unittest.TestCase):
 
     # ---------------------------------------------------------------- D3
 
-    def test_04_discuss_opens_the_decisions_thread_ready_to_write(self) -> None:
+    def test_04_discuss_puts_the_cursor_in_the_decisions_own_field(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['sourced']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['sourced']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
-        expect(page).to_have_url(re.compile(f"/projects/{pid}/conversations/{self.ids['conversation']}"))
-        expect(page.locator("#thread-composer")).to_be_focused()
-        # The thread shows the decision that came of its message.
-        expect(page.locator("#thread")).to_contain_text(FROM_MESSAGE)
-        shot(page, "decision-flows-d3-thread")
+        # The decision's one discussion (#1424): its panel stays, with the cursor in its field, never the message's thread.
+        expect(page).to_have_url(re.compile(f"/projects/{pid}\\?open=decision:{self.ids['sourced']}$"))
+        expect(page.locator("#decision-composer")).to_be_focused()
+        expect(page.locator("#details")).to_contain_text(FROM_MESSAGE)
+        shot(page, "decision-flows-d3-field")
 
-    def test_05_discuss_without_a_source_opens_the_conversation_with_the_decision_beside_it(self) -> None:
+    def test_05_discuss_without_a_source_is_the_same_field(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['bare']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['bare']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
-        expect(page).to_have_url(re.compile(f"/projects/{pid}/?$"))
-        expect(page.locator("#project-composer")).to_be_focused()
+        expect(page).to_have_url(re.compile(f"/projects/{pid}/?(\\?open=decision(:|%3A)[0-9a-f-]{{36}})?$"))
+        expect(page.locator("#decision-composer")).to_be_focused()
+        expect(page.locator("#project-composer")).not_to_be_focused()
         expect(page.locator("#details").get_by_role("heading", level=3, name=NO_SOURCE)).to_be_visible()
 
-    def test_06_discuss_from_the_inbox_opens_the_same_thread(self) -> None:
+    def test_06_discuss_from_the_inbox_opens_the_decisions_field(self) -> None:
         page = self.page()
         page.goto("/inbox")
         card = page.locator(".nyc", has_text=FROM_MESSAGE)
@@ -221,8 +238,8 @@ class DecisionFlows(unittest.TestCase):
         card.locator(".nyc__open").click()
         expect(card).to_have_attribute("aria-current", "true")
         page.locator(".nyc--open").get_by_role("button", name="Discuss", exact=True).click()
-        expect(page).to_have_url(re.compile(f"/conversations/{self.ids['conversation']}"))
-        expect(page.locator("#thread-composer")).to_be_focused()
+        expect(page).to_have_url(re.compile(f"\\?open=decision:{self.ids['sourced']}$"))
+        expect(page.locator("#decision-composer")).to_be_focused()
 
     # ---------------------------------------------------------------- D4, D6
 
@@ -269,6 +286,46 @@ class DecisionFlows(unittest.TestCase):
             expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
 
+    def test_09_accept_in_the_panel_works_at_once_and_undo_brings_back_what_it_replaced(self) -> None:
+        """Accept works at once in the panel as in the Inbox, with a 10 s Undo (founder decision, round 8, #1424): the acceptance reaches
+        everyone at once, and Undo takes it back, so the decision it replaced is the current one again and the task that waited for it
+        waits again, with its reason."""
+        page = self.page()
+        pid = self.ids["project"]
+        proposal = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": "Water for twelve minutes at dawn", "rationale": "Dawn loses less to the sun",
+                                                                               "supersedes": self.ids["rule"]}, status=201)
+        task = self.api(page, "POST", f"/api/v1/projects/{pid}/work", {"title": "Reset the timers", "status": "blocked", "blocker": "Which length?",
+                                                                     "waitingOn": {"kind": "decision", "id": proposal["id"]}}, status=201)
+        get = lambda path: self.api(page, "GET", path, status=200)  # noqa: E731
+        page.goto(f"/projects/{pid}?open=decision:{proposal['id']}")
+        panel = self.panel(page)
+        expect(panel).to_contain_text("Water for twelve minutes at dawn")
+        panel.get_by_role("button", name=re.compile("^Accept")).click()
+        toast = page.locator(".ui-toast").filter(has_text="Accepted")
+        expect(toast).to_be_visible()
+        # At once, for everyone: nothing waits for the toast to leave.
+        deadline = time.monotonic() + 5
+        while get(f"/api/v1/decisions/{proposal['id']}")["status"] != "accepted" and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(get(f"/api/v1/decisions/{proposal['id']}")["status"], "accepted")
+        self.assertEqual(get(f"/api/v1/decisions/{self.ids['rule']}")["status"], "superseded")
+        self.assertEqual(get(f"/api/v1/work/{task['id']}")["status"], "in_progress")
+        expect(toast).to_be_visible()
+        toast.get_by_role("button", name="Undo").click()
+        # Undo takes it back for everyone: proposed again, the rule current again, the task waiting again with its reason.
+        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
+        # And it gives the focus back to Accept, the control that made the change, not the replaced decision's link (personas-35).
+        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_focused()
+        page.wait_for_timeout(400)
+        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_focused()
+        deadline = time.monotonic() + 5
+        while get(f"/api/v1/decisions/{proposal['id']}")["status"] != "proposed" and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(get(f"/api/v1/decisions/{proposal['id']}")["status"], "proposed")
+        self.assertEqual(get(f"/api/v1/decisions/{self.ids['rule']}")["status"], "accepted")
+        waiting = get(f"/api/v1/work/{task['id']}")
+        self.assertEqual((waiting["status"], waiting["blocker"], (waiting["waitingOn"] or {}).get("id")), ("blocked", "Which length?", proposal["id"]))
+
     def test_10_a_task_from_a_message_is_titled_with_its_first_clause_selected(self) -> None:
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
@@ -286,8 +343,8 @@ class DecisionFlows(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         window = open_decision(page)
-        # One form (#1419): "Replace an accepted decision…" shows its choice in this window, not in a second form in the panel.
-        window.get_by_role("button", name="Replace an accepted decision…").click()
+        # One form (#1419): "This replaces an older decision…" shows its choice in this window, not in a second form in the panel.
+        window.get_by_role("button", name="This replaces an older decision…").click()
         expect(page.locator("#details")).to_have_count(0)
         expect(page.get_by_role("heading", name="Propose a decision")).to_have_count(0)
         select = window.get_by_label("Does it replace an earlier decision?", exact=True)

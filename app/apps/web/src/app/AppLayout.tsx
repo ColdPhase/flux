@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
@@ -7,9 +7,13 @@ import { useLockedPeople, useLockedPlace } from '../encryption/state';
 import { Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
+import { NoLongerIn, useNotAvailableShown } from './NotAvailable';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage, DeferredNotices } from './DeferredSurfaces';
-import { BusyNotice } from './BusyNotice';
+import { BusyNotice, OfflineNotice } from './BusyNotice';
+
+/** The Connect AI window's code (with its steps and sign-in) comes only when it is opened in place. */
+const ConnectAiDialog = lazy(() => import('../ai/ConnectAiDialog'));
 import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
@@ -31,6 +35,7 @@ import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
 import '../live/live.css';
 import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
+import { WORK_CREATION_UNDONE_EVENT } from '../work/taskState';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { rememberSpace } from './lastSpace';
@@ -39,10 +44,11 @@ import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
+import { DmUnreadProvider } from '../dm/dmUnread';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
-import { inComposer } from '../ui/keys';
+import { isTyping, stopAwaitingField, watchConversationLinks, watchLostFocus, windowOrMenuOpen } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -56,7 +62,43 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
   return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
 }
 
+/**
+ * Esc in a composer (F-026 §4): focus goes to the newest message of the conversation the composer writes to, the draft stays, and the single
+ * keys work from there. A conversation with no message yet gives it to the page's content.
+ */
+function leaveComposer(field: HTMLElement) {
+  const place = field.closest('.convo-split__stream, .dm, .agc, #content') ?? document.getElementById('content');
+  // The newest message the reader can see (one above the decision cards is off screen, persona round 31), else the newest, brought into view.
+  const items = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex], .agc__turn[tabindex]')] : [];
+  let feed: HTMLElement | null = items[0]?.parentElement ?? null;
+  while (feed && feed !== document.body && !(/(auto|scroll)/.test(getComputedStyle(feed).overflowY) && feed.scrollHeight > feed.clientHeight)) feed = feed.parentElement;
+  const box = (feed && feed !== document.body ? feed : document.getElementById('content'))?.getBoundingClientRect();
+  const seen = box ? items.filter((item) => { const r = item.getBoundingClientRect(); return r.height > 0 && r.bottom > box.top && r.top < box.bottom; }) : [];
+  const newest = seen.at(-1) ?? items.at(-1);
+  field.blur();
+  newest?.focus({ preventScroll: seen.length > 0 });
+  if (newest && !seen.length) newest.scrollIntoView({ block: 'nearest' });
+  // A stream still opening (hidden until its first reads) cannot take it: the page's content does.
+  if (!newest || document.activeElement !== newest) document.getElementById('content')?.focus({ preventScroll: true });
+}
+
+/** The control that stands for an object outside the panel: a task's or a decision's card in the conversation, else its row or card in Tasks. */
+function objectControl(view: DetailsView): HTMLElement | null {
+  if (typeof view !== 'object' || !('id' in view) || (view.kind !== 'work' && view.kind !== 'decision')) return null;
+  // A card folded into "8 task updates" (S8) is hidden: the fold's own button stands for it.
+  const outside = (element: HTMLElement | null) => {
+    if (!element || element.closest('#details')) return null;
+    const fold = element.closest('.convo-fold')?.querySelector<HTMLElement>('.convo-fold__b[aria-expanded="false"]');
+    return fold ?? element;
+  };
+  const id = CSS.escape(view.id);
+  return [...document.querySelectorAll<HTMLElement>(`[data-native-ref="${view.kind}:${id}"], [data-decision-card="${id}"]`)].map(outside).find(Boolean)
+    ?? outside(document.querySelector<HTMLElement>(`[data-work-id="${id}"] .ws-item, [data-card-id="${id}"] .tb-card__open`));
+}
+
 const SIDEBAR_KEY = 'flux.sidebar';
+/** The lists that show a conversation's newest line: Messages and the phone's Spaces. */
+const DM_PREVIEW_LISTS = new Set(['/dm', '/projects']);
 /** The views of a space, drawn inactive in a locked space's header (F-026 §7 Spaces). */
 const LOCKED_VIEWS = [{ id: 'conversation', label: 'Conversation' }, { id: 'tasks', label: 'Tasks' }, { id: 'map', label: 'Map' }, { id: 'docs', label: 'Wiki' }];
 /** The width the sidebar settles at when it is full and when it is the rail (tokens.css). */
@@ -76,7 +118,6 @@ const panelHeading = (view: DetailsView): { title: string; close: string } => {
   const named = (title: string) => ({ title, close: `Close ${title.charAt(0).toLowerCase()}${title.slice(1)}` });
   const asked = (title: string) => ({ title, close: 'Close' });
   if (view === 'place') return named('People and privacy');
-  if (view === 'connect-ai') return asked('Connect your AI');
   switch (view.kind) {
     case 'add-to-doc': return asked('Add to a Wiki page');
     case 'people': return named('People and encryption');
@@ -92,6 +133,18 @@ const panelPlace = (pathname: string) => /^\/(?:projects|dm|spaces)\/[^/]+/.exec
 const THREAD_ROUTE = /^\/projects\/([^/]+)\/conversations\/([^/]+)/;
 
 const NO_ORIGIN = { key: '', path: '/', label: '' };
+
+/**
+ * The page at the address, or, for a person who left the company or was removed and has no company now, "You’re no longer in Riverside
+ * Bakery" on every page of the company they can still reach, as Home says it (personas-37 P3-4: /inbox said "Nothing needs you right now").
+ * Home, Spaces (which says it in its list) and Settings stay theirs.
+ */
+function CompanyPage() {
+  const { workspace, removedFrom } = useShellData();
+  const { pathname } = useLocation();
+  if (!workspace && removedFrom && pathname !== '/' && pathname !== '/projects' && !/^\/settings(\/|$)/.test(pathname)) return <NoLongerIn company={removedFrom} />;
+  return <Outlet />;
+}
 /** What a history entry keeps of its panel (#592): an object the panel shows over the page and the way back it left. A thread or an agent a view owns is kept by its own route. */
 interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
 const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
@@ -101,7 +154,7 @@ const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-p
  */
 const KEPT_VIEWS = new Set(['work', 'decision', 'overview', 'people', 'owned']);
 const persistable = (view: DetailsView): DetailsView | null => {
-  if (view === 'place' || view === 'connect-ai') return view;
+  if (view === 'place') return view;
   if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
   return view.kind === 'overview' ? { kind: 'overview', messageId: view.messageId } : view;
 };
@@ -112,17 +165,12 @@ const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string
   return { open, view: shown, scroll: panelScrollNow(), owned,
     trail: trail.flatMap((entry) => { const kept = persistable(entry.view); return kept ? [{ label: entry.label, view: kept }] : []; }) };
 };
-const isPanelView = (value: unknown): value is DetailsView => value === 'place' || value === 'connect-ai' || (!!value && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string');
+const isPanelView = (value: unknown): value is DetailsView => value === 'place' || (!!value && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string');
 function isDetailsPlace(value: unknown): value is DetailsPlace {
   if (!value || typeof value !== 'object') return false;
   const kept = value as Partial<DetailsPlace>;
   return typeof kept.open === 'boolean' && typeof kept.owned === 'boolean' && isPanelView(kept.view) && Number.isFinite(kept.scroll)
     && Array.isArray(kept.trail) && kept.trail.every((entry) => !!entry && typeof entry.label === 'string' && isPanelView(entry.view));
-}
-
-function isTyping(target: EventTarget | null) {
-  const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]') || inComposer(el));
 }
 
 /**
@@ -136,7 +184,7 @@ export function AppLayout() {
   const { projectId } = useParams();
   return (
     <PhotosContext.Provider value={photos}>
-      <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></AgentChatDotsProvider></WorkReadProvider>
+      <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><DmUnreadProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></DmUnreadProvider></AgentChatDotsProvider></WorkReadProvider>
     </PhotosContext.Provider>
   );
 }
@@ -173,6 +221,8 @@ function AppLayoutContent() {
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
   if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
+  // The one Connect AI window, opened in place by the composer's Connect your AI (#1424).
+  const [connectAi, setConnectAi] = useState(false);
   // The one Create window (#345): the computer's New and the phone's "+" open it, on Task (#1438 point 8).
   const [create, setCreate] = useState<CreateRequest | null>(null);
   // After a task is created, `C` and New open on the space it went to until the person goes to another place (#1235): adding several is one key each.
@@ -183,6 +233,20 @@ function AppLayoutContent() {
     if (keptSpace.current && keptSpace.current.path !== location.pathname) keptSpace.current = null;
   });
   const paneRef = useRef<HTMLElement>(null);
+  // A page that is scrolled under the phone's header gets the header's hairline, so its text never slides under the header and is cut
+  // mid-glyph with nothing between them (round 14, look-a B4). Read from the page's own scroller; a new page starts unscrolled.
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return undefined;
+    const read = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.classList.contains('pane-scroll')) return;
+      pane.toggleAttribute('data-scrolled', target.scrollTop > 2);
+    };
+    pane.removeAttribute('data-scrolled');
+    pane.addEventListener('scroll', read, { capture: true, passive: true });
+    return () => pane.removeEventListener('scroll', read, { capture: true });
+  }, [location.pathname]);
   const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();
 
@@ -217,7 +281,7 @@ function AppLayoutContent() {
     ownedRef.current = panel;
     setOwned(panel);
     setDetailsView({ kind: 'owned' });
-    now.current = { ...current, detailsView: { kind: 'owned' } };
+    now.current = { ...current, detailsView: { kind: 'owned' }, detailsOpen: true };
     if (!current.detailsOpen) current.toggleDetails(true);
   }, [labelOf]);
   const reopenPanel = useCallback((key: string) => {
@@ -227,7 +291,7 @@ function AppLayoutContent() {
     // It takes the place of a task or decision that covers it, which keeps the way back.
     if (current.detailsOpen && replaces(current.detailsView)) setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
     setDetailsView({ kind: 'owned' });
-    now.current = { ...current, detailsView: { kind: 'owned' } };
+    now.current = { ...current, detailsView: { kind: 'owned' }, detailsOpen: true };
     if (!current.detailsOpen) current.toggleDetails(true);
   }, [labelOf]);
   const hidePanel = useCallback((key: string) => {
@@ -286,6 +350,9 @@ function AppLayoutContent() {
       document.removeEventListener('visibilitychange', back);
     };
   }, [revalidate]);
+  // A message in a known conversation is read into the lists that show its newest line when one of them is open, else when one opens next
+  // (personas-28: the phone's Spaces showed the line before the one just sent until a reload).
+  const dmPreviewsStale = useRef(false);
   useStreamEvents(me.user.id, (event) => {
     // The person moved a space in another tab or on another device (#1250): the shell reads their order again. It is shown without
     // animation: rows only move in answer to the person's own input here.
@@ -315,8 +382,14 @@ function AppLayoutContent() {
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
-    if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
+    if (!known || event.kind !== 'dm.message_sent.v1' || DM_PREVIEW_LISTS.has(location.pathname)) revalidator.revalidate();
+    else dmPreviewsStale.current = true;
   }, () => revalidator.revalidate());
+  useEffect(() => {
+    if (!dmPreviewsStale.current || !DM_PREVIEW_LISTS.has(location.pathname)) return;
+    dmPreviewsStale.current = false;
+    revalidator.revalidate();
+  }, [location.pathname, revalidator]);
 
   const inboxSignals = useInboxDot(me.user.id, location.pathname);
   const inboxUnread = inboxSignals.count;
@@ -324,6 +397,25 @@ function AppLayoutContent() {
   useTabSignals(inboxSignals.notifying);
   // A reply that answered a question or mention waiting in the Inbox takes it out, with Undo (#1170).
   useAnsweredInbox(me.user.id);
+  // Following a link to a conversation keeps what is typed meanwhile for its composer (P2 #2).
+  useEffect(() => watchConversationLinks(), []);
+  // What had focus went away under it: the next control takes it, never the page itself (F-026 §4).
+  useEffect(() => watchLostFocus(), []);
+  // A page arrived at with nothing that takes the focus (Back to Home, a reload of the board) gives it to its content, never the page itself
+  // (persona round 29), once the page's own focus (a composer, the Inbox's item, a marked message) has had its turn. The same on a touch
+  // screen, where the content raises no keyboard (personas-36: Back from a new conversation left the phone's Spaces page with no focus).
+  useEffect(() => {
+    // Anything that took the focus since (the page's own, or the person) ends it: this is only for a page that gave it to nothing.
+    let taken = false;
+    const onFocus = () => { taken = true; };
+    document.addEventListener('focusin', onFocus, true);
+    const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      // A field asked for and still on its way (Reply from the Inbox while the thread is read in) gives the focus itself.
+      if (!taken && (!active || active === document.body) && !isTyping(null) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
+    }, 400);
+    return () => { window.clearTimeout(timer); document.removeEventListener('focusin', onFocus, true); };
+  }, [location.key]);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -346,11 +438,23 @@ function AppLayoutContent() {
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
   const panelGuard = useRef<(() => boolean) | null>(null);
+  // A task or decision opened afresh in its space (a card on the board or in the conversation, Create) gets its own address, `?open=`,
+  // as one opened from Search, Home or the Inbox does (founder question B, persona round 29): a reload keeps it, Back closes it first.
+  // The address then opens it (the `?open=` effect below); true when it was given one.
+  const addressFor = useRef<(kind: 'work' | 'decision', id: string, projectId: string | undefined, title: string | undefined) => boolean>(() => false);
+  // The title the opener knew (a task's row or card) for the object it gave an address: the `?open=` effect below opens it with that title,
+  // so its loading panel shows the real title in its own place and nothing moves when the task arrives (#863 rule 6). Kept in memory for
+  // that one opening, never in the entry's state: a reload or a Back reads the task afresh.
+  const addressedTitle = useRef<{ open: string; title: string } | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place', options?: { back?: 'push' | 'keep' }) {
       if (detailsScope.current !== detailsOwner) return;
       const next = typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view;
       const current = now.current;
+      // Also over a thread (a task card in it, a task made from a reply): the task has its address there too (persona round 30 P2 2).
+      const afresh = !options?.back;
+      if (afresh && typeof next === 'object' && 'id' in next && (next.kind === 'work' || next.kind === 'decision')
+        && addressFor.current(next.kind, next.id, (next as { projectId?: string }).projectId, (next as { title?: string }).title)) return;
       // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
       // thread or an agent a view owns, which has no other way back. Any other opening starts afresh.
       const covers = current.detailsOpen && isOwned(current.detailsView) && ownedRef.current && !isOwned(next);
@@ -359,18 +463,24 @@ function AppLayoutContent() {
       } else if (options?.back !== 'keep') setTrail([]);
       panelLabel.current = null;
       setDetailsView(next);
-      now.current = { ...current, detailsView: next };
+      // Open from now on, before the next render: a thread that registers in the same commit as a reload's `?open=` object is covered by it
+      // and is its way back ("‹ Thread"; persona round 31).
+      now.current = { ...current, detailsView: next, detailsOpen: true };
       toggleDetails(true);
     },
     /** The open object's name for "‹ back" from the next one ("Task #2"). */
     labelPanel(label: string | null) { panelLabel.current = label; },
     showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), guardPanel(guard: (() => boolean) | null) { panelGuard.current = guard; }, panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
+    shownObject: detailsOpen && typeof detailsView === 'object' && (detailsView.kind === 'work' || detailsView.kind === 'decision') ? { kind: detailsView.kind, id: detailsView.id } : null,
     openCreate(request: CreateRequest = {}) {
       setNavOpen(false); setJumpOpen(false);
       const kept = keptSpace.current;
-      setCreate(!request.kind && kept && kept.path === pathNow.current ? { ...request, projectId: kept.projectId } : request);
+      // A task made from My tasks is yours, so it is on the list you made it from (round 15 new P2-1); the Owner chip still changes it.
+      const mine = pathNow.current === '/tasks' && (!request.kind || request.kind === 'task') && request.ownerMe === undefined ? { ownerMe: true } : {};
+      setCreate(!request.kind && kept && kept.path === pathNow.current ? { ...request, ...mine, projectId: kept.projectId } : { ...request, ...mine });
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
+    openConnectAi() { setNavOpen(false); setJumpOpen(false); setConnectAi(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
     metadataSlot,
@@ -393,9 +503,21 @@ function AppLayoutContent() {
   }
   // Back, Forward or the way back to an entry restores the object its panel showed, the way back it left, whether it was open
   // and how far it was scrolled (#592). A thread or an agent a view owns is kept by its own route, so it is not restored here.
+  // Closing an object that had its own entry goes Back over it: the entry it returns to shows no panel, whatever was kept for it.
+  const [closingBack, setClosingBack] = useState(false);
   const [shownKey, setShownKey] = useState(location.key);
+  const [shownSearch, setShownSearch] = useState(location.search);
   if (shownKey !== location.key) {
     setShownKey(location.key);
+    setShownSearch(location.search);
+    // Back (or Forward) off the entry of the object the panel shows (`?open=`): it steps back to what it covered (a thread), or closes.
+    const leftOpen = new URLSearchParams(shownSearch).get('open');
+    const shownId = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (navType === 'POP' && leftOpen && leftOpen !== new URLSearchParams(location.search).get('open') && shownId === leftOpen && detailsOpen) {
+      const top = trail.at(-1);
+      // With no way back kept (a reload on the object's address), a thread the route still shows comes back in its place.
+      if (top) { setTrail(trail.slice(0, -1)); setDetailsView(top.view); } else if (owned) setDetailsView({ kind: 'owned' }); else setDetailsOpen(false);
+    }
     const arrival = arrivalEntry(location, navType);
     const kept = arrival ? recall<unknown>('details', arrival) : undefined;
     if (arrival && isDetailsPlace(kept) && !kept.owned) {
@@ -403,6 +525,8 @@ function AppLayoutContent() {
       if (kept.open && kept.scroll > 0) setPanelScrollTo({ top: kept.scroll });
     }
     if (arrival) { const height = recall<unknown>('sheet', arrival); setSheetStart(typeof height === 'boolean' ? height : null); }
+    // Only the Back that closing took ends the panel; a newer step taken before it (opening something) keeps what it opened.
+    if (closingBack) { setClosingBack(false); if (navType === 'POP') setDetailsOpen(false); }
   }
   const trailNow = useRef(trail);
   useEffect(() => { trailNow.current = trail; });
@@ -428,20 +552,40 @@ function AppLayoutContent() {
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
+  useLayoutEffect(() => { addressFor.current = (kind, id, objectProject, title) => {
+    if (!projectId || (objectProject && objectProject !== projectId)) return false;
+    const params = new URLSearchParams(location.search);
+    if (params.get('open') === `${kind}:${id}`) return false;
+    addressedTitle.current = title ? { open: `${kind}:${id}`, title } : null;
+    params.delete('open');
+    const rest = params.toString();
+    // The entry's own asks (write in the composer, keep a panel, a found message) are not the object's: they would act again on its entry.
+    const kept: Record<string, unknown> = { ...(location.state && typeof location.state === 'object' ? location.state : {}) };
+    for (const ask of ['focusComposer', 'keepPanel', 'found', 'sourceOf']) delete kept[ask];
+    // `openPushed`: closing goes Back over this entry instead of leaving a second one with the same address. The flag reads as the links
+    // write it (`open=work:<id>`), not encoded.
+    navigate({ pathname: location.pathname, search: `?${rest ? `${rest}&` : ''}open=${kind}:${id}`, hash: location.hash }, { defaultShouldRevalidate: false, state: { ...kept, openPushed: true } });
+    return true;
+  }; });
   const openedAt = useRef<string | null>(null);
+  const openShown = useRef<{ kind: string; id: string } | null>(null);
+  useEffect(() => { openShown.current = detailsOpen && typeof detailsView === 'object' && 'id' in detailsView ? { kind: detailsView.kind, id: detailsView.id } : null; });
   useEffect(() => {
     if (openedAt.current === location.key) return;
-    const params = new URLSearchParams(location.search);
-    const open = params.get('open') ?? '';
+    openedAt.current = location.key;
+    const open = new URLSearchParams(location.search).get('open') ?? '';
     const match = /^(work|decision):([0-9a-f-]{36})$/i.exec(open);
     if (!match) return;
-    openedAt.current = location.key;
-    params.delete('open');
-    const search = params.toString();
-    // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
-    shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() });
-  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell]);
+    // The address names what it opened and keeps it (founder question B, persona round 28): a reload opens it again, Back leaves for where
+    // the link was followed from and takes the sheet or panel with it, and closing it takes the flag off the address (`closePanel`). The
+    // entry is the link's own, as a thread opened by a link is (A-1). The place it lands on gives the focus to the object, never the composer.
+    const kind = match[1]!.toLowerCase() as 'work' | 'decision';
+    const id = match[2]!.toLowerCase();
+    if (openShown.current?.kind === kind && openShown.current.id === id) return;
+    const known = addressedTitle.current?.open === `${kind}:${id}` ? addressedTitle.current.title : undefined;
+    addressedTitle.current = null;
+    shell.openDetails({ kind, id, ...(known ? { title: known } : {}) });
+  }, [location.key, location.search, shell]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
   const notedAt = useRef<string | null>(null);
   useEffect(() => {
@@ -470,12 +614,13 @@ function AppLayoutContent() {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
-      if (document.getElementById('root')?.hasAttribute('data-modal')) return;
+      if (document.getElementById('root')?.hasAttribute('data-modal') || document.querySelector('[role="menu"]:not([inert])')) return;
       // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
       if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
       if (key === 'g') { leader = Date.now(); return; }
-      if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; navigate('/inbox'); }
+      // G I always lands on the Inbox's open item (persona round 29 P2 2): the sidebar link that kept focus from the last arrival lets it go.
+      if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; (document.activeElement as HTMLElement | null)?.blur?.(); navigate('/inbox'); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -557,7 +702,13 @@ function AppLayoutContent() {
   const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (!onConversation && !onMap)) return;
-    remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
+    // The view's place, not the object open over it: a task's `?open=` is the panel's entry (persona round 29), and the panel goes with the
+    // person across the space's views by itself. Kept here, the tab would open a task again that was closed on another view, and the Map tab
+    // would not open the map alone (#1438 point 7); the Tasks view remembers only its own view too.
+    const search = new URLSearchParams(location.search);
+    search.delete('open');
+    const rest = search.toString();
+    remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${rest ? `?${rest}` : ''}`);
   }, [me.user.id, projectId, onConversation, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
@@ -583,6 +734,12 @@ function AppLayoutContent() {
   const goToOrigin = useGoToOrigin(routeOrigin ?? NO_ORIGIN);
   const stepBack = () => {
     if (!trailTop) return;
+    // The object it steps back from had its own entry (`?open=`, a task card in a thread): Back leaves that entry, and the panel steps back
+    // on the entry it returns to (the Back above), so the thread comes back where it was read (F-026 §4). Only when what it leaves is the
+    // object the address names; a step back inside the panel to that object keeps the entry.
+    const named = new URLSearchParams(location.search).get('open');
+    const leaving = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (named && leaving === named && (location.state as { openPushed?: boolean } | null)?.openPushed) { navigate(-1); return; }
     // A panel kept over the page that a link inside it led to (a task's source message) steps back to the page it was followed
     // from, where that panel returns as it was, not to the conversation that link opened: a sheet or an overlay covers the
     // header's control, and this is the one visible back (#592).
@@ -594,15 +751,92 @@ function AppLayoutContent() {
     if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
     shell.openDetails(view, { back: 'keep' });
   };
+  // A task or decision a reference opened in the phone's sheet (the Inbox's Discuss or Open, a Home item) covers the header where the
+  // "‹ Inbox" control sits, as a thread's sheet does: the panel's one back carries it, with no step of its own before it (#592 rule 7).
+  const objectOrigin = !ownedShown && routeOrigin && panelMode === 'sheet' && typeof detailsView === 'object' && (detailsView.kind === 'work' || detailsView.kind === 'decision')
+    ? { label: routeOrigin.label, onClick: goToOrigin } : undefined;
   const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
-    : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
+    : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : objectOrigin;
   // Esc and × close the whole panel; a thread or an agent a view owns also leaves its address.
   const closePanel = () => {
     if (panelGuard.current?.()) return;
     ownedShown?.onClose();
     toggleDetails(false);
+    // An object the address names (`?open=`) is closed: the flag leaves the address, in the same entry.
+    const params = new URLSearchParams(location.search);
+    if (params.has('open') && !ownedShown && (location.state as { openPushed?: boolean } | null)?.openPushed) {
+      // Back once the panel has closed and handed the focus back, so the step does not land while focus is still inside it.
+      // A Back to an address with a #message- fragment lets the browser put focus on that message: the control closing gave it to keeps it.
+      // Opened again, or moved on, before then (a click on the same row a moment later): the person's newer step stands and no Back is taken.
+      const entry = (window.history.state as { key?: string } | null)?.key;
+      setClosingBack(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (now.current.detailsOpen || (window.history.state as { key?: string } | null)?.key !== entry) { setClosingBack(false); return; }
+        const kept = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+        const after = () => requestAnimationFrame(() => { if (kept?.isConnected && document.activeElement !== kept) kept.focus({ preventScroll: true }); });
+        window.addEventListener('popstate', after, { once: true });
+        navigate(-1);
+      }));
+      return;
+    }
+    if (params.has('open') && !ownedShown) {
+      params.delete('open');
+      const search = params.toString();
+      // `opened`: the place keeps the focus where closing gave it (the object's card), and does not take this for an arrival.
+      const kept = location.state && typeof location.state === 'object' ? location.state : {};
+      navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: { ...kept, opened: true } });
+    }
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
+  // A task whose creation was undone from its toast, or a proposal withdrawn from its toast (#1424 L), leaves the panel that shows it (audit 3274a05 P3 4).
+  useEffect(() => {
+    const onUndone = (event: Event) => {
+      const detail = (event as CustomEvent<{ workId?: string; decisionId?: string }>).detail ?? {};
+      const kind = detail.decisionId ? 'decision' : 'work';
+      const id = detail.decisionId ?? detail.workId;
+      const shown = now.current;
+      if (shown.detailsOpen && typeof shown.detailsView === 'object' && shown.detailsView.kind === kind && 'id' in shown.detailsView && shown.detailsView.id === id) closeRef.current();
+    };
+    window.addEventListener(WORK_CREATION_UNDONE_EVENT, onUndone);
+    return () => window.removeEventListener(WORK_CREATION_UNDONE_EVENT, onUndone);
+  }, []);
+  // Esc (F-026 §4 "Where focus goes"): with a panel open it closes the panel wherever focus is, unless a window or a menu is open or the focused
+  // control used Esc first (a title being edited, the `@` list); with none, Esc in a composer leaves it for the newest message, keeping the
+  // draft, so the single keys work from there (persona round 27, P2 6 and 7). Esc inside the panel is the panel's own.
+  // A thread's panel that is still opening is a panel shown too (`threadOpening`, below): Esc cancels it as its close control does.
+  const panelShownRef = useRef(false);
+  const cancelRef = useRef<(() => void) | null>(null);
+  // A question an Inbox item opened in a place with no panel of its own (a direct message, `openThread`): Esc goes Back to the Inbox with its
+  // open item, as closing a thread the Inbox opened does (F-026 §4, personas-34 P2 1). Words written in its field stay: Esc leaves the field
+  // first, keeping them, and the next Esc goes back.
+  const inboxBackRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const arrived = location.state as { openThread?: boolean; openPushed?: boolean } | null;
+    inboxBackRef.current = arrived?.openThread && arrived.openPushed ? () => navigate(-1) : null;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
+      // A window, a calendar or a menu that is open takes Esc first, wherever focus is while it opens.
+      if (windowOrMenuOpen()) return;
+      // A field other than a composer keeps its Escape while it holds something (a search being typed) or writes a page; an empty one
+      // ("Search tasks" with nothing in it) does not stop Esc from closing the panel (audit 3274a05 P3 1).
+      const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;
+      const other = field ? null : target?.closest<HTMLElement>('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+      if (other && (other.isContentEditable || other instanceof HTMLSelectElement || ((other instanceof HTMLInputElement || other instanceof HTMLTextAreaElement) && other.value !== ''))) return;
+      if (other && !panelShownRef.current) return;
+      if (panelShownRef.current) { event.preventDefault(); (cancelRef.current ?? closeRef.current)(); return; }
+      const inboxBack = inboxBackRef.current;
+      if (inboxBack && !other && (!field || field.value === '')) { event.preventDefault(); inboxBack(); return; }
+      if (!field) return;
+      event.preventDefault();
+      leaveComposer(field);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   // A thread that a press opens beside the conversation (#863 rule 2): the route's reads take a moment, and the panel is its own screen, so it is up
   // from the frame of the press with the thread's loading rows, and takes the thread in its place when the view's own panel arrives. The loading
   // state outlasts the navigation until that panel is showing (or a moment after it has ended without it), so the panel never closes between.
@@ -618,7 +852,13 @@ function AppLayoutContent() {
   // The phone's sheet opens at the height its entry was left at when the thread is one that is returned to (#592), as the thread's own panel will:
   // from the pending navigation's entry while it is out, from the arrival's once it has committed (`sheetStart`).
   const threadSheet = threadOpening && navigation.location ? recall<unknown>('sheet', arrivalEntry(navigation.location, NavigationType.Push) ?? entryOf(navigation.location)) : undefined;
-  const cancelThread = () => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state });
+  // The thread's composer that the press was arriving at will not come: keys are shortcuts again (`stopAwaitingField`).
+  const cancelThread = () => { stopAwaitingField(); void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state }); };
+  // Esc with a panel open closes it wherever focus is (F-026 §4), the thread's loading panel included: since a press arriving at the thread's
+  // composer leaves the focus outside the panel (round 28), its own Esc no longer saw the key, and the opening could not be cancelled.
+  const panelShown = (detailsOpen || !!threadOpening) && panelMode !== 'sheet';
+  useEffect(() => { panelShownRef.current = panelShown; });
+  useLayoutEffect(() => { cancelRef.current = threadOpening ? cancelThread : null; });
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeAgent = agents.find((agent) => agent.id === location.pathname.match(/^\/agents\/([^/]+)/)?.[1]);
   const activeDm = directMessages.find((dm) => dm.id === dmId);
@@ -627,11 +867,14 @@ function AppLayoutContent() {
   const dmMute = useMuteRow('dm', activeDm?.id);
   const placeMute = spaceMute ?? dmMute;
   const matches = useMatches();
+  const shownSpace = (matches[matches.length - 1]?.loaderData as { project?: { name?: unknown } | null } | undefined)?.project?.name;
+  const materialSpace = typeof shownSpace === 'string' && shownSpace.trim() ? shownSpace : undefined;
   const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
   // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
   const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
   const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
   const lockedHere = !!lockedId && lockedSpace?.encryption?.state === 'locked';
+  const notAvailable = useNotAvailableShown();
   // An encrypted space has a small lock after its name in its header, locked or not (F-026 §4, as the locked space is drawn).
   const encryptedHere = lockedHere || (!!activeProject?.workspaceId && workspaces.some((space) => space.id === activeProject.workspaceId && !!space.encryption));
   const encryptedMark = encryptedHere ? <Icon name="lock" size={14} label="Encrypted" className="title-lock" data-encrypted-mark="" /> : null;
@@ -653,7 +896,8 @@ function AppLayoutContent() {
     ? { crumb: null, title: activeProject.name, noDetails: true }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     : /^\/map(\/|$)/.test(location.pathname)
-    ? { crumb: null, title: 'My map', noDetails: true }
+    // On the phone the map's own head is not drawn, so "Only you" (README §7 My map) stands under the title; the computer's head says it.
+    ? { crumb: null, title: 'My map', ...(phone ? { topic: 'Only you' } : {}), noDetails: true }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', noDetails: true }
@@ -674,7 +918,8 @@ function AppLayoutContent() {
         ? { crumb: null, title: 'Page not found', noDetails: true }
       // A header names the place or nothing (#1371): a page of the Wiki, an agent that is not there and a space that did not open are never "Home".
       : /^\/materials\//.test(location.pathname)
-        ? { crumb: null, title: 'Wiki', noDetails: true }
+        // Named by its space, as the space's other Wiki pages are (round 15 look-3 F5), read from the page's own loader.
+        ? { crumb: null, title: materialSpace ?? 'Wiki', noDetails: true }
       : /^\/agents\//.test(location.pathname)
         ? { crumb: null, title: 'Messages', noDetails: true }
       : /^\/projects\/[^/]+/.test(location.pathname)
@@ -708,19 +953,19 @@ function AppLayoutContent() {
   // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
   // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
   const offersBulkRead = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects';
-  const bulkRead: MoreItem[] = offersBulkRead ? [{ label: 'Mark all as read', run: markAllRead }] : [];
+  const bulkRead: MoreItem[] = offersBulkRead ? [{ label: 'Mark all as read', icon: 'check', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
     ...bulkRead,
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row. The people go first,
     // where the name would otherwise be cut under its 220 px slot (#1375).
-    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: 'people' as const }] : []),
+    ...(project?.people ? [{ label: 'People', icon: 'people' as const, run: openAudience, narrow: 'people' as const }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
-    ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
-    ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
+    ...(activeProject && projectId ? [{ label: 'Settings', icon: 'gear' as const, run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
+    ...(placeMute ? [{ label: placeMute.label, icon: placeMute.icon, hint: placeMute.hint, run: placeMute.run }] : []),
     // An agent's chat keeps its Settings in ⋯ on the computer as on the phone (#1419 item 14): the header names it once.
-    ...(activeAgent ? [{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
+    ...(activeAgent ? [{ label: 'Settings', icon: 'gear' as const, run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
     // Only a direct message has a panel of its own; a space's people, AI and GitHub are in its settings (#1419).
-    ...(activeDm ? [{ label: 'People and privacy', run: () => shell.openDetails('place') }] : []),
+    ...(activeDm ? [{ label: 'People and privacy', icon: 'people' as const, run: () => shell.openDetails('place') }] : []),
     // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
   // The same conditions as the rows above: My tasks, My map, an agent's chat and Settings have none, and then no ⋯ is shown (#1424).
@@ -767,16 +1012,16 @@ function AppLayoutContent() {
   // The phone's More holds the space's Search and Call (Join, while a call is live, which the header also shows from 360 px wide), its Settings
   // and Mute: a space has no panel of its own (#873, #1239, #1419).
   const phoneMoreItems: MoreItem[] = projectId ? [
-    { label: 'Search', run: shell.openSearch },
+    { label: 'Search', icon: 'search', run: shell.openSearch },
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
-    { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
-    ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
+    { label: 'Settings', icon: 'gear', run: () => void navigate(`/projects/${projectId}/settings`) },
+    ...(spaceMute ? [{ label: spaceMute.label, icon: spaceMute.icon, hint: spaceMute.hint, run: spaceMute.run }] : []),
   ] : [];
   // A direct message's More holds what a space's does that applies to it: Search first, Mute and People and privacy (#1374). It has no calls (#1419).
   const phoneDmItems: MoreItem[] = activeDm ? [
-    { label: 'Search', run: shell.openSearch },
-    ...(dmMute ? [{ label: dmMute.label, hint: dmMute.hint, run: dmMute.run }] : []),
-    { label: 'People and privacy', run: () => shell.openDetails('place') },
+    { label: 'Search', icon: 'search', run: shell.openSearch },
+    ...(dmMute ? [{ label: dmMute.label, icon: dmMute.icon, hint: dmMute.hint, run: dmMute.run }] : []),
+    { label: 'People and privacy', icon: 'people', run: () => shell.openDetails('place') },
   ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
@@ -786,7 +1031,7 @@ function AppLayoutContent() {
     <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader || lockedHere ? ' phead--space' : activeDm ? ' phead--space phead--dm' : ''}${activeAgent ? ' phead--agent' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
-          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
+          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       ) : activeProject && projectViews ? (
         // The title is the title, not a menu: the views are the same underline tabs as on every width, in the row under it (#873).
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
@@ -830,8 +1075,8 @@ function AppLayoutContent() {
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
-        {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
-        {!backOnly && !activeProject && !activeDm && !activeAgent && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
+        {activeAgent ? <MoreMenu items={[{ label: 'Settings', icon: 'gear', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
+        {!backOnly && !activeProject && !activeDm && !activeAgent && !lockedHere && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
       {lockedHere ? <Tabs className="phead__views" label="Space views" items={LOCKED_VIEWS} inactive /> : null}
@@ -898,28 +1143,31 @@ function AppLayoutContent() {
           {/* A thread's own panel is its loading state, with its own cancel: a row across the top would lie over the panel's head. */}
           {threadOpening ? null : <RouteProgress />}
           <BusyNotice />
+          <OfflineNotice />
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
           <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1} data-sheet={panelMode === 'sheet' && detailsOpen ? '' : undefined}>
             <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
-              <Outlet />
+              <CompanyPage />
               {switching ? <PendingView view={switching} name={switchingName} userId={me.user.id} /> : null}
               <DeferredLiveStage />
             </ViewFade>
           </main>
           <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
-            context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}>
+            context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}
+            focusBack={() => objectControl(now.current.detailsView)}>
             {opening ? <ThreadOpening /> : null}
             {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience } : null} onBack={() => { if (activeDm) setDetailsView('place'); else closePanel(); }} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}
-        {phone && !detailsOpen && (lockedHere || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
+        {phone && !detailsOpen && (lockedHere || notAvailable || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && !notAvailable && !!workspace && phoneOffersCreate(location.pathname)} capsule={lockedHere || notAvailable || !phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 
       {/* + Create is the one action of every view: its code comes when idle and on the first press, so it is here before a click ends (#1428). */}
+      {connectAi ? <Suspense fallback={null}><ConnectAiDialog onClose={() => setConnectAi(false)} /></Suspense> : null}
       <DeferredCreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; rememberSpace(me.user.id, projectId); }} />
       {/* Someone wrote, mentioned, assigned or called while you are elsewhere: one card, apart from the Undo toasts (#1243). */}
       <DeferredNotices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />

@@ -14,7 +14,6 @@
 .assistant-working__body { flex: 1; min-width: 0; }
 .assistant-working__text { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); color: var(--t2); }
 .assistant-working__who { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
-.assistant-working__sources { margin-top: 4px; font-size: var(--fs-xs); color: var(--t2); white-space: pre-line; overflow-wrap: anywhere; }
 .assistant-working__actions { display: flex; align-items: center; gap: 4px; flex: none; }
 @keyframes assistant-breathe { 50% { opacity: .45; } }
 
@@ -126,7 +125,7 @@
 
 /* The answer to `/ai` (#842, mockup AiPrivate): a card only its asker sees, in the place they asked, with Dismiss and Show everyone. */
 .assistant-private, .assistant-writing { list-style: none; margin: 14px 0 0; padding: 14px 16px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); max-width: min(640px, 100%); overflow-wrap: anywhere; }
-.assistant-private:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.assistant-private:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .assistant-private__who { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: var(--fs-md); }
 .assistant-private__lock { display: inline-flex; align-items: center; gap: 5px; color: var(--t3); font-size: var(--fs-xs); }
 .assistant-private__asked { margin: 10px 0 0; color: var(--t3); font-size: var(--fs-sm); }

@@ -102,13 +102,13 @@ class WorkDecisionsJourney(unittest.TestCase):
         return page.locator("#details")
 
     def wait_decision(self, page: Page, title: str) -> dict:
-        """A proposal is held for Undo (6 s) and sent when that window ends: its record, once it exists."""
+        """A proposal is sent at once (#1424 L): its record, once it exists."""
         for _ in range(80):
             found = next((item for item in self.work(page)["decisions"] if item["title"] == title), None)
             if found:
                 return found
             page.wait_for_timeout(250)
-        self.fail(f"the proposal {title!r} was not sent when the Undo window ended")
+        self.fail(f"the proposal {title!r} was not sent")
 
     # ---------------------------------------------------------------- set up two people
 
@@ -156,9 +156,14 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel).not_to_contain_text("Everyone in")
         expect(panel).not_to_contain_text("Who can see this")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
-        # The source stays in place, and the work shows up under it.
+        # The source stays in place. The task shows once in the stream (#1424): its card, never also a chip under the message; the open
+        # thread, which has no task cards, shows it under its root.
         expect(message.locator(":scope > .message-bubble > .message-body").first).to_have_text(IDEA)
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_be_visible()
+        expect(message.locator(".ws-chip")).to_have_count(0)
+        card = page.locator(".project-convo__in .convo-notice").filter(has_text=IDEA)
+        expect(card.locator(".convo-notice__card")).to_have_count(1)
+        expect(card.locator(".convo-notice__what")).to_have_text("created a task from your message")
+        expect(card.get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape(IDEA) + "$"))).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menuitemradio", name="Doing").click()
@@ -167,11 +172,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Doing")).get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), and the space it is in, above the title (#1364).
         expect(page.locator("#details .wd__ref .ui-task-number")).to_have_text("#1")
-        expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
-        self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
+        expect(card.locator(".convo-notice__task .ui-task-number")).to_have_text("#1")
+        self.assertTrue(card.locator(".convo-notice__task").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.convo-notice__title')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_role("button", name="Owner", exact=True).click()
         page.get_by_role("menuitemradio", name=re.compile(PARTNER["name"])).click()
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_contain_text("Kai Berg")
+        expect(card.locator(".convo-notice__owner")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]
         self.assertEqual(len(stored), 1, "one action creates exactly one work item")
         item = stored[0]
@@ -190,24 +195,25 @@ class WorkDecisionsJourney(unittest.TestCase):
         window = open_decision(page)
         window.get_by_role("textbox", name="Decision", exact=True).fill(IDEA)
         # The replace choice is in the same window, reachable by keyboard.
-        window.get_by_role("button", name="Replace an accepted decision…").focus()
-        expect(window.get_by_role("button", name="Replace an accepted decision…")).to_be_focused()
+        window.get_by_role("button", name="This replaces an older decision…").focus()
+        expect(window.get_by_role("button", name="This replaces an older decision…")).to_be_focused()
         window.get_by_role("textbox", name="Decision", exact=True).fill("Use a camera for gesture control")
         window.get_by_role("textbox", name="Why", exact=True).fill("It recognises the richest set of gestures")
         expect(window.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
         window.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
-        # Proposing is held for Undo and reaches the people who can accept it when that window ends.
+        # Proposing reaches the people who can accept it at once (#1424 L).
         expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
         proposed = self.wait_decision(page, "Use a camera for gesture control")
         self.assertEqual(proposed["status"], "proposed")
         page.goto(f"/projects/{self.project_id}?open=decision:{proposed['id']}")
         panel = self.details(page)
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
+        # One state, one word (#1424).
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed")
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept", exact=True).focus()
         page.keyboard.press("Enter")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel).to_contain_text("Ada Lind")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
@@ -263,7 +269,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.get_by_role("button", name="Accept and pivot")).to_have_count(0)
         shot(page, "decision-desktop-1440-replaces")
         panel.get_by_role("button", name="Accept", exact=True).click()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel.get_by_role("region", name="At this pivot")).to_have_count(0)
 
         stored = self.work(page)
@@ -278,8 +284,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^Parked"))).to_have_count(0)
         expect(page.get_by_text("parked by a pivot")).to_have_count(0)
         # The earlier decision and its reason stay in the decision's own details (S1: no archive).
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
-        expect(self.details(page)).to_contain_text("Decision · replaced")
+        page.goto(f"/projects/{self.project_id}?open=decision:{rules['Use a camera for gesture control']['id']}")
+        expect(self.details(page)).to_contain_text("Replaced")
         expect(self.details(page).get_by_text("This was replaced by the decision Switch to a ToF distance sensor")).to_be_visible()
         page.keyboard.press("Escape")
         shot(page, "tasks-desktop-1440")
@@ -304,7 +310,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         shot(page, "work-phone-390-details")
         # The task took the thread's place in the one sheet; the way back leads to the reply it was made from.
         sheet.get_by_role("button", name="Thread", exact=True).tap()
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
+        expect(message.get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
         view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(FINDING_TASK)
         shot(page, "tasks-phone-390")
@@ -321,8 +327,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         rule = self.api(page, "POST", f"{base}/decisions", {"title": "Oldest rule: battery powered"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
         expected=set()
+        # The proposals are the partner's: your own proposal is never in your own Inbox (personas-30), so the owner is asked about them.
+        self.api(page, "POST", f"{base}/grants", {"principal": {"kind": "human", "id": PARTNER["id"]}, "role": "contributor"}, status=201)
+        partner = self.page("partner")
         for index in range(1, 102):
-            self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
+            self.api(partner, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
         for index in range(1, 102):
             item=self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
             expected.add(("work",item["id"]))
@@ -382,7 +391,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertIn("show=mine", page.url)
         expect(row).to_be_visible()
         expect(page.locator(".ws-task").filter(has_text=theirs)).to_have_count(0)
-        expect(row.locator(".ws-item__s")).to_contain_text("waiting for the sensor delivery")
+        expect(row.locator(".ws-item__s")).to_contain_text("Waiting for the sensor delivery")
         shot(page, "tasks-phone-390-mine-blocked")
 
         # Opening the work and coming back keeps the chosen view.
@@ -460,11 +469,13 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
         # Linked work and decisions stay inside their column and the viewport on both sides.
         for column, pane in ((".project-convo__in", stream), (".thread__in", feed)):
-            chips = page.locator(f"{column} .project-convo__message .ws-chip")
+            # A task made from a message is its card: in the stream, and under its message in the thread (#1424, design L1059).
+            chips = page.locator(f"{column} :is(.project-convo__message .ws-chip, .convo-notice__card)")
             self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")
             for index in range(chips.count()):
                 box = chips.nth(index).bounding_box()
-                assert box
+                if box is None:
+                    continue  # a card folded away with its run of notices
                 self.assertGreaterEqual(box["x"], pane["x"] - 1, f"{label}: linked object {index} starts inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"{label}: linked object {index} ends inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
@@ -495,7 +506,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                 self.assertLessEqual(acts["y"] + acts["height"], bubble["y"] + 14, f"{key}: in the bubble's top corner")
         shot(page, "conversation-author-column-1440")
         # Details take the thread's place in the one panel, with the way back to the thread (#488).
-        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile(r"^Task #\d+: ")).first.click()
+        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile(r"^Open task #\d+ ")).first.click()
         expect(page.locator("#details").locator(".wd[data-detail-kind='work']")).to_be_visible()
         page.locator("#details").get_by_role("button", name="Thread", exact=True).click()
         expect(page.locator("#details .thread__in")).to_be_visible()

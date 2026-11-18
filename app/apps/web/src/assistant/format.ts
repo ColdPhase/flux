@@ -46,14 +46,14 @@ export function runtimePayerText(payer: AgentRuntimePayer | null | undefined, cl
   }
 }
 /** "14:00": the reset time of a plan limit in the reader's clock. */
-const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 /** "at 14:00" today, otherwise "tomorrow at 0:00" or the day: when a paused request starts again. */
 export function resumeWords(iso: string) {
   const at = new Date(iso);
   const now = new Date();
   if (at.toDateString() === now.toDateString()) return `at ${clock(iso)}`;
   const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
-  return at.toDateString() === tomorrow.toDateString() ? `tomorrow at ${clock(iso)}` : at.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  return at.toDateString() === tomorrow.toDateString() ? `tomorrow at ${clock(iso)}` : at.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
 /** #854: "Claude limit reached, resumes at 14:00", or without a time when the plan gave none. */
 export const planLimitLine = (plan: string, resetsAt: string | null | undefined) =>
@@ -61,10 +61,16 @@ export const planLimitLine = (plan: string, resetsAt: string | null | undefined)
 /** A request that ended at the plan's limit and will not start again by itself: it may have changed things (#854). */
 const planEndedLine = (plan: string, resetsAt: string | null | undefined) =>
   resetsAt ? `${plan} limit reached until ${resumeWords(resetsAt).replace(/^at /, '')}.` : `${plan} limit reached.`;
+/** The short words of a run that waits for the API key's next day (train 37 row 36): what the working card says, where a sentence does not fit. */
+export const BUDGET_WAITING = 'Waiting: today’s AI budget is used up';
+/** The whole truth of that wait, for its owner: when it starts again and where the budget is raised (#854, train 37 rows 36-37). */
+export const budgetWaitText = (resumesAt: string) => `${BUDGET_WAITING}. It starts again ${resumeWords(resumesAt)}, or raise the budget in Settings › AI.`;
+/** A run that waits, queued, for the key's next day: never "getting ready" or "working" (train 37 row 36). */
+export const waitsForBudget = (run: Pick<AssistantRun, 'status' | 'endReason' | 'resumesAt'>) => run.status === 'queued' && run.endReason === 'budget' && !!run.resumesAt;
 /** The line of a request paused by its connection's limit, waiting to start again by itself (#854). */
 export function pausedLine(run: Pick<AssistantRun, 'endReason' | 'resumesAt' | 'planLimitResetsAt' | 'runtimeClient'>): string | null {
   if (!run.resumesAt) return null;
-  if (run.endReason === 'budget') return `Not enough left of your API key’s daily budget, resumes ${resumeWords(run.resumesAt)}`;
+  if (run.endReason === 'budget') return budgetWaitText(run.resumesAt);
   // Without a time from the plan the line has none: Flux tries again later, and that is not the plan's reset.
   return planLimitLine(runtimeNames(run.runtimeClient ?? 'claude_code').plan, run.planLimitResetsAt);
 }
@@ -124,7 +130,8 @@ function endedWords(run: AssistantRun): string | null {
   // AG-10: turning AI off in the space stops a run at once, and its owner is told in the thread where they asked.
   if (run.endReason === 'ai_off') return 'AI was turned off in this space, so your assistant stopped.';
   if (run.endReason === 'mcp_results_too_large') return 'This needed more reading than one request can carry. Nothing was posted.';
-  if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget. Nothing more was sent today.';
+  // When it comes back and what the owner can do (v0.2.1 release gate, J34): the day's budget starts again tomorrow, and Connect AI raises it.
+  if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget, so nothing more was sent today. It starts again tomorrow, or raise the budget in Settings › AI.';
   if (run.endReason === 'credits') return 'API credits used up. API requests stop until your next monthly credits arrive.';
   if (onRuntime(run)) {
     const words = runtimeEndedText(run);
@@ -153,18 +160,37 @@ export type AskState =
       also?: { action: 'key'; label: string } };
 
 /**
+ * A guest has no AI (AG-2) and cannot connect any: the one line says who can change that, wherever it is said (Settings › AI, the composer).
+ */
+export const GUEST_AI_LINE = 'Guests don’t have AI. An admin can make you a member.';
+
+/**
+ * Whether the person can have an assistant on this server: they have one, or the server runs AI they could connect (an API key or a plan). Without
+ * either, `/ai` is not offered (nothing appears that the person cannot use, #1424) and Connect AI, which could connect nothing, is not opened.
+ */
+export const canHaveAi = (status: PersonalAssistantStatus | null) => !status || status.state !== 'not_enabled'
+  || status.setup.provider === 'on' || status.setup.runtime.state !== 'off';
+
+/** The state offers Connect your AI: `/ai` chosen in it opens the one Connect AI window at once (#1424, E-3). */
+export const connectsFirst = (state: AskState) => state.kind === 'blocked' && state.action === 'connect';
+
+/**
  * What ask mode says under "Your assistant", from the caller's own status. `outside` is a company owner or admin who can open this
  * space without being in it: their assistant works only where they are (C-15), so nothing else matters until they add themselves.
- * A guest has no AI (AG-2): there is nothing to connect or ask, so no action, whatever the status says (#1034).
+ * A guest has no AI (AG-2): there is nothing to connect or ask, so no action, whatever the status says (#1034); the line says who to ask.
+ * Someone with no assistant yet gets Connect your AI, the one Connect AI window (#1424); on a server that runs no AI the line says so, as
+ * Settings › AI does, and offers nothing.
  */
 export function askState(status: PersonalAssistantStatus | null, outside = false, guest = false): AskState {
-  if (guest) return { kind: 'blocked', note: 'Guests don’t have AI.', action: null };
+  if (guest) return { kind: 'blocked', note: GUEST_AI_LINE, action: null };
   if (outside) return { kind: 'blocked', note: 'Your assistant works only in spaces you’re in.', action: 'join', actionLabel: 'Add me' };
   if (!status) return { kind: 'blocked', note: 'Checking your assistant…', action: null };
   const runtime = status.enablement?.engine === 'runtime';
   switch (status.state) {
     case 'ready': return { kind: 'ready', note: `Only you see the answer, until you choose Show everyone · on ${runtime ? runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client) : 'your API key'}` };
-    case 'not_enabled': return { kind: 'blocked', note: 'You haven’t set up your assistant. Nobody else’s can be used for you.', action: 'connect', actionLabel: 'Connect your AI' };
+    // Short, so the line and Connect your AI share one row beside the chip on a phone (round 14: the link stood alone on a second line).
+    case 'not_enabled': return canHaveAi(status) ? { kind: 'blocked', note: 'Not set up yet.', action: 'connect', actionLabel: 'Connect your AI' }
+      : { kind: 'blocked', note: `${SERVER_AI_OFF_LINE}.`, action: null };
     // #854: the API key's one daily budget; a request asked now waits for the key's next day.
     case 'capped': return { kind: 'ready', note: `Not enough left of your API key’s ${dollars(status.today?.budgetCents ?? 0)} daily budget. A request now starts ${status.today ? resumeWords(status.today.resetsAt) : 'tomorrow'}.` };
     default:
@@ -204,4 +230,4 @@ export function askError(error: unknown): string {
  * One status line for in-app AI this server does not run (Spokój E04 ③, #763 SG-2). AI is on after install (#1438), so this is an operator's
  * deliberate off: nobody, an owner or a member, is sent to ask someone.
  */
-export const SERVER_AI_OFF_LINE = 'Off on this Flux server';
+export const SERVER_AI_OFF_LINE = 'AI is off on this server';

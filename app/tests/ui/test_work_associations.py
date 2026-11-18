@@ -90,7 +90,9 @@ class MessageWorkJourney(unittest.TestCase):
         expect(page.locator(".thread__pane")).to_have_attribute("data-associations-observed-at", re.compile(r"^\d{4}-\d{2}-\d{2}T"))
 
     def chips(self, page):
-        return page.locator(".thread__feed .ws-chip").evaluate_all("els=>els.map(el=>({kind:el.dataset.workKind,id:el.dataset.workId,message:el.closest('[data-message-id]').dataset.messageId}))")
+        # The objects drawn for a thread's messages: a task is its card under the message (#1424, design L1059; v0.2.1 audit P2-5), anything
+        # else a chip in the bubble.
+        return page.locator(".thread__feed :is(.ws-chip, .msg-tasks__card)").evaluate_all("els=>els.map(el=>({kind:el.dataset.workKind||'work',id:el.dataset.workId,message:el.closest('[data-message-id]').dataset.messageId}))")
 
     def anchor(self, page):
         return page.locator(".thread__feed").evaluate("el=>{const top=el.getBoundingClientRect().top;const row=[...el.querySelectorAll('[data-message-id]')].find(row=>row.getBoundingClientRect().bottom>top);return {id:row.dataset.messageId,offset:row.getBoundingClientRect().top-top};}")
@@ -113,9 +115,13 @@ class MessageWorkJourney(unittest.TestCase):
                 expect(objects).to_contain_text("1–50 of 67 objects")
                 expect(edges).to_contain_text("1–50 of 100 links")
                 expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 tasks · 3 decisions")
-                expect(page.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
+                expect(page.locator("#thread").get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
-                first = self.chips(page); self.assertEqual(len(first), 50)
+                # A decision made from a thread message is its card among the replies (#1424), so its chip is not drawn: a page of 50 links
+                # shows its tasks' chips, and the thread shows the three decisions once each, as cards.
+                first = self.chips(page); self.assertLessEqual(len(first), 50); self.assertGreaterEqual(len(first), 47)
+                self.assertEqual([chip for chip in first if chip["kind"] == "decision"], [])
+                expect(page.locator('#thread .convo-object[data-object-kind="decision.proposed"] .convo-notice__card')).to_have_count(3)
                 # Nothing in the thread is new, so it opens at its end (S23, #1246), after the 50 chips' own lines. The reader whose place is kept
                 # here is one who read back to the top: that is the place the next page of links must not move.
                 # By the wheel, as a reader does: only the reader's own input leaves the end of a feed that follows its end (#1424).
@@ -129,7 +135,7 @@ class MessageWorkJourney(unittest.TestCase):
                 edges.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
                 expect(edges).to_contain_text("51–100 of 100 links")
                 self.assert_anchor(page, anchor)
-                second_edges = self.chips(page); self.assertEqual(len(second_edges), 50)
+                second_edges = self.chips(page); self.assertLessEqual(len(second_edges), 50); self.assertGreaterEqual(len(second_edges), 47)
                 edges.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
                 self.assertEqual(self.chips(page), first)
                 objects.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
@@ -137,40 +143,38 @@ class MessageWorkJourney(unittest.TestCase):
                 # A whole list says how many it holds, not where it is (#1372): the 31 links of this objects page are all of them.
                 expect(edges).to_contain_text("31 links")
                 expect(edges).not_to_contain_text("of 31 links")
-                last = self.chips(page); self.assertEqual(len(last), 31)
-                self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, self.expected)
+                last = self.chips(page); self.assertLessEqual(len(last), 31); self.assertGreaterEqual(len(last), 28)
+                self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, {item for item in self.expected if item[0] == "work"})
                 self.assertLessEqual(len(self.chips(page)), 50)
                 expect(field).to_have_value("Keep this reply while checking the older measurement links")
-                page.locator(".thread__feed").get_by_role("button",name="Decision: Keep the manual off switch",exact=True).scroll_into_view_if_needed()
+                page.locator(".thread__feed").get_by_role("button",name="Open decision Keep the manual off switch, proposed",exact=True).scroll_into_view_if_needed()
                 shot(page, f"bounded-message-objects-mixed-{'phone' if phone else 'desktop'}")
                 if phone:
-                    # #501 AC-2 supersedes full visual wrapping: retain the exact native
-                    # title for assistive technology while the visible line ellipsizes.
-                    cards = page.locator(".thread__feed .ws-chip")
-                    truncated = 0
+                    # A task in a thread is the conversation's card (#1424): its accessible name keeps the exact native title while the
+                    # visible title wraps to at most two lines on a phone (design L1064), and its state word stays inside the card.
+                    cards = page.locator(".thread__feed .msg-tasks__card")
+                    clamped = 0
                     for index in range(cards.count()):
                         card = cards.nth(index)
-                        kind, identity = card.get_attribute("data-work-kind"), card.get_attribute("data-work-id")
-                        title = self.expected_titles[(kind, identity)]
-                        expect(card).to_have_accessible_name(re.compile(rf"^Task #\d+: {re.escape(title)}$") if kind == "work" else f"{kind.capitalize()}: {title}")
-                        expect(card.locator(".ws-chip__t")).to_have_text(title)
+                        identity = card.get_attribute("data-work-id")
+                        title = self.expected_titles[("work", identity)]
+                        expect(card.locator(".convo-notice__task")).to_have_accessible_name(re.compile(rf"^Open task #\d+ {re.escape(title)}$"))
+                        expect(card.locator(".convo-notice__title")).to_have_text(title)
                         layout = card.evaluate("""el => {
-                          const t=el.querySelector('.ws-chip__t'), k=el.querySelector('.ws-chip__k');
+                          const t=el.querySelector('.convo-notice__title'), k=el.querySelector('.convo-notice__state');
                           const s=getComputedStyle(t), r=el.getBoundingClientRect(), state=k.getBoundingClientRect();
-                          return {wrap:s.whiteSpace,overflow:s.overflow,textOverflow:s.textOverflow,
-                            height:t.clientHeight,lineHeight:parseFloat(s.lineHeight),truncated:t.scrollWidth>t.clientWidth+1,
+                          return {height:t.clientHeight,lineHeight:parseFloat(s.lineHeight),clamped:t.scrollHeight>t.clientHeight+1,
                             state:k.textContent,stateFits:k.scrollWidth<=k.clientWidth+1 && state.left>=r.left && state.right<=r.right};
                         }""")
-                        self.assertEqual((layout["wrap"], layout["overflow"], layout["textOverflow"]), ("nowrap", "hidden", "ellipsis"), layout)
-                        self.assertLessEqual(layout["height"], layout["lineHeight"]+1, layout)
+                        self.assertLessEqual(layout["height"], 2 * layout["lineHeight"] + 1, layout)
                         self.assertTrue(layout["state"].strip() and layout["stateFits"], layout)
-                        truncated += layout["truncated"]
-                    self.assertGreater(truncated, 0, "long native titles exercise actual phone ellipsis")
+                        clamped += layout["clamped"]
+                    self.assertGreater(cards.count(), 0, "the thread draws its tasks as cards")
                 expect(edges.get_by_role("button")).to_have_count(0)
                 pane=page.locator(".thread__feed")
                 if phone and os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit":
                     # Native positioning for this screenshot; mobile WebKit has no wheel API.
-                    pane.locator(".ws-chip").last.scroll_into_view_if_needed()
+                    pane.locator(".msg-tasks__card").last.scroll_into_view_if_needed()
                 else: pane.hover();page.mouse.wheel(0,100000)
                 page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
                 shot(page, f"bounded-message-objects-{'phone' if phone else 'desktop'}")
@@ -225,6 +229,9 @@ class MessageWorkJourney(unittest.TestCase):
         pages.get_by_role("button",name="Refresh",exact=True).click()
         expect(page.locator("#thread").get_by_role("alert").filter(has_text="Linked work could not be loaded")).to_be_visible()
         self.assertEqual(self.chips(page),[]);expect(field).to_have_value("Reply stays private during an unavailable association read")
+        # Round 15 confirm S4: the line says a reply is kept only while one is written.
+        alert=page.locator("#thread").get_by_role("alert").filter(has_text="Linked work could not be loaded")
+        expect(alert).to_contain_text("Your reply is kept");field.fill("");expect(alert).not_to_contain_text("Your reply is kept")
         page.unroute("**/work-associations?**")
         page.locator("#thread").get_by_role("button",name="Refresh linked work",exact=True).click();self.ready(page);self.assertEqual(self.chips(page),first)
 
@@ -251,11 +258,11 @@ class MessageWorkJourney(unittest.TestCase):
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)) if self.thread_read(request.url) else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
         expect(page.locator(f"#thread [data-message-id='{self.long_messages[0]}']")).to_be_visible();self.ready(page)
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
         self.assertGreater(page.locator("#thread [data-message-id]").count(),100)
         pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
         expect(page.locator(f"#thread [data-message-id='{self.long_messages[-1]}']")).to_be_visible();self.ready(page)
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the latest measurement") + "$"))).to_be_visible()
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the latest measurement") + "$"))).to_be_visible()
         for query in reads:
             self.assertEqual(query["relation"],["source"])
             self.assertLessEqual(len(query["messageIds"][0].split(',')),100)
@@ -265,7 +272,7 @@ class MessageWorkJourney(unittest.TestCase):
         page=self.page();reads=[]
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original_selector=reads[-1];held=[];paused=[]
         def hold_scope(route):
             if parse_qs(urlsplit(route.request.url).query)["messageIds"][0]==original_selector and not held:
@@ -293,7 +300,7 @@ class MessageWorkJourney(unittest.TestCase):
         # Context cleanup owns the route; later auth reads go to the real server.
         auth_holding=False
         route,response=paused.pop();route.fulfill(response=response)
-        self.ready(page);expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
+        self.ready(page);expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
         page=self.page();material_reads=[];native_recoveries=[];holding=[True]
@@ -306,7 +313,7 @@ class MessageWorkJourney(unittest.TestCase):
         page.route(material_path,hold_material)
         page.on("response",lambda response:native_recoveries.append(response.status) if urlsplit(response.url).path==self.root else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        self.ready(page);expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
+        self.ready(page);expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
         page.wait_for_function("window.__materialReadHeld===true")
         before=len(native_recoveries)
         page.evaluate("()=>{window.__originalFeedColumn=document.querySelector('.thread__feed').firstElementChild;window.__feedRemovalObserver=new MutationObserver(()=>{if(!window.__originalFeedColumn.isConnected)window.__feedWasRemoved=true;});window.__feedRemovalObserver.observe(document.body,{childList:true,subtree:true});}")
@@ -318,11 +325,11 @@ class MessageWorkJourney(unittest.TestCase):
         self.assertTrue(page.locator(".thread__feed").evaluate("el=>el.firstElementChild!==window.__originalFeedColumn"),"the observed message subtree was actually replaced")
         self.assertGreater(len(native_recoveries),before)
         self.assertTrue(all(status==200 for status in native_recoveries[before:]),"native project checks restore the mounted reader")
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
         pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the latest measurement") + "$"))).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the latest measurement") + "$"))).to_be_visible();self.ready(page)
         page.mouse.wheel(0,-100000)
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         page.evaluate("window.__feedRemovalObserver.disconnect()")
         page.unroute_all(behavior="ignoreErrors")
 
@@ -346,7 +353,7 @@ class MessageWorkJourney(unittest.TestCase):
         # chip is shown at once) and only then pages back to the message, so the first ready read is not yet the batch the reader stays in.
         with page.expect_request(lambda request: self.thread_read(request.url) and self.long_messages[1] in parse_qs(urlsplit(request.url).query)["messageIds"][0].split(',') and len(parse_qs(urlsplit(request.url).query)["messageIds"][0].split(','))==100):
             page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
         self.read_to(page,self.long_messages[100])
         self.ready(page);self.assertEqual(reads[-1],original)
@@ -399,7 +406,7 @@ class MessageWorkJourney(unittest.TestCase):
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
         with page.expect_request(lambda request: self.thread_read(request.url) and self.long_messages[1] in parse_qs(urlsplit(request.url).query)["messageIds"][0].split(',') and len(parse_qs(urlsplit(request.url).query)["messageIds"][0].split(','))==100):
             page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Open task #\d+ " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
         self.read_to(page,self.long_messages[100])
         self.scroll_until_settled(page,1);self.ready(page);self.assertEqual(reads[-1],original)

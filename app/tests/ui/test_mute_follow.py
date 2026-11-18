@@ -259,7 +259,7 @@ class MuteAndFollowJourney(unittest.TestCase):
         first.goto("/settings/notifications")
         second.goto(f"/projects/{self.project_id}")
         row = self.sidebar_space(first, "Garden sensors")
-        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted places", exact=True))).to_contain_text("None")
+        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted spaces and messages", exact=True))).to_contain_text("None")
         # The stream is what carries it: nothing here reloads the first tab or polls.
         navigations: list[str] = []
         first.on("framenavigated", lambda frame: navigations.append(frame.url))
@@ -267,11 +267,11 @@ class MuteAndFollowJourney(unittest.TestCase):
         button.click()
         menu.get_by_role("menuitem", name=re.compile(r"^Mute space")).click()
         expect(row.locator("[data-muted-mark]")).to_be_visible()
-        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted places", exact=True))).to_contain_text("Garden sensors")
+        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted spaces and messages", exact=True))).to_contain_text("Garden sensors")
         button.click()
         menu.get_by_role("menuitem", name=re.compile(r"^Unmute space")).click()
         expect(row.locator("[data-muted-mark]")).to_have_count(0)
-        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted places", exact=True))).to_contain_text("None")
+        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted spaces and messages", exact=True))).to_contain_text("None")
         self.assertEqual(navigations, [], "the first tab was never reloaded")
 
     # ------------------------------------------------------------------ Follow and Following in a thread's header
@@ -301,6 +301,24 @@ class MuteAndFollowJourney(unittest.TestCase):
         page.get_by_role("button", name="Follow", exact=True).click()
         expect(page.get_by_role("button", name="Following", exact=True)).to_be_visible()
         self.settled(lambda: self.following(page, self.kai_thread), True, "the choice is stored")
+
+    def test_05b_replying_in_a_thread_that_says_follow_says_following_at_once(self) -> None:
+        """C-10: writing in a thread follows it; the head said Follow until a reload."""
+        page = self.page()
+        # A thread Ada has made no choice about (an earlier test's Follow or Unfollow is her choice and wins over the default).
+        made = self.context("kai").request.post(f"/api/v1/projects/{self.project_id}/conversations", headers={"origin": ORIGIN},
+                                                data={"body": f"Where do the spare probes go? {uuid.uuid4().hex[:6]}", "clientMessageId": str(uuid.uuid4())})
+        self.assertEqual(made.status, 201, made.text())
+        thread = made.json()["id"]
+        page.goto(f"/projects/{self.project_id}/conversations/{thread}")
+        expect(page.get_by_role("button", name="Follow", exact=True)).to_be_visible()
+        self.assertFalse(self.following(page, thread))
+        field = page.locator("#thread-composer")
+        field.fill("In the shed, on the left shelf")
+        field.press("Enter")
+        expect(page.get_by_role("button", name="Following", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Follow", exact=True)).to_have_count(0)
+        self.assertTrue(self.following(page, thread), "writing in it follows it")
 
     def test_06_a_follow_made_in_one_tab_shows_in_the_other_without_a_reload(self) -> None:
         context = self.context("ada")

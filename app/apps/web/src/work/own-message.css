@@ -1,7 +1,10 @@
 /* Edit and Delete on one's own message (#1006): a small form where the words were. It takes the bubble's width, adds no frame of its own beyond the field. */
-.msg-edit { display: grid; gap: 8px; min-width: min(420px, 100%); }
-.msg-edit__field { width: 100%; box-sizing: border-box; resize: vertical; min-height: 44px; max-height: 40vh; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--el); color: var(--t1); font: inherit; line-height: 1.45; }
-.msg-edit__field:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.msg-edit { display: grid; gap: 8px; width: 100%; }
+/* While its words are edited the message takes its column's full width, so the bubble never shrinks round the field (visual review 2026-11-17). */
+:is(.project-convo__message, .dm-msg__main):has(> .message-bubble > .msg-edit) { width: 100%; }
+.message-bubble:has(> .msg-edit) { width: 100%; box-sizing: border-box; }
+.msg-edit__field { width: 100%; box-sizing: border-box; resize: none; overflow-y: auto; min-height: 44px; max-height: 40vh; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--el); color: var(--t1); font: inherit; line-height: 1.45; }
+.msg-edit__field:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .msg-edit__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .msg-edit__hint { color: var(--t3); font-size: var(--fs-md); }
 .msg-edit__ask { margin: 0; color: var(--t1); }

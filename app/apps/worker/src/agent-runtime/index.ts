@@ -7,7 +7,9 @@ import { personalRunWorkerUnitOfWork } from '../personal-runs/adapters.js';
 // each slot through runtime-manager at start (which is what makes a restore safe) and then every few
 // seconds, performing releases and returning wiped slots to the pool. Off when FLUX_AGENT_RUNTIME is empty.
 
-export function startAgentRuntimeReconciler({ config, db, pool, env }: { config: AgentRuntimeConfig; db: Database; pool: Parameters<typeof withRuntimeReconcileLock>[0]; env: NodeJS.ProcessEnv }) {
+export function startAgentRuntimeReconciler({ config, db, pool, env, startNext }: { config: AgentRuntimeConfig; db: Database; pool: Parameters<typeof withRuntimeReconcileLock>[0]; env: NodeJS.ProcessEnv;
+  /** Offers the queued runs that can start now (the personal-run worker's), called once lost runs freed their places. */
+  startNext?: () => Promise<void> }) {
   if (!config.manager) return { stop: async () => undefined };
   const intervalMs = Number(env.FLUX_AGENT_RUNTIME_RECONCILE_MS ?? 10_000);
   if (!Number.isInteger(intervalMs) || intervalMs < 500 || intervalMs > 600_000) throw new Error('FLUX_AGENT_RUNTIME_RECONCILE_MS must be 500 to 600000');
@@ -21,7 +23,12 @@ export function startAgentRuntimeReconciler({ config, db, pool, env }: { config:
     running = (async () => {
       try {
         const report = await withRuntimeReconcileLock(pool, (signal) => reconcileAgentRuntime({ config, store, manager, log, signal,
-          endLostRuns: (active) => recoverLostRuntimeRuns(personalRunWorkerUnitOfWork(db), active) }));
+          endLostRuns: async (active) => {
+            const ended = await recoverLostRuntimeRuns(personalRunWorkerUnitOfWork(db), active);
+            // Their places are free: the runs waiting for room start now, not at the next minute's recovery.
+            if (ended && startNext) await startNext().catch((error: unknown) => log({ event: 'start_next_failed', message: (error as Error).message.slice(0, 200) }));
+            return ended;
+          } }));
         if (!report) return;
         if (report.error) { if (report.error !== lastError) log({ event: 'manager_unavailable', code: report.error }); lastError = report.error; return; }
         lastError = '';

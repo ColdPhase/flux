@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { excerpt, isQuestion, placeDecisionReference } from '@flux/core';
+import { authorsNamed, excerpt, isQuestion, placeDecisionReference } from '@flux/core';
 import { titleFromText } from '../../packages/core/src/assistant/jobs.js';
 import { shortReason } from '../../packages/db/src/repositories/work-read-objects.js';
+import { highlightParts } from '../../packages/db/src/repositories/search.js';
+import { joinedOf } from '../../packages/db/src/sealed-search.js';
 import { pageMarkdown } from '../../apps/web/src/docs/markdown-file.js';
 
 // v0.2.1 audit #1270 (final pass). Text a member writes goes through a few regular expressions that were quadratic in its length, and a
@@ -22,6 +24,14 @@ function within(label: string, work: () => unknown) {
 }
 
 describe('text a person writes is read in linear time', () => {
+  test('an author name an agent passes is read in linear time (authorsNamed, CodeQL js/polynomial-redos)', () => {
+    const people = [{ kind: 'human' as const, id: 'u-ada', name: 'Ada Nowak' }, { kind: 'agent' as const, id: 'a-1', name: 'Assistant', ownerName: 'Ada Nowak' }];
+    within('authorsNamed spaces', () => authorsNamed(`Ada${' '.repeat(BIG)}x`, people));
+    within('authorsNamed (a', () => authorsNamed(`(${'(a'.repeat(BIG / 2)}`, people));
+    within('authorsNamed agent', () => authorsNamed(`Assistant (${"Ada's ".repeat(BIG / 6)}agent)`, people));
+    assert.deepEqual(authorsNamed("Assistant (Ada's agent)", people).map((a) => a.id), ['a-1']);
+  });
+
   test('a question mark and a long run of spaces does not hold the process (isQuestion)', () => {
     assert.equal(within('isQuestion', () => isQuestion(`?${' '.repeat(BIG - 2)}x`)), true, 'a question mark before a space is a question');
     assert.equal(within('isQuestion', () => isQuestion(`${'a'.repeat(BIG)}?`)), true);
@@ -67,5 +77,20 @@ describe('text a person writes is read in linear time', () => {
     assert.equal(titleFromText('Every Monday, summarise the week!!  '), 'Every Monday, summarise the week');
     assert.equal(titleFromText('...'), 'Schedule');
     assert.equal(titleFromText(`${'word '.repeat(40)}.`).endsWith('…'), true, 'a long first line is still cut at a word');
+  });
+
+  test('a 100,000-letter word in an encrypted space is indexed at once: its hyphenated words are found in linear time (joinedOf, pre-review P2-1)', () => {
+    assert.deepEqual(within('joinedOf', () => joinedOf('a'.repeat(BIG))), [], 'a long word with no hyphen joins nothing');
+    assert.deepEqual((within('joinedOf', () => joinedOf(`${'a'.repeat(BIG / 2)}-${'b'.repeat(BIG / 2 - 1)}`)) as string[]).map((word) => word.length), [BIG - 1]);
+    within('joinedOf', () => joinedOf(`${'ab '.repeat(BIG / 3)}`));
+    assert.deepEqual(joinedOf('State-of-the-art e-mail x-y co\u2010op re--do mock-up'), ['stateoftheart', 'email', 'xy', 'coop', 'redo', 'mockup'],
+      'the same joined words as before');
+  });
+
+  test('a search highlight with a long run of spaces is tidied at once (highlightParts)', () => {
+    within('highlightParts', () => highlightParts(`${' '.repeat(BIG)}x`));
+    within('highlightParts', () => highlightParts(`${' '.repeat(BIG)}x\u2983.\u2984`));
+    assert.deepEqual(highlightParts('5 lux \u2983Interpretation\u2984 .'), [{ text: '5 lux ', match: false }, { text: 'Interpretation', match: true }, { text: '.', match: false }]);
+    assert.deepEqual(highlightParts('lux  . next'), [{ text: 'lux. next', match: false }], 'no space before the punctuation');
   });
 });

@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { personalRunRows } from './personal-runs.js';
+import { unreadIn } from './direct-messages.js';
 
 /**
  * Drizzle rows for the sidebar's own state (#1250): the order of a person's Spaces list and "Mark all as read". They satisfy the
@@ -89,6 +90,31 @@ export function sidebarRows(db: DbExecutor) {
       const result = chat.before === null
         ? await db.execute(sql`DELETE FROM agent_chat_reads WHERE agent_id = ${chat.agentId}::uuid AND read_at = ${chat.now}::timestamptz AND ${own}`)
         : await db.execute(sql`UPDATE agent_chat_reads SET read_at = ${chat.before}::timestamptz WHERE agent_id = ${chat.agentId}::uuid AND read_at = ${chat.now}::timestamptz AND ${own}`);
+      return (result.rowCount ?? 0) > 0;
+    },
+
+    /** Every DM the person takes part in, in these workspaces, with something unread: read through its newest message now (#1424 decision 10). */
+    async readDms(userId: string, workspaceIds: string[]) {
+      if (!workspaceIds.length) return [];
+      const mine = await db.select({ dmId: schema.dmParticipants.dmId }).from(schema.dmParticipants)
+        .where(and(eq(schema.dmParticipants.userId, userId), inArray(schema.dmParticipants.workspaceId, workspaceIds)));
+      const unread = [...(await unreadIn(db, mine.map((row) => row.dmId), userId)).keys()];
+      if (!unread.length) return [];
+      const ids = sql.join(unread.map((id) => sql`${id}::uuid`), sql`, `);
+      const before = await db.execute(sql`SELECT dm_id::text AS dm_id, read_through FROM dm_reads WHERE user_id = ${userId} AND dm_id IN (${ids})`);
+      const was = new Map((before.rows as { dm_id: string; read_through: number }[]).map((row) => [row.dm_id, Number(row.read_through)]));
+      const now = await db.execute(sql`INSERT INTO dm_reads (workspace_id, dm_id, user_id, read_through)
+        SELECT d.workspace_id, d.id, ${userId}, (SELECT coalesce(max(m.sequence), 0) FROM dm_messages m WHERE m.dm_id = d.id) FROM dms d WHERE d.id IN (${ids})
+        ON CONFLICT (dm_id, user_id) DO UPDATE SET read_through = GREATEST(dm_reads.read_through, excluded.read_through), read_at = now()
+        RETURNING dm_id::text AS dm_id, read_through`);
+      return (now.rows as { dm_id: string; read_through: number }[]).map((row) => ({ dmId: row.dm_id, before: was.get(row.dm_id) ?? null, now: Number(row.read_through) }));
+    },
+
+    async restoreDm(userId: string, dm: { dmId: string; before: number | null; now: number }) {
+      // Only the person's own mark, and only while it still stands where `readDms` put it.
+      const result = dm.before === null
+        ? await db.execute(sql`DELETE FROM dm_reads WHERE dm_id = ${dm.dmId}::uuid AND user_id = ${userId} AND read_through = ${dm.now}`)
+        : await db.execute(sql`UPDATE dm_reads SET read_through = ${dm.before}, read_at = now() WHERE dm_id = ${dm.dmId}::uuid AND user_id = ${userId} AND read_through = ${dm.now}`);
       return (result.rowCount ?? 0) > 0;
     },
   };

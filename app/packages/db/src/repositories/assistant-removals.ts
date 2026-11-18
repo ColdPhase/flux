@@ -95,6 +95,22 @@ export function assistantRemovalRows(db: DbExecutor) {
 
   return {
     /**
+     * Which decisions and messages of the assistant's people's use keeps for good, so their Undo is not offered (round 15 ai P2-4: Undo of a
+     * discussed proposal stayed offered and answered "Replies since"): a decision someone wrote about or decided, a message with a reply after
+     * it. `undoing` are the messages taken back by the same Undo: a later one of them is no reply, as the Undo removes it first, newest first
+     * (delta review N1: a run's start and its own reply in it are both taken back). Two statements for any number of rows (N-P3-1). A plain
+     * read for the change line, without locks: the Undo itself checks everything again under its own.
+     */
+    async keptByUse(decisions: readonly string[], messages: readonly string[], undoing: readonly string[] = []): Promise<Set<string>> {
+      const kept = new Set<string>();
+      if (decisions.length) for (const row of (await db.execute(sql`SELECT d.id FROM project_decisions d WHERE d.id = ANY(${sql.param([...decisions])}::uuid[])
+        AND (d.status <> 'proposed' OR EXISTS (SELECT 1 FROM project_decision_discussions dd WHERE dd.decision_id = d.id))`)).rows as { id: string }[]) kept.add(row.id);
+      if (messages.length) for (const row of (await db.execute(sql`SELECT m.id FROM project_messages m WHERE m.id = ANY(${sql.param([...messages])}::uuid[])
+        AND m.removed_at IS NULL AND EXISTS (SELECT 1 FROM project_messages later WHERE later.conversation_id = m.conversation_id AND later.sequence > m.sequence
+          AND later.removed_at IS NULL AND NOT (later.id = ANY(${sql.param([...undoing])}::uuid[])))`)).rows as { id: string }[]) kept.add(row.id);
+      return kept;
+    },
+    /**
      * A map's row, `FOR NO KEY UPDATE`, taken before anything else: the strength and the order every writer of a map's thoughts and links
      * uses (the row, then the project graph), so the Undo of a map queues behind them and never crosses them. It does not wait for key-shares.
      */
@@ -172,7 +188,7 @@ export function assistantRemovalRows(db: DbExecutor) {
       return { ok: true, version: doc.version };
     },
 
-    /** A decision the assistant proposed: still proposed, not edited since, not cited, not waited for by a task, not superseded or superseding. */
+    /** A decision the assistant proposed: still proposed, not edited since, not cited, not waited for by a task, not superseded or superseding, not discussed. */
     async removeDecision(input: { decisionId: string; agentId: string; version: number | null }): Promise<Removal> {
       const decision = await first<{ id: string; projectId: string; status: string; version: number; byKind: string; byId: string }>(db, sql`
         SELECT id, project_id AS "projectId", status, version, proposed_by_kind AS "byKind", proposed_by_id AS "byId" FROM project_decisions WHERE id = ${input.decisionId} FOR UPDATE`);
@@ -185,6 +201,9 @@ export function assistantRemovalRows(db: DbExecutor) {
         return used(REMOVAL_REASONS.cited);
       // A task that waits for it is a use (#868): taking the proposal back would leave that task waiting for nothing. One whose creation was undone holds nothing.
       if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${decision.id} AND creation_reverted_at IS NULL) AS found`)) return used(REMOVAL_REASONS.cited);
+      // Someone wrote about it (#1424, as Withdraw refuses it): what was said stays, so does the decision. Deleting it would leave its
+      // discussion a thread about nothing in the space's stream (pre-review P2-2).
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_decision_discussions WHERE decision_id = ${decision.id}) AS found`)) return used(REMOVAL_REASONS.replies);
       try {
         await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${decision.id}`);
         await db.execute(sql`DELETE FROM project_decisions WHERE id = ${decision.id}`);

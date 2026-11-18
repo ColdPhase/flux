@@ -510,7 +510,17 @@ export const workspaceRemovedPeople = pgTable('workspace_removed_people', {
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   removedBy: text('removed_by').notNull(),
   removedAt: timestamp('removed_at', { withTimezone: true }).notNull().defaultNow(),
+  /** What Restore brings back (migration 0089, #1424 F): the role they had, and the spaces and direct messages they were in. */
+  role: text('role', { enum: ['owner', 'admin', 'member', 'guest'] }).notNull(),
+  kept: jsonb('kept').$type<RemovedPersonKept>().notNull(),
 }, (table) => [primaryKey({ columns: [table.workspaceId, table.userId] })]);
+
+/** `workspace_removed_people.kept`: ids, roles and times only. */
+export interface RemovedPersonKept {
+  /** `adminHeld`: a guest's space admin role held for when they are a member again (migration 0095), kept through removal and Restore. */
+  spaces: { id: string; role: 'manager' | 'contributor'; adminHeld?: true }[];
+  dms: { id: string; joinedAt: string }[];
+}
 
 /** F-035 (#763 PE-2): a one-time invite link to a workspace. Only the SHA-256 of the token is stored (migration 0137). */
 export const workspaceInvites = pgTable('workspace_invites', {
@@ -580,6 +590,8 @@ export const projectGrants = pgTable('project_grants', {
   projectId: uuid('project_id').notNull(),
   userId: text('user_id').notNull(),
   role: text('role', { enum: ['manager', 'contributor'] }).notNull(),
+  /** Migration 0095: an admin grant its person lost by becoming a guest; it is theirs again when they stop being one. */
+  adminHeld: boolean('admin_held').notNull().default(false),
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -629,9 +641,19 @@ export const notifications = pgTable('notifications', {
   inInbox: boolean('in_inbox').notNull().default(true),
   // Migration 0117 (F-029): came from AI work, set by whoever writes the row (no default: a writer that forgets it fails). While the workspace's AI is off it is hidden and never sent.
   aiOrigin: boolean('ai_origin').notNull(),
+  // Migration 0084 (#1424 decision 1): the asker's notice of an answer to their question, set by the generator from the answer it found.
+  answer: boolean('answer').notNull().default(false),
+  // Migration 0087 (personas-28): who it comes from, the one its title names (`human:<id>`, `agent:<id>`), set by the generator.
+  fromActor: text('from_actor'),
 }, (table) => [
+  check('notifications_answer_reason', sql`NOT ${table.answer} OR ${table.reason} IN ('mention', 'question')`),
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
+  // Migration 0094 (sweep-34 C1): the rows that can be items of the Inbox's "Needs you" queue, read however many others are newer.
+  index('notifications_needs_idx').on(table.userId, table.createdAt.desc(), table.id.desc())
+    .where(sql`in_inbox AND reason IN ('mention', 'question', 'invitation', 'assigned')`),
+  // Migration 0094: the unread rows, for the tab's "(N)" (#1243 `notifying`), counted however many read ones are newer.
+  index('notifications_unread_idx').on(table.userId, table.createdAt.desc(), table.id.desc()).where(sql`in_inbox AND read_at IS NULL`),
 ]);
 // What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
 export const needsYouStates = pgTable('needs_you_states', {
@@ -640,6 +662,8 @@ export const needsYouStates = pgTable('needs_you_states', {
   state: text('state', { enum: ['done', 'declined', 'snoozed'] }).notNull(),
   until: timestamp('until', { withTimezone: true }),
   untilWorkId: uuid('until_work_id'),
+  /** What a Done that changed a task puts back on Undo or Put back (migration 0092): ids and numbers only. */
+  restore: jsonb('restore').$type<{ workId: string; version: number; to: 'open' | 'blocked'; waitingForUserId?: string; waitingOn?: { kind: 'decision' | 'task'; id: string }; wait?: true }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.userId, table.itemKey] })]);
@@ -1284,6 +1308,43 @@ export const projectTaskDiscussions = pgTable('project_task_discussions', {
 ]);
 
 /**
+ * A decision's one discussion (#1424, migration 0090): as a task's, its first message creates one conversation of the space and binds it
+ * here, to its sequence-1 root; later messages are replies in it. The card in the stream and the decision's panel show the same thread.
+ */
+export const projectDecisionDiscussions = pgTable('project_decision_discussions', {
+  decisionId: uuid('decision_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull().unique(),
+  rootMessageId: uuid('root_message_id').notNull().unique(),
+  rootSequence: integer('root_sequence').notNull().default(1),
+}, (table) => [
+  check('project_decision_discussions_root_sequence_check', sql`${table.rootSequence} = 1`),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.decisionId], foreignColumns: [projectDecisions.workspaceId, projectDecisions.projectId, projectDecisions.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.conversationId, table.rootMessageId, table.rootSequence], foreignColumns: [projectMessages.conversationId, projectMessages.id, projectMessages.sequence] }).onDelete('cascade'),
+]);
+
+/**
+ * The tasks an acceptance resumed (#1424 round 8, migration 0091), with each one's version right after: the acceptance's Undo puts exactly
+ * those back to Blocked, and only while none of them changed since.
+ */
+export const projectDecisionResumptions = pgTable('project_decision_resumptions', {
+  decisionId: uuid('decision_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  version: integer('version').notNull(),
+  // The reason the task waited with (sealed in an encrypted space), put back by the Undo.
+  blocker: text('blocker'),
+}, (table) => [
+  primaryKey({ columns: [table.decisionId, table.workId] }),
+  index('project_decision_resumptions_work_idx').on(table.workId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.decisionId], foreignColumns: [projectDecisions.workspaceId, projectDecisions.projectId, projectDecisions.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/**
  * One receipt per real actor, project, operation and client command UUID (#154, migration 0040). It keeps the
  * produced object, the produced task version and the contribution messages for an exact replay; it is not the
  * #152 connection-command ledger and never debits a grant.
@@ -1604,6 +1665,23 @@ export const dmMessageObservations = pgTable('dm_message_observations', {
 }, (table) => [
   primaryKey({ columns: [table.messageId, table.viewerId] }),
   index('dm_message_observations_viewer_idx').on(table.dmId, table.viewerId),
+]);
+
+/**
+ * A person's read mark in a direct message (migration 0084, #1424 decision 10): the DM is read through `read_through` (a sequence). Only
+ * "Mark all as read" (#1250) writes it; what the person observed, and their own messages, read the DM too.
+ */
+export const dmReads = pgTable('dm_reads', {
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  readThrough: integer('read_through').notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.dmId, table.userId] }),
+  foreignKey({ name: 'dm_reads_dm_fkey', columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+  index('dm_reads_user_idx').on(table.userId),
+  check('dm_reads_read_through_check', sql`${table.readThrough} >= 0`),
 ]);
 
 /** Who observed which project message, roots and thread replies alike (migration 0103, #534). */

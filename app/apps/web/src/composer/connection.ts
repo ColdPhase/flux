@@ -118,3 +118,13 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 export function useConnection(): ConnectionState {
   return useSyncExternalStore(subscribe, connectionState, () => 'online');
 }
+
+/** The composers' connection lines on screen, newest last (Outbox.tsx `ConnectionLine`): only the newest one shows its words. */
+export const lines: symbol[] = [];
+export const lineListeners = new Set<() => void>();
+export const subscribeLines = (listener: () => void) => { lineListeners.add(listener); return () => { lineListeners.delete(listener); }; };
+
+/** Whether a composer's connection line is on screen: the shell's own offline line then stays away, so it is said once. */
+export function useConnectionLineShown(): boolean {
+  return useSyncExternalStore(subscribeLines, () => lines.length > 0, () => false);
+}

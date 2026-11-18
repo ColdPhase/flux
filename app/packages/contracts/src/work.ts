@@ -50,6 +50,31 @@ export const workItemPath = (workId: string) => `/api/v1/work/${workId}`;
 export const projectDecisionsPath = (projectId: string) => `/api/v1/projects/${projectId}/decisions`;
 export const decisionPath = (decisionId: string) => `/api/v1/decisions/${decisionId}`;
 export const decisionAcceptPath = (decisionId: string) => `${decisionPath(decisionId)}/accept`;
+/**
+ * Its proposer takes a proposal back with Undo (founder decision L, #1424, 2026-11-15): a proposal reaches everyone at once, and
+ * withdrawing it removes it for everyone with its notifications and Inbox items. `If-Match` is the proposal's version; 204.
+ */
+export const decisionWithdrawPath = (decisionId: string) => `${decisionPath(decisionId)}/withdraw`;
+/**
+ * Its accepter takes an acceptance back with Undo (founder decision, Hubert, 2026-11-15, round 8, #1424): Accept works at once, and Undo
+ * makes the decision proposed again, brings back a decision it replaced and puts the tasks it resumed back to waiting. `If-Match` is the
+ * version the accept returned; 200 with the decision. Refused once something rests on the acceptance (`409 DECISION_IN_USE`).
+ */
+export const decisionUnacceptPath = (decisionId: string) => `${decisionPath(decisionId)}/unaccept`;
+/**
+ * A decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): a thread on its card in the space's conversation, which its
+ * panel shows too. `GET` reads its messages, `POST` (a `SendMessageCommand`) writes one; the first creates the thread.
+ */
+export const decisionDiscussionPath = (decisionId: string) => `${decisionPath(decisionId)}/discussion`;
+/** `GET /decisions/:id/discussion`: the newest messages oldest first; `conversationId` is null until someone has written. */
+export interface DecisionDiscussion {
+  decisionId: string;
+  workspaceId: string;
+  projectId: string;
+  conversationId: string | null;
+  messages: import('./conversation.js').ConversationMessage[];
+  messagePage: import('./conversation.js').Conversation['messagePage'];
+}
 export const projectLinksPath = (projectId: string) => `/api/v1/projects/${projectId}/links`;
 /** Work owned by the caller across every project of the workspace they can currently read. */
 export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/assigned`;
@@ -128,6 +153,8 @@ export interface NamedPrincipal {
    * the owner is hidden or the agent is not in the audience; the browser never infers it otherwise.
    */
   projectOwner?: AgentProjectOwner;
+  /** Agents only: the agent's own colour (final design §2), the same for every reader everywhere; absent for an agent with none (a local client's), which is ink. */
+  colour?: import('./agents.js').AgentColour;
 }
 
 interface ProjectObject {
@@ -170,6 +197,25 @@ export type WaitingOn =
 /** What a task waits for, as a phrase after "waiting for": "the decision Use LoRa for the far beds" or "#7" (#868). */
 export const waitingPhrase = (on: WaitingOn): string => on.kind === 'decision' ? `the decision ${on.title}` : `#${on.number}`;
 
+/** A blocked task with nothing written about why, said one way everywhere (personas-27; return-view.md). */
+export const NO_BLOCK_REASON = 'No reason was recorded.';
+
+/**
+ * What a blocked task waits for, said one way on the board, the panel, the List, Home's My tasks and the Inbox (personas-28): "Waiting for
+ * Jonas", "Waiting for the decision Use LoRa for the far beds", "Waiting for #7", each with the reason after " · " when one was written too.
+ * A reason alone reads as written when it is a sentence ("Needs the gateway first.") and after "Waiting for" when it is the thing waited for
+ * ("the sensor delivery"); never "Waiting for Needs …". Nothing written is {@link NO_BLOCK_REASON}.
+ */
+export function blockedWords(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }): string {
+  const reason = item.blocker?.trim() || null;
+  const what = item.waitingFor?.name ?? (item.waitingOn ? waitingPhrase(item.waitingOn) : null);
+  if (what) return `Waiting for ${what}${reason ? ` · ${reason}` : ''}`;
+  if (!reason) return NO_BLOCK_REASON;
+  // A reason that already says "waiting for …" is not said twice.
+  if (/^waiting for\b/i.test(reason)) return `W${reason.slice(1)}`;
+  return /^\p{Ll}/u.test(reason) ? `Waiting for ${reason}` : reason;
+}
+
 export interface WorkItem extends ProjectObject {
   lifecycle?: TaskLifecycle;
   creationUndo?: TaskCreationUndoEligibility;
@@ -211,6 +257,13 @@ export interface WorkItem extends ProjectObject {
   version: number;
   updatedAt: string;
 }
+
+/**
+ * Where a decision opens, from everywhere (Search, the Inbox, a notification, its push and email, a Wiki reference, Discuss): in the one
+ * panel over its space's Conversation, where its one card is (F-026 P4, #1424). Tasks lists no decisions (#342), so a decision never
+ * opens over Tasks; an old `/projects/<id>/tasks?open=decision:<id>` address is sent here by the web (its Tasks loader).
+ */
+export const decisionAppPath = (projectId: string, decisionId: string) => `/projects/${projectId}?open=decision:${decisionId}`;
 
 export interface Decision extends ProjectObject {
   title: string;
@@ -269,7 +322,10 @@ export interface TaskCreationNotice {
   kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked' | 'task.resumed';
   /** For a blocked line (#550): who the task waits for and the reason, as the line said them. */
   waitingFor?: NamedPrincipal | null;
-  /** For a blocked line, the reason; for a resumed line (#868), what was resolved: "the decision was accepted". */
+  /**
+   * For a blocked line, the reason; for a resumed line (#868), what was resolved: "the decision was accepted"; for an unblocked line, how it
+   * ended when it went straight to Done: `done` or `dropped` ("#6 done", never "#6 unblocked"), and null otherwise.
+   */
   reason?: string | null;
   /** Current lifecycle; original notice identity and actor remain unchanged. */
   lifecycle?: TaskLifecycle;
@@ -283,14 +339,15 @@ export interface TaskCreationNotice {
 }
 
 /**
- * What the conversation says about a decision (#694, F-026 P5): one line with who and where it came
- * from, and the object as a card that opens in Details. Like a task notice it is information, never a message.
- * A decision has up to two: when it was proposed and when a person accepted it. `title` and the state are the
- * object's current ones; `by` and `createdAt` are who did it and when. The audience is the project's: only
- * people who can read the project read these.
+ * What the conversation says about a decision (#694, F-026 P5): its one card, with one line of who proposed it and where it came
+ * from, that opens in Details. Like a task notice it is information, never a message. A decision has one notice, when it was
+ * proposed: accepting it changes that card in place (`status`, `decided`), with no second line (founder decision D, #1424,
+ * 2026-11-15). `title` and the state are the object's current ones; `by` and `createdAt` are who proposed it and when. A proposal
+ * its proposer withdrew with Undo has no notice (it is gone). The audience is the project's: only people who can read the project
+ * read these.
  */
 interface ObjectNoticeBase {
-  /** Stable per object and moment, `<id>:proposed` or `<id>:accepted`. */
+  /** Stable per object, `<id>:proposed`. */
   id: string;
   workspaceId: string;
   projectId: string;
@@ -302,7 +359,11 @@ interface ObjectNoticeBase {
   conversationId: string | null;
   createdAt: string;
 }
-export type ObjectNotice = ObjectNoticeBase & { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus };
+export type ObjectNotice = ObjectNoticeBase & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus;
+  /** Who accepted it and when, shown on the card itself; null while it is proposed. */
+  decided: { by: NamedPrincipal; at: string } | null;
+  /** Its one discussion (#1424): the thread on the card, how many messages it has and when the newest came; null before anyone wrote. */
+  discussion: { conversationId: string; replyCount: number; lastReplyAt: string } | null };
 
 export interface UpdateWorkCommand extends VersionPrecondition {
   /**
@@ -363,9 +424,10 @@ export interface TaskActivityEntry {
    * Set when the change was made by a task rule of a linked pull request on its author's behalf (`actor` is that author),
    * so a reader never mistakes it for the author's own action. `agent_deleted`: the owner deleted the agent that held the task
    * and it came back to them (#1003). `agent_unable`: the agent could not take or work on it (it needs a connection, it is paused, or it gave
-   * up) and it came back to its owner (#1424); `agent_rule` is the agent's own hand-back when it finished.
+   * up) and it came back to its owner (#1424); `agent_rule` is the agent's own hand-back when it finished; `agent_stopped`: a person stopped the
+   * agent, so it came back to its owner ("Ada stopped Planner; the task is back with Kai", v0.2.1 release gate).
    */
-  automation?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved';
+  automation?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_stopped' | 'agent_deleted' | 'wait_resolved';
   /**
    * `kind: 'status'`. `blocker`, `waitingFor` and `waitingOn` (a decision's or task's name, as the line said it) are what a move into Blocked said;
    * null for any other `to`. `dropped` is for a move into Done.

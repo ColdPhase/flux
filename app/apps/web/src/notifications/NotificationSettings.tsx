@@ -5,11 +5,12 @@ import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { InstallFlux, NotificationsButton } from '../pwa';
-import { getPushState, pushOnServer } from '../pwa/push';
+import { pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
 import { noteSoundPreferences, soundsChange, soundsOn } from './sound';
 import { captureNotificationSession, isCurrentNotificationSession } from './session';
-import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
+import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast } from '../ui';
+import { Select, Option, OptionGroup } from '../ui/Select';
 import { TimeField } from '../ui/TimeField';
 import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import { LEVELS } from './levels';
@@ -81,16 +82,11 @@ function AccountNotificationSettings() {
   useEffect(load, [load]);
   // A place muted or unmuted from its ⋯ menu, here or in another tab (#1249), is read again: this list is the overview of the same mutes.
   useStreamEvents(ownerId, (event) => { if (notificationsChanged(event)) load(); }, load);
-  // Push cannot reach anyone when the server has no VAPID keys or the browser has no push. The server's reason comes
-  // first: a channel this server lacks is not offered at all, whatever the browser (#763 SG-3).
+  // Push cannot reach anyone when the server has no VAPID keys. The server's reason comes first: a channel this server lacks is not
+  // offered at all, whatever the browser (#763 SG-3). A browser that cannot receive push says so once, in its own "On this device" row.
   const [pushServerOff, setPushServerOff] = useState(false);
-  const [pushOff, setPushOff] = useState<string | null>(null);
   useEffect(() => {
-    pushOnServer().then((on) => {
-      if (!mounted.current) return;
-      setPushServerOff(!on);
-      if (on) getPushState().then((push) => { if (mounted.current) setPushOff(push.state === 'unsupported' ? 'This browser cannot receive push; your choices apply to your other devices.' : null); }, () => undefined);
-    }, () => undefined);
+    pushOnServer().then((on) => { if (mounted.current) setPushServerOff(!on); }, () => undefined);
   }, []);
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
@@ -141,7 +137,7 @@ function AccountNotificationSettings() {
   // Only the channels this server has (#763 SG-3).
   const missing = pushServerOff && !email.available ? 'Push and email aren’t set up on this Flux server, so everything waits in your Inbox.'
     : pushServerOff ? 'Push isn’t set up on this Flux server. Your inbox always works.'
-      : !email.available ? 'Email isn’t set up on this Flux server. Your inbox and push still work.' : '';
+      : !email.available ? 'Email isn’t set up on this Flux server. Your Inbox and push still work.' : '';
   // The addresses a notification email goes to: the sign-in address and each confirmed extra one that is switched on (C-49).
   const addresses = (email.accountEnabled ? 1 : 0) + email.addresses.filter((item) => item.verified && item.enabled).length;
   const switchExtra = (id: string, enabled: boolean) => {
@@ -189,7 +185,6 @@ function AccountNotificationSettings() {
       <h3 className="sset-sec" id={ids.where}>Where</h3>
       {/* Channels this server lacks are not offered: one status line says so (#763 SG-3). */}
       {missing ? <p className="nset__problem nset__server" role="note"><Icon name="bell" size={14} /><span>{missing}</span></p> : null}
-      {pushOff ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>{pushOff} Your inbox always works.</span></p> : null}
       <div className="sset-card" role="group" aria-labelledby={ids.where}>
         {email.available ? (
           <SwitchRow label="Email me too" checked={prefs.emailMe}
@@ -236,7 +231,7 @@ function AccountNotificationSettings() {
       <div className="sset-card sset-gap">
         <div className="sset-row">
           <span className="sset-row__b">
-            <span className="sset-row__t">Muted places</span>
+            <span className="sset-row__t">Muted spaces and messages</span>
             <span className="sset-row__s">{mutedSummary(prefs.muted)}</span>
           </span>
           <Button variant="quiet" size="sm" aria-expanded={mutedOpen} aria-controls={ids.muted}
@@ -449,7 +444,7 @@ export function VerifyAddress() {
               <h2>{state.status === 'done' ? 'Address confirmed' : 'This link did not work'}</h2>
               <p>{state.status === 'done'
                 ? `${state.email} is confirmed and now receives notification email whenever “Email me too” is on.`
-                : `${state.text} You can send a new link from notification settings.`}</p>
+                : `${/[.!?]$/.test(state.text.trim()) ? state.text.trim() : `${state.text.trim()}.`} You can send a new link from notification settings.`}</p>
               <Link className="ui-btn ui-btn--secondary" to="/settings/notifications">Notification settings</Link>
             </div>
           </>

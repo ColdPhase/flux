@@ -11,7 +11,7 @@ ranking, limits and snippets.**
 
 | The query | Answered by | What it does |
 | --- | --- | --- |
-| Plain words (`sensor`, `czujnik piatek`, `#12`) | the BM25 index of migration 0065 (`searchRows(db).ranked`) | **Any** of the words matches, Polish and English stems, accents folded; ranked by how rare the words are **among the hits the reader may see**, a word in a title counting double. |
+| Plain words (`sensor`, `czujnik piatek`, `#12`) | the BM25 index of migration 0065 (`searchRows(db).ranked`) | **Any** of the words matches, Polish and English stems, accents folded; ranked first by **how many of the words** a hit holds, then by how rare they are **among the hits the reader may see**, a word in a title counting double. |
 | Quotes, `or` or `-word` (`"exact phrase"`, `sensor -lamp`) | the exact index below (`searchRows(db).page`) | Exactly what it says: every word, no stems, the web search syntax. |
 
 The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the cursor, the audiences, the filters (`type`, `place`,
@@ -35,23 +35,62 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   once where the index found the word, which also counts another form of it). With `tf = 2 × title + body` (BM25F), each word adds
   `idf × tf × (k1 + 1) / (tf + k1 × (1 − b + b × length / average))` with k1 1.2 and b 0.1 (#1387, chosen on half of the research
   bench's questions, F-042); a hit found only as the word being typed or with a typo in its title counts half the average rarity of the
-  query's words, once. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
+  query's words, once.
+- **More of the words first** (persona round 37, the founder's rule: a result that matches all the words, or the exact phrase, ranks
+  above one that matches fewer, whatever its kind). "Antenna log 30" put the decision "Shop opens at 6:30 on fair day", which holds only
+  "30" (in its title, so counted double, and rare), above the message "Antenna log 30" itself, whose "antenna" and "log" thirty other
+  messages also held. The statement therefore counts for each hit how many of the query's words it holds whole (`held` in `scored`; the
+  word being typed also as its prefix), and ranks by that count first and by BM25 among the hits that hold as many. The words counted are
+  those that are not little words (`isSearchStopWord`), all of them when every word is little, so "barrel by the shed" is not decided by
+  "by". A typo-only hit holds none (it is shown only when no hit holds any searched word whole, the rule of "A title tolerates a typo" below), and the task a query names by its number stays first.
+  With the optional vectors the lexical list that is fused is in the same order. The in-memory index of an encrypted workspace counts the
+  same words the same way. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
   order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
   writes in a restricted space, another workspace and other people's direct messages.
 - **The word being typed** is also looked up as a prefix: the index holds stems, so a scan adds `pdb.regex('<word>.*')` on the title and
   the body fields (folded by `foldSearchWord`), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
 - **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
-  names one task, so it gets no typo.
+  names one task, so it gets no typo. A number names a task only when it is the whole query ("#6" or "6"): as one word of a longer
+  query ("6:30", "6 trays") a task's own number line ("#6", the first line of its indexed body) is not a match of it, so "6:30" never
+  finds task #6 (personas round 4); the number elsewhere in a task's words still counts. A typo is a way to find what the words did not (v0.2.1 personas round: "price list" listed the person "Kasia Lis", one
+  edit from "list", beside the price list itself): a hit found only by a typo in its title (no word whole, not the word being typed)
+  is shown only when no hit the reader may see holds any of the searched words whole (founder decision H, #1424: "Typo matches show only
+  when nothing matches a searched word exactly"). The rule is the statement's: `stats.whole` counts the hits for which `tf > 0` for any word
+  of the query, before the little-words cut below. So a word counts as whole in any form the index finds it (its stem, without accents,
+  hyphen-joined, as typed), a little word such as "the" counts like any other, and a hit that holds one counts even when that hit is
+  itself left out for holding only little words. It holds for people's search only (`plan.fuzzy`; an agent's `flux_search` has no typo
+  match). The in-memory index of an encrypted workspace keeps the rule with the words as typed, and counts only hits of the kinds asked for.
+  "liss" alone still finds "Kasia Lis".
+- **A hyphenated word is one word** (v0.2.1 personas round: "mockup" did not find "mock-up"). Migration 0085 adds a title and a body
+  field to the BM25 index with the hyphens between two letters or digits taken out (`flux_joined_words`, English stems), and the
+  query joins its own words the same way (`joinHyphenatedWords`), so "mockup", "mock-up" and "mockups" find each other;
+  `markSearchWords` marks a hyphenated word whole when its joined form is what was asked. The word fields of a scan are three
+  clauses each (Polish, English, joined), which still fit their two bits.
+- **People's search leaves out hits of little words alone** (persona round 6: "barrel by the shed" listed 20 messages that held only
+  "the" or "by"). In ⌘K (`plan.cutWeak`, plain words only), when a search has both little words (`isSearchStopWord`: the English and
+  Polish words that only join a sentence, "the", "by", "w", "na", one list in `@flux/contracts`) and other words, a hit that holds
+  words whole must hold one of the other words (or a longer form of the word being typed); a hit with only "the" and "by" is not
+  listed. A search of little words alone ("the") still finds them. A hit found only as the word being typed or by a typo keeps the
+  rules above, and a task number is never cut. The order is the one above (more of the other words first, then BM25), and an agent's
+  `flux_search` keeps every hit. The in-memory index of encrypted workspaces reads the same list
+  and cuts the same hits.
 - **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
   a search of up to five words is one scan and runs in a few milliseconds, a longer one a scan for each further five words. More
   words, or the longest words first, found nothing more on the research bench (#1387).
-- **The score** in a position is `rank / (rank + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
-  which the in-memory index ranks from 0 to 1.5, merge with them.
+- **The BM25 index writes whole segments** (migration `0093_search_index_segments.sql`, `mutable_segment_rows = 0`). pg_search 0.26
+  otherwise keeps new rows in a mutable segment that every reader tokenizes again, once for each clause, when it plans (its estimates)
+  and when it runs: with the text of a few files there (372 parts, about 1 MB), a two-word search planned for a second and a six-word
+  one for more than the API's 2 s statement limit, so Search said it was unavailable (train 33, 2026-11-16: 67 ms to plan one clause
+  with the rows mutable, 0.6 ms once written; the six-word search 3.2 s and a 500 before, 35 ms after). Each write is now a written
+  segment, merged in the background. An index that replaces this one keeps the option (`WITH (mutable_segment_rows = 0)`).
+- **The score** in a position is `(held + rank / (rank + 10)) / (counted + 1)`, in (0, 1) and in the same order (`held` of the `counted`
+  words, above), so that the rows of an encrypted space, which the in-memory index scores the same way from its own 0 to 1.5 rank, merge
+  with them.
 - **Encrypted spaces** answer plain words the same way, without stems and accents (`plan.anyWord`, `sealed-search.ts`): their content is
   never in the BM25 index, so the in-memory index matches any of the words, the typed word as a prefix and a title with a typo (four
-  letters or more), and ranks a document by the words it holds, each weighing the idf of its audience's own documents (rarer
-  weighs more) and a title word more than a body word. A plain space can therefore find a document by another form of a word that an
+  letters or more), and ranks a document first by how many of the words it holds (as above), then by which, each weighing the idf of
+  its audience's own documents (rarer weighs more) and a title word more than a body word. A plain space can therefore find a document by another form of a word that an
   encrypted one cannot. `encryption-search-live.test.ts` holds both sides to the same set for plain words, a prefix, several words,
   a typo and quoted words, and to the rare word first.
 - **Snippets and marks.** `ts_headline` picks the passage and marks the query words and their longer forms (`czujn:*` for
@@ -114,12 +153,15 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 ## Files (C-63)
 
-What is inside the files people send is searched too (#1382): PDF text, DOCX, Markdown, plain text, CSV/TSV (never images, audio or video,
-and never an OCR). Migration `0072_file_text.sql` adds kind `file`, the column `page`, the table `file_text_jobs` and the triggers; the
-worker (`apps/worker/src/file-text`) reads the files.
+Every file of a space is found by its name, and what is inside the files people send is searched too (#1382): PDF text, DOCX,
+Markdown, plain text, CSV/TSV (never the inside of images, audio or video, and never an OCR). Migration `0072_file_text.sql` adds kind
+`file`, the column `page`, the table `file_text_jobs` and the triggers; `0088_file_names.sql` gives every file its name row (founder
+decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads the files.
 
-- **Rows.** A file attached to a space's message whose name `file_text_extractable` accepts gets, at publication, one row for its name
-  (`doc_key` `file:<id>:0`, `version` 0, an empty body) and a job. The worker replaces the rest: one row for each part of about 4,000
+- **Rows.** Every file attached to a space's message gets, at publication, one row for its name (`doc_key` `file:<id>:0`, `version` 0,
+  an empty body, written by `search_put`), whatever its kind: "IMG_2041" finds IMG_2041.jpg. A video's poster (`poster_of`) is not a file of the
+  message and gets no row. A file whose name `file_text_extractable`
+  accepts also gets a job, and the worker replaces the rest: one row for each part of about 4,000
   characters of the text (`file:<id>:<n>`, `version` n from 1, `page` the PDF page of the part: a part never crosses a page, so a page of more than
   4,000 characters is several parts and a file is at most about 150 rows). The audience is the message's
   space (`project:<id>`), `parent_id` its conversation, `author` the uploader, `at` the time it was sent. The 4,000 characters are what
@@ -131,14 +173,18 @@ worker (`apps/worker/src/file-text`) reads the files.
   caller may see and nothing else; `search-hidden-ranking.test.ts` pins that hidden files move no visible order.
 - **Dropping out.** The delete trigger on `project_files` removes a file's rows in the transaction that deletes it (a deleted message, a
   deleted space), and its job goes by the foreign key. Who finds a file is decided on every search from its audience, so a person who lost
-  access finds nothing the next moment. A file of an encrypted space gets no row and no job.
+  access finds nothing the next moment. A file of an encrypted space gets no job; its name row is a placeholder (`sealed`, empty title),
+  and the in-memory index of the unlocked space opens the sealed `project_files.name` for it (`contentOf` in `sealed-search.ts`), so its
+  name is found there and nowhere else, and its message is named for the result as on the SQL path.
 - **Limits and the sandbox.** 5 MiB, 100 PDF pages, 200,000 characters, 20 s, 320 MiB resident, in a child process with no network, no files and
   no children ([C-63](../product/decisions.md), [threat model B4](../security/threat-model.md#b4-database-and-files)). The worker wakes on
   `NOTIFY flux_file_text` and polls nothing; a job is claimed with a lease of two minutes, tried three times and given up.
 - **Agents.** `flux_search` takes `kind: "file"` and returns the file's name, a snippet with the matches in **bold**, the page, the
   message and a link; `flux_read_file` reads the text in pages of 12,000 (a run) or 20,000 characters from `offset`.
 - **Web.** A file hit is the Files group's row (the file's icon, its name and the snippet) and opens its message with the preview open at
-  the matched page (`?file=<id>&page=<n>`).
+  the matched page (`?file=<id>&page=<n>`); a photo opens in the photo viewer, a video in its player (`useFileLink`).
+- **Agents and a file without text.** `flux_read_file` on a photo or a video answers with no text and the note that a picture or a
+  file whose kind is not read has none.
 
 ## Access before ranking
 

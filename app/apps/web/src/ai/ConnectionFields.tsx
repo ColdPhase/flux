@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, defaultListedModel, groupModelsByFamily, listPrice,
   type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind, type AiProviderPriceList } from '@flux/contracts';
-import { Button, Select, Option, OptionGroup } from '../ui';
+import { Button } from '../ui';
+import { Select, Option, OptionGroup } from '../ui/Select';
 import { ApiError } from '../api/client';
 import { listAiModels } from './api';
 
@@ -16,7 +17,7 @@ import { listAiModels } from './api';
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; so does a key the server
 //   turns away before asking the provider (400 AI_KEY_FORMAT: the key of another provider), in the server's own words. Only a list
 //   that can't be read (a timeout, a 5xx) leaves the plain field with a note (model-providers.md, #1424).
-// - OpenRouter and an OpenAI-compatible endpoint list without a key ("Show available models"), with the plain field as fallback.
+// - OpenRouter and an OpenAI-compatible endpoint list on "Show available models", with the key typed in the field when there is one (an endpoint that wants a key answers 401 without it), with the plain field as fallback.
 //   OpenRouter's list is read as soon as it is chosen: its prices are what an OpenRouter key pays (#1465).
 // No model list is written into Flux: the models are only ever the provider's own (founder direction, Hubert, 2026-11-12), and
 // Flux's price list only prices one.
@@ -44,9 +45,7 @@ export function priceSourceText(price: AiPrice, provider?: AiProviderKind) {
   return price.checkedOn ? `${list} of ${checkedDay(price.checkedOn)}` : list;
 }
 
-export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
-  `${perMillion(price.inputMicrosPerMTok)} input · ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens`;
-/** The form's price in plain words (#1424): "$4.00 for what you send and $20.00 for what it writes, per million tokens". */
+/** A price in plain words (#1424), in the form and on the key's page alike (train 37 row 5): "$4.00 for what you send and $20.00 for what it writes, per million tokens". */
 export const plainPrice = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
   `${perMillion(price.inputMicrosPerMTok)} for what you send and ${perMillion(price.outputMicrosPerMTok)} for what it writes, per million tokens`;
 
@@ -63,7 +62,7 @@ const OTHER = '__other__';
 const listFailure = (provider: AiProviderKind, status: Exclude<AiModelList['status'], 'listed'>) => {
   const label = AI_PROVIDERS[provider].label;
   switch (status) {
-    case 'key_refused': return `This key was refused by ${label}. Check it and try again.`;
+    case 'key_refused': return `This key was refused by ${provider === 'openai_compatible' ? 'the endpoint' : label}. Check it and try again.`;
     case 'refused': return 'This endpoint is not allowed on this server. Use a public HTTPS address, or ask the operator to allow a private one.';
     case 'needs_key': return 'Enter the API key first.';
     default: return KEY_LISTED.has(provider)
@@ -113,6 +112,8 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
   const [listing, setListing] = useState<Listing>({ state: 'idle' });
   // The key last listed, so leaving the field again without a change asks nothing; only in memory, like the field itself.
   const listedKey = useRef('');
+  // The key field (it keeps no state of its own): "Show available models" reads an endpoint's or OpenRouter's list with the key typed there.
+  const keyField = useRef<HTMLInputElement>(null);
   const asked = useRef(0);
   const info = provider ? AI_PROVIDERS[provider] : null;
   const keyed = !!provider && KEY_LISTED.has(provider);
@@ -168,7 +169,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
         // and Gemini have their middle family's newest chosen (#1424), and a long keyless list (OpenRouter's, an endpoint's) is left for the owner. An id typed into the plain field while a keyless list was read, and not in it, stays as "Other model id…"
         // instead of being wiped (#1465).
         const current = typed.current;
-        const kept = !query.apiKey && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
+        const kept = !KEY_LISTED.has(kind) && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
         if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : defaultModel(kind, result.models));
         setOther(kept);
       }
@@ -200,8 +201,8 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
   return <>
     <label>Provider
       {/* Named explicitly: inside its label, the options would otherwise join the field's name. */}
-      <Select name="provider" aria-label="Provider" required value={provider} disabled={disabled} onChange={(next) => choose(next as AiProviderKind | '')}>
-        <Option value="">Choose a provider</Option>
+      {/* "Choose a provider" is the closed field's placeholder, never an option to tick (v0.2.1 UI audit). */}
+      <Select name="provider" aria-label="Provider" required value={provider} placeholder="Choose a provider" disabled={disabled} onChange={(next) => choose(next as AiProviderKind | '')}>
         {AI_PROVIDER_KINDS.map((kind) => <Option key={kind} value={kind}>{AI_PROVIDERS[kind].label}</Option>)}
       </Select>
     </label>
@@ -210,7 +211,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
         placeholder="https://llm.example.org/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} aria-describedby={`${id}-endpoint`} /></label>
       <p id={`${id}-endpoint`} className="background-settings__help">A server that works like OpenAI’s, such as Ollama, LM Studio or vLLM. Use an https address.</p>
     </> : null}
-    <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
+    <label>API key<input ref={keyField} name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
       aria-invalid={refused || rejected?.key || undefined} aria-describedby={[keyHelp ? keyHelpId : '', keyProblem ? `${id}-refused` : ''].filter(Boolean).join(' ') || undefined}
       onBlur={(event) => keyLeft(event.currentTarget.value)}
       // Enter before the models are read reads them (the key's test) instead of saving: the form never goes on without a chosen model.
@@ -237,19 +238,24 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
     ) : null}
     <div id={`${id}-model`} className="background-settings__model-help">
       {info?.keylessModelList
-        ? <Button disabled={disabled || listing.state === 'reading' || (provider === 'openai_compatible' && !baseUrl.trim())} busy={listing.state === 'reading'} onClick={() => void read({})}>Show available models</Button>
+        ? <Button disabled={disabled || listing.state === 'reading' || (provider === 'openai_compatible' && !baseUrl.trim())} busy={listing.state === 'reading'} onClick={() => {
+          // With the key the person has typed, if any: an endpoint that lists its models only to a key answers 401 without it (O05).
+          const apiKey = keyField.current?.value.trim() ?? '';
+          void read(apiKey.length >= 8 ? { apiKey } : {});
+        }}>Show available models</Button>
         : null}
       <p className="background-settings__help" role="status">{status || (provider && !keyed && !dropdown ? 'Type the model id exactly as the provider names it.' : '')}</p>
     </div>
     {provider && model && !waitingForKey ? known
       ? <p className="background-settings__help" data-testid="connection-price">Price: {plainPrice(known)} · {priceSourceText(known, provider as AiProviderKind)}.</p>
       // Remounted per model, so a price typed for one model is not kept for another.
+      // Plain words (founder decision, 2026-11-14, #1424): no "per 1M tokens", and the two fields on one line, so the window does not scroll.
       : <fieldset key={`${provider}:${model}`} className="background-settings__price" disabled={disabled}>
-        <legend>Price per 1M tokens (USD)</legend>
-        <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget. Take it from your provider’s pricing page, or 0 if you run the model yourself.</p>
+        <legend>Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)</legend>
+        <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.</p>
         <div className="background-settings__limits">
-          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
-          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
+          <label>Input<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
+          <label>Output<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
         </div>
       </fieldset> : null}
   </>;

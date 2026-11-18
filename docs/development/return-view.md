@@ -37,20 +37,23 @@ conversation points are deleted with their place.
   is forward-only: an older mark never moves the point back. `POST /api/v1/return-points/restore`
   ("Keep these for next time") stays in the API for compatibility; the web app no longer calls it.
 - **Mark all as read (#1250).** `POST /api/v1/me/read-all` moves the point of every space in the caller's sidebar to the newest
-  position of their own audience (forward only, so a space already there is left) and marks the chats of their agents read; it
-  answers `undo`, with the position (`mark`), the spaces it moved and each chat's read time before and after (as text, to the
-  microsecond). `POST /api/v1/me/read-all/undo` takes that back for a space only while its point still stands at `mark` and for a
-  chat only while it still shows the time that was set, so what the person opened or read since stays read. It never touches
+  position of their own audience (forward only, so a space already there is left), marks the chats of their agents read and reads
+  every unread direct message through its newest message (`dm_reads`, #1424 decision 10); it answers `undo`, with the position
+  (`mark`), the spaces it moved, each chat's read time before and after (as text, to the microsecond) and each DM's read mark before
+  and after. `POST /api/v1/me/read-all/undo` takes that back for a space only while its point still stands at `mark`, for a chat only
+  while it still shows the time that was set and for a DM only while its mark is still the one set, so what the person opened or read
+  since stays read. It never touches
   the Inbox. The unread dot of a space is not this state: it is the Inbox's items of that space.
 - **Places interact.** "I have the context" in a project removes that project's items from Home,
-  because Home uses the maximum of the points below. Acknowledging Home moves the start of every
-  project never opened, since such a project starts from Home's point.
+  because Home uses the maximum of the points below. Acknowledging Home (a first visit, or following
+  its Continue) moves no project's start: a project never opened starts from its beginning, so its
+  name stays bold in the sidebar until it is opened (persona round, #1424, 2026-11-15).
 - **Nested places.** A change that has already been seen in a narrower place does not come back
   in a wider one. Home uses the maximum of the Home, project and conversation points. A project
-  uses the maximum of the project and conversation points. A place that was never viewed starts
-  from the enclosing place's point (a project from Home). On Home with no point, the summary is
-  empty and viewing creates the point. A project or conversation with neither its own nor the
-  enclosing point starts from its beginning (`since: null`, #133).
+  uses the maximum of the project and conversation points. A conversation that was never viewed
+  starts from its project's point; a project never viewed starts from its beginning, never from
+  Home's. On Home with no point, the summary is empty and viewing creates the point. A project, or a
+  conversation with neither its own nor its project's point, starts from its beginning (`since: null`, #133).
 
 ## Since you left in the project conversation (S7, #763 A3, 2026-10-30)
 
@@ -92,7 +95,7 @@ period also means "since you left"; `24h` and `7d` are unchanged.
 | decision | "Decision changed: …" with "Previously: …"; "New decision: …"; "Proposed decision: …"; "Decision replaced: …". A decision made and replaced in the same absence is told once, by its replacement. | A proposal by someone else in a project you can write. |
 | work | "Ari added a task for you: …", "Ari gave you a task: …" (handed to you in the period, #763 H11-5; a work item carries the task's `dueOn`), "Blocked: …", "Done: …", "Dropped: …", "In progress: …". | Unfinished work you own. |
 | question | "Ari asked you: “…”" when a message addresses you (`@Name`, or starts with "Name," / "Name:"), or asks a question in a conversation you started or posted in. | Until you post in that conversation after it. |
-| message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A task thread opened by a saved blocker or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the blocked-work item it came from. | Never. |
+| message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A decision's one discussion is named by its decision, as the Inbox and its notice name it: "Ola replied about “Put the tool library stand…”", never by its first message (personas-34). A task thread opened by a saved blocker or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the blocked-work item it came from. | Never. |
 | material | "New material: …", "Updated material: …, now version N". | Never. |
 | sketch | "Ari started a sketch: …", "Sketch changed: …" (project sketches; private ones reach only their author). | Never. |
 | doc | "Ari started a doc: …" (with its reason), "Doc updated: …" with "Version N by Ari · latest: <reason>" or "2 new versions by …" ([#112](docs-wiki.md)). The source opens the doc, or its history comparing the last version before these changes with the current one. | Never. |

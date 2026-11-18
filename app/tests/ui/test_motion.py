@@ -188,7 +188,8 @@ class MotionJourney(unittest.TestCase):
         expect(page.locator(".side__project.is-open")).to_have_attribute("data-glide-id", self.projects[2])
         expect(glide).to_have_attribute("data-target", self.projects[2])
         self.assert_glide_on(page, 2)
-        expect(self.link(page, 2)).to_be_focused()
+        # A space clicked in the sidebar is arrived in: the cursor is in its composer (persona round 26, P2 #2); Enter keeps the row (test_04).
+        expect(page.locator("#project-composer")).to_be_focused()
         self.assertEqual(page.locator(".side__scroll").evaluate("el => el.scrollTop"), scroll, "choosing never scrolls the list")
         shot(page, "motion-project-settled-on-latest")
         # Back to A: the draft is where it was left.
@@ -249,7 +250,8 @@ class MotionJourney(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(page).to_have_url(re.compile(f"/projects/{self.projects[1]}$"))
         self.assert_glide_on(page, 1)
-        expect(self.link(page, 1)).to_be_focused()
+        # Enter on a row arrives in the space as a click does: the cursor is in its composer (F-026 §4, persona round 27 P2 1).
+        expect(page.locator("#project-composer")).to_be_focused()
         tasks = page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Tasks"))
         tasks.focus()
         page.keyboard.press("Enter")
@@ -445,7 +447,8 @@ class MotionJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(f"/projects/{self.projects[2]}$"))
         expect(page.locator(".side__rail-project.is-open")).to_have_attribute("data-glide-id", self.projects[2])
         self.assert_rail_glide_on(page, 2)
-        expect(self.rail_link(page, 2)).to_be_focused()
+        # Clicked, the space is arrived in: the cursor is in its composer (persona round 26, P2 #2).
+        expect(page.locator("#project-composer")).to_be_focused()
         shot(page, "motion-rail-settled-on-latest")
         self.rail_link(page, 0).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.projects[0]}$"))

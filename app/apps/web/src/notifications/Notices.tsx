@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import type { InboxItem, StreamEvent } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
@@ -11,6 +11,7 @@ import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { playSound, soundPreferences, soundsOn } from './sound';
 import { markPushOfferReady } from './PushOffer';
 import { NOTICE_EVENT, STALE_MS, eventAge } from './noticeEvents';
+import { awaitField } from '../ui/keys';
 import './notices.css';
 
 /**
@@ -38,6 +39,15 @@ interface Notice { serial: number; place: string; family: Family; items: InboxIt
 function looksAt(pathname: string, type: string, id: string) {
   return type === 'dm' ? pathname === `/dm/${id}` || pathname.startsWith(`/dm/${id}/`) : pathname === `/projects/${id}` || pathname.startsWith(`/projects/${id}/`);
 }
+
+/**
+ * What the Inbox lists as an item of its own (needs-you: a question, a mention or an answer, a task given to you, a decision, a call to join,
+ * an agent's run): a person on the Inbox sees it arrive there, so no notice repeats it over the list (personas-33). A plain direct message
+ * or a reply in a thread is no Inbox item, so its notice still shows there.
+ */
+const INBOX_REASONS = new Set(['mention', 'question', 'assigned', 'review', 'invitation', 'approval']);
+const onInbox = (pathname: string) => pathname === '/inbox' || pathname.startsWith('/inbox/');
+const inInboxView = (pathname: string, item: InboxItem) => onInbox(pathname) && INBOX_REASONS.has(item.reason ?? '');
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -69,43 +79,76 @@ export function noticeWords(notice: Pick<Notice, 'family' | 'items'>, placeName:
   return { title: `${count} ${noun}${where}`, body: named };
 }
 
-/** Keeps the card 8 px above whatever reaches its corner on a computer: a composer, a toast, the map's dock. */
-function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, phone: boolean): number {
-  const [lift, setLift] = useState(0);
+/** A docked panel (from 1001 px; below it a panel lies over the work, `--float`): the notice keeps to the work beside it (audit P3 17). */
+const DOCKED_PANEL = '.ui-panel--docked:not(.is-leaving):not(.ui-panel--float)';
+
+/**
+ * Where the card stands on a computer: 8 px above whatever reaches its corner (a composer, a toast, the map's dock), and over the work, never
+ * over a docked panel: its right edge 20 px left of the panel (`right`, null when no panel is docked).
+ *
+ * The card is never drawn anywhere else, whatever comes first: when it appears it is placed before it is first painted (in the layout
+ * effect), and when the page changes under it (a panel that docks, floats or leaves, a composer, a resize) it is placed again in the next
+ * frame, before that frame is painted (`flushSync`). A placement left to React's own schedule could be painted a frame late, and a card
+ * that came in on a busy page stood over the panel until its entrance had ended (test_notices test_12, Chromium, full suite).
+ */
+function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, phone: boolean): { lift: number; right: number | null } {
+  const [place, setPlace] = useState<{ lift: number; right: number | null }>({ lift: 0, right: null });
   useLayoutEffect(() => {
     if (!active || phone) return undefined;
+    const where = (): { lift: number; right: number | null } | null => {
+      const box = card.current?.getBoundingClientRect();
+      if (!box) return null;
+      const width = document.documentElement.clientWidth;
+      const docked = [...document.querySelectorAll<HTMLElement>(DOCKED_PANEL)].find((element) => element.getBoundingClientRect().width > 0);
+      const panel = docked?.getBoundingClientRect();
+      // Where the panel stands once it has come in: its entrance slides it, which the box would include.
+      const transform = docked ? getComputedStyle(docked).transform : 'none';
+      const shift = transform === 'none' ? 0 : Number(/^matrix\((?:[^,]+,){4}\s*([-\d.e]+)/.exec(transform)?.[1] ?? 0);
+      const right = panel && panel.width ? Math.round(width - (panel.left - shift) + 20) : null;
+      // Where the card is about to stand, so what it avoids is what is under it there.
+      const cardRight = width - (right ?? 20);
+      const cardLeft = cardRight - box.width;
+      let lift = 0;
+      for (const node of document.querySelectorAll<HTMLElement>('.composer__box, .ui-toast, [data-notice-avoid]')) {
+        if (node.closest(DOCKED_PANEL)) continue;
+        const rect = node.getBoundingClientRect();
+        if (!rect.height || rect.right <= cardLeft || rect.left >= cardRight || rect.top < window.innerHeight / 2) continue;
+        lift = Math.max(lift, Math.round(window.innerHeight - rect.top + 8));
+      }
+      return { lift, right };
+    };
+    const keep = (next: { lift: number; right: number | null }) => setPlace((now) => (now.lift === next.lift && now.right === next.right ? now : next));
     let frame = 0;
+    // One measure in the next frame for all that changed before it: a page that changes every frame (a panel coming in, a live line)
+    // must not put the measure off frame after frame, which left the card where it stood before the panel was there (WebKit).
     const measure = () => {
-      cancelAnimationFrame(frame);
+      if (frame) return;
       frame = requestAnimationFrame(() => {
-        const box = card.current?.getBoundingClientRect();
-        if (!box) return;
-        let bottom = 0;
-        for (const node of document.querySelectorAll<HTMLElement>('.composer__box, .ui-toast, [data-notice-avoid]')) {
-          const rect = node.getBoundingClientRect();
-          if (!rect.height || rect.right <= box.left || rect.left >= box.right || rect.top < window.innerHeight / 2) continue;
-          bottom = Math.max(bottom, Math.round(window.innerHeight - rect.top + 8));
-        }
-        setLift(bottom);
+        frame = 0;
+        const next = where();
+        if (next) flushSync(() => keep(next));
       });
     };
+    // The card has just appeared: placed now, before it is painted.
+    const first = where();
+    if (first) keep(first);
     const observer = new MutationObserver(measure);
-    observer.observe(document.body, { childList: true, subtree: true });
+    // A panel that docks, floats or leaves changes its class, not the page's children.
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', measure);
-    measure();
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
+    return () => { cancelAnimationFrame(frame); frame = 0; observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, phone, card]);
-  return active && !phone ? lift : 0;
+  return active && !phone ? place : { lift: 0, right: null };
 }
 
-/** Whether a dialog or a sheet is open: a notice waits for it to close. */
+/** Whether a dialog, a sheet or a menu (any open pop surface, ui/pop.ts) is open: a notice waits for it to close, never covering it. */
 function useModalOpen(active: boolean): boolean {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!active) return undefined;
-    const check = () => setOpen(!!document.querySelector('[aria-modal="true"]'));
+    const check = () => setOpen(!!document.querySelector('[aria-modal="true"], [data-pop="open"]'));
     const observer = new MutationObserver(check);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal'] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal', 'data-pop'] });
     check();
     return () => observer.disconnect();
   }, [active]);
@@ -152,15 +195,17 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
       void soundPreferences(identity).then((switches) => { if (switches && soundsOn(switches)) playSound(sound); });
     }
     setLeaving(false);
-    setNotice((current) => {
-      const live = current && shown.current === current ? current : null;
-      // A call stays until it ends or is closed; only another call takes its place (the rest is in the Inbox).
-      if (live?.family === 'call' && family !== 'call') return current;
-      if (live && family !== 'call' && live.family === family && live.place === place && !live.items.some((known) => known.id === item.id)) {
-        return { ...live, items: [...live.items, item].slice(-99) };
-      }
-      return { serial: ++serial.current, place, family, items: [item] };
-    });
+    // The card shown is read from `shown` and written back at once, not left to the render's effect: a burst read together (the events
+    // handed over when this code arrives, #1428) adds several items before React renders, and each must join the card the last one made.
+    // A call stays until it ends or is closed; only another call takes its place (the rest is in the Inbox).
+    if (showing?.family === 'call' && family !== 'call') return;
+    const next = showing && family !== 'call' && showing.family === family && showing.place === place && !showing.items.some((known) => known.id === item.id)
+      // Each item is fetched on its own, so a burst's answers can come back out of order: the group is kept in the order the items were
+      // made, and its preview is the newest one, not the last answer to arrive.
+      ? { ...showing, items: [...showing.items, item].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)).slice(-99) }
+      : { serial: ++serial.current, place, family, items: [item] };
+    shown.current = next;
+    setNotice(next);
   }, [identity]);
 
   const dismiss = useCallback(() => setLeaving(true), []);
@@ -180,7 +225,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
       if (hidden.current || age > STALE_MS) return;
       if (looksAt(here.current, event.objectType, event.objectId)) return;
       void getInboxItem(event.id).then((item) => {
-        if (item.readAt || looksAt(here.current, item.source.type, item.source.id)) return;
+        if (item.readAt || looksAt(here.current, item.source.type, item.source.id) || inInboxView(here.current, item)) return;
         add(item);
       }, () => undefined);
       return;
@@ -206,12 +251,12 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
   useEffect(() => {
     const current = shown.current;
     const newest = current?.items.at(-1);
-    if (newest && looksAt(location.pathname, newest.source.type, newest.source.id)) dismiss();
+    if (newest && (looksAt(location.pathname, newest.source.type, newest.source.id) || current!.items.every((item) => inInboxView(location.pathname, item)))) dismiss();
   }, [location.pathname, dismiss]);
 
   const modal = useModalOpen(!!notice);
   const visible = !!notice && !modal;
-  const lift = useLift(visible, card, phone);
+  const { lift, right } = useLift(visible, card, phone);
 
   // Enters once per notice; a newer one that replaces or joins it changes the text in place (docs/design/motion.md).
   useLayoutEffect(() => {
@@ -248,6 +293,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
     readAll(notice.items);
     dismiss();
     // `/inbox/:id` reads the item and goes where it points, as a push's tap does; the state reaches the place (Reply focuses its composer).
+    if (focusComposer) awaitField();
     navigate(`/inbox/${newest.id}`, focusComposer ? { state: { focusComposer: true } } : undefined);
   }, [notice, readAll, dismiss, navigate]);
   const join = useCallback(async () => {
@@ -271,7 +317,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
   const words = notice ? noticeWords(notice, placeName, meName) : null;
   return createPortal(
     <div className="ui-notices" role="status" aria-live="polite" aria-atomic="true"
-      style={lift ? { '--notice-lift': `${lift}px` } as CSSProperties : undefined}>
+      style={lift || right !== null ? { ...(lift ? { '--notice-lift': `${lift}px` } : {}), ...(right !== null ? { '--notice-right': `${right}px` } : {}) } as CSSProperties : undefined}>
       {visible && newest && words ? (
         <div ref={card} className="ui-notice" data-family={notice!.family} data-count={notice!.items.length}
           onMouseEnter={() => setHeld((value) => ({ ...value, hover: true }))} onMouseLeave={() => setHeld((value) => ({ ...value, hover: false }))}
@@ -290,7 +336,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
           }}
           onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHeld((value) => ({ ...value, focus: false })); }}>
           <span className="ui-notice__face" aria-hidden="true">
-            {newest.from?.kind === 'agent' || (!newest.from && newest.reason === 'approval') ? <Kreska size={32} /> : <Avatar name={newest.from?.name ?? ''} size="lg" />}
+            {newest.from?.kind === 'agent' || (!newest.from && newest.reason === 'approval') ? <Kreska size={32} hue={newest.from?.colour} /> : <Avatar name={newest.from?.name ?? ''} size="lg" />}
           </span>
           <div className="ui-notice__text">
             <p className="ui-notice__title">{words.title}</p>

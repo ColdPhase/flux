@@ -62,20 +62,72 @@ describe('a blocked task waits for a person', () => {
     const theirs = find(await queue(kai), key);
     assert.ok(theirs, 'the person waited on has an item');
     assert.equal(theirs.kind, 'blocked');
-    assert.equal(theirs.title, `wf-ada is waiting for you: #${task.number} Choose the lens · Which focal length?`);
+    // The task is the title and the reason the line under it, said once (personas-28).
+    assert.deepEqual([theirs.title, theirs.detail], [`wf-ada is waiting for you: #${task.number} Choose the lens`, 'Which focal length?']);
     assert.equal(theirs.blocked?.waitedBy, 'wf-ada');
     assert.equal(theirs.url, `/projects/${place.id}/tasks?open=work:${task.id}`);
     const mine = find(await queue(ada), key);
     assert.ok(mine);
-    assert.equal(mine.title, `#${task.number} is blocked: Which focal length?`);
+    // The owner reads the task, then what it waits for in the board's and the panel's words (personas-28).
+    assert.deepEqual([mine.title, mine.detail], [`#${task.number} Choose the lens`, 'Waiting for wf-kai · Which focal length?']);
     assert.equal(mine.blocked?.waitedBy, undefined);
     assert.equal(find(await queue(viewer), key), undefined, 'nobody else is asked');
-    // Done / Not now work as for any item.
-    expectStatus(await send(kai, 'POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { action: 'done' }), 200);
-    assert.equal(find(await queue(kai), key), undefined);
     // Unblocked: gone for both.
     await patch(task, { status: 'in_progress' });
     assert.equal(find(await queue(ada), key), undefined);
+    assert.equal(find(await queue(kai), key), undefined);
+  });
+
+  test('Done on "is waiting for you" lets the task continue, is in done today, and its Undo puts the wait back as it was (personas-33)', async () => {
+    const aside = async (someone: Person) => expectStatus(await someone.browser.request('GET', '/api/v1/needs-you/aside'), 200) as { done: { item: NeedsYouItem }[] };
+    const task = await create({ title: 'Fit the hinge', owner: human(ada), status: 'blocked', blocker: 'Which screws fit?', waitingFor: human(kai) });
+    // The reason was changed after the task was blocked: that one is what comes back.
+    const edited = await patch(task, { blocker: 'Which screws fit, M3 or M4?' });
+    const key = `blocked:${task.id}`;
+    const before = await queue(kai);
+    assert.ok(find(before, key), 'Kai is asked');
+    expectStatus(await send(kai, 'POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { action: 'done' }), 200);
+    const resumed = expectStatus(await send(ada, 'GET', `/api/v1/work/${task.id}`), 200) as WorkItem;
+    assert.equal(resumed.status, 'in_progress', 'the task continues');
+    assert.equal(resumed.waitingFor, null);
+    const after = await queue(kai);
+    assert.equal(find(after, key), undefined);
+    assert.equal(after.doneToday, before.doneToday + 1, 'it is counted in done today');
+    assert.ok((await aside(kai)).done.some((entry) => entry.item.key === key && entry.item.title === `wf-ada is waiting for you: #${task.number} Fit the hinge`), 'and listed there');
+    assert.equal(find(await queue(ada), key), undefined, 'the owner has nothing to do about it');
+    // Undo (and Put back) is the same DELETE: Blocked again, waiting for Kai with the same reason, and the item back for both.
+    expectStatus(await send(kai, 'DELETE', `/api/v1/needs-you/${encodeURIComponent(key)}`), 204);
+    const back = expectStatus(await send(ada, 'GET', `/api/v1/work/${task.id}`), 200) as WorkItem;
+    assert.deepEqual([back.status, back.waitingFor?.id, back.blocker], ['blocked', kai.id, edited.blocker]);
+    assert.ok(find(await queue(kai), key), 'Kai is asked again');
+    assert.ok(find(await queue(ada), key), 'the owner\'s item is back');
+    assert.equal((await queue(kai)).doneToday, before.doneToday, 'no longer in done today');
+    // The "can continue" line went with the Undo; the stream says nothing about a wait that never ended.
+    assert.equal((await lines()).filter((line) => line.workId === task.id && line.kind === 'task.resumed').length, 0);
+  });
+
+  test('Done on your own blocked task finishes it, is in done today, and Put back makes it wait as it did (personas-33)', async () => {
+    const task = await create({ title: 'Glue the base', owner: human(ada), status: 'blocked', blocker: 'Glue is drying', waitingFor: human(kai) });
+    const key = `blocked:${task.id}`;
+    const before = await queue(ada);
+    expectStatus(await send(ada, 'POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { action: 'done' }), 200);
+    assert.equal((expectStatus(await send(ada, 'GET', `/api/v1/work/${task.id}`), 200) as WorkItem).status, 'done');
+    assert.equal((await queue(ada)).doneToday, before.doneToday + 1);
+    expectStatus(await send(ada, 'DELETE', `/api/v1/needs-you/${encodeURIComponent(key)}`), 204);
+    const back = expectStatus(await send(ada, 'GET', `/api/v1/work/${task.id}`), 200) as WorkItem;
+    assert.deepEqual([back.status, back.waitingFor?.id, back.blocker], ['blocked', kai.id, 'Glue is drying']);
+    assert.ok(find(await queue(ada), key));
+  });
+
+  test('a Put back after the task changed is refused and the choice stays (personas-33)', async () => {
+    const task = await create({ title: 'Paint the lid', owner: human(ada), status: 'blocked', blocker: 'Which colour?', waitingFor: human(kai) });
+    const key = `blocked:${task.id}`;
+    expectStatus(await send(kai, 'POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { action: 'done' }), 200);
+    const resumed = expectStatus(await send(ada, 'GET', `/api/v1/work/${task.id}`), 200) as WorkItem;
+    await patch(resumed, { title: 'Paint the lid green' });
+    const refused = await send(kai, 'DELETE', `/api/v1/needs-you/${encodeURIComponent(key)}`);
+    assert.equal(refused.status, 409);
+    assert.equal((expectStatus(await send(ada, 'GET', `/api/v1/work/${task.id}`), 200) as WorkItem).status, 'in_progress', 'nothing was put back');
   });
 
   test('the person waited on is told once, with a notification that opens the task', async () => {
@@ -97,7 +149,8 @@ describe('a blocked task waits for a person', () => {
     // Kai gives it to his own agent: nobody gives a task to someone else's (#904).
     const task = expectStatus(await send(kai, 'POST', `/api/v1/projects/${place.id}/work`, { title: 'Calibrate by agent', owner: { kind: 'agent', id: agent.id }, status: 'blocked', blocker: 'Needs the rig' }), 201) as WorkItem;
     const key = `blocked:${task.id}`;
-    assert.equal(find(await queue(kai), key)?.title, `#${task.number} is blocked: Needs the rig`, 'the agent\'s human owner');
+    const item = find(await queue(kai), key);
+    assert.deepEqual([item?.title, item?.detail], [`#${task.number} Calibrate by agent`, 'Needs the rig'], 'the agent\'s human owner');
     assert.equal(find(await queue(ada), key), undefined, 'not another person');
     assert.equal(find(await queue(viewer), key), undefined);
   });
@@ -121,6 +174,36 @@ describe('a blocked task waits for a person', () => {
     // Everyone who can read the project sees the same lines, and a stranger sees none.
     assert.equal((expectStatus(await send(viewer, 'GET', `/api/v1/projects/${place.id}/task-notices?limit=100`), 200) as { items: unknown[] }).items.length, (await lines()).length);
     expectStatus(await send(outsider, 'GET', `/api/v1/projects/${place.id}/task-notices`), 404);
+  });
+
+  test('a blocked task moved straight to Done says it is done, not unblocked (personas-26)', async () => {
+    const task = await create({ title: 'Seal the gateway box', owner: human(ada) });
+    const blocked = await patch(task, { status: 'blocked', blocker: 'The new seals' });
+    await patch(blocked, { status: 'done' });
+    const ended = (await lines()).filter((line) => line.workId === task.id && line.kind === 'task.unblocked');
+    assert.deepEqual(ended.map((line) => line.reason), ['done']);
+    const other = await create({ title: 'Mount the second probe', owner: human(ada) });
+    await patch(await patch(other, { status: 'blocked', blocker: 'No bracket' }), { status: 'in_progress' });
+    assert.deepEqual((await lines()).filter((line) => line.workId === other.id && line.kind === 'task.unblocked').map((line) => line.reason ?? null), [null], 'back to work is unblocked');
+  });
+
+  test('a move taken back with Undo leaves no line: it changed nothing (personas-26)', async () => {
+    const task = await create({ title: 'Paint the bike rack', owner: human(ada) });
+    const doing = await patch(task, { status: 'in_progress' });
+    const blocked = await patch(doing, { status: 'blocked', blocker: 'Rain all week' });
+    // The toast's Undo is a restore of what was there.
+    const back = await patch(blocked, { status: 'in_progress', restore: true });
+    assert.deepEqual((await lines()).filter((line) => line.workId === task.id).map((line) => line.kind), ['task.created'], 'the block and its Undo are no lines');
+    // Unblocked, then the Undo puts the block back: the first block stays, the unblock goes.
+    const again = await patch(back, { status: 'blocked', blocker: 'Rain all week' });
+    const open = await patch(again, { status: 'in_progress' });
+    await patch(open, { status: 'blocked', blocker: 'Rain all week', restore: true });
+    assert.deepEqual((await lines()).filter((line) => line.workId === task.id).map((line) => line.kind).sort(), ['task.blocked', 'task.created']);
+    // An Undo by someone else is a move of its own: the line it would take back is not theirs.
+    const third = await create({ title: 'Oil the hinges', owner: human(ada) });
+    const stuck = await patch(third, { status: 'blocked', blocker: 'No oil' });
+    expectStatus(await kai.browser.request('PATCH', `/api/v1/work/${third.id}`, { body: { clientCommandId: randomUUID(), status: 'open', restore: true }, headers: { 'If-Match': `"${stuck.version}"` } }), 200);
+    assert.deepEqual((await lines()).filter((line) => line.workId === third.id).map((line) => line.kind).sort(), ['task.blocked', 'task.created', 'task.unblocked']);
   });
 
   test('Undo of an unblock puts the blocker back without saying it again', async () => {

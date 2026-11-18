@@ -52,19 +52,19 @@ export interface AiProviderInfo {
 export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   anthropic: {
     kind: 'anthropic', label: 'Anthropic', wire: 'anthropic_messages', baseUrl: 'https://api.anthropic.com',
-    keyHint: 'An Anthropic API key beginning with sk-ant-.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
+    keyHint: 'Anthropic API keys begin with sk-ant-.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
   },
   openai: {
     kind: 'openai', label: 'OpenAI', wire: 'openai_responses', baseUrl: 'https://api.openai.com/v1',
-    keyHint: 'An OpenAI project or service-account key beginning with sk-. Admin keys are refused.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
+    keyHint: 'OpenAI project and service-account keys begin with sk-. Admin keys are refused.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
   },
   openrouter: {
     kind: 'openrouter', label: 'OpenRouter', wire: 'openai_chat_completions', baseUrl: 'https://openrouter.ai/api/v1',
-    keyHint: 'An OpenRouter key beginning with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: false, seesPictures: false,
+    keyHint: 'OpenRouter keys begin with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: false, seesPictures: false,
   },
   gemini: {
     kind: 'gemini', label: 'Google Gemini', wire: 'openai_chat_completions', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    keyHint: 'A Gemini API key beginning with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: false, seesPictures: true,
+    keyHint: 'Gemini API keys begin with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: false, seesPictures: true,
   },
   openai_compatible: {
     kind: 'openai_compatible', label: 'OpenAI-compatible endpoint', wire: 'openai_chat_completions', baseUrl: null,
@@ -266,8 +266,9 @@ export const aiModelSeesPictures = (provider: AiProviderKind, model: string, eng
 
 /**
  * `POST /api/v1/ai-model-lists`: the provider's models, fetched by the server (CA-2, #1218). OpenRouter and an OpenAI-compatible
- * endpoint are listed without a key. Anthropic, OpenAI and Gemini are listed with the key the person is adding (`apiKey`), and that
- * one call is also the key's test; without a key they answer `needs_key`.
+ * endpoint are listed with the key the person has typed (`apiKey`), or without a key when none is typed; a key they refuse is
+ * `key_refused`. Anthropic, OpenAI and Gemini are listed with the key the person is adding, and that one call is also the key's test;
+ * without a key they answer `needs_key`.
  */
 export const AI_MODEL_LISTS_PATH = '/api/v1/ai-model-lists';
 
@@ -275,7 +276,7 @@ export interface AiModelListQuery {
   provider: AiProviderKind;
   /** `openai_compatible` only. */
   baseUrl?: string;
-  /** Anthropic, OpenAI and Gemini: the key being added. It is only sent to its provider, never stored or echoed. */
+  /** The key being added (for OpenRouter and an endpoint, when one is typed). It is only sent to that provider or endpoint, never stored or echoed. */
   apiKey?: string;
 }
 

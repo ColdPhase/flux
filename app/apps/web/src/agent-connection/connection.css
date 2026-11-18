@@ -1,5 +1,5 @@
 .connection { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
-.connection__head h1 { margin-top: 9px; font-size: var(--fs-2xl); line-height: 1.25; letter-spacing: -.02em; }
+.connection__head h1 { margin-top: 9px; font-size: var(--fs-2xl); line-height: 1.25; letter-spacing: var(--tracking-title); }
 .connection__head p { margin-top: 9px; color: var(--t3); font-size: var(--fs-base); line-height: 1.55; }
 .connection__head p strong { color: var(--t1); font-weight: 600; }
 .connection__eyebrow { display: inline-flex; align-items: center; gap: 7px; color: var(--t1); font-size: var(--fs-sm); font-weight: 600; }
@@ -8,7 +8,7 @@
 .connection__choices, .connection__checks { display: flex; flex-direction: column; gap: 8px; }
 .connection__choice { display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px; border: 1px solid var(--line2); border-radius: var(--r-lg); cursor: pointer; transition: var(--tr); }
 .connection__choice:has(input:checked) { border-color: var(--t1); background: var(--sub); }
-.connection__choice:focus-within { outline: 2px solid var(--t1); outline-offset: 2px; }
+.connection__choice:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
 .connection__choice > input { flex: none; margin: 4px 0 0; accent-color: var(--t1); }
 /* The connected clients are a list with none of the browser's own indent (40 px that left the permission row 216 px on a phone, #1358), and each is a face beside its name. */
 .connection__list { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 0; list-style: none; }
@@ -32,7 +32,8 @@
 .connection__requested { padding-top: 15px; border-top: 1px solid var(--line); }
 .connection__requested h2 { font-size: var(--fs-sm); color: var(--t2); }
 .connection__requested p { margin-top: 7px; color: var(--t2); font-size: var(--fs-sm); line-height: 1.5; }
-.connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
+/* A white card like every other Settings card, never a grey one (visual review 2026-11-17 V12). */
+.connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 18px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .connection__create h2 { font-size: var(--fs-lg); }
 .connection__create > p, .connection__group > p, .connection__help { color: var(--t3); font-size: var(--fs-sm); line-height: 1.55; }
 .connection__create .ui-select, .connection__create > input:not(.ui-select__field) { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); }
@@ -45,10 +46,10 @@
 .connection__project { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .connection__project:last-child { border-bottom: 0; }
 .connection__project small { display: block; color: var(--t3); font-size: var(--fs-xs); }
-.connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
+.connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 18px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .connection__guide h2 { font-size: var(--fs-lg); }
 .connection__guide p { color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
-.connection__guide code { display: block; white-space: pre-wrap; padding: 9px 11px; border-radius: var(--r-sm); background: var(--el); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
+.connection__guide code { display: block; white-space: pre-wrap; padding: 9px 11px; border-radius: var(--r-sm); background: var(--sub); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
 .connection__client { display: flex; flex-direction: column; gap: 6px; }
 .connection__client h3 { font-size: var(--fs-sm); margin: 4px 0 -2px; }
 .connection__client p code { display: inline; padding: 1px 4px; }
@@ -111,7 +112,7 @@
 .mcp-permissions legend, .mcp-permissions summary { font-size: var(--fs-sm); color: var(--t2); font-weight: 600; }
 .mcp-permissions legend { margin-bottom: 5px; }
 .mcp-permissions summary { min-height: 44px; padding: 12px 0; cursor: pointer; }
-.mcp-permissions summary:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.mcp-permissions summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .mcp-permissions details { border-top: 1px solid var(--line); }
 .mcp-permissions__legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .mcp-permissions__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px 0; cursor: pointer; }
@@ -130,7 +131,7 @@
   .mcp-permissions__row > input:checked::before { background: Highlight; box-shadow: inset 0 0 0 1px Highlight; }
   .mcp-permissions__row > input:checked::after { background: HighlightText; }
 }
-.mcp-permissions__row > input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 8px; }
+.mcp-permissions__row > input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
 .mcp-permissions__row > input:disabled { opacity: .5; cursor: default; }
 .mcp-permissions__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .mcp-permissions__actions > .ui-btn, .mcp-permissions > .ui-btn { min-height: 44px; }
@@ -173,7 +174,7 @@
 /* A local client's row in Settings › AI (#1363): its "Ask me first" tag leads to where it is changed; Disconnect asks in the row. */
 .client-row__may { text-decoration: none; }
 .client-row__may:hover { background: var(--hov); color: var(--t1); }
-.client-row__may:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.client-row__may:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .client-row__confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .client-row__error { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: var(--fs-sm); color: var(--t1); }
 /* "Show the command" (#1363): quiet, so the page reads as steps in words and the terminal text is one click away. */
@@ -181,11 +182,12 @@
 .connection__show > summary { display: inline-flex; align-items: center; min-height: 32px; cursor: pointer; list-style: none; color: var(--t2); font-size: var(--fs-sm); text-decoration: underline; text-underline-offset: 3px; }
 .connection__show > summary::-webkit-details-marker { display: none; }
 .connection__show > summary:hover { color: var(--t1); }
-.connection__show > summary:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: var(--r-sm); }
+.connection__show > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--r-sm); }
 .connection__show > code { display: block; margin-top: 6px; }
 @media (pointer: coarse) { .connection__show > summary { min-height: 44px; } }
 /* Each connected app is one card in Settings (#1363), its content flush with the card's padding instead of indented under a loose block. */
 .connection__list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .connection__saved.sset-card { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px; }
 .connection__saved .connection__row { display: flex; align-items: center; gap: 12px; }
+.connection__mark { display: grid; place-items: center; flex: none; width: 24px; color: var(--t1); }
 .connection__saved.sset-card > * { border-top: 0; }

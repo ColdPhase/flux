@@ -10,12 +10,31 @@ import { getProject } from '../project/api';
 import { NavigateWithNote } from './NavigateWithNote';
 import { spaceLost, useReturning } from '../place/memory';
 import { isWorkspaceLocked, lockedWorkspaceId } from '../encryption/api';
-import { LockedSpace } from '../encryption/LockedSpace';
 import { NotAvailable } from './NotAvailable';
 
 /** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */
 export class RouteCodeLoadError extends Error {
   constructor(cause: unknown) { super('The page code could not be loaded', { cause }); this.name = 'RouteCodeLoadError'; }
+}
+
+/**
+ * The locked panel's code (F-030, #655) is not part of the first visit (#1178): it comes when a place of a locked space is shown, and the
+ * shell fetches it while the browser is idle (`DeferredSurfaces`), so it is usually here already and renders at once. A failed download is
+ * said by the page above, as a route's code is.
+ */
+let lockedPanel: typeof import('../encryption/LockedSpace') | null = null;
+export const loadLockedPanel = () => import('../encryption/LockedSpace').then((module) => (lockedPanel = module));
+function LockedPanel({ workspaceId }: { workspaceId: string | null }) {
+  const [panel, setPanel] = useState(() => lockedPanel);
+  const [failure, setFailure] = useState<RouteCodeLoadError | null>(null);
+  useEffect(() => {
+    if (panel) return undefined;
+    let live = true;
+    loadLockedPanel().then((module) => { if (live) setPanel(module); }, (cause: unknown) => { if (live) setFailure(new RouteCodeLoadError(cause)); });
+    return () => { live = false; };
+  }, [panel]);
+  if (failure) throw failure;
+  return panel ? <panel.LockedSpace workspaceId={workspaceId} /> : null;
 }
 
 /**
@@ -82,7 +101,7 @@ function ErrorPage({ shell }: { shell: boolean }) {
   }, []);
   if (returning) return <NearestAccessible pathname={pathname} />;
   // F-030 (#655): a place whose workspace is an encrypted one that waits to be unlocked shows the locked panel, not an error.
-  if (isWorkspaceLocked(error)) return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
+  if (isWorkspaceLocked(error)) return <LockedPanel workspaceId={lockedWorkspaceId(error)} />;
   if (revoked) {
     const title = isRouteErrorResponse(error) && error.status === 404 ? 'This page doesn’t exist' : 'This place isn’t available';
     // A map's unsaved private thought outlives the place: the person removed from its space still reads and can discard it (#1402 kept it out).

@@ -29,12 +29,13 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, typing,
   const { project, conversation, composerId } = core;
   const { asking, publicComposer, draft, busy, askBusy } = drafts;
   const { menuOpen, options, activeIndex } = menu;
-  const title = conversation ? plainMessageText(conversation.firstMessageBody).split('\n')[0] || 'Conversation' : project.name;
+  // A decision's discussion is about the decision, not its first comment (#1424, persona round 8): "About “Stand closes at 15:00”".
+  const title = conversation?.decision ? conversation.decision.title : conversation ? plainMessageText(conversation.firstMessageBody).split('\n')[0] || 'Conversation' : project.name;
   return <div className="composer project-convo__composer"><div className="composer__in">
     <ConnectionLine />
     {/* A space's conversation and its threads are read by the space's people, the default, so no audience is said (#871). */}
     {asking ? <AskBar id="project-ask" state={askBar.state} error={askBar.error} onExit={ask.exitAsk} onAction={askBar.onAction} />
-      : conversation ? <div className="project-convo__to"><p className="project-convo__current-thread" title={title}>Replying to · {title}</p></div> : null}
+      : conversation ? <div className="project-convo__to"><p className="project-convo__current-thread" title={title}>{conversation.decision ? `About “${title}”` : `Replying to · ${title}`}</p></div> : null}
     {!asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
     {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
     <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
@@ -44,7 +45,7 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, typing,
         'aria-activedescendant': menuOpen ? `${composerId}-menu-${options[activeIndex]!.id}` : undefined }}
       attach={asking ? null : publicComposer}
       sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
-      sendDisabled={!drafts.composer.canSend || busy || askBusy || (asking && askBar.state.kind !== 'ready')} onSend={() => void actions.send()}
+      sendDisabled={!drafts.composer.canSend || busy || askBusy} onSend={() => void actions.send()}
       menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={menu.trigger?.char ?? '@'} onPick={menu.pick} onHover={menu.setMenuIndex} />} />
     {conversation ? <TypingNotice {...typing} /> : null}
     <SendAnnouncer pending={publicComposer.pending} />

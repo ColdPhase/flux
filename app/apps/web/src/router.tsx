@@ -1,4 +1,4 @@
-import { Outlet, createBrowserRouter, useLocation, useMatches, useRouteError, useRouteLoaderData, type RouteObject } from 'react-router';
+import { Outlet, createBrowserRouter, useLocation, useMatches, useRouteError, useRouteLoaderData, type RouteObject, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { markBooted, noteShown } from './place/memory';
 import { ToastProvider, markMotionReady } from './ui';
@@ -11,7 +11,6 @@ import { Booting, PlaceError, RouteCodeLoadError, RouteErrorPage } from './app/e
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
 import { AiNotForGuests } from './ai/AiNotForGuests';
-import { LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
 import { authPages, conversationPage, docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
@@ -110,6 +109,22 @@ function Root() {
   return <ToastProvider scopeKey={scopeKey}><UpdatePrompt /><Outlet /></ToastProvider>;
 }
 
+/** The address without `?open=`, the rest of its query in one order. */
+const withoutOpen = (url: URL) => { const params = new URLSearchParams(url.search); params.delete('open'); params.sort(); return params.toString(); };
+
+/**
+ * `?open=` names the task or decision a place shows in its panel and stays in the address while it is open (F-026 §4), so it is no data of
+ * the shell or the space: a navigation whose query differs only by it (leaving an opened object for Settings, Back to where it was followed
+ * from) does not read them again. Train 28 took the flag off at once and read nothing; keeping it made every way out of an opened object
+ * read the whole shell again, and Settings waited on that read. Anything else that asks for a read still reads: a submission, a revalidation
+ * on its way (a space just created), another query, or the route's own param (`key`).
+ */
+const ignoringOpen = (key?: string) => ({ currentUrl, nextUrl, currentParams, nextParams, formMethod, actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) => {
+  if (!defaultShouldRevalidate || formMethod || actionStatus !== undefined || currentUrl.search === nextUrl.search) return defaultShouldRevalidate;
+  if (withoutOpen(currentUrl) !== withoutOpen(nextUrl) || (key && currentParams[key] !== nextParams[key])) return true;
+  return router.state.revalidation !== 'idle';
+};
+
 export const router = createBrowserRouter([
   {
     Component: Root,
@@ -143,6 +158,7 @@ export const router = createBrowserRouter([
         id: 'app',
         path: '/',
         loader: appLoader,
+        shouldRevalidate: ignoringOpen(),
         Component: AppLayout,
         ErrorBoundary: RouteErrorPage,
         children: [{
@@ -151,13 +167,14 @@ export const router = createBrowserRouter([
           ErrorBoundary: PlaceError,
           children: [
           { index: true, Component: Home },
-          { path: 'spaces/:workspaceId', Component: LockedSpacePage },
+          { path: 'spaces/:workspaceId', ...lazyComponent(() => import('./encryption/LockedSpace'), (page) => page.LockedSpacePage) },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.
             id: 'project',
             path: 'projects/:projectId',
             loader: projectShellLoader,
+            shouldRevalidate: ignoringOpen('projectId'),
             children: [
               // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it. Its code is not part of the first
               // visit (#1178): it comes beside the conversation's reads, and inside the app while the browser is idle.
@@ -230,7 +247,8 @@ export const router = createBrowserRouter([
           { path: '*', Component: NotFoundView, handle: { notFound: true } },
           ],
         }],
-      }),
+      // The shell's read is the same on every page: offline, a move to another place keeps the sidebar and the header (round 15).
+      }, ['app']),
     ],
   },
 ]);

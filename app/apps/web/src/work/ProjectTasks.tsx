@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Project, ProjectWorkViewQuery, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import { redirect, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { decisionAppPath, type Project, type ProjectWorkViewQuery, type WorkItem, type WorkObjectType, type WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
 import { WORK_EVENT, streamLive, useStreamEvents } from '../api/stream';
@@ -24,6 +24,10 @@ interface TasksData { project: Project }
 
 /** Object rows use their separate bounded page; this loader supplies the project contract. */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
+  // Tasks lists no decisions (#342): an older `?open=decision:<id>` link (a bookmark, a notification written before) opens where every
+  // decision opens, over its space's conversation, so it is never a dead link.
+  const decision = /^decision:([0-9a-f-]{36})$/i.exec(new URL(request.url).searchParams.get('open') ?? '');
+  if (decision) throw redirect(decisionAppPath(params.projectId!, decision[1]!.toLowerCase()));
   return { project: await getProject(params.projectId!, request.signal) };
 }
 
@@ -117,7 +121,8 @@ function keepCursor(key: string, cursor: string | null) {
 export function ProjectTasks() {
   const { project } = useLoaderData() as TasksData;
   const owners = useAgentOwners(project);
-  const { openDetails, openCreate } = useShellActions();
+  const { openDetails, openCreate, shownObject } = useShellActions();
+  const shownWork = shownObject?.kind === 'work' ? shownObject.id : null;
   const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
   const { me } = useShellData();
@@ -257,7 +262,8 @@ export function ProjectTasks() {
   const groupCount = (id: GroupId, visible: number) => needle ? visible : visible ? counts?.[id] ?? 0 : 0;
   // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
+  // The row of the task open in the panel is marked, as its card is on the Board (round 15 look-3 e).
+  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} open={shownWork === item.id} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
@@ -284,7 +290,7 @@ export function ProjectTasks() {
           {/* No Refresh: the List updates live, and on focus (#1419). */}
           <WorkPagination noun="tasks" page={data} caption={needle && data ? `${work.length} ${work.length === 1 ? 'match' : 'matches'}` : undefined} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} stepsWhenPaged />
         </div>
-        {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
+        {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <Button variant="link" size="sm" onClick={refresh}>refresh from the start</Button>.</p> : null}
         {searchedPage ? <p className="tb-note" role="note"><Icon name="search" size={14} /><span>The search looks through the tasks on this page. Use Previous and Next to look through the others.</span></p> : null}

@@ -97,7 +97,8 @@ Backlinks are the incoming links: other docs that mention a doc, and work object
 (`POST /api/v1/projects/:id/links` now accepts `{ type: 'doc' }` and `{ type: 'sketch' }`
 targets). Work items and decisions show "In docs" in their Details. Rendered references
 open in the app: docs, messages and sketches by route, work objects in the Details panel
-(`/projects/:id/tasks?open=decision:<id>` opens it from a new tab).
+(`/projects/:id/tasks?open=work:<id>` opens a task from a new tab; a decision opens where it opens from everywhere, over its space's
+conversation: `/projects/:id?open=decision:<id>`, contracts `decisionAppPath`).
 
 ## Add to docs
 
@@ -218,9 +219,11 @@ draws it since #869: two columns only, the sidebar and the page.
   reading the page. Rename and Restore save the head with their title or reason; when someone else
   typed or saved meanwhile, they try again on the newer head for up to 10 s.
 - **History** (⋯ › History, `…/history?from=&to=`): every version with its reason, author and date,
-  the comparison as the page reads (no Markdown view, #1376), and **Restore version N**, which opens the
+  the comparison as the page reads (no Markdown view, #1376), and **Restore this version** on the chosen
+  version's row (only for a version that is not the current one; there is no other Restore button on History,
+  founder direction 2026-11-17, #1424), which opens the
   page and makes that version the page again (shared at once with live editing) as the next version.
-  An earlier version (`…/versions/:n`) is read as the server rendered it, with Restore.
+  An earlier version (`…/versions/:n`) is read as the server rendered it, read only: Restore lives in one place, its row in History.
 - **Import a Markdown file** (`markdown-file.ts`): one `.md`/`.markdown` file of at most 400 KB and
   100,000 characters, valid UTF-8 without NUL; anything else is refused with its reason and nothing
   is created. The title comes from a leading `# Title`, else the file name; line endings become

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { Link, Navigate, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Doc, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Icon, Select, Option } from '../ui';
+import { Button, Icon } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { docUrl, getDoc, getLiveDoc, getVersion, listVersions } from './api';
-import { diffDocs, diffStats, readableRefs } from './diff';
 import { authorLabel, longDate, shortDate } from './format';
 import { DocProse } from './DocProse';
 import { NoPages, PageFrame, scrollPage, useReferenceClicks } from './WikiParts';
@@ -86,7 +86,7 @@ export async function docVersionLoader({ params, request }: LoaderFunctionArgs):
   return { doc, shown };
 }
 
-/** An earlier version, read as it was written, with Restore. */
+/** An earlier version, read as it was written. Restoring it is not offered here: it lives in one place, the version's row in History (#1424, 2026-11-17). */
 export function VersionPage() {
   const { doc, shown } = useLoaderData() as VersionData;
   const { project } = useWiki();
@@ -94,17 +94,24 @@ export function VersionPage() {
   useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
     { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: `doc · earlier version ${shown.version}` });
   const earlier = shown.version !== doc.version;
+  const location = useLocation();
+  // The current version is the page itself (round 15 new P2-4: Search's Wiki result opened "/versions/4", "You are reading a saved
+  // version", although version 4 was the page): it opens the page, keeping where it was followed from and the section an answer cited
+  // (C-62, `#section-2`), at whose heading the page opens.
+  if (!earlier) return <Navigate to={{ pathname: base, hash: location.hash }} replace state={location.state} />;
   return (
     <ReadPage doc={doc} shown={shown} notice={(
-      <p className="doc-notice"><Icon name="undo" size={14} />{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
-        <Link to={base}>Open the current version</Link>
-        {earlier ? <><RestoreButton docUrl={base} version={shown.version} quiet /><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</p>
+      <p className="doc-notice doc-notice--version"><Icon name="undo" size={14} /><span>You are reading an earlier version. It stays as it was written.</span>
+        {/* The ways on are a row of their own under the sentence, at its edge (founder direction 2026-11-17 visual review). */}
+        <span className="doc-notice__links"><Link to={base}>Open the current version</Link>
+          <Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></span></p>
     )} />
   );
 }
 
 /** A saved version as the server rendered it, read only. */
 function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice: ReactNode }) {
+  const meId = useShellData().me.user.id;
   const { project } = useWiki();
   const owners = useAgentOwners(project);
   const [prose, setProse] = useState<HTMLElement | null>(null);
@@ -126,7 +133,7 @@ function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice:
   useEffect(() => { if (prose && /^#section-\d{1,3}$/.test(hash)) go(hash.slice(1)); }, [prose, hash, go]);
   return (
     <PageFrame docId={doc.id} title={shown.title} headings={headings} onHeading={go}
-      meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author)}</>}
+      meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author, meId)}</>}
       shown={{ title: shown.title, body: () => shown.body, version: shown.version, current: shown.version === doc.version }}
       notices={notice} onBodyClick={onClick}>
       {shown.body.trim()
@@ -159,26 +166,37 @@ export async function docHistoryLoader({ params, request }: LoaderFunctionArgs):
   return { doc, versions, from, to };
 }
 
+const words = (count: number) => `${count} ${count === 1 ? 'word' : 'words'}`;
+/** "2 words added, 1 removed", "3 words removed": what the comparison marks, in words. */
+const wordChanges = ({ added, removed }: { added: number; removed: number }) =>
+  added && removed ? `${words(added)} added, ${removed} removed` : added ? `${words(added)} added` : `${words(removed)} removed`;
+
 /** What changed between two versions, as the page reads (#511 AC-1). There is no Markdown view: history shows the rendered version only (Hubert, 2026-11-13, #1376). */
 function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
+  const meId = useShellData().me.user.id;
   const onClick = useReferenceClicks();
-  const rows = useMemo(() => {
-    const titles = new Map([...(from?.mentions ?? []), ...to.mentions].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title]));
-    return diffDocs(readableRefs(from?.body ?? '', titles), readableRefs(to.body, titles));
-  }, [from, to]);
+  // The counts are the words the comparison below marks (round 15 daily P3-7: a line count read "+1 −1" over one added word and nothing struck).
   const page = useMemo(() => blockDiff(from?.html ?? '', to.html), [from, to.html]);
-  const stats = diffStats(rows);
+  const stats = page.words;
+  // The first version has nothing before it to compare with (round 14 new d, daily 9: "+0 −0 · The text is the same in both versions." under a
+  // lone v1, and a first version all underlined as "added"): it is shown as it was written, or says it started with no text.
+  const first = !from;
   return (
     <section className="doc-changes" aria-labelledby="doc-changes-h">
       <header className="doc-changes__top">
         <h3 id="doc-changes-h">
           {from ? <>v{from.version} → v{to.version}</> : <>Version {to.version}, the first</>}
-          <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
+          {first || !page.changed ? null : <span className="doc-changes__stat"> · {wordChanges(stats)}</span>}
         </h3>
       </header>
-      <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>
+      {/* Each version is named by who made it, the reader as "Jonas Berg (you)" (personas-36), so the sentence says "by", not a possessive. */}
+      <p className="doc-changes__why">{from ? <>From the version by {authorLabel(from.author, meId)} of {longDate(from.createdAt)} to the one by {authorLabel(to.author, meId)} of </>
+        : <>By {authorLabel(to.author, meId)} on </>}{longDate(to.createdAt)} · {to.reason}</p>
       {from && from.title !== to.title ? <ul className="doc-changes__facts"><li>Title: <del>{from.title}</del> → <ins>{to.title}</ins></li></ul> : null}
-      {page.changed ? (
+      {first ? (to.body.trim()
+        ? <section className="doc-changes__page doc-changes__page--first" aria-label="The text of the first version"><DocProse html={to.html} onClick={onClick} /></section>
+        : <p className="doc-muted">The page started with no text.</p>)
+      : page.changed ? (
         <>
           <section className="doc-changes__page" aria-label="Changes in the text">
             <DocProse html={page.html} onClick={onClick} />
@@ -194,19 +212,17 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
  * Restore is an action, not an address (#946 review): the page opens with the version to bring back in its navigation
  * state, which no link can carry, and the page makes it the next version.
  */
-function RestoreButton({ docUrl: base, version, quiet = false }: { docUrl: string; version: number; quiet?: boolean }) {
+function RestoreButton({ docUrl: base, version }: { docUrl: string; version: number }) {
   const navigate = useNavigate();
-  return (
-    <button type="button" className={quiet ? 'ui-link wiki-restore-link' : 'ui-btn ui-btn--soft wiki-head__restore'} onClick={() => navigate(base, { state: { restore: version } })}>
-      {quiet ? null : <Icon name="undo" size={14} />}{quiet ? 'Restore this version' : `Restore version ${version}`}
-    </button>
-  );
+  // On the chosen version's row of History: a button of the system (an outline, as a row's action).
+  return <Button variant="outline" size="sm" icon="undo" className="doc-version__restore" onClick={() => navigate(base, { state: { restore: version } })}>Restore this version</Button>;
 }
 
 /** History (⋯ › History): every version with who made it and when, what changed between two, and Restore. */
 export function DocHistory() {
   const { doc, versions, from, to } = useLoaderData() as HistoryData;
   const { project } = useWiki();
+  const meId = useShellData().me.user.id;
   const [, setSearch] = useSearchParams();
   const base = docUrl(project.id, doc.id);
   const compare = (next: { from?: number; to?: number }) => {
@@ -214,14 +230,12 @@ export function DocHistory() {
     const source = next.from ?? (next.to ? target - 1 : from?.version ?? target - 1);
     setSearch(source >= 1 && source !== target ? { from: String(source), to: String(target) } : { to: String(target) });
   };
-  // Restore brings back the earlier side of the comparison: the chosen version, or the one before the current page.
-  const restore = to.version !== doc.version ? to.version : from?.version ?? null;
+  // Restore lives in one place (founder direction, Hubert 2026-11-17, #1424): the chosen version's row, when it is not the current page.
   return (
     <div className="wiki-page wiki-page--wide doc-history">
       <div className="wiki-head">
         <Link className="ui-btn ui-btn--quiet wiki-head__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>
         <p className="wiki-head__meta">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</p>
-        {restore ? <RestoreButton docUrl={base} version={restore} /> : null}
       </div>
       <h2 className="wiki-title__h wiki-title--plain">{doc.title}</h2>
       <div className="doc-history__grid">
@@ -234,10 +248,17 @@ export function DocHistory() {
                   <span className="doc-version__dot" aria-hidden="true" />
                   <span className="doc-version__b">
                     <span className="doc-version__t">{item.reason}</span>
-                    <span className="doc-version__s">v{item.version} · {authorLabel(item.author)} · {shortDate(item.createdAt)}</span>
+                    <span className="doc-version__s">v{item.version} · {authorLabel(item.author, meId)} · {shortDate(item.createdAt)}</span>
                   </span>
                 </button>
-                <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
+                {/* The chosen version's row says what can be done with it, in words (round 14 daily 9: a "Read" on every row was unclear): read it
+                    as it was written (the page itself for the current one), and Restore it when it is not the page. */}
+                {item.version === to.version ? (
+                  <span className="doc-version__acts">
+                    <Link className="ui-link doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`}>{item.version === doc.version ? 'Open the page' : 'Read this version'}</Link>
+                    {item.version !== doc.version ? <RestoreButton docUrl={base} version={item.version} /> : null}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ol>

@@ -1,5 +1,5 @@
 import type { AddMemberCommand, ChangeRoleCommand, RemovedPerson, WorkspaceMember } from '@flux/contracts';
-import { recordEvent } from '../events.js';
+import { recordEvent, recordEvents } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts, recordAccessEnded, requireRoleAuthority } from './common.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
@@ -36,30 +36,41 @@ export async function listMembers(principal: Principal, workspaceId: string, db:
   });
 }
 
-/** Who left the company or was removed and has not joined again (Settings › Company). */
+/** Who left the company or was removed and has not joined again (Settings › Company), with the role and spaces Restore brings back. */
 export async function listRemovedPeople(principal: Principal, workspaceId: string, db: Database, ports: MemberPorts): Promise<RemovedPerson[]> {
   enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(db)), 'workspace');
-  return (await ports.workspaces(db).removedPeople(workspaceId)).map((person) => ({ ...person, removedAt: person.removedAt.toISOString() }));
+  return (await ports.workspaces(db).removedPeople(workspaceId)).map((person) => ({ userId: person.userId, email: person.email, name: person.name,
+    removedAt: person.removedAt.toISOString(), role: person.role, spaces: person.spaces }));
 }
 
 /**
- * Brings someone back as a member (Hubert, 2026-11-05). They are in Everyone again and sign in as usual; other spaces are
- * added by hand, because leaving ended their grants.
+ * Brings someone back as they were (Hubert, 2026-11-05; founder decision #1424 F, 2026-11-15): the role they had (an Admin returns as
+ * Admin), each space they were in that still exists with their role there, and their direct messages, which the removal kept. They sign in
+ * as usual. Only an owner gives back the owner role, as only an owner grants it.
  */
 export async function restoreMember(principal: Principal, workspaceId: string, userId: string, db: Database, ports: MemberPorts): Promise<WorkspaceMember> {
   return db.transaction(async (tx) => {
     const workspaces = ports.workspaces(tx);
     await workspaces.lock(workspaceId);
-    enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
+    const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     const person = (await workspaces.removedPeople(workspaceId)).find((entry) => entry.userId === userId);
     if (!person) throw new NotFoundError('Person', 'REMOVED_PERSON_NOT_FOUND');
+    const role = person.role;
+    requireRoleAuthority(actor, role);
     // An encrypted space brings back only someone who is in the company now and not its guest, as adding does (review of #976, round 2).
     const company = await workspaces.companyOf(workspaceId);
     if (company) requireSpacePerson(await ports.encryption(tx).memberRole(company, userId, { lock: true }));
-    const member = await workspaces.insertMember({ workspaceId, userId, role: 'member', createdBy: principal.id });
+    const member = await workspaces.insertMember({ workspaceId, userId, role, createdBy: principal.id });
     if (!member) throw new ConflictError('Account is already a member', 'ALREADY_MEMBER');
-    await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId, role: 'member' });
-    return { userId, email: person.email, name: person.name, role: 'member', createdAt: member.createdAt.toISOString() };
+    const back = await workspaces.restoreKept(workspaceId, userId, person.kept, principal.id);
+    // Events are the last writes: every audience is decided before the first one is stored.
+    await recordEvents(eventPorts(ports, tx), [
+      { principal, workspaceId, kind: 'workspace.member_added.v1', objectId: workspaceId, data: { userId, role } },
+      ...back.spaces.map((space) => ({ principal, workspaceId, kind: 'project.grant_set.v1', objectId: space.projectId,
+        data: { grantId: space.grantId, principal: { kind: 'human', id: userId }, role: space.role } })),
+      ...back.dms.map((dmId) => ({ principal, workspaceId, kind: 'dm.changed.v1', objectId: dmId, data: { op: 'rejoined' } })),
+    ]);
+    return { userId, email: person.email, name: person.name, role, createdAt: member.createdAt.toISOString() };
   });
 }
 
@@ -115,6 +126,10 @@ export async function changeRole(principal: Principal, workspaceId: string, user
       await workspaces.endSpaceAdmin(workspaceId, userId);
       // A guest of the company is in no encrypted space: becoming one ends the place, as leaving does, with the same key change (C-24).
       await endPlacesInEncryptedSpaces(principal, workspaceId, userId, tx, ports);
+    } else if (target.role === 'guest') {
+      // A guest who is a member again has back what becoming a guest held: their space admin roles (personas-35: the role change's Undo
+      // restores everything it removed), as their agents and keys come back.
+      await workspaces.restoreSpaceAdmin(workspaceId, userId);
     }
     // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
@@ -140,8 +155,9 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     if (!self) requireRoleAuthority(actor, target.role);
     if (target.role === 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('The company needs at least one owner', 'LAST_OWNER');
     if (isManager(target.role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
-    await workspaces.deleteMember(workspaceId, userId);
+    // What Restore brings back is read from the membership before it goes (its grants and DM places go with it).
     await workspaces.recordRemoved(workspaceId, userId, principal.id);
+    await workspaces.deleteMember(workspaceId, userId);
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
     await recordAccessEnded(ports, tx, principal, workspaceId, userId);

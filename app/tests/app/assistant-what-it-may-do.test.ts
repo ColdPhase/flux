@@ -477,7 +477,7 @@ describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)',
     assert.equal((await pool.query(`SELECT 1 FROM project_work_items WHERE project_id = $1 AND title = 'Outside the place'`, [vault.id])).rowCount, 0);
   });
 
-  test('a target that is gone at Approve reads "Changed since you asked", not as outside the place', async () => {
+  test('a target that is gone at Approve says so, not "Changed since you asked" and not as outside the place (v0.2.1 real-model gate row 24)', async () => {
     const sketch = await scene.map(scene.owner);
     const item = await thought(scene.owner, sketch.id, 'Gone before the OK');
     await scene.setMayDo('ask');
@@ -488,7 +488,23 @@ describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)',
     const [saved] = await changesOf(live.runId);
     const answer = await decide(scene.owner, saved!.id, 'apply', { expectedVersion: saved!.version });
     assert.equal(answer.status, 409);
-    assert.equal((answer.json as { code: string }).code, 'ASSISTANT_CHANGE_STALE');
+    assert.deepEqual([(answer.json as { code: string }).code, (answer.json as { error: string }).error],
+      ['ASSISTANT_CHANGE_GONE', 'Something this refers to isn\'t there any more, so it wasn\'t made']);
+  });
+
+  test('a held decision that names a task that does not exist says so at Approve, not "Changed since you asked" (v0.2.1 real-model gate row 24)', async () => {
+    await scene.setMayDo('ask');
+    const earlier = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/decisions`, { body: { title: 'Shop opens at 6:30' } }), 201) as { id: string };
+    const live = await scene.liveRun();
+    // The real model put a decision's id where only tasks go.
+    assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'Stand opens at 9:00', affects: [earlier.id] } })).message), /^Waiting for /);
+    await scene.complete(live.runId);
+    const [saved] = await changesOf(live.runId);
+    const answer = await decide(scene.owner, saved!.id, 'apply', { expectedVersion: saved!.version });
+    assert.equal(answer.status, 409, JSON.stringify(answer.json));
+    assert.deepEqual([(answer.json as { code: string }).code, (answer.json as { error: string }).error],
+      ['ASSISTANT_CHANGE_GONE', 'Something this refers to isn\'t there any more, so it wasn\'t made']);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_decisions WHERE project_id = $1 AND title = 'Stand opens at 9:00'`, [scene.place.id])).rows[0].n, 0);
   });
 
   test('a thought or a map someone else edited waits; your own and your agents\' edits keep it yours, past its first version', async () => {

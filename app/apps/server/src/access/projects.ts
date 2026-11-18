@@ -39,7 +39,8 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     listProjects(await principal(request), request.params.workspaceId, request.query, db, accessPorts));
   app.post<{ Params: { workspaceId: string }; Body: CreateProjectCommand }>(`${WORKSPACES_PATH}/:workspaceId/projects`, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] },
-      ai: { type: 'boolean' }, people: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1 } } } } },
+      ai: { type: 'boolean' }, people: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1 } },
+      invites: { type: 'array', maxItems: 50, items: { type: 'string', minLength: 1, maxLength: 64 } } } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn, accessPorts),

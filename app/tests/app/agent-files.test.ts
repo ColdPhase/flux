@@ -110,11 +110,17 @@ describe('flux_attach_file: an agent attaches a file to its answer like its aske
     assert.deepEqual(await stagedFor(scene.owner.id), [], 'no space\'s file');
     assert.deepEqual(await download(scene.owner, kept[0]!.id), { status: 200, text: PAGE });
     assert.equal((await download(scene.peer, kept[0]!.id)).status, 404, 'nobody else opens it');
+    // The agent found its material in a space and names that project: the file still goes on its chat answer, no space is changed (O41).
+    const named = await run.call('flux_attach_file', { projectId: scene.place.id, clientCommandId: randomUUID(), name: 'budget.csv', content: 'item,cost\nstand,40\n' });
+    assert.equal(result(named.message)?.isError, undefined, text(named.message));
+    assert.match(text(named.message), /only your owner sees it/);
+    assert.deepEqual(await stagedFor(scene.owner.id), [], 'still no space\'s file');
     const video = await run.call('flux_attach_file', { name: 'clip.mp4', content: 'not a video' });
     assert.match(text(video.message), /^Not attached\. A video cannot be attached in this chat/);
     await scene.complete(run.runId);
     const view = await scene.runs.get(human(scene.owner), run.runId);
-    assert.deepEqual(view.pictures, [{ id: kept[0]!.id, name: 'notes.html', size: Buffer.byteLength(PAGE) }]);
+    assert.deepEqual(view.pictures?.[0], { id: kept[0]!.id, name: 'notes.html', size: Buffer.byteLength(PAGE) });
+    assert.deepEqual(view.pictures?.map((file) => file.name), ['notes.html', 'budget.csv']);
   });
 
   test('never in an encrypted space: refused in words, nothing staged', async () => {

@@ -5,6 +5,7 @@ import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { plainWords } from './messageWords';
 import { MessageSheet } from './MessageSheet';
 import { swallowReleaseClick } from './releaseClick';
+import { isTyping } from '../ui/keys';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
@@ -60,7 +61,8 @@ export interface MessageActionOptions {
 }
 
 /** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
-export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
+/** `stays`: choosing it leaves the person where they were (a copy), so focus goes back to ⋯, never to the page's body. */
+export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean; stays?: boolean }
 
 /** The words Copy text puts on the clipboard: the message's body as plain text. */
 const wordsOf = (options: MessageActionOptions | DmActionOptions) => plainWords(options.kind === 'dm' ? options.body : options.message.body);
@@ -91,9 +93,9 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'tasks' as const, run: onCreateWork }] : []),
     // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
     ...((writable || options.kind === 'dm') && onAddToMap && !removed ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
-    { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)) },
+    { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)), stays: true },
     // Every message a person can read, not only their own; a deleted one has no words, and a message of files alone has none to copy.
-    ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words) }] : []),
+    ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words), stays: true }] : []),
     // Below a line, after Copy link, on the person's own messages only (#1006).
     ...(onEdit && !removed ? [{ id: 'edit', label: 'Edit', icon: 'edit' as const, run: onEdit, secondary: true }] : []),
     ...(onDelete && !removed ? [{ id: 'delete', label: 'Delete', icon: 'trash' as const, run: onDelete, secondary: true }] : []),
@@ -109,10 +111,19 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
     if (!node) return;
     const { offsetWidth: width, offsetHeight: height } = node;
     const box = anchor.getBoundingClientRect();
-    const left = Math.max(12, Math.min(box.right - width, window.innerWidth - width - 12));
+    // It opens away from the message it acts on (visual review 2026-11-17: it covered the words): from the toolbar's far edge, under it,
+    // to the right of someone else's message and to the left of one's own, as the toolbar itself sits.
+    const pill = (anchor.closest('.msg-acts') ?? anchor).getBoundingClientRect();
+    const mine = !!anchor.closest('.is-mine');
+    const left = Math.max(12, Math.min(mine ? pill.right - width : pill.left, window.innerWidth - width - 12));
     const below = box.bottom + 8;
-    const top = below + height > window.innerHeight - 12 ? Math.max(12, box.top - height - 8) : below;
-    setPlace({ top, left });
+    // Under the button, else over it; never past the window: taller than the room on its side, it scrolls (a large text size).
+    const room = { below: window.innerHeight - 12 - below, above: box.top - 8 - 12 };
+    const side = height <= room.below || room.below >= room.above ? 'below' : 'above';
+    const maxHeight = Math.max(120, side === 'below' ? room.below : room.above);
+    const shown = Math.min(height, maxHeight);
+    const top = side === 'below' ? below : Math.max(12, box.top - shown - 8);
+    setPlace({ top, left, ...(height > maxHeight ? { maxHeight, overflowY: 'auto' as const } : {}) });
   }, [anchor, items.length]);
   useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -129,7 +140,7 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
   const primary = items.filter((item) => !item.secondary);
   const secondary = items.filter((item) => item.secondary);
   const render = (item: MenuItem) => (
-    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled} onClick={() => { onClose(false); item.run(); }}>
+    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled} onClick={() => { onClose(item.stays === true); item.run(); }}>
       <Icon name={item.icon} size={18} />{item.label}
     </button>
   );
@@ -155,6 +166,22 @@ function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[];
   return pop.mounted ? <MessageMenu {...props} popProps={pop.props} /> : null;
 }
 
+/** How long the pill stays after the pointer leaves its message: time to travel to it, short enough not to stay over the next one. */
+const LINGER_MS = 300;
+let lingering: { pill: HTMLElement; timer: number } | null = null;
+/** Ends the pill's moment after the pointer left (when the pointer enters any message, or the time is up). */
+function endLinger() {
+  if (!lingering) return;
+  window.clearTimeout(lingering.timer);
+  delete lingering.pill.dataset.linger;
+  lingering = null;
+}
+function linger(pill: HTMLElement) {
+  endLinger();
+  pill.dataset.linger = '';
+  lingering = { pill, timer: window.setTimeout(endLinger, LINGER_MS) };
+}
+
 /**
  * The computer's actions on one message: reply in thread, create a task and a menu. They appear over the
  * message's corner on hover and focus and take no room in the stream; a phone has gestures instead.
@@ -173,7 +200,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
     if (!row) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat || event.defaultPrevented) return;
-      if ((event.target as Element | null)?.closest?.('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable], [role="menu"]')) return;
+      if (isTyping(event.target) || (event.target as Element | null)?.closest?.('[role="menu"]')) return;
       const key = event.key.toLowerCase();
       if (key === 'r' && writable && onReply) { event.preventDefault(); onReply(); }
       else if (key === 't' && writable && !removed) { event.preventDefault(); onCreateWork(); }
@@ -181,6 +208,19 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
     row.addEventListener('keydown', onKey);
     return () => row.removeEventListener('keydown', onKey);
   }, [touch, writable, onReply, onCreateWork, removed]);
+  // The pill stays a moment after the pointer leaves its message (founder check, Hubert 2026-11-17: it went before the pointer reached it), so a
+  // pointer on its way to it, past the bubble's edge or through the room between two messages, still finds it. One pill lingers at a time, and
+  // another message under the pointer takes the toolbar at once (message-actions.css), so two never show.
+  useEffect(() => {
+    const pill = group.current;
+    const host = pill?.parentElement?.closest<HTMLElement>('.project-convo__message, .dm-msg');
+    if (touch || !pill || !host) return;
+    const enter = () => endLinger();
+    const leave = (event: globalThis.PointerEvent) => { if (event.pointerType === 'mouse' || event.pointerType === 'pen') linger(pill); };
+    host.addEventListener('pointerenter', enter);
+    host.addEventListener('pointerleave', leave);
+    return () => { if (lingering?.pill === pill) endLinger(); host.removeEventListener('pointerenter', enter); host.removeEventListener('pointerleave', leave); };
+  }, [touch]);
   if (touch) return null;
   return (
     <div ref={group} className="msg-acts ui-reveal" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>

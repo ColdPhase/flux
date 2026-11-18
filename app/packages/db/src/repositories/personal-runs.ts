@@ -12,6 +12,7 @@ import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
 import { companyGuestSql, isCompanyGuest } from './access.js';
 import { personTimeZones } from './person-time-zone.js';
+import { dmAuthorName, removedInDm } from './direct-messages.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -104,7 +105,8 @@ export function personalRunRows(db: DbExecutor) {
     if (!runIds.length) return counts;
     const rows = await db.select({ runId: c.runId, state: c.state, count: sql<number>`count(*)::int` }).from(c)
       .where(and(inArray(c.runId, runIds), inArray(c.state, ['applied', 'applied_after_wait', 'undone']), sql`jsonb_typeof(${c.receipt} -> 'undo') = 'object'`,
-        sql`NOT (${c.receipt} #>> '{undo,plan,kind}' = 'removal' AND ${c.receipt} #>> '{undo,plan,thread}' = 'true')`))
+        // `IS DISTINCT FROM`, not `NOT (… = …)`: most plans have no `thread` (a new page, decision or map), and NULL would leave them uncounted.
+        sql`(${c.receipt} #>> '{undo,plan,kind}' IS DISTINCT FROM 'removal' OR ${c.receipt} #>> '{undo,plan,thread}' IS DISTINCT FROM 'true')`))
       .groupBy(c.runId, c.state);
     for (const row of rows) {
       if (!row.runId) continue;
@@ -209,6 +211,13 @@ export function personalRunRows(db: DbExecutor) {
       return row ? toRun(row) : null;
     },
 
+    /** The owner's requests on this key that wait, queued, for its next day (#854): what raising its budget starts again (train 37 row 37). */
+    async waitingForBudget(ownerUserId: string, connectionId: string) {
+      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), eq(r.connectionId, connectionId), eq(r.status, 'queued'),
+        eq(r.endReason, 'budget'), sql`${r.resumeAt} IS NOT NULL`)).orderBy(asc(r.createdAt));
+      return rows.map((row) => row.id);
+    },
+
     /** Queued runs whose owner's lane is free, each owner's requests first, and whoever waited longest first: the next starts when the one before it ends. */
     async startableQueued(limit: number, keys = false) {
       // Heads waiting for room stay out of the list until there is room, so they never crowd out a run on an API key (unless API keys run in
@@ -269,13 +278,18 @@ export function personalRunRows(db: DbExecutor) {
       return [...undispatched, ...lost].map(toRun);
     },
 
+    /**
+     * Every run in the runtime: a plan's CLI and an API key's pi (#1441, RT-1), whose supervisor reports both. A lost key run ends as the
+     * crash sweep ends it: what it had spent and the most one more request could have cost stay counted, and its line stays its own.
+     */
     async endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number) {
       const rows = await db.update(r).set({
         status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
         costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
-        endReason: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE ${r.endReason} END`,
+        endReason: sql`CASE WHEN ${r.status} = 'dispatching' AND ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END`,
+        reservedMicros: sql`CASE WHEN ${r.status} = 'dispatching' THEN ${lostReservation} ELSE ${r.reservedMicros} END`,
         chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
-      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE engine = 'runtime' AND status IN ('reading', 'dispatching')
+      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE engine IN ('runtime', 'server') AND status IN ('reading', 'dispatching')
         AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second') AND id <> ALL(${sql.param([...running])}::uuid[])
         ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
       return rows.map(toRun);
@@ -420,7 +434,10 @@ export function personalRunRows(db: DbExecutor) {
         .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), isNull(m.removedAt), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
         .orderBy(desc(m.sequence)).limit(limit);
-      return rows.reverse().map(({ authorId, authorName, editedAt, ...row }) => ({ ...row, edited: editedAt !== null, author: { kind: 'human' as const, id: authorId }, authorName }));
+      // Its people see one who left the company or was removed as "Stefan Kowal (removed)", and so does the run (#1424, 2026-11-17).
+      const removed = await removedInDm(db, dmId, rows.map((row) => row.authorId));
+      return rows.reverse().map(({ authorId, authorName, editedAt, ...row }) => ({ ...row, edited: editedAt !== null, author: { kind: 'human' as const, id: authorId },
+        authorName: dmAuthorName(authorName, removed, authorId) }));
     },
 
     /** The last `limit` exchanges of an agent's private chat before this run: what was asked and what it answered. */
@@ -535,7 +552,7 @@ export function personalRunRows(db: DbExecutor) {
      * decision (the use case asks the policy per space). Only a page cited by section is read whole, for its headings.
      */
     async cites(scope: { workspaceId: string; projectId: string | null }, refs: readonly { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; section?: number }[]) {
-      const found: { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; projectId: string; title: string; conversationId?: string; revision?: number; version?: number; headings?: string[] }[] = [];
+      const found: { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; projectId: string; title: string; conversationId?: string; revision?: number; number?: number; version?: number; headings?: string[] }[] = [];
       const ids = (kind: string) => [...new Set(refs.filter((ref) => ref.kind === kind).map((ref) => ref.id))];
       const within = (column: AnyPgColumn) => (scope.projectId === null ? undefined : eq(column, scope.projectId));
       const docs = ids('doc');
@@ -557,9 +574,9 @@ export function personalRunRows(db: DbExecutor) {
       const tasks = ids('task');
       if (tasks.length) {
         const w = schema.projectWorkItems;
-        for (const row of await db.select({ id: w.id, projectId: w.projectId, version: w.version, title: w.title }).from(w)
+        for (const row of await db.select({ id: w.id, projectId: w.projectId, version: w.version, number: w.number, title: w.title }).from(w)
           .where(and(eq(w.workspaceId, scope.workspaceId), inArray(w.id, tasks), sql`${w.creationRevertedAt} IS NULL`, within(w.projectId))))
-          found.push({ kind: 'task', id: row.id, projectId: row.projectId, title: row.title, revision: row.version });
+          found.push({ kind: 'task', id: row.id, projectId: row.projectId, title: row.title, revision: row.version, number: row.number });
       }
       const decisions = ids('decision');
       if (decisions.length) {

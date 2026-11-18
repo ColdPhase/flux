@@ -65,6 +65,9 @@ export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' 
  * that waits for them, a decision or result about their task, #1089). Nothing else waits, and nothing waiting expires.
  */
 export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'tells';
+/** Its owner skipped (or kept) a waiting change (round 15 ai P2-2): to the owner alone, ids only, so their other screens drop the card at once. */
+export const ASSISTANT_CHANGE_SKIPPED_EVENT = 'project.assistant_change_skipped.v1';
+
 export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision' | 'picture' | 'file';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
@@ -124,7 +127,11 @@ export interface AssistantChangeDecision {
 }
 export interface AssistantChangesDecided { changes: AssistantChangeDecision[] }
 /** Undo of a whole run's message: each item's result and the sentence "Undid 5 changes. 2 changed since: #4, #7". */
-export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone: number; changedSince: string[]; message: string }
+/**
+ * The message's Undo: what it took back, what changed since, and `back`, the number of the task whose Done went with it (AG-7: a "Done: #4 …"
+ * report's Undo takes back the whole finish), null when no Done was taken back. `message` says it all: "Undid 1 change. #4 is back with you".
+ */
+export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone: number; changedSince: string[]; back: number | null; message: string }
 /** `POST …/edit`: the owner changes a task proposed for another person before approving it (F-036 AG-3 [Edit]). */
 export interface EditAssistantChangeCommand { expectedVersion: number; title: string }
 

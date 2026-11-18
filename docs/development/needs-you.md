@@ -14,12 +14,71 @@ an item. Access is checked at the moment of reading: an object the person cannot
 
 | Kind | What it is | Where it comes from |
 | --- | --- | --- |
-| `decision` | A proposed decision the person can accept now | `project_decisions.status = 'proposed'` in projects they can read, kept only when they hold write access (O-009 DA-2) |
-| `question` | A person asked them something (`@name … ?`), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
+| `decision` | A proposed decision the person can accept now | `project_decisions.status = 'proposed'` in projects they can read, kept only when they hold write access (O-009 DA-2), and never their own proposal, even when nobody else there can accept it (#763 FT-8, personas-30) |
+| `question` | A person asked them something (`@name … ?`, any question in a direct message between the two of them, or a question in a thread they started that names nobody), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
-| `mention` | Someone mentioned them | their unread `mention` notifications, newer than 14 days |
+| `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
+| `task` | Someone else or an agent gave them a task they have not opened, started or finished (#1424 C) | their unread `assigned` notification that gave them the task (below) |
 
-Replies, direct messages, assigned work and decisions to review stay notifications: they reach people where they
+**Nothing that needs you is pushed out by other notifications** (sweep-34 C1). The queue reads the notifications of the four reasons that
+can be its items (`mention`, `question`, `invitation`, `assigned`) by reason and state, never as the person's newest N of every kind: the
+mentions, questions and invitations of the last 14 days that are unread or done today, and the `assigned` ones that are unread or done today
+(with the read ones that gave the same task later, since the newest gives the item). However many direct messages, replies or other
+notices arrive after a question, it stays in the Inbox, and a mention marked done stays in done today. The read follows the partial
+index `notifications_needs_idx` (migration 0094), which holds only those four reasons, and is bounded at 400 notifications.
+
+An item's `from` is who it comes from as its title names them: the notification's `from_actor` (migration 0087), which the generator
+sets to the message's author for a question, a mention, a reply or a direct message, and to the inviter or the caller for a call. A
+question asked before someone joined comes from its asker, never from the joiner or whoever added them (persona round 28). A blocked
+task's title is the task ("#6 Seal the lids") and its line is what it waits for, in the words the board, the panel, the List and Home use
+(contracts `blockedWords`: "Waiting for Basia · the new seals", "No reason was recorded."); the person waited on reads "Ada is waiting for
+you: #6 Seal the lids" with the reason alone under it. A task made from a message answers what that message asked or mentioned of its
+maker: their question and mention items of it are done, as a reply in the conversation takes them (persona round 28).
+
+**A task given to you** (founder decision 2026-11-15, #1424 C). The generator already tells a person when a task is made with them
+as its Owner or its Owner becomes them (`assigned`, event data `assignedTo`), and never when they give it to themselves (the actor is
+never told, and `assignedTo` is only set for someone other than the actor). The queue lists the newest such notification of each task
+as a `task` item, keyed `note:<notification id>` like a mention, while all of these hold at the moment of reading:
+
+- the notification is unread, and its event named this person as `assignedTo` (the notification read gives it as `given: <task id>`,
+  read from the event it was made from; "waiting for you" and "can continue" notifications have no `given`);
+- the task is still theirs (a person Owner, them), still `open` (not started, blocked, done or dropped) and its creation was not undone;
+- they can read its space.
+
+Its `from` is who gave it (the notification's sender), its `project` the space, its title the task ("#12 Seal the lids"), its `detail`
+empty, its `url` the task (`/projects/:id/tasks?open=work:<id>`) and `task: { workId, number, version }`. It leaves when the person **opens**
+the task (the web client marks the notification read when the task panel shows a task of theirs that is a `task` item, put off for
+later or not, wherever it was opened from; `/inbox/:id` from a notice, push or email reads it too), **starts or finishes** it (status), or when it is **given to
+someone else** (owner). **Done finishes the task** (founder decision 2026-11-15, #1424): the Inbox's Done (the button, `E`, the phone's
+swipe) is the queue's own `POST /api/v1/needs-you/:key` with `{ "action": "done" }`, which makes the task's own change to Done for the person
+(as `PATCH /api/v1/work/:id` with `status: done` against `task.version`, said as everywhere: "#12 moved to Done", with its line in the
+conversation), reads the notification and keeps the choice, so the person who gave it sees it done and the item is in **done today**
+(personas-33 P2 2). Undo and Put back are the `DELETE` below: the task goes back to To do (`restore: true`, the line goes) and the item is
+back. Not now snoozes it, as for a mention; Undo brings it back. A blocked
+task given to you is its one `blocked` item. Push and email follow the person's level for `assigned`, unchanged.
+
+**Done on your blocked task finishes it** (founder decision 2026-11-15, round 8, #1424). For the owner, the `blocked` item's Done (the button,
+`E`, the phone's swipe) is the same `POST /api/v1/needs-you/:key` `{ "action": "done" }`: the task's own change to Done against `blocked.version`,
+said as everywhere ("#6 moved to Done"). For the person the task waits for (`blocked.waitedBy`) it is what `POST /work/:id/waiting-done` does:
+they are done and the task resumes ("#6 can continue"). The task panel takes both through this same call, with the same toast and Undo
+(persona round 10 and sweep-34 C9: one action, one result, wherever it is taken; on the phone a tap on the Inbox row opens the panel): the
+waited-for person's Done on the Blocked card, and the owner's Done on their own blocked task (Status › Done, its key `4`, as a person Owner).
+Done from the Board or the List stays the task's own change (`PATCH`), since those are not the Inbox's item. Either way the item is in done today, and Undo and Put back (the `DELETE`) put the task
+back to Blocked with what it waited for (the person, decision or task the item carried) and the reason it had when it left Blocked (kept on
+the activity entry of that move, sealed with it), as `restore: true` (the "done" or "can continue" line, the activity entry and the owner's
+"can continue" notification go). The waited-for person's Put back needs only read access, as their Done did, and puts back only the wait
+they ended: themselves as the person waited for (personas-33 P2 4).
+
+**What Done changed is kept with the choice** (migration 0092): `needs_you_states.restore` holds, for a Done that changed a task, ids and
+numbers only (`{ workId, version, to: "open" | "blocked", waitingForUserId?, waitingOn?, wait? }`, never words). The `DELETE` puts the task
+back only while it is unchanged since (`version`); otherwise it answers 409 `NEEDS_YOU_TASK_CHANGED` and the choice stays, so the person
+opens the task. Such an item stays in done today for 24 hours although it is no longer a need, built from the task as it is now; a task the
+person can no longer read is not listed.
+
+Home (README §7): Continue never offers what the Inbox holds, so a task given to you is "Waiting for you" until you open it, and
+"Pick up “…” · Jonas added it for you" only after that.
+
+Replies, direct messages, the other assigned notices (a blocked task waiting for you is the `blocked` item; "can continue") and decisions to review stay notifications: they reach people where they
 happen (a conversation, the Messages list, Tasks) and by push and email, and still open from their
 `/inbox/:id` links. An agent waiting for your OK (`approval`, #1186) is also only a notification: the item is the run's own
 (`assistant:<run>`), which its link opens (`/inbox?item=assistant:<run>`), and the notification is read once nothing of the run
@@ -30,15 +89,41 @@ The queue is what waits; it does not interrupt. What interrupts a person while F
 the tab and the badge, and by push is one table, by reason and level, in
 [mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243) (#1243).
 
-Order: newest first, one list for every kind (founder decision, 2026-11-13, #1367; an item's time is when it was proposed, asked, blocked or noticed). At most 300 items, of which
+Order: newest first, one list for every kind (founder decision, 2026-11-13, #1367; an item's time is when it was proposed, asked, blocked or noticed). A blocked task's time is when it became blocked: the
+time of its newest status change, or its creation when it was made blocked, never its last edit (its `blocked.since` is the same time). An Undo
+or a Put back that returns it to Blocked (of the Inbox's Done or Unblock) takes its own status change back, so the item comes back in its old
+place, not at the top (sweep-34 C11). At most 300 items, of which
 at most 200 are decisions.
+
+## Whom a question asks (personas-27, one rule)
+
+One rule decides who is asked, and Home, Waiting for you, the Inbox, push and email all read it
+(`asksStarter` and `mentions` in `app/packages/core/src/notifications/addressing.ts`):
+
+- A message that names a person (`@Name`, or opening with "Name," / "Name:") and asks something (`isQuestion`) is a `question` for them.
+- **Every question in a direct message between two people is for the other person**, with or without their name (founder decision
+  2026-11-15, #1424 A): "When do I get my apron?" from Jonas to Ola is a `question` notification for Ola, so it is "Question · Jonas Berg"
+  in her Inbox and on Home's Waiting for you, whatever her level for the conversation. Her next message there answers it (#1249) and reaches
+  Jonas as a Reply (#1424 decision 1). In a group message only a question that names someone asks them; the rest are messages.
+- **A question in a thread that names nobody with `@` is for the thread's starter** (the person who wrote its first message), unless
+  the starter asked it. "Which size, small or large?" in Piotr's thread is Piotr's question: it is a `question` notification for him, so it is
+  in his Inbox and on Home's Waiting for you, and Home's Continue never offers it again (#1424 "Nothing appears twice"). Nobody else in the thread
+  is asked; they get the thread's reply as before (#1249). Home no longer treats such a question as asked of everyone who wrote there.
+- **A person who joins later is asked too.** When someone joins a space (added to it, or by an invite link) or the company (its open spaces),
+  the newest still-open question of the last 14 days that names them reaches them as one `question` notification, as if they had been there.
+  Still open means nobody other than its author wrote in its thread after it, and they were not told of it already. An agent's line is never
+  replayed (an agent tells only its owner, AG-4).
+
+The starter's reply in the thread answers it (#1170), and the asker hears the answer (#1424 decision 1), as for any question that named them.
 
 ## One person accepts
 
 Acceptance is **single-person** ([decision-authority.md](../product/decision-authority.md), DA-2): the first
-person with write access who accepts decides, and there is no un-accept (DA-3). The card therefore does not
+person with write access who accepts decides; only its own Undo, by that person and while nothing rests on it, takes it back
+([work and decisions](work-decisions.md#accept-at-once-and-undo-takes-it-back-1424-round-8), round 8). The card therefore does not
 show "who has accepted". It shows `decision.accepters`: the people who can still accept it now, you first
-(at most six), as "waiting for you" and "Jonas can accept too". Accepting takes the decision out of everyone's
+(at most six), as "Waiting for you · Jonas can accept too": whose turn it is in words, you first, with no face of your own (persona
+round 28: your face beside "waiting for you" read as that person waiting for you). Accepting takes the decision out of everyone's
 queue.
 
 ## Who and where on every item (#1424)
@@ -65,6 +150,10 @@ person's own choice (204; idempotent).
   until a task is done (`untilWorkId`, the first unfinished task a decision affects or the first unfinished
   prerequisite of a blocked task; it ends when that task is done, set aside or gone) and a later time, but no screen offers them.
 - Done on a mention or question also reads its notification; Undo unreads it. Nothing is deleted.
+- **A locked encrypted space** (F-030). `GET /api/v1/needs-you` and `GET /api/v1/needs-you/aside` (the lists behind "N for later" and "N done
+  today") are cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`): they skip a locked space's items, name it in `lockedWorkspaces`, and the
+  `later` and `doneToday` counts leave its items out as their lists do. `POST` and `DELETE /api/v1/needs-you/:key` find the item the same way,
+  so a choice on another space's item still works; a change to a locked space's own task is refused with `423` by the sealing path.
 - **A call is not a question** (F-041, #1368). A call's notice (`reason: call`) and an invitation to a call (`reason: invitation`)
   are listed with `call: { projectId, sessionId }`, only while someone is in the call, and are named "Call" with Join. They leave the
   queue when the call ends, and when the person joins it: the join (`POST /api/v1/live-sessions/:id/join`) reads the person's notices
@@ -77,23 +166,45 @@ person's own choice (204; idempotent).
   send answer nothing. An agent's question card (S14) is answered with its own answers and stays. The same holds in a direct message
   (#1249): a message there that names the person is a `mention` or a `question` (source `dm`, URL `/dm/:id#message-…`), and their own
   message in that DM (`POST /api/v1/dms/:id/messages`, or a thread reply) answers the unread ones the same way and names them in `answered`.
+- **An answer to your question reaches you** (founder decision 2026-11-14, #1424 decision 1). The rule that makes a message a
+  `question` for the person it names also makes the answer a need for the one who asked: a person's message in a conversation of a
+  space (a thread, a task's discussion), or in a direct message at the same level (its roots, or one thread), notifies the author of a
+  message there that asked them (it names them and asks, `isQuestion`) and that came after their own last message there. The asker
+  gets a `mention` (a `question` when the answer asks something back), titled "Marta answered you in Product" ("Marta answered you" between
+  two people), which the queue lists with `answer: true` and the answer's words as its title. The generator records the fact on the
+  notification itself (`notifications.answer`, migration 0084, set from the answer it found and never read from the words), so the item is a
+  Reply in every space. It follows the asker's level, mute and
+  quiet hours as any mention. Only the first message after the question answers it (the questions considered are the 20 newest messages
+  of others since the author last wrote there); an agent's question card has no person to tell. The asker's own reply there takes it
+  out as above (#1170). In an encrypted space the notice's title keeps its fixed words ("Marta mentioned you in Garden club", no body), and
+  the item is a Reply all the same.
 - A choice about a decision or a task that is no longer a need is forgotten, so the same task blocked again
   later asks again.
 - `needs_you_states` rows cascade with the account.
 
-**Undo of Accept is the client's** (`app/apps/web/src/notifications/pendingAccept.ts`): the card shows accepted
-at once and sends the accept (`POST /api/v1/decisions/:id/accept` with `If-Match`) when the 6 second Undo
-window ends or when the person leaves the place: any navigation away from the Inbox or Home, hiding the tab
-or closing it (with `keepalive`). Undo inside the window never sends it. After it was sent, Undo says the
-decision is accepted and that a change of direction is a new proposal. Done, Not now, Decline and Unblock are
-real reversals through the calls above.
+**Accept works at once, and its Undo takes it back** (founder decision 2026-11-15, round 8, #1424; `app/apps/web/src/work/acceptDecision.ts`):
+the card leaves at once and the accept (`POST /api/v1/decisions/:id/accept` with `If-Match`) is sent at once, so everyone, the proposer
+first, sees it accepted (`project.decision_accepted.v1`; every open view of the decision re-reads on that event). The toast's Undo is
+`POST /api/v1/decisions/:id/unaccept` ([work and decisions](work-decisions.md#accept-at-once-and-undo-takes-it-back-1424-round-8)): the item
+is back in the Inbox at once, and if the acceptance is in use by then it stays, and the toast says so. Done, Not now, Decline, Unblock and
+Accept are all real reversals through the calls above; only an agent's question answered with its buttons is held for its window
+(`pendingAccept.ts`).
 
 ## Counts
 
 `GET /api/v1/needs-you` returns `{ items, count, later, doneToday, notifying }`: `count` is what the sidebar, the phone's
 tab bar and Home's "Needs you" badge show; `later` counts snoozed items, `doneToday` what was marked done or
-declined in the last 24 hours ("4 done today"). `notifying` (#1243) counts the unread notifications among the person's
-newest 100 Inbox items that would notify them under their level; the tab title's "(N)", its favicon dot and the app
+declined in the last 24 hours and would come back if put back ("4 done today"): an item that is no longer a need for another reason (a
+task started or finished by someone else since, a notification older than 14 days) is not counted. A task that the person's own Done
+finished or let continue is counted, since Put back brings it back as it was (above).
+
+**The two lists** (founder decision 2026-11-15, #1424 E). `GET /api/v1/needs-you/aside` returns `{ later, done }`, each a list of
+`{ item, state, until, untilTask, at }` with exactly the items the two counts count: `later` the snoozed ones, soonest back first, with
+`until` (a time) or `untilTask` (the task it waits for); `done` the ones marked done or declined in the last 24 hours, newest first,
+with `at` the time it was done. A done mention, question or task is listed although its notification is read. **Bring back now** and
+**Put back** are `DELETE /api/v1/needs-you/:key`, the same Undo as above: the item is back in the queue at once (a done mention is
+unread again). `notifying` (#1243) counts, of the person's newest 100 unread Inbox items (however many read ones are
+newer, index `notifications_unread_idx`), those that would notify them under their level; the tab title's "(N)", its favicon dot and the app
 badge show it ([mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243)).
 
 ## The Tasks views
@@ -103,4 +214,7 @@ leaves decisions out of the "All" selection and its total. API readers without `
 the whole mixed view. A decision's history stays in its own details, as plain sentences that appear only when they apply ("This replaces the decision …",
 "This was replaced by the decision …", "Earlier reason", "Shown on the Wiki page …"). Old links to the Decisions view
 (`/projects/:id/tasks?status=needs|rules`) open the Inbox; a
-decision's own link (`?open=decision:<id>`) opens the decision.
+decision's own link (`/projects/:id?open=decision:<id>`, contracts `decisionAppPath`) opens the decision in the one panel over its space's
+conversation, with its card there marked as the open one. That is the one place a decision opens from everywhere: the Inbox (its item's
+`url` and its Open), Search, a notification with its push and email, a Wiki reference and Discuss. An older
+`/projects/:id/tasks?open=decision:<id>` link (a bookmark) is sent there by the Tasks loader, so it is never a dead link.

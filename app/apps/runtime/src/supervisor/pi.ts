@@ -224,12 +224,24 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
       }
       pendingText = '';
     };
+    let notedTurn = 0;
     const sayText = (turn: number, words: string) => {
       const clean = words.split('\u0000').join('');
-      if (!clean || turn < 1) return;
+      if (!clean || turn < 1 || turn === notedTurn) return;
       if (turn !== textTurn) { flushText(); textTurn = turn; }
       pendingText += clean;
       if (!textTimer) { textTimer = setTimeout(flushText, TEXT_BATCH_MS); textTimer.unref(); }
+    };
+    /**
+     * Message `turn` calls a tool (founder check, Hubert 2026-11-17): what it wrote before the call is a working note ("Need a direct
+     * image"), never the answer. The words not yet sent are dropped, and the asker's view is told to drop the ones it has.
+     */
+    const noteText = (turn: number) => {
+      if (turn !== textTurn || turn === notedTurn) return;
+      notedTurn = turn;
+      if (textTimer) { clearTimeout(textTimer); textTimer = null; }
+      pendingText = '';
+      send({ t: 'run', e: 'note', turn });
     };
     let idle = later(request.caps.idleSeconds * 1000, () => terminate('no_event'));
     later(request.caps.wallClockSeconds * 1000, () => terminate('wall_clock'));
@@ -263,6 +275,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
       if (type === 'message_update') {
         const delta = isObject(event.assistantMessageEvent) ? event.assistantMessageEvent : null;
         if (delta?.type === 'text_delta' && typeof delta.delta === 'string') sayText(Math.max(1, assistantMessages), delta.delta);
+        else if (delta?.type === 'toolcall_start') noteText(Math.max(1, assistantMessages));
         return;
       }
       if (type === 'tool_execution_start') {

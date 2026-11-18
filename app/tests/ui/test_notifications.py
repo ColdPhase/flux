@@ -163,34 +163,36 @@ class NotificationJourney(unittest.TestCase):
     def test_01_inbox_from_the_sidebar_with_its_count(self) -> None:
         page = self.page("ada")
         self.wait_for_inbox(page, 6)
-        queue = self.wait_for_needs(page, 3)
-        self.assertEqual(sorted(item["kind"] for item in queue["items"]), ["decision", "mention", "question"])
+        # A question in a two-person DM (#1424 A) and a task Kai gave Ada (#1424 C) need her too.
+        queue = self.wait_for_needs(page, 5)
+        self.assertEqual(sorted(item["kind"] for item in queue["items"]), ["decision", "mention", "question", "question", "task"])
         page.goto("/")
         rail = page.get_by_role("navigation", name="Places")
         inbox_link = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))
         expect(inbox_link).to_be_visible()
         # The final design's Inbox count (F-026 §4): what needs you, and the same number the link's name gives.
         count = inbox_link.locator(".side__count")
-        expect(count).to_have_text("3")
+        expect(count).to_have_text("5")
         self.assertEqual(re.search(r"\d+", inbox_link.get_attribute("aria-label")).group(), count.inner_text())
         inbox_link.click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         cards = page.locator(".nyc")
-        expect(cards).to_have_count(3)
-        # Every item has its reason in words and says where it came from; replies, direct messages and assigned
-        # work are notifications, not needs, and stay out of the queue (they reach you where they happen).
+        expect(cards).to_have_count(5)
+        # Every item has its reason in words and says where it came from; replies and plain direct messages are notifications,
+        # not needs, and stay out of the queue (they reach you where they happen). A question between two people asks the other (#1424 A).
         # Each row is "Kind · who · space" and then what it says (#1424): a question and a mention have no "asked you in" sentence of their own.
         for title, shape in [
             ("Switch to capacitive probes", "Decision · "),
             ("could you check the calibration table before Friday?", "Question · Kai Tanaka · Garden sensors"),
             ("the dashboard is live now", "Mention · Kai Tanaka · Garden sensors"),
+            ("Can you bring the soldering iron tomorrow?", "Question · Kai Tanaka"),
         ]:
             expect(page.locator(".nyc", has_text=title).locator(".nyc__eyebrow--row")).to_contain_text(shape)
         expect(cards.filter(has_text="asked you")).to_have_count(0)
         expect(cards.filter(has_text="mentioned you")).to_have_count(0)
         expect(page.locator(".nyc", has_text="Switch to capacitive probes")).to_contain_text("They do not corrode in wet soil")
-        expect(cards.filter(has_text="soldering iron")).to_have_count(0)
+        expect(cards.filter(has_text="soldering iron")).to_have_count(1)
         expect(cards.filter(has_text="replied in")).to_have_count(0)
         # Nothing was removed: the notifications are all still there for the API and for push and email links.
         self.assertEqual(len(self.api(page, "GET", "/api/v1/inbox?limit=100")["items"]), 6)
@@ -210,7 +212,7 @@ class NotificationJourney(unittest.TestCase):
         # A decision is open as its card in the right column; Discuss goes to where it is talked about, and nothing is decided by looking.
         proposal = open_item(page.locator(".nyc", has_text="Switch to capacitive probes"))
         expect(proposal.get_by_role("heading", level=2, name="Switch to capacitive probes")).to_be_visible()
-        self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 3)
+        self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 5)
 
         # Done leaves the queue and reads the notification; Undo (Z) brings both back. Nothing is deleted.
         mention = page.locator(".nyc", has_text="the dashboard is live now")
@@ -223,10 +225,10 @@ class NotificationJourney(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
         read = lambda: next(item for item in self.api(page, "GET", "/api/v1/inbox?limit=100")["items"] if "mentioned you" in item["title"])["readAt"]  # noqa: E731
         for _ in range(40):
-            if self.api(page, "GET", "/api/v1/needs-you")["count"] == 2 and read():
+            if self.api(page, "GET", "/api/v1/needs-you")["count"] == 4 and read():
                 break
             time.sleep(0.25)
-        self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 2)
+        self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 4)
         self.assertTrue(read())
         page.keyboard.press("z")
         expect(page.locator(".nyc", has_text="the dashboard is live now")).to_have_count(1)
@@ -235,7 +237,7 @@ class NotificationJourney(unittest.TestCase):
                 break
             time.sleep(0.25)
         self.assertIsNone(read())
-        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox, 3 new")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox, 5 new")).to_be_visible()
 
     # ---------------------------------------------------------------- preferences
 
@@ -299,8 +301,8 @@ class NotificationJourney(unittest.TestCase):
         expect_value(page.get_by_label("Time zone"), "Europe/Warsaw")
         expect(quiet_row).to_contain_text("21:30–7:15 · no email or push then; the Inbox keeps everything")
 
-        # Muted places are behind a link row.
-        muted_row = page.locator(".sset-row").filter(has=page.get_by_text("Muted places", exact=True))
+        # Muted spaces and messages are behind a link row.
+        muted_row = page.locator(".sset-row").filter(has=page.get_by_text("Muted spaces and messages", exact=True))
         expect(muted_row).to_contain_text("None")
         expect(page.get_by_label("Place to mute")).to_have_count(0)
         page.get_by_role("button", name="Change muted places").click()
@@ -404,7 +406,7 @@ class NotificationJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         expect(page.get_by_role("button", name="Details")).to_have_count(0)
         cards = page.locator(".nyc")
-        expect(cards).to_have_count(3)
+        expect(cards).to_have_count(5)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
         first = open_item(page.locator(".nyc--decision").first).get_by_role("button", name=re.compile("^Accept"))
         assert_touch_target(self, page, first)
@@ -478,7 +480,7 @@ class NotificationJourney(unittest.TestCase):
     def test_06_dark_inbox_and_unsubscribe_page(self) -> None:
         page = self.page("ada", dark=True)
         page.goto("/inbox")
-        expect(page.locator(".nyc")).to_have_count(3)
+        expect(page.locator(".nyc")).to_have_count(5)
         shot(page, "notifications-desktop-1440-inbox-dark")
         anonymous = self.browser.new_context(base_url=ORIGIN, viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True, service_workers="block")
         self.addCleanup(anonymous.close)
@@ -702,19 +704,19 @@ class NotificationJourney(unittest.TestCase):
         self.assertNotIn(item["key"], waiting(), "the answered question left the Inbox")
         self.assertEqual(len(waiting()), before - 1, "and its count")
         self.assertTrue(read(), "answering read its notification")
-        thread.get_by_role("button", name="Inbox", exact=True).tap()
-        expect(page).to_have_url(re.compile(r"/inbox$"))
-        expect(page.locator(".nyc").first).to_be_visible()
-        expect(card).to_have_count(0)
-        # Undo, as for Done: the question is back, unread.
+        # Undo, as for Done, where the answer was given: an Undo toast stays with its place and leaves on another (#1424 decision 3).
+        # The question is back, unread, and the Inbox shows it again.
         toast.get_by_role("button", name="Undo").tap()
-        expect(card).to_have_count(1)
+        expect(toast).to_have_count(0)
         for _ in range(40):
             if read() is None:
                 break
             time.sleep(0.25)
         self.assertIsNone(read())
         self.assertEqual(len(waiting()), before)
+        thread.get_by_role("button", name="Inbox", exact=True).tap()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(card).to_have_count(1)
         self.api(page, "POST", f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", {"action": "done"})
 
     def test_13_hide_previews_is_one_switch_in_where_that_persists_after_a_reload(self) -> None:

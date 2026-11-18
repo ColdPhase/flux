@@ -49,7 +49,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, manager, have
   manager: boolean;
   have: ReadonlySet<AiConnectionKind>;
   onClose: () => void; onConnected: (added?: BackgroundComputeConnection) => void; onLocalClient: () => void;
-  /** `key` opens the window on its API key step (Your API keys' "Add a key", #1438 point 9); Cancel there closes the window. */
+  /** `key` opens the window on its API key step (Your API keys' "Add a key", #1438 point 9). Cancel closes the window on every step. */
   startAt?: 'key';
 }) {
   const phone = useMediaQuery(MEDIA.phone);
@@ -156,12 +156,12 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, manager, have
       {step.kind === 'key' ? <>
         <h2 className="cai-window__title">Use an API key</h2>
         <div className="background-settings cai-window__key">
-          <AddKeyForm onCancel={() => { if (startAt === 'key') onClose(); else setStep({ kind: 'choose' }); }} onAdded={(added) => onConnected(added)} />
+          <AddKeyForm onCancel={onClose} onAdded={(added) => onConnected(added)} />
         </div>
       </> : null}
     </div>
   );
   return phone
-    ? <Sheet open onClose={close} label="Connect your AI" className="cai-sheet">{body}</Sheet>
+    ? <Sheet open onClose={close} label="Connect your AI" className="ui-dialog-sheet cai-sheet">{body}</Sheet>
     : <Overlay placement="center" open onClose={close} label="Connect your AI" className="cai-dialog">{body}</Overlay>;
 }

@@ -85,7 +85,10 @@ own.
   - its **Ask me first** switch (AG-3).
 - All of a person's agents share the person's connections and rights. Mixed agents are normal:
   Planner on a Claude plan, Reviewer on a ChatGPT plan.
-- An agent has one label everywhere, for example "Planner · Ada's agent".
+- An agent has one label everywhere, for example "Ada's Planner": its owner's first name and its own name, the very name an answer Ada
+  posted with Show everyone has (#1232), so one agent never has two names on one screen (v0.2.1 release gate round 15, ai P2-5, which
+  replaced "Planner · Ada's agent"). What agents read keeps C-56's form, "Planner (Ada's agent)", so to them a shown answer, "Ada's
+  Planner", stays the person's message.
 - Agents are listed in Settings › AI and in Messages. They are not members of a space and have
   no space roles. In a space they appear as task owners, in task discussions, and as a small
   face in the space header while they work.
@@ -103,6 +106,8 @@ own.
 - A guest has no agents and no AI. The server refuses a guest's API key, plan sign-in and new agent (`GUEST_NO_AI`), and a
   guest cannot sign in a local client or keep one, whatever address they open and whatever role another workspace (an encrypted
   space) gives them (#978). A guest is a person whose role in the company is guest (F-037: one company per Flux; [C-22](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  Someone who left the company or was removed, and is still signed in, is refused the same API key steps, which make the server reach a
+  provider (listing its models, saving or testing a key: `403 NOT_IN_COMPANY`).
   A member who is made a guest keeps their agents, keys, client connections, schedules and old `/ai` runs, but the server lists and
   finds none of them, and refuses every change of one (including a run's changes and Show everyone), until they are a member again
   (C-50). An old `/ai` request is not replayed to them either: the same request, in a space, a direct message or a chat and with
@@ -139,7 +144,9 @@ MCP). That includes a local client's own work on a task: a line in a task's disc
 task, claiming, pausing (releasing), finishing, declining or handing over a co-work unit. Two things do not wait: **a question to
 the owner alone** (asking the owner is how the agent gets its OK; a question to anyone else waits), and **renewing a claim** the owner
 let it make. What an agent runs in its own sandbox or on its owner's computer (commands, files, builds) is not a Flux change and is
-not governed by this switch.
+not governed by this switch. A server agent's report in its task's discussion is its answer, which Flux puts there when the run ends (AG-4 "No drafts for
+other people", AG-7): it is not a change under this switch, posts with Ask me first on as well, and notifies nobody but its owner; the
+owner may delete it, like every line of the run (v0.2.1 real-model gate, train 37 row 17: recorded, not changed).
 
 The switch replaced the three-way "What it may do" (Only read / Do it and tell me / Ask me first).
 "Only read" added little: deleting and other people's things always wait, and an agent that should
@@ -187,7 +194,9 @@ in words:
 where the agent works, and as one Inbox item per run (AG-7). Only the owner (or the person it
 waits for) approves, edits or skips it, in their own signed-in session (see Never possible).
 Approving re-checks the owner's rights and the target's version; if the target changed, it
-applies nothing and says "Changed since you asked".
+applies nothing and says "Changed since you asked". If something it names is not there (its target
+was deleted, or a task it says it affects does not exist), it applies nothing and says that:
+"Something this refers to isn't there any more, so it wasn't made" (v0.2.1 real-model gate).
 
 **Undo.**
 
@@ -198,6 +207,12 @@ applies nothing and says "Changed since you asked".
   An item changed since says "Changed since · Open" and does nothing. The line then reads
   "Undone by Ada".
 - The owner, or anyone who may edit the object, may Undo.
+- What people's use keeps for good is not offered for Undo and is not part of a message's Undo: a decision the agent proposed once someone
+  wrote about it or decided it, and a message once someone replied after it. Where an Undo meets such a use as it happens, its words
+  ("Replies since. Open it") open the decision, the task, the page or the message (v0.2.1 release gate round 15, ai P2-4).
+- A `/ai` answer whose asker undid everything it made stays theirs: it no longer offers Show everyone (round 15 ai P3).
+- Approve and Skip reach the owner's other screens at once: a Skip is a live event to the owner alone, so a task panel open on the
+  computer drops the card the phone skipped (round 15 ai P2-2).
 - A local client's change carries the same line where it was made: on its message, and on the task,
   Wiki page or map it changed, "Ada · via Claude Code" (LC-2, #868).
 
@@ -214,7 +229,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **`/ai` everywhere.** In every conversation the person can write in (a space's conversation,
   threads, a task's thread and DMs), `/ai` asks their Assistant. Only the asker sees the answer, as
   a card in the conversation with Dismiss and Show everyone. Show everyone posts it as the asker's
-  message (they stay its author), labelled "Ada's Assistant" (their first name and the agent's own name)
+  message (they stay its author), labelled "Ada's Assistant" (their first name and the agent's own name; someone who left the company
+  or was removed, by their whole marked name, "Stefan Kowal (removed)'s Assistant", train 37 row 33)
   with the agent's Kreska, in the agent's message style, for every reader including the asker (#1232,
   [the design](../design/final/README.md)). The agent may use the conversation as context, for
   example to summarise it. A guest has no `/ai`. The places, what each may use and what Show everyone
@@ -223,8 +239,10 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   by name, an agent with whose it is ("Asystent (Ada's agent)"), and an answer a person posted with
   Show everyone as that person's, by its one name ("Ada's Asystent", #1424), never the reading agent's own; the
   agent is told its own id and label, which has its owner's full name when another reader of the
-  space shares the first name. Only someone who can read the space now is named; anyone else is
-  "Former member" ([coordinator default C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160).
+  space shares the first name. Only someone who can read the space now is named, and someone who
+  left the company or was removed, and wrote there, is "Stefan Kowal (removed)", as the space's own
+  views name them (founder decision, Hubert, 2026-11-17, #1424); anyone else is "Former member"
+  ([coordinator default C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160).
 - **What `/ai` may use.** Inside a conversation, `/ai` uses only what that conversation's
   audience can see: the conversation and the places its people can all see. So Show everyone
   never publishes anything private, because the answer was drawn only from what its readers
@@ -276,7 +294,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   question to another agent, C-51) shows there for everyone, but it notifies nobody except the
   agent's owner, whatever it names: no mention, question or reply notification, push or email
   ([#1089](https://github.com/ColdPhase/flux/issues/1089)). A local client writes as its person and
-  notifies like them (LC-2).
+  notifies like them (LC-2). Such a line (its report, its Done line, a post in the discussion) is in the language the task is
+  written in, its title and description, never one guessed from a name, a place or a time zone (round 15 real-model confirmation: a
+  task written in English got a Polish report, which everyone in the task read).
   The owner writes to people.
 
 ## AG-5 — Tasks reach agents through their owner
@@ -293,7 +313,12 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   shows one line per task event.
 - **One state line** in the task panel: waiting for room on the server, working, waiting for
   your OK, paused by the provider's limit (with when it resumes), failed (with Try again or Take
-  it back), stopped (by whom), done, or handed back.
+  it back), stopped (by whom), done, or handed back. A run that waits for its owner's API key's next day says so wherever it shows: "Waiting: today's AI
+  budget is used up. It starts again at 0:00, or raise the budget in Settings › AI." on the line and the working card, and the
+  agent's first words in the task are that it waits, never "I'm on it" (train 37 row 36). A run the key's budget stops part way,
+  because what was left could not hold its next request (the model gateway holds a request's most before it is sent), says so too, never
+  "Couldn't finish": "Stopped: not enough of today's AI budget was left", with "Raise the budget in Settings › AI, then Try again" for its
+  owner, and the agent says "I stopped: not enough of today's AI budget was left for my next step." in the task (round 15 ai P2-1).
 - **Finishing** follows the agent's Ask me first switch: off, it marks the task Done and tells
   the owner, with Undo; on, it hands the task back, "Ready for you to check". **One exception:** a task that is Blocked when
   the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
@@ -303,7 +328,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.
   Its next call is refused, and the changes it made stay, with Undo. The owner is told who
   stopped it: the state line reads "Stopped by Maja" and the agent's private conversation gets
-  the same line, not an Inbox item (AG-7). Stopping gives the admin no other power over the
+  the same line, not an Inbox item (AG-7). In the task the agent says only "Stopped.": the task's history line under it names who
+  stopped it in each reader's words, "Maja Nowak (you) stopped Planner" (round 15 ai P3). Stopping gives the admin no other power over the
   agent: only the owner prompts or configures it (AG-2).
 - **Changing the Owner is a Stop.** A person who changes a task's Owner away from an agent
   (taking it back, or giving it to someone else) also ends what a local client had claimed on
@@ -327,12 +353,24 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 
 - **Inbox: only what needs you.** Approvals, tasks handed back for review and questions from an
   agent. Each agent run is one item, for example "Planner · 3 things wait for you · Approve all
-  · Open". The same requests also show in the task discussion.
+  · Open". The same requests also show in the task discussion. One thing that waits is approved with
+  **Approve**, never "Approve all" of one; each change is said with its object's title in quotes ("Add task
+  “Get three print quotes”"), never the title run into the verb. **Open** lands on the run's waiting changes
+  in their conversation (`#waiting-<run>`), with Approve and Skip in view and focused, never at the thread's
+  start above them (release gate round 15, AI P2-3 and P3).
 - **Reports** such as "Done: #4 … · 3 changes · Undo" go to the agent's private conversation and
   onto its message in the task discussion. They never go to the Inbox. The private conversation
   gets one line when a run on a task ends: "Done: #4 …", "Blocked: #4 …" (the task is waiting and stays with the agent), or "Stopped by Maja: #4 …" (a limit or AI
   turned off is the task's own state line, not a report). The count and Undo are what still stands of
-  the run's changes when the line is read. The agent's row in Messages and in the sidebar shows an
+  the run's changes when the line is read. Undo on a "Done: #4 …" line takes back the whole finish: the
+  run's changes and the Done its agent marked, so the task is back with its owner in Doing, as the task's
+  own Done Undo leaves it, while it is still Done and still the agent's (v0.2.1 release gate); the line then says so,
+  "Undid 1 change. #4 is back with you". A Done the agent marked itself with its tool is one of the run's changes: its Undo
+  puts the status back, and the task is back with its owner the same way, never left with the agent and no run (pre-review P2-5). Every change a run made counts, a new page, decision or map too; only the
+  agent's own line in the task's thread does not (it is deleted at the line). An agent that marks its task Done itself
+  reports the same way: its words in the task and "Done: #4 …" in its chat (v0.2.1 real-model gate). The report's
+  words in the task and in the chat drop the bare `[1]` numbers of sources they cannot list, as Show everyone does.
+  The agent's row in Messages and in the sidebar shows an
   unread dot until its owner opens the chat (#919).
 - **Notifications.** "Only what needs me" includes an agent waiting for you: when a run (or a local
   client) starts waiting for your OK, you alone are told once, and the notification opens its Inbox
@@ -395,7 +433,7 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
 
 - **An agent attaches a picture to its answer** with `flux_attach_image` (an address and an optional caption). The Flux server, not
   the agent's process, downloads it under the rules of `flux_read_web` and link cards ([F-031](decisions.md)): GET only, public
-  addresses only, the name resolved once and the connection made to that answer, at most three redirects each judged again, short
+  addresses only, the name resolved once and the connection made to that answer, at most five redirects each judged again (founder check, Hubert 2026-11-17: Wikimedia's `Special:FilePath` and a CDN's short link send a picture's ordinary address on twice or more), short
   timeouts, and an address that carries private Flux text the run read is refused (C-30); every address asked is listed with the
   run's sources. Only PNG, JPEG, WebP and GIF, recognised by their bytes and not by the site's word; never SVG; at most 5 MiB, the
   size of any file a person attaches, and at most 8,000 pixels on a side and 40 million pixels. The server keeps only the picture,
@@ -431,7 +469,12 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
 
 - The owner makes a schedule by telling an agent in its private conversation, for example
   "Every weekday at 9 summarise new tasks for me". The agent answers in plain words with what it
-  prepared and the owner confirms it there with one tap. Nothing else makes a schedule: not `/ai`
+  prepared and the owner confirms it there with one tap. Its answer, the schedule's name and its instruction are in the language the owner
+  asked in, the same rule as `/ai`, never one guessed from a name or a time zone, and every run of it reports in that language. Flux
+  holds it to that: when the name and instruction the agent prepared are plainly in another language than the owner's message, the
+  schedule takes the owner's own words as its instruction and its first words as its name (round 15 ai P2-6); the card
+  shows the instruction in plain words, without tool names or the run's cite marks (v0.2.1 real-model gate, train 37 rows 16, 25-26). A
+  schedule's result in the chat drops the bare `[1]` numbers of sources it cannot list, as a report does (AG-7). Nothing else makes a schedule: not `/ai`
   in a space, and not a run of a schedule.
 - Schedules are listed in that conversation: its header has one line ("Every weekday 9:00 ·
   Garden summary · 1 schedule"), on the computer and the phone, that opens the one list, where the
@@ -564,8 +607,8 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   Codex alike, and **nothing is stored**: no summary record, no trigger, no job. A long range comes in answers of about 4,000
   tokens (16,000 characters, a message cut at 500 characters with the tool that reads it whole); an answer that stopped early
   says so, how many messages remain and the `next` to go on with. It reads what the caller may read now, as search does: a lost
-  grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member) are
-  reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
+  grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member, or
+  "Stefan Kowal (removed)" for someone who left the company or was removed, #1424) are reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
   a run in it, while its owner is one of its people; an encrypted space never.
 - **The Wiki is the space's knowledge base, reached with tools, and the agent cites what it uses**
   ([C-62](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), founder decision, Hubert, 2026-11-13, #1381). The brief says
@@ -586,6 +629,12 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   heading), task, decision or message, and its label says which. Each time the answer is read, a source in another space than the answer's (a private chat's or schedule's)
   is checked against its owner's access again: one they no longer read keeps its number, says only what kind of thing it was and opens nothing. Show everyone keeps the
   words and drops the marks, as before. The access rules of the tools are unchanged.
+- **Marks in what an agent writes** (v0.2.1 real-model gate rows 28 and 37). A mark is for the answer only. When an agent's change (a decision's
+  title and reasons, a task, a page, a thought, a local client's line in a task) carries one, Flux writes it, before the change is made or held for
+  the owner's OK, the way a person names that object in the change's space: a task of the space as `#12`, a Wiki page as `[[Title]]`, a decision as
+  its title in quotes; a message, an object of another space (the change's readers may not read it) and a mark that names nothing leave only the
+  words around them. A decision's reasons are drawn by the message renderer (lists, `#12`, `[[Page]]`); plain one-line places (the Inbox, a card's
+  reason, a change line, a notification, a push) show plain words, and no surface shows a mark's id.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
   turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
 - **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the

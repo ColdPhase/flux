@@ -58,6 +58,11 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
   // message's attachments are (photos in a grid, other files as rows that open in the preview).
   const pictures = changes.flatMap((change) => (change.file && (change.state === 'applied' || change.state === 'applied_after_wait') ? [change.file] : []));
   useForgetLiveRun(run.id, true);
+  // Its asker took back what it made (Undo): the answer still names it ("#6"), so it is not shown to anyone (round 15 ai P3: Show everyone stayed
+  // offered and posted chips to a task that is not there). It stays the asker's to read and dismiss. A picture or file it attached is not such a
+  // change: taking it off leaves the words, which Show everyone posts alone.
+  const madeOnes = changes.filter((change) => !change.operation.startsWith('answer.') && (change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone'));
+  const undone = madeOnes.length > 0 && madeOnes.every((change) => change.state === 'undone');
   return (
     <li id={`answer-${run.id}`} tabIndex={-1} className="assistant-private" role="note" aria-label="Private answer" data-answer-run={run.id} data-private-answer="">
       <div className="assistant-private__who">
@@ -75,10 +80,11 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmThreadRootId ? 'this thread' : run.dmId ? 'this conversation' : 'this space')}</p> : null}
       <div className="assistant-private__foot">
         <span className="assistant-private__note">
-          {others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)}'s {name}”.
+          {undone ? 'You undid what it made, so this stays yours.'
+            : <>{others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)}'s {name}”.</>}
         </span>
         <Button variant="quiet" busy={busy === 'dismiss'} disabled={!!busy} onClick={() => void act('dismiss')}>Dismiss</Button>
-        <Button variant="primary" busy={busy === 'show'} disabled={!!busy} onClick={() => void act('show')}>Show everyone</Button>
+        {undone ? null : <Button variant="primary" busy={busy === 'show'} disabled={!!busy} onClick={() => void act('show')}>Show everyone</Button>}
       </div>
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
     </li>
@@ -96,6 +102,9 @@ function RunLine({ run, assistant, composerId, changed, lookups }: { run: Assist
  * What the asker's own agent is doing in this place, and what it answered: the working line, the request waiting behind it, and the
  * private answers. List items, for the place's own list.
  */
+/** Whether the person's own agent has anything to show here: a run at work, a request waiting behind it, or a private answer (#842). */
+export const hasPrivateAiLines = ({ run, queued, privateAnswers }: Pick<ConversationAssistant, 'run' | 'queued' | 'privateAnswers'>) => !!run || !!queued || privateAnswers.length > 0;
+
 export function PrivateAiLines({ assistant, meId, meName, others, composerId, lookups, changed = 0, own = false }: {
   assistant: ConversationAssistant; meId: string; meName: string; others: readonly string[]; composerId?: string; lookups: SourceLookups;
   /** Changes the working run made before it ended, for its line. */
@@ -104,7 +113,7 @@ export function PrivateAiLines({ assistant, meId, meName, others, composerId, lo
   own?: boolean;
 }) {
   const { run, queued, privateAnswers, tick } = assistant;
-  if (own && !run && !queued && !privateAnswers.length) return null;
+  if (own && !hasPrivateAiLines(assistant)) return null;
   const items = <>
     {privateAnswers.map((answered) => <PrivateAnswer key={answered.id} run={answered} assistant={assistant} meId={meId} meName={meName} others={others} composerId={composerId} lookups={lookups} refreshKey={tick} />)}
     {run ? <RunLine key="assistant-working" run={run} assistant={assistant} composerId={composerId} changed={changed} lookups={lookups} /> : null}

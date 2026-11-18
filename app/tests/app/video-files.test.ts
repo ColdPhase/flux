@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { schema } from '@flux/db';
-import { FILE_LIMITS, FILE_LIMITS_PATH, filePosterPath, fileVideoPath, imageTypeOf, type Conversation, type FileLimits, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, FILE_LIMITS_PATH, SEARCH_PATH, filePosterPath, fileVideoPath, imageTypeOf, type Conversation, type FileLimits, type SearchResponse, type StagedFile } from '@flux/contracts';
 import { createSealed, passphrase } from './support/encryption.js';
-import { db } from './support/db.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { png, SVG } from './support/pictures.js';
 
@@ -166,11 +166,11 @@ test('a video may be larger than a file, up to the operator\'s cap, and no more'
   // Over the cap is refused from the declared length, before a byte is read, and says so in the video's words.
   const over = await declared(f.sender, f.place.id, 'huge.mp4', most + 1);
   assert.deepEqual([over.status, over.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(over.body.error, /A video is at most 12 MiB/);
+  assert.match(over.body.error, /A video is at most 12 MB/);
   // The same size for another file keeps the 5 MiB.
   const file = await declared(f.sender, f.place.id, 'huge.bin', most);
   assert.deepEqual([file.status, file.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(file.body.error, /A file is at most 5 MiB/);
+  assert.match(file.body.error, /A file is at most 5 MB/);
   // A video that streams past the cap with no declared length is stopped by the count, and leaves nothing.
   const streaming = await scene();
   const endless = await chunked(streaming.sender, streaming.place.id, 'endless.mp4', most + 1);
@@ -368,6 +368,12 @@ test('a poster is decoded and re-encoded small, belongs to its video, and goes w
   assert.equal(seen.status, 200);
   assert.equal(imageTypeOf(Buffer.from(await seen.arrayBuffer())), 'image/webp');
   assert.equal((await get(f.outsider, `/api/v1/files/${second.body.id}`)).status, 404);
+  // Search finds the video by its name and never its poster, which is not a file anyone sent.
+  const found = expectStatus(await f.reader.browser.request('GET', `${SEARCH_PATH}?q=poster`), 200) as SearchResponse;
+  const fileIds = found.items.flatMap((item) => item.target.type === 'file' ? [item.target.fileId] : []);
+  assert.ok(fileIds.includes(video.id), JSON.stringify(found.items));
+  assert.equal(fileIds.includes(second.body.id), false, 'no search hit for the poster');
+  assert.equal((await pool.query('SELECT 1 FROM search_documents WHERE object_id = $1', [second.body.id])).rows.length, 0, 'no search row for the poster');
   // Once sent, a video takes no new poster.
   assert.equal((await poster(f.sender, f.place.id, video.id, png())).status, 404);
   // Removing the message removes the poster with it.
@@ -424,7 +430,7 @@ test('in an encrypted space a video is an ordinary sealed file: 5 MiB, no poster
   // The ordinary limit holds, in the ordinary words.
   const large = await upload(ada, place.id, longClip(FILE_LIMITS.fileBytes), 'large.mp4');
   assert.deepEqual([large.status, large.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(large.body.error!, /A file is at most 5 MiB/);
+  assert.match(large.body.error!, /A file is at most 5 MB/);
   // Its bytes are not recognised as a video, so a mislabelled one is just a file.
   assert.equal((await upload(ada, place.id, Buffer.from('not a movie'), 'plain.mp4')).status, 201);
 });

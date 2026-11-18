@@ -279,7 +279,8 @@ class AssistantChanges(unittest.TestCase):
         card = page.locator(f'.nyc[data-key="assistant:{run}"]')
         expect(card).to_have_attribute("aria-current", "true")
         expect(open_item(card)).to_contain_text("Order 20 soil sensors")
-        expect(open_item(card).get_by_role("button", name="Approve all", exact=True)).to_be_visible()
+        # One thing waits: it is approved, not "all" of one thing (round 15 AI P3).
+        expect(open_item(card).get_by_role("button", name="Approve", exact=True)).to_be_visible()
         expect(page.locator(f'.nyc[data-key="{question["key"]}"]')).not_to_have_attribute("aria-current", "true")
 
     def test_07_phone_reads_the_cards_without_overflow(self) -> None:

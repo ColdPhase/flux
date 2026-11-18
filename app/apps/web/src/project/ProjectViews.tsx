@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { UNTITLED_SKETCH, type Sketch } from '@flux/contracts';
-import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery, useToast } from '../ui';
+import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast } from '../ui';
 import { DockRow } from '../sketch/DockRow';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
@@ -62,9 +62,9 @@ export function ProjectMap() {
   if (state === 'failed') {
     return (
       <div className="sk-page"><div className="sk sk--index"><div className="view-empty">
-        <EmptyState icon="map" title="The map couldn’t be loaded" action={<Button onClick={() => setRefresh((n) => n + 1)}>Try again</Button>}>
+        <ErrorState title="The map couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={() => setRefresh((n) => n + 1)}>Try again</Button>}>
           <p>Flux could not be reached. Nothing was lost.</p>
-        </EmptyState>
+        </ErrorState>
       </div></div></div>
     );
   }
@@ -74,7 +74,7 @@ export function ProjectMap() {
       <div className="sk sk--map">
         <div className="sk-canvas-wrap"><div className="sk-canvas" onDoubleClick={() => void start()} /></div>
         <div className="sk-over">
-          <div className="sk-head"><p className="sk-lead"><span className="sk-title">{UNTITLED_SKETCH}</span></p></div>
+          <div className="sk-head"><p className="sk-lead"><span className="sk-switch"><span className="sk-title">{UNTITLED_SKETCH}</span></span></p></div>
         </div>
         <p className="sk-first">{phone ? <>An empty map. Start with <b>Thought</b>.</> : <>An empty map. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p>
         {phone ? (
@@ -82,7 +82,7 @@ export function ProjectMap() {
         ) : (
           <div className="sk-dock"><DockRow>
             <div className="sk-tools" role="toolbar" aria-label="Map tools">
-              <button type="button" className="ui-btn ui-btn--quiet sk-add" disabled={creating} onClick={() => void start()}><Icon name="plus" size={16} />Thought</button>
+              <button type="button" className="sk-tool sk-tool--word sk-add" disabled={creating} onClick={() => void start()}><Icon name="plus" size={16} />Thought</button>
             </div>
           </DockRow></div>
         )}

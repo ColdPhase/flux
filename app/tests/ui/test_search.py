@@ -102,7 +102,7 @@ class SearchJourney(unittest.TestCase):
     def groups(self, dialog) -> list[str]:
         return dialog.locator(".jump__sh").all_inner_texts()
 
-    GROUP_OF = {"work": "Tasks", "decision": "Tasks", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Wiki",
+    GROUP_OF = {"work": "Tasks", "decision": "Decisions", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Wiki",
                 "thought": "Thoughts", "sketch": "Thoughts", "project": "Spaces", "person": "People"}
 
     def ranked_groups(self, page: Page, query: str) -> list[str]:
@@ -205,6 +205,28 @@ class SearchJourney(unittest.TestCase):
         expect(page.locator(".project-convo__message.is-arrived")).to_contain_text("hallway test")
         expect(page.locator(".project-convo__message.is-arrived")).to_be_focused()
 
+    def test_02b_the_searcher_is_named_with_you_on_their_own_results(self) -> None:
+        """personas-37 P3-5: Search named the searcher without "(you)" ("Kasia Wójcik · Bakery floor · 22:51" on her own message, "Ana Costa"
+        among People), unlike every other view (design §5 "Naming people")."""
+        page = self.page("nia")
+        page.goto("/")
+        dialog, _ = self.jump(page, "camera bedside")
+        own = dialog.locator("[role=option].sr").filter(has_text="Camera or sensor for the bedside lamp?")
+        expect(own).to_have_count(1)
+        pieces = own.first.locator(".sr__meta > span:not([aria-hidden])").all_inner_texts()
+        self.assertEqual(pieces[:2], ["Nia Berg (you)", "Gesture lamp"], pieces)
+        self.assertIn("Nia Berg (you)", own.first.get_attribute("aria-label") or "")
+        # Someone else's message names its author as before.
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("sensor reacts")
+        other = dialog.locator("[role=option].sr").filter(has_text="The infrared sensor reacts at 5 lux in the hallway test.")
+        expect(other.first.locator(".sr__meta > span:not([aria-hidden])").first).to_have_text("Ari Nowak")
+        # Among People the reader is "Nia Berg (you)", the others by name.
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("Nia Berg")
+        person = dialog.locator(".jump__sh", has_text="People").locator("xpath=following-sibling::*[@role='option']").filter(has_text="Nia Berg")
+        expect(person.first.locator(".sr__title")).to_have_text("Nia Berg (you)")
+        self.assertTrue((person.first.get_attribute("aria-label") or "").startswith("Nia Berg (you)"))
+        page.keyboard.press("Escape")
+
     def test_03_arrow_keys_choose_and_old_versions_open_at_their_version(self) -> None:
         page = self.page("nia")
         page.goto("/")
@@ -218,14 +240,19 @@ class SearchJourney(unittest.TestCase):
         expect(option).not_to_contain_text("Material")
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
-        # A rule opens in Details on its project.
+        # A decision is listed as a decision (its own group) and opens as one, over its space's conversation (v0.2.1 personas round).
         dialog, field = self.jump(page, "use the infrared")
-        expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · accepted")
+        expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · Accepted")
+        expect(dialog.locator(".jump__sh").first).to_have_text("Decisions")
+        heading = dialog.locator("[role=option].sr", has_text="Use the infrared sensor at night").first.evaluate(
+            "el => { let at = el.closest('li') ?? el; while (at && !at.classList.contains('jump__sh')) at = at.previousElementSibling; return at?.textContent; }")
+        self.assertEqual(heading, "Decisions", "the decision stands under Decisions, not Tasks")
         field.press("ArrowDown")
         field.press("ArrowUp")
         self.assertEqual(dialog.get_by_role("option").first.get_attribute("aria-selected"), "true")
         dialog.locator("[role=option].sr").first.click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}(\?open=decision:{self.ids['rule']})?$"))
+        expect(page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Conversation")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("complementary", name="Details").or_(page.get_by_role("dialog", name="Details"))).to_contain_text("Use the infrared sensor at night")
         # A thought opens its sketch with the thought selected; Esc closes Search without moving.
         dialog, field = self.jump(page, "walnut")
@@ -278,7 +305,7 @@ class SearchJourney(unittest.TestCase):
         self.assertEqual(options.nth(options.count() - 1).get_attribute("aria-selected"), "true")
         # The footer says what the tool finds in one sentence, with none of the old words, and names the keys.
         foot = dialog.locator(".jump__foot")
-        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
         hint = foot.locator(".jump__hint-line").inner_text().lower()
         for word in ("material", "version", "rule"):
             self.assertNotIn(word, hint)
@@ -328,7 +355,7 @@ class SearchJourney(unittest.TestCase):
         type(self).states["nia"] = page.context.storage_state()
         dialog, field = self.jump(page, "")
         expect(dialog).not_to_contain_text("hallway")
-        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
 
     def test_07a_there_is_no_search_page(self) -> None:
         page = self.page("nia")
@@ -378,7 +405,8 @@ class SearchJourney(unittest.TestCase):
             self.assertGreaterEqual(option_box["height"], 44)
         shot(page, "search-jump-phone-390")
         options.filter(has_text="Mount the infrared sensor").first.click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
+        # The address names the task it opened (F-026 §4, founder question B).
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks(\?open=work(:|%3A)[0-9a-f-]{{36}})?$"))
         expect(page.get_by_role("dialog", name="Details")).to_contain_text("Mount the infrared sensor in the lamp base")
         # With no recent places yet, the sentence that says what it finds is above the list, with none of the old words.
         fresh = self.page("olek", phone=True)
@@ -386,7 +414,7 @@ class SearchJourney(unittest.TestCase):
         fresh.get_by_role("button", name="Search", exact=True).click()
         sheet = fresh.get_by_role("dialog", name="Search", exact=True)
         hint = sheet.locator(".jump__hint")
-        expect(hint).to_have_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(hint).to_have_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
         self.no_horizontal_scroll(fresh)
         shot(fresh, "search-jump-phone-390-empty")
 
@@ -482,7 +510,7 @@ class SearchJourney(unittest.TestCase):
                     expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
                     status = details.get_by_role("button", name="Status", exact=True)
                     expect(status).to_contain_text("To do")
-                    expect(details.get_by_role("button", name="Owner", exact=True)).to_contain_text("Assign")
+                    expect(details.get_by_role("button", name="Owner", exact=True)).to_contain_text("No owner")
                     for name in ("Status", "Owner"):
                         field_box = details.get_by_role("button", name=name, exact=True).bounding_box()
                         label_box = details.locator(".wd-row dt", has_text=name).evaluate(
@@ -751,9 +779,10 @@ class SearchJourney(unittest.TestCase):
 
     def test_16_a_plain_question_leads_with_the_message_that_answers_it_not_with_a_task_that_shares_a_word(self) -> None:
         """#1424: the results were listed Tasks first, so a task that shared "the" with the question stood above the message that answered it.
-        The server ranks the results; the group of the best match leads."""
+        The server ranks the results; the group of the best match leads. Since persona round 6 a hit that holds only a little word of the
+        question ("the") is not listed at all (docs/development/search.md), so the task here shares "put", a real but common word."""
         owner, lamp = self.page("ari"), self.ids["lamp"]
-        self.api(owner, "POST", f"/api/v1/projects/{lamp}/work", {"title": "Ask the studio about spare veneer sheets"}, status=201)
+        self.api(owner, "POST", f"/api/v1/projects/{lamp}/work", {"title": "Put the spare veneer sheets back on the studio shelf"}, status=201)
         self.api(owner, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": "Where did we put the zinnia seed tray and the veneer offcuts?", "clientMessageId": str(uuid.uuid4())}, status=201)
         question = "Where did we put the zinnia seed tray"
         found = self.api(owner, "GET", f"/api/v1/search?q={quote(question)}&limit=20", status=200)["items"]
@@ -774,6 +803,28 @@ class SearchJourney(unittest.TestCase):
                 self.assertLess(groups.index("Messages"), groups.index("Tasks"), groups)
                 self.assertEqual(groups, self.ranked_groups(page, question))
                 shot(page, f"search-best-match-leads-{'phone-390' if phone else 'desktop-1440'}")
+
+    def test_17_a_person_named_like_an_agent_label_has_a_person_s_tile(self) -> None:
+        """Pre-review P3: Search drew an agent's Kreska for anyone whose name read "X · Ada's agent", as it guessed from the name. The result says
+        whether its author is an agent (`byAgent`), so such a person's message has the tile of a person: their initials."""
+        tag = uuid.uuid4().hex[:6]
+        name, email = "Quill · Ada's agent", f"quill.search+{STAMP}@example.test"
+        newcomer = self.page(None)
+        self.api(newcomer, "POST", "/api/auth/sign-up/email", {"name": name, "email": email, "password": PASSWORD}, status=200)
+        owner, lamp = self.page("ari"), self.ids["lamp"]
+        self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
+        quill = self.api(newcomer, "GET", "/api/v1/me", status=200)["user"]["id"]
+        self.api(owner, "POST", f"/api/v1/projects/{lamp}/grants", {"principal": {"kind": "human", "id": quill}, "role": "contributor"}, status=201)
+        word = f"quillnote{tag}"
+        self.api(newcomer, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": f"The {word} says the veneer is dry.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page("nia")
+        page.goto("/")
+        dialog, _ = self.jump(page, word)
+        row = dialog.locator("[role=option].sr").filter(has_text=word)
+        expect(row).to_have_count(1)
+        expect(row.locator(".sr__meta")).to_contain_text(name)
+        expect(row.locator(".sr__ic--person")).to_have_count(1)
+        expect(row.locator(".sr__ic--agent")).to_have_count(0)
 
 
 if __name__ == "__main__":

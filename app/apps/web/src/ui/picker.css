@@ -19,14 +19,16 @@
   background: transparent; color: var(--t3); cursor: pointer;
 }
 .ui-pick__btn:disabled { cursor: default; }
-.ui-pick__btn:focus-visible { outline: 2px solid var(--t1); outline-offset: -3px; }
+.ui-pick__btn:focus-visible { outline: 2px solid var(--ring); outline-offset: -3px; }
 .ui-pick__chev { transition: transform var(--dur-1) var(--ease-out); }
 .ui-pick[data-open] .ui-pick__chev { transform: rotate(180deg); }
-/* The soft field focus of the select and the other inputs (--t1 hairline inside, --sub halo), on the whole frame. */
-.ui-pick:focus-within { box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+/* The field focus of the other inputs, on the whole frame: the one 2 px --ring, lying over the field's edge (offset -1 px), as every text
+   field's (founder direction 2026-11-17 visual review, README "One look for one element": a text field's ring is its edge). */
+.ui-pick:focus-within { outline: 2px solid var(--ring); outline-offset: -1px; }
 /* Text that is not a day or a time: the invalid field's ring (--t1, 1.5 px), as the other fields'. */
 .ui-pick[data-invalid] { box-shadow: inset 0 0 0 1.5px var(--t1); }
-.ui-pick[data-invalid]:focus-within { box-shadow: inset 0 0 0 1.5px var(--t1), 0 0 0 3px var(--sub); }
+/* While the person types in it, the focus ring is its only frame (README "One look for one element"). */
+.ui-pick[data-invalid]:focus-within { box-shadow: none; }
 .ui-pick[data-disabled] { opacity: .55; }
 @media (hover: hover) { .ui-pick:not([data-disabled]):hover { border-color: var(--t3); } }
 @media (pointer: coarse) {
@@ -55,8 +57,8 @@
 .ui-cal__day[data-today] { box-shadow: inset 0 0 0 1px var(--t2); }
 .ui-cal__day[data-selected] { background: var(--inv); color: var(--oninv); box-shadow: none; font-weight: 500; }
 @media (hover: hover) { .ui-cal__day:hover:not(:disabled, [data-selected]) { background: var(--sub); } }
-.ui-cal__day:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
-.ui-cal__day[data-selected]:focus-visible { outline-color: var(--oninv); }
+.ui-cal__day:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.ui-cal__day[data-selected]:focus-visible { outline-color: var(--ring-inv); }
 .ui-cal__foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 .ui-cal__clear { margin-left: auto; }
 @media (pointer: coarse) { .ui-cal__day { height: 44px; } .ui-cal__nav { width: 44px; height: 44px; } .ui-cal-pop { width: 340px; } }

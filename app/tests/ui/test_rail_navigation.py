@@ -40,8 +40,11 @@ class RailNavigation(unittest.TestCase):
         self.assertEqual(response.status, status, f"{path}: {response.status} {response.text()}")
         return response.json() if response.text() else None
 
-    def setup_owner(self, engine, *, coarse=False, many=False):
-        context = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": 1280 if coarse else 1440, "height": 800 if coarse else 900},
+    def setup_owner(self, engine, *, coarse=False, many=False, zoom=1):
+        # `zoom` emulates browser zoom as the browser reports it (test_adaptive_matrix AdaptiveReflow): the window divided by it, with the
+        # device pixel ratio multiplied by it. 1440×900 at 200 % is the 720×450 CSS viewport the persona rounds used.
+        width, height = (1280, 800) if coarse else (1440, 900)
+        context = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": width // zoom, "height": height // zoom}, device_scale_factor=zoom,
             color_scheme="dark" if coarse else "light", has_touch=coarse, service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
@@ -67,9 +70,11 @@ class RailNavigation(unittest.TestCase):
         self.api(peer, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Bring the ToF boards for Friday’s dark-room test.", "clientMessageId": str(uuid.uuid4())}, 201)
         page.goto("/")
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-        page.get_by_role("button", name="Collapse sidebar").click()
+        # A window under 900 px has the rail already.
+        if zoom == 1:
+            page.get_by_role("button", name="Collapse sidebar").click()
         expect(page.locator(".side--rail")).to_be_visible()
-        return page, {"email": email, "user": identity["user"]["id"], "workspace": space["id"], "dm": dm["id"], "projects": projects}
+        return page, {"email": email, "user": identity["user"]["id"], "workspace": space["id"], "dm": dm["id"], "projects": projects, "peer": peer, "peer_id": peer_id}
 
     def assert_native_target(self, page, locator, coarse):
         self.assertEqual(locator.evaluate("el => ['A','BUTTON'].includes(el.tagName)"), True)
@@ -95,6 +100,9 @@ class RailNavigation(unittest.TestCase):
                     my_map.press("Enter")
                     expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))  # My map opens at its own address (#866)
                     expect(my_map).to_have_attribute("aria-current", "page")
+                    # The map has drawn its page: while it still loads (`.sk-page--center`) nothing after the rail can take focus, so a Tab
+                    # from the face leaves the document and Shift+Tab comes back to the page's last control, not to the face.
+                    expect(page.locator(".sk-page--map")).to_be_visible()
                     # The face is the one way to Settings, on the rail as in the sidebar (#1419): there is no gear beside it.
                     settings = rail.get_by_role("link", name=re.compile(r"^Ada Kowalska, Settings$"))
                     self.assertEqual(settings.count(), 1, "the rail must preserve Settings")
@@ -194,6 +202,222 @@ class RailNavigation(unittest.TestCase):
                 self.assertTrue(current["stopRequested"] or current["status"] == "stopped", str(current["status"]))
                 expect(rail.locator(".agentlive")).to_have_count(0, timeout=25000)
                 expect(rail.get_by_role("link", name=re.compile("Ada Kowalska, Settings"))).to_be_in_viewport()
+
+    # ---------------------------------------------------------------- 200 % (personas-33/34/35 P3s)
+
+    def test_05_at_200_percent_the_rail_count_and_search_are_clear(self):
+        """The Inbox count sat on its icon, and Search was half under New once the rail's band scrolled to the open space."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, many=True, zoom=2)
+                self.api(ids["peer"], "POST", f"/api/v1/dms/{ids['dm']}/messages", {"body": "Can you bring the boards on Friday?", "clientMessageId": str(uuid.uuid4())}, 201)
+                page.goto(f"/projects/{ids['projects'][-1]['id']}")
+                rail = page.locator(".side--rail")
+                inbox = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))
+                expect(inbox).to_be_visible()
+                page.wait_for_timeout(400)
+                count = page.evaluate("""() => { const link = document.querySelector('.side--rail a[href="/inbox"]'); const c = link.querySelector('.side__count--rail').getBoundingClientRect();
+                  const i = link.querySelector('svg').getBoundingClientRect();
+                  return { overlap: Math.min(c.right, i.right) - Math.max(c.left, i.left) > 0.5 && Math.min(c.bottom, i.bottom) - Math.max(c.top, i.top) > 0.5,
+                    count: [c.left, c.top, c.right, c.bottom], icon: [i.left, i.top, i.right, i.bottom] }; }""")
+                self.assertFalse(count["overlap"], f"the Inbox count stands beside its icon, not on it: {count}")
+                problems = page.evaluate("""() => { const search = document.querySelector('.side--rail button[aria-label="Search"]'); const r = search.getBoundingClientRect(); const found = [];
+                  for (let up = search.parentElement; up && up !== document.body; up = up.parentElement) {
+                    const style = getComputedStyle(up); if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
+                    const b = up.getBoundingClientRect(); const top = up.hasAttribute('data-scroll-up') ? 24 : 0; const bottom = up.hasAttribute('data-scroll-down') ? 28 : 0;
+                    if (r.top < b.top + top - 0.5 || r.bottom > b.bottom - bottom + 0.5) found.push(`cut or faded by ${up.className}`); }
+                  const add = document.querySelector('.side--rail .side__new'); if (add) { const k = add.getBoundingClientRect(); if (Math.min(k.bottom, r.bottom) - Math.max(k.top, r.top) > 0.5) found.push('under New'); }
+                  if (!search.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))) found.push('its middle is covered');
+                  return found; }""")
+                self.assertEqual(problems, [], "Search is whole and clear of New")
+                shot(page, f"p3b-rail-200-{engine}")
+
+    def test_06_at_200_percent_a_toast_does_not_cover_the_new_task_s_panel(self):
+        """The toast "Task #12 created · Undo · Another task" stood on the new task's Due row."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, zoom=2)
+                page.goto(f"/projects/{ids['projects'][0]['id']}")
+                expect(page.locator(".project-convo")).to_be_visible()
+                page.evaluate("() => document.activeElement instanceof HTMLElement && document.activeElement.blur()")
+                page.keyboard.press("c")
+                dialog = page.get_by_role("dialog", name="New task")
+                expect(dialog).to_be_visible()
+                dialog.get_by_label("Title", exact=True).fill("Wipe the big letters board")
+                dialog.get_by_role("button", name=re.compile("^Create task")).click()
+                toast = page.locator(".ui-toast").filter(has_text=re.compile(r"Task #\d+ created"))
+                expect(toast).to_be_visible()
+                panel = page.locator("#details")
+                expect(panel).to_contain_text("Wipe the big letters board")
+                page.wait_for_timeout(800)
+                apart = page.evaluate("""() => { const t = document.querySelector('.ui-toast:not([data-leaving])').getBoundingClientRect(); const p = document.getElementById('details').getBoundingClientRect();
+                  return { apart: t.right <= p.left + 0.5 || t.left >= p.right - 0.5 || t.bottom <= p.top + 0.5 || t.top >= p.bottom - 0.5, toast: [t.left, t.top, t.right, t.bottom], panel: [p.left, p.top, p.right, p.bottom],
+                    inWindow: t.left >= 0 && t.right <= innerWidth }; }""")
+                self.assertTrue(apart["apart"], f"the toast stands beside the panel, not on it: {apart}")
+                self.assertTrue(apart["inWindow"], f"the toast stays in the window: {apart}")
+                expect(toast.get_by_role("button", name="Undo")).to_be_visible()
+                shot(page, f"p3b-toast-beside-panel-200-{engine}")
+
+    def test_07_at_200_percent_r_on_a_decision_keeps_accept_in_view(self):
+        """R on a decision in the Inbox opened its panel scrolled to the discussion, with Accept, Not now and Discuss out of view above it."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, zoom=2)
+                pid = ids["projects"][0]["id"]
+                self.api(page, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["peer_id"]}, "role": "contributor"}, 201)
+                decision = self.api(ids["peer"], "POST", f"/api/v1/projects/{pid}/decisions", {"title": "Bread prices go up by 10 % from December",
+                    "rationale": "Flour costs more since October.\n\nThe ovens use more power in winter, and the rolls stay as they are."}, 201)
+                for line in ("The supplier wrote on Monday.", "Rye flour is up the most.", "We could keep the small loaf as it is.", "Let us decide this week."):
+                    said = ids["peer"].request.post(f"/api/v1/decisions/{decision['id']}/discussion", data={"body": line, "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+                    self.assertIn(said.status, (200, 201), said.text())
+                page.goto("/inbox")
+                item = page.locator(".nyq__list .nyc", has_text="Bread prices go up")
+                expect(item).to_be_visible()
+                expect(item.locator(".nyc__open")).to_be_focused()
+                page.keyboard.press("r")
+                field = page.locator("#decision-composer")
+                expect(field).to_be_focused()
+                page.keyboard.type("Do the rolls go up too?")
+                page.keyboard.press("Enter")
+                panel = page.locator("#details")
+                expect(panel.get_by_text("Do the rolls go up too?")).to_be_visible()
+                page.wait_for_timeout(600)
+                for name in ("Accept", "Discuss"):
+                    button = panel.get_by_role("button", name=name, exact=True)
+                    shown = button.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
+                    self.assertTrue(shown, f"{name} is in view with the discussion")
+                self.assertTrue(panel.get_by_text("Do the rolls go up too?").evaluate(
+                    "el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2)); }"), "and so is the message just sent")
+                shot(page, f"p3b-decision-r-200-{engine}")
+
+    # ---------------------------------------------------------------- personas-36 (200 %)
+
+    ROOM = """(root) => {
+      const scroller = root.querySelector('.wd__scroll'); const box = scroller.getBoundingClientRect();
+      const clear = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const x = r.left + Math.min(r.width / 2, 24), y = r.top + r.height / 2;
+        return y > box.top && y < box.bottom && el.contains(document.elementFromPoint(x, y)); };
+      const named = (name) => [...root.querySelectorAll('.wd-decide button')].find((b) => b.textContent.trim() === name);
+      const buttons = Object.fromEntries(['Accept', 'Not now', 'Discuss'].filter(named).map((name) => [name, clear(named(name))]));
+      const lines = [...root.querySelectorAll('.wd-discussion__list .wd-act__item')].filter((li) => clear(li.querySelector('.message-bubble') ?? li)).length;
+      // What stays pinned at the top of the scrolling area: the title and the answer, where they stick.
+      let pinned = box.top;
+      for (const el of root.querySelectorAll('.wd-decision-identity, .wd-decide')) {
+        const r = el.getBoundingClientRect(); if (r.bottom > box.top + 1 && r.top < box.top + 2) pinned = Math.max(pinned, r.bottom); }
+      // The field is under the scrolling area, at the panel's foot: in the window and not covered.
+      const field = root.querySelector('#decision-composer'); const f = field?.getBoundingClientRect();
+      const shown = !!f && f.height > 0 && f.bottom <= innerHeight + 0.5 && field.contains(document.elementFromPoint(f.left + Math.min(f.width / 2, 40), f.top + f.height / 2));
+      return { buttons, lines, room: Math.round(box.bottom - pinned), height: Math.round(box.height), field: shown };
+    }"""
+
+    def assert_discussion_room(self, page, label, *, long, lines=2):
+        panel = page.locator("#details")
+        expect(panel.locator(".wd-discussion__list .wd-act__item").last).to_be_visible()
+        page.wait_for_timeout(600)
+        seen = panel.evaluate(self.ROOM)
+        self.assertTrue(seen["buttons"] and all(seen["buttons"].values()), f"{label}: Accept, Not now and Discuss are in view: {seen}")
+        self.assertTrue(seen["field"], f"{label}: “Write about this decision…” is in view: {seen}")
+        self.assertGreaterEqual(seen["lines"], lines if long else 1, f"{label}: the discussion shows its lines: {seen}")
+        if long:
+            self.assertGreaterEqual(seen["room"], seen["height"] * 0.5, f"{label}: the discussion keeps at least half of the scrolling room: {seen}")
+        return seen
+
+    def test_08_at_200_percent_a_decision_s_answer_leaves_its_discussion_room(self):
+        """personas-36 P2: at 200 % a decision with 14 messages, opened by R or directly, showed Accept, Not now and Discuss and not one line of
+        its discussion: the pinned title and answer filled the panel's 209 px. They stick only while they leave the discussion its room; then
+        the answer is a bar of its buttons. At 100 % and 200 %, short and long, on the computer and on a phone with large text."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, zoom=2)
+                pid = ids["projects"][0]["id"]
+                self.api(page, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["peer_id"]}, "role": "contributor"}, 201)
+
+                def propose(title, lines):
+                    decision = self.api(ids["peer"], "POST", f"/api/v1/projects/{pid}/decisions", {"title": title,
+                        "rationale": "Flour costs more since October.\n\nThe ovens use more power in winter, and the rolls stay as they are."}, 201)
+                    for line in lines:
+                        said = ids["peer"].request.post(f"/api/v1/decisions/{decision['id']}/discussion", data={"body": line, "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+                        self.assertIn(said.status, (200, 201), said.text())
+                    return decision
+
+                short = propose("The shop opens at 7 on Saturdays", ["Fine by me."])
+                long = propose("Bread prices go up by 10 % from December", [f"Line {n + 1}: the supplier wrote again about the rye." for n in range(14)])
+                # By R from the Inbox, at 200 %.
+                page.goto("/inbox")
+                item = page.locator(".nyq__list .nyc", has_text="Bread prices go up")
+                expect(item).to_be_visible()
+                for _ in range(4):
+                    if item.get_attribute("aria-current") == "true":
+                        break
+                    page.keyboard.press("j")
+                expect(item).to_have_attribute("aria-current", "true")
+                page.keyboard.press("r")
+                expect(page.locator("#decision-composer")).to_be_focused()
+                self.assert_discussion_room(page, "200 %, R", long=True)
+                shot(page, f"p3b-decision-room-r-200-{engine}")
+                # Directly by its address, at 200 % and at 100 %, the long one scrolled to its newest line and the short one as it opens.
+                state = page.context.storage_state()
+                for zoom in (2, 1):
+                    context = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": 1440 // zoom, "height": 900 // zoom}, device_scale_factor=zoom,
+                        storage_state=state, service_workers="block")
+                    self.addCleanup(context.close)
+                    other = context.new_page()
+                    for decision, is_long in ((long, True), (short, False)):
+                        other.goto(f"/projects/{pid}?open=decision:{decision['id']}")
+                        expect(other.locator("#details .wd-decide")).to_be_visible()
+                        other.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+                        self.assert_discussion_room(other, f"{zoom * 100} %, direct, {'long' if is_long else 'short'}", long=is_long)
+                    shot(other, f"p3b-decision-room-direct-{zoom * 100}-{engine}")
+                # A phone with large text (the root at 200 % from the first frame), its sheet opened directly and read to the end.
+                phone = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=engine == "chromium",
+                    has_touch=True, storage_state=state, service_workers="block")
+                self.addCleanup(phone.close)
+                phone.add_init_script("document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.fontSize = '200%'; })")
+                sheet = phone.new_page()
+                sheet.goto(f"/projects/{pid}?open=decision:{long['id']}")
+                expect(sheet.locator("#details .wd-decide")).to_be_visible()
+                sheet.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+                # A message at twice the size is about as tall as the room for two: one whole line at least, in half the room or more.
+                self.assert_discussion_room(sheet, "phone, large text", long=True, lines=1)
+                shot(sheet, f"p3b-decision-room-phone-large-{engine}")
+
+    def test_09_at_200_percent_the_places_stay_pinned_and_the_open_space_is_in_view(self):
+        """Round 14 P2 (look-a A11, round-37 admin V6): at 200 % (1440×900 is 720×450) the rail scrolled as one band, so on a space page Home was
+        above the window and Search's neighbour was cut. Home, Inbox, My tasks and My map stay pinned under Search, whole and in the window; only
+        the spaces and messages scroll, and they bring the open space into view (personas-36: nothing half under Search)."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, many=True, zoom=2)
+                check = """() => { const rail = document.querySelector('.side--rail'); const search = rail.querySelector('button[aria-label="Search"]').getBoundingClientRect();
+                  const found = []; const places = rail.querySelector('nav[aria-label="Places"]');
+                  for (const el of places.querySelectorAll('a[href]')) { const r = el.getBoundingClientRect();
+                    if (r.top < search.bottom - 0.5 || r.bottom > innerHeight + 0.5 || r.top < 0) found.push(`${el.getAttribute('aria-label')} is not whole under Search (${Math.round(r.top)}..${Math.round(r.bottom)})`);
+                    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); if (!el.contains(hit)) found.push(`${el.getAttribute('aria-label')} is covered`); }
+                  const band = rail.querySelector('.side__rail-middle');
+                  return { found, band: band.scrollTop, list: rail.querySelector('.side__rail-scroll').scrollTop }; }"""
+                for index in (len(ids["projects"]) - 1, len(ids["projects"]) // 2):
+                    page.goto(f"/projects/{ids['projects'][index]['id']}")
+                    expect(page.locator(".side--rail .side__rail-project.is-open")).to_be_visible()
+                    page.wait_for_timeout(700)
+                    seen = page.evaluate(check)
+                    self.assertEqual(seen["found"], [], f"Home, Inbox, My tasks and My map are whole under Search on the space page: {seen}")
+                    self.assertEqual(seen["band"], 0, f"the places do not scroll away: {seen}")
+                    self.assertGreater(seen["list"], 0, f"the spaces' list brought the open space into view: {seen}")
+                    shown = page.locator(".side--rail .side__rail-project.is-open").evaluate(
+                        "el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
+                    self.assertTrue(shown, "the open space is in view")
+                # Space settings, the page the round saw Home gone on, and the person's own scroll of the spaces leave the places where they are.
+                page.goto(f"/projects/{ids['projects'][-1]['id']}/settings")
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                page.wait_for_timeout(700)
+                self.assertEqual(page.evaluate(check)["found"], [], "the places are whole on Space settings")
+                box = page.locator(".side--rail .side__rail-scroll").bounding_box()
+                for delta in (-23, 37, -61):
+                    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                    page.mouse.wheel(0, delta)
+                    page.wait_for_timeout(500)
+                    seen = page.evaluate(check)
+                    self.assertEqual(seen["found"], [], f"the places stay whole after a scroll of {delta}: {seen}")
+                shot(page, f"round14-rail-200-pinned-{engine}")
 
 
 if __name__ == "__main__":

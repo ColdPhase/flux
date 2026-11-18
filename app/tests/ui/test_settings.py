@@ -29,8 +29,8 @@ NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
 SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Shortcuts"]
 # Guide §4, in order: every shortcut and its action.
 SHORTCUTS = [
-    ("C", "New (task by default)"), ("⌘K", "Search or run"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
-    ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply in thread"), ("T", "Create a task from a message"),
+    ("C", "New (task by default)"), ("CtrlK", "Search"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
+    ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply, or write about an Inbox item"), ("T", "Create a task from a message"),
     ("1to4", "Task state"), ("[", "Collapse the sidebar"), ("Esc", "Close a panel or menu"),
 ]
 
@@ -68,10 +68,12 @@ def assert_touch_target(case: unittest.TestCase, page: Page, control: Locator) -
       const coreWidth = Math.min(width, 44), coreHeight = Math.min(height, 44);
       const x = (width - coreWidth) / 2, y = (height - coreHeight) / 2;
       const positions = [[x + .5, height / 2], [x + coreWidth - .5, height / 2], [width / 2, y + .5], [width / 2, y + coreHeight - .5], [width / 2, height / 2]];
-      return {width, height, hittable: positions.every(([x, y]) => {
+      const misses = positions.flatMap(([x, y]) => {
         const hit = document.elementFromPoint(left + x, top + y);
-        return hit === el || (hit !== null && el.contains(hit));
-      })};
+        if (hit === el || (hit !== null && el.contains(hit))) return [];
+        return [`(${Math.round(x)}, ${Math.round(y)}): ${hit ? hit.tagName.toLowerCase() + (hit.className ? '.' + String(hit.className).trim().split(/\s+/).join('.') : '') : 'nothing'}`];
+      });
+      return {width, height, hittable: misses.length === 0, misses};
     }""")
     name = control.get_attribute("aria-label") or control.inner_text() or control.get_attribute("name") or control.get_attribute("type")
     case.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"44 × 44 px touch target {name!r}: {measured}")
@@ -254,6 +256,9 @@ class SettingsJourney(unittest.TestCase):
         expect(rows).to_have_count(len(SHORTCUTS))
         found = [(re.sub(r"\s+", "", row.locator("td").inner_text()), row.locator("th").inner_text()) for row in rows.all()]
         self.assertEqual(found, SHORTCUTS)
+        # D-4: J and K, E, S, A and R work in the Inbox, and the page says so (release audit ffcb07c: R was left out). On Linux the search key is
+        # Ctrl K, as the sidebar's Search says, never ⌘.
+        expect(page.get_by_text("J, K, E, S, A and R work in the Inbox.")).to_be_visible()
         shot(page, "settings-desktop-1440-shortcuts")
 
     def test_05_account_and_earlier_addresses_keep_a_home(self) -> None:
@@ -311,7 +316,8 @@ class SettingsJourney(unittest.TestCase):
             rows = [text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()]
             self.assertEqual(rows, ["Appearance", "Notifications", "AI", "Company"])
             expect(page.get_by_role("link", name=re.compile("^Shortcuts"))).to_have_count(0)
-            expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
+            # Sign out is in Account alone (README §4, §7), not twice.
+            expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_have_count(0)
             self.phone_targets(page)
             shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
             # Appearance opens as its own page with the theme choices, This phone and Kreska.
@@ -505,8 +511,8 @@ class SettingsJourney(unittest.TestCase):
                 expect(back).to_have_count(1)
                 self.assertLess(back.bounding_box()["y"], page.get_by_role("heading", level=2, name="Your API keys").bounding_box()["y"])
 
-    def test_10_a_touch_only_tablet_lists_no_keyboard_shortcuts(self) -> None:
-        """AC-1: Shortcuts appear only with a keyboard; a touch-only tablet's section list leaves them out."""
+    def test_10_a_touch_tablet_lists_the_same_sections_shortcuts_included(self) -> None:
+        """README §7 Settings: the sections are the same on every device that has a list; a keyboard can be attached to a tablet, so Shortcuts stay."""
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768},
                                            device_scale_factor=1, has_touch=True, locale="en-GB")
         self.addCleanup(context.close)
@@ -517,8 +523,8 @@ class SettingsJourney(unittest.TestCase):
         touch_only = page.evaluate("matchMedia('(hover: none)').matches")
         if UI_BROWSER == "chromium":
             self.assertTrue(touch_only, "Chromium emulates a touch-only tablet here")
-        self.assertEqual(nav.get_by_role("link").all_inner_texts(), SECTIONS[:-1] if touch_only else SECTIONS)
-        # Control: the same width with a mouse keeps the section (test_01 checks it at 1440 too).
+        self.assertEqual(nav.get_by_role("link").all_inner_texts(), SECTIONS)
+        # Control: the same width with a mouse lists the same (test_01 checks it at 1440 too).
         mouse = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768}, device_scale_factor=1, locale="en-GB")
         self.addCleanup(mouse.close)
         other = mouse.new_page()

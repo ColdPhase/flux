@@ -149,8 +149,10 @@ class ReturnToOrigin(unittest.TestCase):
         return {"id": project, "grant": grant}
 
     @classmethod
-    def make_dm(cls, tag, count, replies=0):
-        """A direct message between Ada and a new colleague (`tag`) with `count` roots and `replies` replies under the first; returns its id and the ids."""
+    def make_dm(cls, tag, count, replies=0, partner_only=False):
+        """A direct message between Ada and a new colleague (`tag`) with `count` roots and `replies` replies under the first; returns its id and the ids.
+        The two take turns, Ada first; `partner_only` has the colleague write every root, so nothing in it is Ada's (her own message reads what came
+        before it, personas-26)."""
         ada = cls.contexts["ada"]
         context = cls.browsers["chromium"].new_context(service_workers="block", base_url=ORIGIN)
         email = f"{tag}.origin+{STAMP}@example.test"
@@ -164,7 +166,7 @@ class ReturnToOrigin(unittest.TestCase):
         dm = response.json()["id"]
         ids = []
         for index in range(1, count + 1):
-            who = ada if index % 2 else context
+            who = ada if index % 2 and not partner_only else context
             ids.append(api(who, "POST", f"/api/v1/dms/{dm}/messages", {"body": f"Note {index:02}: the shade, the base and the sensor.\n" + lines(2, "Detail"), "clientMessageId": str(uuid.uuid4())}, 201)["id"])
         answers = [api(ada if index % 2 else context, "POST", f"/api/v1/dms/{dm}/threads/{ids[0]}/replies",
                        {"body": f"Reply {index:02}: the range, the angle and the dark.\n" + lines(2, "Thought"), "clientMessageId": str(uuid.uuid4())}, 201)["id"] for index in range(1, replies + 1)]
@@ -264,23 +266,23 @@ class ReturnToOrigin(unittest.TestCase):
         before = self.offset(page, feed, target)
         self.assertGreater(page.evaluate("(feed) => document.querySelector(feed).scrollTop", feed), 0)
         self.assertEqual(self.origin_back(page).count(), 0, "a conversation opened by its address has no way back")
-        # Something arrives while the person is reading: what is on screen does not move for it, not even for a moment. The task chip above the card
-        # went away while the chips were read again for the wider batch and came back, so the card moved up by the chip's height under a tap that came
-        # at that moment (a tap meant for the card landed on the message). The chip is watched at every change of the page, not at every frame.
+        # Something arrives while the person is reading: what is on screen does not move for it, not even for a moment. A task chip above the card
+        # once went away and came back while the chips were read again, so the card moved under a tap. The task made from this message is its card in
+        # the stream (#1424), so the message never shows a chip of it, not even for a moment while the chips are read again: watched at every change.
         page.evaluate("""([target]) => {
-          window.__chipGone = false;
+          window.__chipShown = false;
           const message = document.querySelector(target);
-          new MutationObserver(() => { if (!message.querySelector('.ws-chip')) window.__chipGone = true; }).observe(message, { childList: true, subtree: true });
+          new MutationObserver(() => { if (message.querySelector('.ws-chip')) window.__chipShown = true; }).observe(message, { childList: true, subtree: true });
         }""", [target])
-        expect(page.locator(f"{target} .ws-chip")).to_have_count(1)
+        expect(page.locator(f"{target} .ws-chip")).to_have_count(0)
         arrived = f"While you were reading the shortlist ({engine}, {size}): the ToF board arrived."
         already = page.get_by_text(arrived).count()
         self.start("jonas", arrived)
         # The arrival is on the page and the chips have been read again: the place was kept all that time, and the tap is on what the person saw.
         expect(page.get_by_text(arrived)).to_have_count(already + 1)
         page.wait_for_timeout(900)
-        self.assertFalse(page.evaluate("window.__chipGone"), "the task chip stayed under the message while the arrival's chips were read")
-        expect(page.locator(f"{target} .ws-chip")).to_have_count(1)
+        self.assertFalse(page.evaluate("window.__chipShown"), "no chip of the task appeared under the message while the arrival's chips were read")
+        expect(page.locator(f"{target} .ws-chip")).to_have_count(0)
         self.assert_same(before, self.offset(page, feed, target), "the message stays where it was when something arrives below")
         history = page.evaluate("history.length")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
@@ -355,12 +357,13 @@ class ReturnToOrigin(unittest.TestCase):
             expect(sheet).to_have_attribute("data-height", "half")
         self.read_at(page, feed, target, 20 if size == "phone" else 120, touch=tap and engine == "webkit")
         page.locator("#thread-composer").fill("Draft reply: the ToF board first")
-        page.locator(f"{target} button.ws-chip").scroll_into_view_if_needed()
+        # The task made from this reply is its card under the reply, the conversation's task card (#1424, design L1059).
+        page.locator(f"{target} .msg-tasks__card .convo-notice__task").scroll_into_view_if_needed()
         page.wait_for_timeout(600)
         before = self.offset(page, feed, target)
         height = page.locator("#details").bounding_box()["height"]
         url, history = page.url, page.evaluate("history.length")
-        chip = page.locator(f"{target} button.ws-chip")
+        chip = page.locator(f"{target} .msg-tasks__card .convo-notice__task")
         expect(chip).to_have_count(1)
         self.press_in_place(page, chip, tap)
         # The task takes the panel's place and leaves the panel's own way back to the thread (one back pattern, not a second control).
@@ -373,8 +376,9 @@ class ReturnToOrigin(unittest.TestCase):
         self.activate(back, tap)
         expect(page.locator("#thread")).to_be_visible()
         expect(panel.locator(".ui-panel__back")).to_have_count(0)
-        self.assertEqual(page.url, url, "opening and closing a panel keeps the route")
-        self.assertEqual(page.evaluate("history.length"), history, "a panel is not a history entry")
+        self.assertEqual(page.url, url, "stepping back to the thread is the thread's own address again")
+        # The task opened over the thread had its own entry (`?open=`, F-026 §4); stepping back left it, so it is still Forward.
+        self.assertEqual(page.evaluate("history.length"), history + 1, "the task was its own history entry")
         expect(page.locator("#thread")).to_be_visible()
         page.wait_for_timeout(1000)
         expect(page.locator("#thread-composer")).to_have_value("Draft reply: the ToF board first")
@@ -521,10 +525,20 @@ class ReturnToOrigin(unittest.TestCase):
         self.assertGreater(page.locator("#content .pane-scroll").evaluate("el => el.scrollTop"), 100)
         history = page.evaluate("history.length")
         self.activate(open_item(card).get_by_role("button", name="Discuss"), tap)
-        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+        # The address names the decision it opened beside the conversation (founder question B, persona round 28), in the same one entry.
+        expect(page).to_have_url(re.compile(re.escape(f"{ORIGIN}/projects/{self.project}") + r"(\?open=decision(:|%3A)[0-9a-f-]{36})?$"))
         self.assertEqual(page.evaluate("history.length"), history + 1)
         back = self.origin_back(page, "Inbox")
         expect(back).to_have_count(1)
+        if size == "phone":
+            # Discuss opens the decision in the sheet (#1424), which covers the header and its control: the sheet's own back names the
+            # Inbox and goes there (the one back pattern, as a thread's sheet does, #592 rule 7), and nothing covers it.
+            back = page.locator("#details .ui-panel__back")
+            expect(back).to_have_text("Inbox")
+            # The sheet is still rising as it opens (WebKit moves it between a read of the back's place and a hit test there): the back's
+            # middle is read and hit-tested in the same instant, until the sheet has arrived.
+            page.wait_for_function("""() => { const back = document.querySelector('#details .ui-panel__back'); if (!back) return false;
+              const at = back.getBoundingClientRect(); return !!document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2)?.closest('.ui-panel__back'); }""")
         shot(page, f"592-inbox-item-{engine}-{size}")
         self.activate(back, tap)
         expect(page).to_have_url(f"{ORIGIN}/inbox")
@@ -554,6 +568,9 @@ class ReturnToOrigin(unittest.TestCase):
                 card.click()
                 places["wiki card"] = self.box(self.origin_back(page, "Conversation"))
                 page.go_back()
+                # The source page's header names its space too (round 15 look-3 F5): the title is read once the conversation is back.
+                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+                expect(self.origin_back(page)).to_have_count(0)
                 # A search result carries none (#1424): it would move the header's name and tabs. The entry has no origin; Back returns.
                 heading = page.get_by_role("heading", name="Night lamp", level=1)
                 title = heading.bounding_box()
@@ -565,7 +582,8 @@ class ReturnToOrigin(unittest.TestCase):
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
                 page.goto("/inbox")
                 open_item(page.locator(".nyc--decision").first).get_by_role("button", name="Discuss").click()
-                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+                # The address names the decision it opened (founder question B, persona round 28).
+                expect(page).to_have_url(re.compile(re.escape(f"{ORIGIN}/projects/{self.project}") + r"(\?open=decision(:|%3A)[0-9a-f-]{36})?$"))
                 places["inbox item"] = self.box(self.origin_back(page, "Inbox"))
                 self.assertEqual(len(set(places.values())), 1, f"the control never changes place: {places}")
                 # The sidebar is not a reference: no control, and no origin in the history entry.
@@ -652,7 +670,8 @@ class ReturnToOrigin(unittest.TestCase):
         for engine in self.browsers:
             for case in cases:
                 with self.subTest(engine=engine, case=case):
-                    dm = self.make_dm(f"roots{re.sub(r'[^a-z]', '', case)}{engine}", 60)
+                    # Never read: Ada wrote nothing in it either, as her own message would read what came before it (personas-26).
+                    dm = self.make_dm(f"roots{re.sub(r'[^a-z]', '', case)}{engine}", 60, partner_only=case == "never read")
                     page = self.page(engine)
                     page.goto(f"/dm/{dm['id']}")
                     feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"

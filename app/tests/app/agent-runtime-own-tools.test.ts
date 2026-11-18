@@ -19,7 +19,7 @@ import { apiUrl } from './support/http.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeQueue } from './support/personal-runs.js';
 import { seedPlanModels } from './support/plan-models.js';
-import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { claimRuntimeSlot, portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
 // #1437 (RT-5): where the runtime has Flux's sandbox, Claude Code and Codex keep their own shell and file tools in a scratch that exists
 // for one run. Here the supervisor's own part, end to end with the real worker, manager and API and the TEST ONLY fake CLIs: the templates,
@@ -53,7 +53,7 @@ for (const client of ['claude_code', 'codex'] as RuntimeClient[]) {
     const shellCall = (command: string) => (claude ? { name: 'Bash', args: { command } } : { name: 'exec_command', args: { cmd: command } });
 
     before(async () => {
-      slot = await startTestSlot({ slot: `runtime-${claude ? 600 : 650}${Math.floor(Math.random() * 9)}`.slice(0, 11), enabled: [client], mcpUrl: `${apiUrl}/mcp`, ownTools: true });
+      slot = await startTestSlot({ slot: await claimRuntimeSlot(pool, { state: 'unknown' }), enabled: [client], mcpUrl: `${apiUrl}/mcp`, ownTools: true });
       manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
       await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
       config = { clients: [client], commercialTermsAgreedOn: claude ? '2026-10-05' : null, idleDays: null,
@@ -65,7 +65,7 @@ for (const client of ['claude_code', 'codex'] as RuntimeClient[]) {
       thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
         { body: { body: 'Please turn the notes into a page', clientMessageId: randomUUID() } }), 201) as Conversation;
       bindingId = randomUUID();
-      await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
+      await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL`, [slot.config.slot]);
       await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot.config.slot]);
       await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
         VALUES ($1, $2, $3, $4, 'signed_in', $5, $6, $7, now())`, [randomUUID(), owner.id, bindingId, client, claude ? 'claude_account' : 'device_code', claude ? 'claude.ai' : 'chatgpt',

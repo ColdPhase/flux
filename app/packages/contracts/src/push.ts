@@ -80,10 +80,10 @@ export interface InboxItem {
   createdAt: string;
   readAt: string | null;
   /**
-   * Who it comes from, for the notice's face (#1243): the person's or agent's name. Only `GET /api/v1/inbox/:id` returns it; null when
-   * the notification was made directly or its actor is gone.
+   * Who it comes from, for the notice's face (#1243): the person or the agent, an agent with its colour (#1528). Only `GET /api/v1/inbox/:id`
+   * returns it; null when the notification was made directly or its actor is gone.
    */
-  from?: { kind: 'human' | 'agent'; name: string } | null;
+  from?: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour } | null;
 }
 
 export interface InboxResponse {

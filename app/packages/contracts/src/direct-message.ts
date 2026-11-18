@@ -58,6 +58,12 @@ export interface DmSummary {
   lastMessageBody: string | null;
   /** Present only when the last message was an answer posted with Show everyone (#842): the list names it ("via Assistant: …"). */
   lastMessageVia?: string;
+  /**
+   * In the list: how many messages by others (the roots) the caller has not read, at most 99; 0 when read (#1424 decision 10). Read is
+   * up to the newest of what they viewed ("Seen by"), their own last message and "Mark all as read". Kept on the server, so every device
+   * agrees. Absent on a single DM's answer.
+   */
+  unread?: number;
 }
 
 /**
@@ -65,6 +71,8 @@ export interface DmSummary {
  * root and has no replies of its own. A reply is read only by the DM's current participants.
  */
 export type DmMessage = HumanConversationMessage & { threadRootId: string | null; replyCount: number;
+  /** When the newest reply of a root was written ("3 replies · last 9:40", as a space's root says); null without replies and for a reply. */
+  lastReplyAt: string | null;
   /**
    * `ai_used` is the line "Ada used AI here (Claude)" both people of a DM see when `/ai` is used in it (#842, F-036 AG-4): its
    * `body` is the name of the company that receives the conversation. Absent on a message.
@@ -86,6 +94,11 @@ export interface Dm extends DmSummary {
   messagePage: { hasMoreBefore: boolean; nextBeforeSequence: number | null; limit: number };
   /** Where the caller left off among the roots (#1246). It may name a message older than this window. */
   unreadFrom?: UnreadFrom;
+  /**
+   * Set when the other person of a 1:1 no longer takes part: `conversation` when they left it (only they can reopen it), `company` when
+   * they are no longer in the company (removed or gone), so the notice says that and offers no reopening (personas-30).
+   */
+  counterpartGone?: 'conversation' | 'company';
 }
 
 /**

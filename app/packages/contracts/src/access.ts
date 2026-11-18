@@ -13,6 +13,11 @@ export const AGENTS_PATH = '/api/v1/agents';
 export const workspacePath = (workspaceId: string) => `${WORKSPACES_PATH}/${workspaceId}`;
 export const workspaceMembersPath = (workspaceId: string) => `${workspacePath(workspaceId)}/members`;
 export const workspaceMemberPath = (workspaceId: string, userId: string) => `${workspaceMembersPath(workspaceId)}/${userId}`;
+/** The company this person is no longer in (they left it or were removed and have not joined again), so the app can say so: `{ company: null }` for anyone else. */
+export const ME_REMOVED_FROM_PATH = '/api/v1/me/removed-from';
+export interface RemovedFrom {
+  company: string | null;
+}
 export const workspaceRemovedPeoplePath = (workspaceId: string) => `${workspacePath(workspaceId)}/removed-people`;
 export const workspaceRestorePath = (workspaceId: string, userId: string) => `${workspaceRemovedPeoplePath(workspaceId)}/${userId}/restore`;
 export const workspaceProjectsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/projects`;
@@ -124,12 +129,17 @@ export const SPACE_AI_POLICY_CHANGED_EVENT = 'project.ai_policy_changed.v1';
 export const SPACE_AI_SWEEP_JOB = 'space-ai.sweep.v1';
 export interface SpaceAiSweepJob { projectId: string; epoch: number }
 
-/** Someone who left the company or was removed; an owner or admin can restore them (Settings › Company). */
+/**
+ * Someone who left the company or was removed; an owner or admin can restore them (Settings › Company), and Restore brings them back as
+ * they were (#1424 F): `role` is the role they had, `spaces` how many spaces besides Everyone they come back to (their direct messages too).
+ */
 export interface RemovedPerson {
   userId: string;
   email: string;
   name: string;
   removedAt: string;
+  role: WorkspaceRole;
+  spaces: number;
 }
 
 export interface WorkspaceMember {
@@ -180,8 +190,14 @@ export interface ProjectPerson {
   access: ProjectAccess;
   /** Agent owner label: a human only when already in this project's current audience. No workspace roster. */
   agentOwner?: { kind: 'human'; id: string; name: string };
+  /** Agents only: the agent's own colour (final design §2), the same for every reader everywhere; absent for an agent with none (a local client's), which is ink. */
+  colour?: import('./agents.js').AgentColour;
   /** A person's last-active time, rounded by the server (`LastActiveAt`, #1225, C-58). Absent for an agent, for someone who turned it off and for someone not active yet. */
   lastActiveAt?: LastActiveAt;
+  /** A guest of the company (#1424): every list that names a person's role says "Guest" for them, as Settings › Company does. Absent otherwise. */
+  guest?: true;
+  /** The company's owner (#1424): every list that names a person's role says "Owner" for them, as Settings › Company does. Absent otherwise. */
+  owner?: true;
 }
 
 /**
@@ -277,6 +293,8 @@ export interface InviteTokenCommand { token: string }
 /** What the link's holder sees before joining, with the address a locked link is for, so the sign-up form fills it in (#1471). */
 export interface InvitePreview {
   workspaceName: string;
+  /** The space the link also adds the person to (made from a space's Add people or New space), or null for a company link (#1424). */
+  spaceName: string | null;
   invitedBy: string;
   role: InviteRole;
   expiresAt: string;
@@ -297,8 +315,8 @@ export interface AcceptInviteResult {
   /** An admin of an encrypted workspace without an unlock password: a current holder grants one (F-030). */
   needsUnlockPassword: boolean;
   /**
-   * The space the join page opens with its composer ready (#1438): Everyone for a member or admin, the link's space for a guest added to
-   * it, an encrypted workspace's own space; null when there is none (a guest without a space opens Home).
+   * The space the join page opens with its composer ready (#1438; founder decision 2026-11-14, #1424): the link's space when the person is
+   * in it, else Everyone for a member or admin; null when there is none (a guest without a space opens Home).
    */
   landingSpaceId: string | null;
 }
@@ -312,6 +330,11 @@ export interface ResetLink {
   /** `<origin>/reset-password#<token>`. */
   link: string;
   expiresAt: string;
+}
+/** The reset page names the account its link is for: `POST` the token, the answer is that account's address (404 for a link that is used, stopped or expired). */
+export const RESET_LINK_ACCOUNT_PATH = '/api/v1/identity/reset-link/account';
+export interface ResetLinkAccount {
+  email: string;
 }
 
 export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';
@@ -332,6 +355,11 @@ export interface CreateProjectCommand {
   ai?: boolean;
   /** People of the company added as members; the creator is always the first admin and is not listed. */
   people?: string[];
+  /**
+   * Invite links made in the New space window (#1424): pending links of this workspace that the caller made and that name no space yet.
+   * They are tied to the new space, so whoever joins with one is also added to it.
+   */
+  invites?: string[];
 }
 
 /** `PATCH`: a space admin, or a company owner or admin, renames the space. */

@@ -87,20 +87,25 @@ type ActivityRow = typeof schema.projectTaskActivity.$inferSelect;
 const sameActor = (a: Actor | null, b: Actor | null) => a?.kind === b?.kind && a?.id === b?.id;
 
 /** One entry for each of status, owner, due date and title that differs between the task before and after a change (#488). */
-async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved') {
+async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_stopped' | 'agent_deleted' | 'wait_resolved', undoes = false) {
   if (!before) return;
   const entries: { kind: ActivityRow['kind']; detail: Record<string, unknown> }[] = [];
   if (before.status !== after.status) {
     // What a move into Blocked said: the reason and the person waited for; nothing for any other state.
     const blocked = after.status === 'blocked';
     entries.push({ kind: 'status', detail: { from: before.status, to: after.status, blocker: blocked ? after.blocker : null, waitingForUserId: blocked ? after.waitingFor?.id ?? null : null,
-      waitingOn: blocked ? await waitingLabel(db, after.waitingOn) : null, dropped: after.status === 'done' && after.dropped } });
+      waitingOn: blocked ? await waitingLabel(db, after.waitingOn) : null, dropped: after.status === 'done' && after.dropped,
+      // The reason it had as it leaves Blocked, so the Inbox's Undo of a Done puts that one back (personas-33); never shown.
+      ...(before.status === 'blocked' && !blocked && before.blocker ? { wasBlocker: before.blocker } : {}) } });
   }
   if (!sameActor(before.owner, after.owner)) entries.push({ kind: 'owner', detail: { from: before.owner, to: after.owner } });
   if (before.dueOn !== after.dueOn) entries.push({ kind: 'due', detail: { from: before.dueOn, to: after.dueOn } });
   if (before.title !== after.title) entries.push({ kind: 'title', detail: { from: before.title, to: after.title } });
   const seal = entries.length ? await sealOf(db, after.workspaceId, { write: true }) : null;
   for (const entry of entries) {
+    // An Undo takes back the task's latest line of that kind when it is the change it undoes, by the same hand, as the conversation does with
+    // its moves (personas-28): the change came to nothing, so the history keeps no "marked it done" and "marked it to do" for it.
+    if (undoes && await tookBack(db, after.id, entry, by)) continue;
     const id = randomUUID();
     const detail = sealRow('project_task_activity', { id, detail: via ? { ...entry.detail, automation: via } : entry.detail }, seal!).detail;
     // clock_timestamp() (not the transaction's now()) keeps entries of one change in order and entries of changes that wait
@@ -108,6 +113,20 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
     await db.insert(schema.projectTaskActivity).values({ id, workspaceId: after.workspaceId, projectId: after.projectId, workId: after.id,
       kind: entry.kind, actorKind: by.kind, actorId: by.id, detail, createdAt: sql`clock_timestamp()` });
   }
+}
+
+/** Removes the task's latest activity line of `entry`'s kind when it is by `by` and went from what `entry` goes to, to what it comes from. */
+async function tookBack(db: DbExecutor, workId: string, entry: { kind: ActivityRow['kind']; detail: Record<string, unknown> }, by: Actor): Promise<boolean> {
+  const a = schema.projectTaskActivity;
+  const [latest] = await openRows(db, 'project_task_activity', await db.select().from(a).where(and(eq(a.workId, workId), eq(a.kind, entry.kind)))
+    .orderBy(desc(a.createdAt), desc(a.id)).limit(1));
+  if (!latest || latest.actorKind !== by.kind || latest.actorId !== by.id) return false;
+  const was = latest.detail as { from?: unknown; to?: unknown };
+  const same = (one: unknown, other: unknown) => JSON.stringify(one ?? null) === JSON.stringify(other ?? null);
+  const key = (value: unknown) => value && typeof value === 'object' && 'kind' in value && 'id' in value ? { kind: value.kind, id: value.id } : value;
+  if (!same(key(was.from), key(entry.detail.to)) || !same(key(was.to), key(entry.detail.from))) return false;
+  await db.delete(a).where(eq(a.id, latest.id));
+  return true;
 }
 
 /** What a blocked task waits for besides a person, as the activity line says it: "the decision Use LoRa" or "#7" (#868). */
@@ -122,7 +141,7 @@ async function waitingLabel(db: DbExecutor, on: { kind: 'decision' | 'task'; id:
 }
 
 function toActivityRecord(row: ActivityRow, position: string) {
-  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; waitingOn?: string | null; dropped?: boolean; automation?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved' };
+  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; waitingOn?: string | null; dropped?: boolean; automation?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_stopped' | 'agent_deleted' | 'wait_resolved' };
   const common = { id: row.id, workId: row.workId, at: row.createdAt, position, by: { kind: row.actorKind, id: row.actorId } as Actor, automation: detail.automation ?? null };
   switch (row.kind) {
     case 'status': return { ...common, kind: 'status' as const, from: detail.from as WorkRow['status'], to: detail.to as WorkRow['status'], blocker: detail.blocker ?? null, waitingForUserId: detail.waitingForUserId ?? null, waitingOn: detail.waitingOn ?? null, dropped: detail.dropped === true };
@@ -182,6 +201,34 @@ const projectSeal = async (db: DbExecutor, projectId: string): Promise<FieldSeal
   const [row] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
   return row ? sealOf(db, row.workspaceId, { write: false }) : null;
 };
+
+/**
+ * The names of `refs`, and which of the people are no longer in the company of `workspaceId` (left or removed, and not back; the same
+ * rule as `formerMembers`) as `human:<id>` keys, read in the same statement as their names, so a read that names a task's owner pays no
+ * extra round trip for saying "(removed)" (personas-33).
+ */
+async function namesIn(db: DbExecutor, refs: Actor[], workspaceId: string | null) {
+  const names = new Map<string, string>();
+  const gone = new Set<string>();
+  const users = [...new Set(refs.filter((ref) => ref.kind === 'human').map((ref) => ref.id))];
+  const agents = [...new Set(refs.filter((ref) => ref.kind === 'agent').map((ref) => ref.id))];
+  if (users.length) {
+    const u = schema.authUsers;
+    // The outer row's id written out in full: a column inside a selected expression is rendered bare ("id"), which in the subquery would be
+    // the workspace's own id.
+    const removed = workspaceId ? sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+      WHERE w.id = ${workspaceId}::uuid AND r.user_id = "auth_users"."id")` : sql<boolean>`false`;
+    for (const row of await db.select({ id: u.id, name: u.name, removed }).from(u).where(inArray(u.id, users))) {
+      names.set(`human:${row.id}`, row.name);
+      if (row.removed) gone.add(`human:${row.id}`);
+    }
+  }
+  if (agents.length) {
+    for (const row of await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents)))
+      names.set(`agent:${row.id}`, row.name);
+  }
+  return { names, gone };
+}
 
 export function workRows(db: DbExecutor) {
   return {
@@ -377,7 +424,19 @@ export function workRows(db: DbExecutor) {
         projectId: work.projectId, workId: work.id, kind: 'task.created', createdByKind: work.createdBy.kind,
         createdById: work.createdBy.id, sources, createdAt: work.createdAt });
     },
-    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: Actor; waitingFor: Actor | null; reason: string | null }) {
+    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: Actor; waitingFor: Actor | null; reason: string | null; undoes?: boolean }) {
+      // An Undo takes back the task's latest line when it is the move it undoes, by the same hand: the move changed nothing, so the
+      // conversation does not keep it (personas-26: the fold showed moves that were undone).
+      if (update.undoes && update.kind !== 'task.resumed') {
+        const u = schema.projectTaskUpdates;
+        const [latest] = await db.select({ id: u.id, kind: u.kind, byKind: u.createdByKind, byId: u.createdById }).from(u)
+          .where(eq(u.workId, work.id)).orderBy(desc(u.createdAt), desc(u.id)).limit(1);
+        const opposite = update.kind === 'task.blocked' ? 'task.unblocked' : 'task.blocked';
+        if (latest && latest.kind === opposite && latest.byKind === update.by.kind && latest.byId === update.by.id) {
+          await db.delete(u).where(eq(u.id, latest.id));
+          return;
+        }
+      }
       const id = randomUUID();
       await db.insert(schema.projectTaskUpdates).values({ id, workspaceId: work.workspaceId, projectId: work.projectId,
         workId: work.id, kind: update.kind, createdByKind: update.by.kind, createdById: update.by.id,
@@ -416,57 +475,121 @@ export function workRows(db: DbExecutor) {
         workspaceId: row.workspace_id, projectId: row.project_id, workId: row.work_id, workTitle: row.work_title, workNumber: row.work_number, kind: row.kind,
         createdBy: { kind: row.created_by_kind, id: row.created_by_id }, sources: row.sources,
         ...(row.kind === 'task.blocked' ? { waitingFor: row.waiting_for_user_id ? { kind: 'human' as const, id: row.waiting_for_user_id } : null, reason: row.reason } : {}),
-        ...(row.kind === 'task.resumed' ? { reason: row.reason } : {}),
+        ...(row.kind === 'task.resumed' || row.kind === 'task.unblocked' ? { reason: row.reason } : {}),
         // An undone creation (#238), as the task's own row says it.
         reverted: row.creation_reverted_at && row.creation_reverted_by_kind && row.creation_reverted_by_id && row.creation_reversion_notice_id
           ? { at: new Date(row.creation_reverted_at), by: { kind: row.creation_reverted_by_kind, id: row.creation_reverted_by_id }, noticeId: row.creation_reversion_notice_id } : null,
         createdAt: new Date(row.created_at) })) };
     },
     /**
-     * The moments the conversation announces (#694): a decision proposed, a decision accepted, newest first.
-     * Derived from the objects themselves, so every decision has its lines and a state change shows at once;
+     * The decisions the conversation announces (#694), newest first: one card each, where and when it was proposed. Accepting it
+     * changes that card in place (#1424 D): its state and who accepted it when are read with it, and there is no second line.
+     * Derived from the objects themselves, so a state change shows at once and a withdrawn proposal (#1424 L) is simply gone;
      * `sources` and the conversation of the first message source come from the object's own `source` links.
      */
     async listObjectNotices(projectId: string, window: Window, reach?: NoticeReach) {
       const since = reach?.since ?? null;
-      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})
-        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)`,
-        within: since ? sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.createdAt} >= ${since})
-          + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} >= ${since} AND ${d.decidedBy} IS NOT NULL)` : sql<number>`0` })
+      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})`,
+        within: since ? sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.createdAt} >= ${since})` : sql<number>`0` })
         .from(sql`(SELECT 1) AS one`);
       window = reached(window, reach, Number(count?.total ?? 0), Number(count?.within ?? 0));
-      const sourcesOf = (type: 'decision', id: string) => sql.raw(`COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
-          THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
-          ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source'), '[]'::jsonb)`);
-      const conversationOf = (type: 'decision', id: string) => sql.raw(`(SELECT m.conversation_id FROM project_object_links l
-          JOIN project_messages m ON m.id = l.to_id WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source' AND l.to_type = 'message'
-          ORDER BY l.created_at, l.id LIMIT 1)`);
       const result = await db.execute(sql`
-        SELECT e.* FROM (
-          SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, 'decision.proposed' AS kind, d.id AS object_id, d.title, d.status,
-            d.proposed_by_kind AS by_kind, d.proposed_by_id AS by_id, ${sourcesOf('decision', 'd.id')} AS sources, ${conversationOf('decision', 'd.id')} AS conversation_id, d.created_at AS at
-            FROM project_decisions d WHERE d.project_id = ${projectId}
-          UNION ALL
-          SELECT d.id::text || ':accepted', d.workspace_id, d.project_id, 'decision.accepted', d.id, d.title, d.status,
-            'human', d.decided_by, ${sourcesOf('decision', 'd.id')}, ${conversationOf('decision', 'd.id')}, d.decided_at
-            FROM project_decisions d WHERE d.project_id = ${projectId} AND d.decided_at IS NOT NULL AND d.decided_by IS NOT NULL
-        ) e ORDER BY e.at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
-      const rows = result.rows as { id: string; workspace_id: string; project_id: string; kind: 'decision.proposed' | 'decision.accepted'; object_id: string;
-        title: string; status: 'proposed' | 'accepted' | 'superseded' | null; by_kind: 'human' | 'agent'; by_id: string;
-        sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string }[];
+        SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, d.id AS object_id, d.title, d.status,
+          d.proposed_by_kind AS by_kind, d.proposed_by_id AS by_id, d.decided_by, d.decided_at,
+          COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
+            THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
+            ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = 'decision' AND l.from_id = d.id AND l.role = 'source'), '[]'::jsonb) AS sources,
+          (SELECT m.conversation_id FROM project_object_links l JOIN project_messages m ON m.id = l.to_id
+            WHERE l.from_type = 'decision' AND l.from_id = d.id AND l.role = 'source' AND l.to_type = 'message' ORDER BY l.created_at, l.id LIMIT 1) AS conversation_id,
+          d.created_at AS at, dd.conversation_id AS discussion_id,
+          (SELECT count(*)::int FROM project_messages m WHERE m.conversation_id = dd.conversation_id) AS discussion_count,
+          (SELECT max(m.created_at) FROM project_messages m WHERE m.conversation_id = dd.conversation_id) AS discussion_at
+        FROM project_decisions d LEFT JOIN project_decision_discussions dd ON dd.decision_id = d.id WHERE d.project_id = ${projectId}
+        ORDER BY d.created_at DESC, d.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
+      const rows = result.rows as { id: string; workspace_id: string; project_id: string; object_id: string; title: string;
+        status: 'proposed' | 'accepted' | 'superseded'; by_kind: 'human' | 'agent'; by_id: string; decided_by: string | null; decided_at: Date | string | null;
+        sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string;
+        discussion_id: string | null; discussion_count: number | null; discussion_at: Date | string | null }[];
       // F-030: the titles come through raw SQL; they are opened here, not in SQL (#696).
       const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
       for (const row of rows) {
         row.title = openField('project_decisions', 'title', [row.object_id], row.title, seals.get(row.workspace_id)!)!;
       }
-      return { total: Number(count?.total ?? 0), items: rows.map((row) => {
-        const base = { id: row.id, workspaceId: row.workspace_id, projectId: row.project_id, title: row.title, by: { kind: row.by_kind, id: row.by_id },
-          sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at) };
-        return { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
-      }) };
+      return { total: Number(count?.total ?? 0), items: rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, projectId: row.project_id,
+        title: row.title, by: { kind: row.by_kind, id: row.by_id }, sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at),
+        kind: 'decision.proposed' as const, decisionId: row.object_id, status: row.status,
+        decided: row.decided_by && row.decided_at ? { by: { kind: 'human' as const, id: row.decided_by }, at: new Date(row.decided_at) } : null,
+        // Its one discussion (#1424): every message of the thread answers the card.
+        discussion: row.discussion_id && row.discussion_at ? { conversationId: row.discussion_id, replyCount: Number(row.discussion_count ?? 0), lastReplyAt: new Date(row.discussion_at) } : null })) };
+    },
+    async withdrawDecision(id: string): Promise<'withdrawn' | 'used'> {
+      const named = await db.execute(sql`SELECT (
+        EXISTS (SELECT 1 FROM project_object_links WHERE to_id = ${id})
+        OR EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${id} AND (o.supersedes_id = ${id} OR o.superseded_by_id = ${id}))
+        OR EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${id} AND creation_reverted_at IS NULL)
+        -- Someone wrote about it (#1424): what was said stays, so does the decision.
+        OR EXISTS (SELECT 1 FROM project_decision_discussions WHERE decision_id = ${id})
+      ) AS found`);
+      if ((named.rows[0] as { found: boolean } | undefined)?.found) return 'used';
+      const [row] = await db.select({ projectId: d.projectId }).from(d).where(eq(d.id, id));
+      if (!row) return 'withdrawn';
+      await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${id}`);
+      // A task whose creation was undone may still name it as history; that name goes (ON DELETE SET NULL).
+      await db.execute(sql`DELETE FROM project_decisions WHERE id = ${id}`);
+      // What told people about it goes with it: its notifications (with their queued emails) and the Inbox choices made on it.
+      await db.execute(sql`DELETE FROM notifications WHERE source_type = 'project' AND source_id = ${row.projectId} AND url LIKE ${`%${id}%`}`);
+      await db.execute(sql`DELETE FROM needs_you_states WHERE item_key = ${`decision:${id}`}`);
+      return 'withdrawn';
+    },
+    async recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number; blocker: string | null }[]) {
+      const r = schema.projectDecisionResumptions;
+      await db.delete(r).where(eq(r.decisionId, decisionId));
+      if (!tasks.length) return;
+      // The reason each task waited with is its content: sealed in an encrypted space, as the task's own blocker is.
+      const seal = await sealOf(db, scope.workspaceId, { write: true });
+      await db.insert(r).values(tasks.map((task) => sealRow('project_decision_resumptions', { decisionId, workId: task.id, ...scope, version: task.version, blocker: task.blocker }, seal)));
+    },
+    async resumptions(decisionId: string, options: { clear?: boolean } = {}) {
+      const r = schema.projectDecisionResumptions;
+      const columns = { decisionId: r.decisionId, workId: r.workId, workspaceId: r.workspaceId, version: r.version, blocker: r.blocker };
+      const rows = options.clear ? await db.delete(r).where(eq(r.decisionId, decisionId)).returning(columns)
+        : await db.select(columns).from(r).where(eq(r.decisionId, decisionId));
+      return (await openRows(db, 'project_decision_resumptions', rows)).map((row) => ({ workId: row.workId, version: row.version, blocker: row.blocker }))
+        .sort((a, b) => a.workId.localeCompare(b.workId));
+    },
+    async namedAsReplaced(id: string) {
+      const found = await db.select({ id: d.id }).from(d).where(and(eq(d.supersedesId, id), sql`${d.id} <> ${id}`)).limit(1);
+      return found.length > 0;
+    },
+    async takeBackResumption(work: ReturnType<typeof toWorkRecord>, by: Actor, since: Date) {
+      const u = schema.projectTaskUpdates;
+      const [latest] = await db.select({ id: u.id }).from(u)
+        .where(and(eq(u.workId, work.id), eq(u.kind, 'task.resumed'), eq(u.createdByKind, by.kind), eq(u.createdById, by.id)))
+        .orderBy(desc(u.createdAt), desc(u.id)).limit(1);
+      if (latest) await db.delete(u).where(eq(u.id, latest.id));
+      // The owner's "#4 can continue: the decision was accepted", made from the resumption's own event (its queued email goes with it).
+      if (work.owner?.kind === 'human') await db.execute(sql`DELETE FROM notifications n WHERE n.user_id = ${work.owner.id} AND n.reason = 'assigned'
+        AND n.source_type = 'project' AND n.source_id = ${work.projectId} AND n.created_at >= ${since}
+        AND n.url = ${`/projects/${work.projectId}/tasks?open=work:${work.id}`}
+        AND n.event_id IN (SELECT e.id FROM events e WHERE e.kind = 'project.work_updated.v1' AND e.object_id = ${work.projectId}
+          AND e.data ? 'resumedFor')`);
+    },
+    async reasonLeftBlockedWith(workId: string) {
+      const a = schema.projectTaskActivity;
+      const [latest] = await openRows(db, 'project_task_activity', await db.select().from(a).where(and(eq(a.workId, workId), eq(a.kind, 'status')))
+        .orderBy(desc(a.createdAt), desc(a.id)).limit(1));
+      const detail = latest?.detail as { from?: string; wasBlocker?: string } | undefined;
+      return detail?.from === 'blocked' && typeof detail.wasBlocker === 'string' ? detail.wasBlocker : null;
+    },
+    async messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string) {
+      if (!messageIds.length) return false;
+      const m = schema.projectMessages;
+      const found = await db.select({ id: m.id }).from(m)
+        .where(and(eq(m.projectId, projectId), inArray(m.id, [...messageIds]), eq(m.authorId, userId), isNull(m.authorAgentId), isNull(m.removedAt))).limit(1);
+      return found.length > 0;
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; criteria?: string[] },
-      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved') {
+      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_stopped' | 'agent_deleted' | 'wait_resolved', options: { undoes?: boolean } = {}) {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
       const [stored] = await db.select().from(w).where(eq(w.id, id)).for('update');
@@ -497,11 +620,11 @@ export function workRows(db: DbExecutor) {
         version: sql`${w.version} + 1`, updatedAt: new Date(),
       }).where(eq(w.id, id)).returning();
       const next = toWorkRecord(openRow('project_work_items', row!, seal));
-      await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via);
+      await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via, options.undoes === true);
       if (previous && !sameActor(toWorkRecord(previous).owner, next.owner)) {
         // Taken away from an agent that is working on it by someone else (not by one of its own rules): the run has to stop (#856).
         const was = toWorkRecord(previous).owner;
-        if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_unable' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
+        if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_unable' && via !== 'agent_stopped' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
         if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by);
       }
       // A blocked task an agent holds goes back to Doing (#868): what it waited for is resolved, or a person resolves it by moving it to Doing.
@@ -643,19 +766,24 @@ export function workRows(db: DbExecutor) {
       return titles;
     },
 
-    async names(refs: Actor[]) {
-      const names = new Map<string, string>();
-      const users = [...new Set(refs.filter((ref) => ref.kind === 'human').map((ref) => ref.id))];
-      const agents = [...new Set(refs.filter((ref) => ref.kind === 'agent').map((ref) => ref.id))];
-      if (users.length) {
-        for (const row of await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, users)))
-          names.set(`human:${row.id}`, row.name);
-      }
-      if (agents.length) {
-        for (const row of await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents)))
-          names.set(`agent:${row.id}`, row.name);
-      }
-      return names;
+    /**
+     * Who of `userIds` is no longer in the company of each of `workspaceIds` (left or removed, and not back): `<workspaceId>:<userId>`. An
+     * encrypted space's own workspace asks its company's list only: someone taken out of that space alone is still in the company, so they
+     * keep their plain name there, as someone taken out of a plain space does ("(removed)" is for the company, #1424, 2026-11-17).
+     */
+    async formerMembers(workspaceIds: string[], userIds: string[]) {
+      const spaces = [...new Set(workspaceIds)];
+      const people = [...new Set(userIds)];
+      if (!spaces.length || !people.length) return new Set<string>();
+      const rows = (await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
+        JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+        WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { workspace_id: string; user_id: string }[];
+      return new Set(rows.map((row) => `${row.workspace_id}:${row.user_id}`));
     },
+
+    async names(refs: Actor[]) {
+      return (await namesIn(db, refs, null)).names;
+    },
+    namesIn: (refs: Actor[], workspaceId: string | null) => namesIn(db, refs, workspaceId),
   };
 }

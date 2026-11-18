@@ -1,4 +1,4 @@
-import type { SearchFilterType, SearchKind, SearchPlace, SearchTarget } from '@flux/contracts';
+import { UNTITLED_SKETCH, type SearchFilterType, type SearchKind, type SearchPlace, type SearchTarget } from '@flux/contracts';
 import type { SearchAudienceType, SearchRow } from './ports.js';
 
 /**
@@ -16,10 +16,12 @@ export interface SearchSource {
   target(row: SearchRow): SearchTarget;
 }
 
+// One state has one word, the word every other place uses (final design L1061; the task glyph's words To do, Doing, Blocked, Done; a
+// decision is Proposed, Accepted or Replaced): Search never says "in progress" or "accepted" in lower case (release audit ffcb07c).
 const WORK_STATUS: Record<string, string> = {
-  open: 'Task', in_progress: 'Task · in progress', blocked: 'Task · blocked', done: 'Task · done',
+  open: 'Task', in_progress: 'Task · Doing', blocked: 'Task · Blocked', done: 'Task · Done',
 };
-const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
+const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · Accepted', proposed: 'Decision · Proposed', superseded: 'Decision · Replaced' };
 
 // A saved source is a Wiki page to the person (founder decision, Hubert, 2026-11-13, #1419 item 20): Search says "Wiki page" for it, and the
 // "Material" word is gone. It still opens at the version that matched (the page by its own address).
@@ -56,7 +58,8 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   doc: {
     filter: 'doc', audience: 'project', textIsTitle: false, label: docLabel,
-    target: (row) => ({ type: 'doc', projectId: inProject(row), docId: row.objectId, version: row.version ?? 1 }),
+    target: (row) => ({ type: 'doc', projectId: inProject(row), docId: row.objectId, version: row.version ?? 1,
+      ...((row.version ?? 1) >= (row.currentVersion ?? row.version ?? 1) ? { current: true as const } : {}) }),
   },
   // A file someone sent (C-63): its name is the title, the matching part of its text the snippet; it opens its message with its preview open.
   file: {
@@ -78,12 +81,14 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   thought: {
     filter: 'sketch', audience: 'sketch', textIsTitle: true,
-    label: (row) => (row.sketchTitle ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought'),
+    // A map nobody named is not named in a result (round 14 new h: every result read "Thought on the map “Untitled map”"): the space beside
+    // it already says where it is.
+    label: (row) => (row.sketchTitle && row.sketchTitle.trim() !== UNTITLED_SKETCH ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought on the map'),
     target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId }),
   },
   person: {
     filter: 'person', audience: 'members', textIsTitle: false,
-    label: (row) => (row.status === 'guest' ? 'Person · guest' : 'Person'),
+    label: (row) => (row.status === 'guest' ? 'Person · Guest' : 'Person'),
     target: (row) => ({ type: 'person', userId: row.objectId, workspaceId: row.workspaceId }),
   },
 };

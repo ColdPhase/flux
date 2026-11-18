@@ -32,6 +32,8 @@ PAGES = {
     "/ferry": page(f'<title>Fallback title</title><meta property="og:title" content="Harbour &amp; Co: the winter ferry timetable"><meta property="og:description" content="{DESCRIPTION}">'),
     "/title-only": page("<title>A page with a title and no description</title>"),
     "/secret": page('<title>SECRET internal page</title><meta name="description" content="should never be fetched">'),
+    # An agent's web read (test_private_ai): its own page, so the link cards' count of `/ferry` fetches stays theirs.
+    "/wiki/Winter_ferry_timetable": page("<title>Winter ferry timetable</title>").replace("<h1>body</h1>", "<p>The winter timetable starts on 3 November.</p>"),
 }
 
 

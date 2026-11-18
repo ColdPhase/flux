@@ -75,8 +75,12 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   - **A key is saved only on a model.** Enter in the key field reads the models like leaving it, Connect before a model is
     known (the list is still being read, or none was) says so, and the server still refuses a command without a model
     (422 `AI_MODEL_REQUIRED`) before it sends the key anywhere; Flux's server never picks one for a client that sends none.
-  - **OpenRouter and an OpenAI-compatible endpoint** keep their `/models` list read without a key
-    (an endpoint's server usually answers it without one), and the free field as a fallback.
+  - **OpenRouter and an OpenAI-compatible endpoint** read their `/models` list with the key the person
+    has typed in the form, when there is one (an endpoint that lists its models only to a key answers
+    401 without it), and without a key when none is typed yet (coordinator decision, 2026-11-16, release
+    gate of v0.2.1). A key they refuse says "This key was refused by …", as for the other providers.
+    The key goes only into that request's `Authorization` header, through the same endpoint guard
+    (CA-4), never into a log or a response. The free field stays as a fallback.
   - **Fresh and bounded.** A key's list is read again when its picker opens and the last reading is
     more than 6 hours old, and with Try again. A saved key's list is read by the worker, the only
     process that opens a stored key (CA-4); a key being added is listed by the API with the key the
@@ -250,7 +254,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   request on a model that runs on the key (its own, and the one the assistant uses on it) is
   refused when it is saved, and so is choosing a model whose one request costs more than the
   budget. When less than one request is left, the agent pauses until the next day in the key's
-  time zone. Background work on the key
+  time zone, and says so: "Waiting: today's AI budget is used up. It starts again at 0:00, or raise the budget in Settings › AI."
+  Raising the budget starts the requests that wait on the key at once; one the new budget still cannot hold waits again (train 37 rows
+  36-37). Background work on the key
   shares that one budget; there is no second allowance. A provider-reported cost only reconciles the charge. A
   response whose cost cannot be known counts what the run had spent and the most that one request
   could have cost.
@@ -264,7 +270,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   ([#1441](https://github.com/ColdPhase/flux/issues/1441), [RT-4](ai-modes.md#the-model-gateway-1441)), with the same prices and
   cache rules: each request holds the most it can cost against what is left of the key's day before it is sent, and is charged
   the provider's reported usage after it. One whose usage is missing, malformed or beyond its bounds keeps all it held; a complete
-  error answer of the provider costs nothing. A request the day cannot hold is refused, and the run ends with "budget".
+  error answer of the provider costs nothing. A stream cut because its run was stopped (by its owner, an admin or Flux) counts what it
+  used so far: the input its first event reported and, as its output, every byte it streamed plus 1,024 tokens the provider may have
+  written after the last one; a cut stream whose input was not yet reported, or one lost while nobody stopped its run, keeps all it held
+  (#854; train 37 row 20: two Stops at 6 s counted $0.31 and $0.23, their whole holds). A request the day cannot hold is refused, and the run ends with "budget".
 
 ## CA-4 — Key custody and endpoints
 

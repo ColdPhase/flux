@@ -22,7 +22,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -62,16 +62,18 @@ class AgentTakesTask(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, who: str | None) -> BrowserContext:
+    def context(self, who: str | None, phone: bool = False) -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "viewport": DESKTOP, "device_scale_factor": 1}
+        if phone:
+            options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
         context = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         return context
 
-    def page(self, who: str | None) -> Page:
-        page = self.context(who).new_page()
+    def page(self, who: str | None, phone: bool = False) -> Page:
+        page = self.context(who, phone).new_page()
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
@@ -183,24 +185,46 @@ class AgentTakesTask(unittest.TestCase):
         # The task is the agent's, Doing became Done, and Kai is told in the task: the agent's words and one plain line.
         page = self.open_task("kai", task["id"])
         panel = page.get_by_role("complementary", name="Details")
-        expect(panel.locator("[data-agent-line='done']")).to_contain_text("Marked done · you were told")
+        # Done is said once, by the history line, for every reader (personas-26, #856): Kai's carries his Undo.
+        expect(panel.locator("[data-agent-line]")).to_have_count(0)
+        done_line = panel.get_by_role("list", name="Task activity").locator("li").filter(has_text=re.compile(r"marked it done"))
+        expect(done_line).to_have_count(1)
+        expect(panel.get_by_text(re.compile(r"marked (it )?done", re.I))).to_have_count(1)
+        expect(done_line.get_by_role("button", name="Undo")).to_have_count(1)
+        kai_text = re.sub(r"\s*Undo\s*$", "", done_line.inner_text().strip())
         expect(panel.locator(".wd-act__item--message").filter(has_text="Got it, I'm on it.")).to_be_visible()
         expect(panel.locator(".wd-act__item--message").filter(has_text="the wiring is the problem")).to_be_visible()
         expect(panel.get_by_text("Planner").first).to_be_visible()
-        # What Ada sees is the same line: it is the task's, not Kai's private view.
+        # Ada reads the same one line, without the Undo, which is the agent's owner's.
         ada_view = self.open_task("ada", task["id"])
-        expect(ada_view.get_by_role("complementary", name="Details").locator("[data-agent-line='done']")).to_contain_text("Marked done")
+        ada_panel = ada_view.get_by_role("complementary", name="Details")
+        ada_line = ada_panel.get_by_role("list", name="Task activity").locator("li").filter(has_text=re.compile(r"marked it done"))
+        expect(ada_line).to_have_count(1)
+        expect(ada_panel.get_by_text(re.compile(r"marked (it )?done", re.I))).to_have_count(1)
+        expect(ada_panel.locator("[data-agent-line]")).to_have_count(0)
+        expect(ada_line.get_by_role("button", name="Undo")).to_have_count(0)
+        self.assertEqual(ada_line.inner_text().strip(), kai_text, "the same words for every reader")
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
+        # Train 37 row 24: the conversation's lines name the agent "Kai's Planner", with the space before the dot (an inline-block part
+        # dropped it: "Planner· Kai's agent"). innerText is the text as drawn.
+        talk = self.api(ada, "GET", f"/api/v1/work/{task['id']}/discussion", status=200)
+        stream = self.page("ada")
+        stream.goto(f"/projects/{self.ids['project']}/conversations/{talk['conversationId']}")
+        label = stream.locator(":is(.project-convo__message-meta, .thread__root-meta) .agent-id__label").filter(has_text="Planner").first
+        expect(label).to_be_visible(timeout=20000)
+        self.assertEqual(" ".join(label.inner_text().split()), "Kai's Planner")
 
     def test_04a_the_report_waits_in_the_agents_chat_with_an_unread_dot_and_never_in_the_inbox(self) -> None:
-        """#919: when the run ends, one line in the agent's private chat; the dot shows in the sidebar and in Messages until Kai opens it."""
+        """#919: when the run ends, one line in the agent's private chat; the agent's name is bold in the sidebar and in Messages until Kai opens
+        it, as every unread conversation (#1424 decision 10)."""
         kai = self.page("kai")
         agent = self.ids["agent"]
+        unread = re.compile(r"\bis-unread\b")
         kai.goto("/")
-        expect(kai.locator(f".side__agent[data-agent='{agent}'] .side__dot")).to_have_count(1)
+        expect(kai.locator(f".side__agent[data-agent='{agent}']")).to_have_class(unread)
         kai.goto("/dm")
         row = kai.locator(f".dm-index [data-agent='{agent}']")
-        expect(row.locator(".dm-index__dot")).to_have_count(1)
+        expect(row).to_have_class(unread)
         shot(kai, "919-agent-report-unread-messages-1440")
         # Reports never go to the Inbox.
         inbox = self.api(kai, "GET", "/api/v1/inbox", status=200)
@@ -215,20 +239,41 @@ class AgentTakesTask(unittest.TestCase):
         expect(line.locator(".agc__line")).not_to_contain_text("change")
         expect(line.get_by_role("button", name="Undo")).to_have_count(0)
         shot(kai, "919-agent-report-line-1440")
-        # Opening the chat read it: no dot in Messages, none in the sidebar.
+        # Opening the chat read it: not bold in Messages, nor in the sidebar.
         kai.goto("/dm")
-        expect(kai.locator(f".dm-index [data-agent='{agent}'] .dm-index__dot")).to_have_count(0)
-        expect(kai.locator(f".side__agent[data-agent='{agent}'] .side__dot")).to_have_count(0)
+        expect(kai.locator(f".dm-index [data-agent='{agent}']")).not_to_have_class(unread)
+        expect(kai.locator(f".side__agent[data-agent='{agent}']")).not_to_have_class(unread)
 
     def test_05_undo_takes_it_back_to_kai_and_reopens_it(self) -> None:
         page = self.open_task("kai", self.ids["task"])
         panel = page.get_by_role("complementary", name="Details")
-        panel.locator("[data-agent-line='done']").get_by_role("button", name="Undo").click()
-        expect(panel.locator("[data-agent-line='done']")).to_have_count(0)
+        done_line = panel.get_by_role("list", name="Task activity").locator("li").filter(has_text=re.compile(r"marked it done"))
+        done_line.get_by_role("button", name="Undo").click()
+        expect(panel.get_by_role("list", name="Task activity").get_by_role("button", name="Undo")).to_have_count(0)
         task = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}", status=200)
         self.assertEqual((task["status"], task["owner"]["id"]), ("in_progress", KAI["id"]), "reopened and back with Kai, and not taken again")
         page.wait_for_timeout(1500)
         self.assertEqual(self.api(page, "GET", f"/api/v1/work/{self.ids['task']}", status=200)["owner"]["kind"], "human")
+
+    def test_05a_a_new_page_is_a_change_and_undo_on_the_done_line_says_the_task_is_back(self) -> None:
+        """v0.2.1 real-model gate rows 10, 15, 17: the run's only change is a new Wiki page. The chat's Done line counts it with Undo, and its
+        Undo takes the page and the Done back and says "#N is back with you"."""
+        mock("/__script", {"reset": True, "text": "Wrote the plan as a Wiki page.",
+                           "tool": {"name": "flux_create_doc", "input": {"clientCommandId": str(uuid.uuid4()), "doc": {"title": "Shift plan", "body": "Two half-shifts."}}}})
+        task = self.task(self.page("ada"), "Draft the shift plan", KAI["id"])
+        self.give(task)
+        self.agent_line(self.page("kai"), task["id"], "done")
+        kai = self.page("kai")
+        kai.goto("/dm")
+        kai.locator(f".dm-index [data-agent='{self.ids['agent']}']").click()
+        line = kai.locator("[data-chat-agent][data-run-id]").filter(has_text=f"Done: #{task['number']} Draft the shift plan")
+        expect(line.locator(".agc__line")).to_contain_text(f"Done: #{task['number']} Draft the shift plan · 1 change")
+        line.get_by_role("button", name="Undo").click()
+        expect(line.locator(".agc__line-note")).to_have_text(f"Undid 1 change. #{task['number']} is back with you")
+        expect(line.locator(".agc__line")).to_contain_text("Undone by you")
+        shot(kai, "agent-chat-done-undo-back-1440")
+        current = self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)
+        self.assertEqual((current["status"], current["owner"]["id"]), ("in_progress", KAI["id"]))
 
     # ---------------------------------------------------------------- Ask me first: handed back to check
 
@@ -259,6 +304,34 @@ class AgentTakesTask(unittest.TestCase):
         expect(line).to_have_count(0)
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
 
+    def test_06a_after_the_last_approve_the_line_says_back_with_you_without_a_reload(self) -> None:
+        """v0.2.1 real-model gate row 19: with Ask me first on, the run's two new tasks wait for Kai's OK. He approves one and skips the other
+        (a Skip changes nothing in the space, so nothing else tells the panel): the line above the cards is read again, "Back with you to
+        check", not "Waiting for your OK" until a reload."""
+        kai = self.page("kai")
+        mock("/__script", {"reset": True, "text": REPORT, "tool": [
+            {"name": "flux_create_task", "input": {"clientCommandId": str(uuid.uuid4()), "task": {"title": "Get three print quotes"}}},
+            {"name": "flux_create_task", "input": {"clientCommandId": str(uuid.uuid4()), "task": {"title": "Pick up the flyers on 10 April"}}}]})
+        task = self.task(self.page("ada"), "Plan the flyer print run", KAI["id"])
+        self.give(task)
+        self.agent_line(kai, task["id"], "waiting_for_ok")
+        # The run has ended and handed the task back with both changes waiting.
+        deadline = time.time() + 60
+        while time.time() < deadline and self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"] != "human":
+            kai.wait_for_timeout(500)
+        page = self.open_task("kai", task["id"])
+        panel = page.get_by_role("complementary", name="Details")
+        expect(panel.locator("[data-agent-line='waiting_for_ok']")).to_contain_text("Waiting for your OK")
+        cards = panel.locator(".assistant-waiting__card")
+        expect(cards).to_have_count(2)
+        cards.filter(has_text="Get three print quotes").get_by_role("button", name="Approve").click()
+        expect(cards).to_have_count(1)
+        expect(panel.locator("[data-agent-line='waiting_for_ok']")).to_contain_text("Waiting for your OK")
+        cards.filter(has_text="Pick up the flyers on 10 April").get_by_role("button", name="Skip").click()
+        expect(cards).to_have_count(0)
+        expect(panel.locator("[data-agent-line='handed_back']")).to_contain_text("Back with you to check")
+        expect(panel.locator("[data-agent-line='waiting_for_ok']")).to_have_count(0)
+
     # ---------------------------------------------------------------- a task assigned to a person stays with them
 
     def test_07_a_task_assigned_to_kai_starts_nothing(self) -> None:
@@ -279,6 +352,17 @@ class AgentTakesTask(unittest.TestCase):
         task = self.task(self.page("ada"), "Weigh the full barrel on Thursday", KAI["id"])
         self.give(task)
         self.agent_line(kai, task["id"], "working")
+        # One card for the one run, on the computer's sidebar and the phone's Home (v0.2.1 release gate, M18/M41): it names the agent and the
+        # task and has Stop; no second card calls the agent "not signed in yet", and none says "Your assistant · writing an answer".
+        for phone in (False, True):
+            home = self.page("kai", phone)
+            home.goto("/")
+            card = home.locator("[data-ai-surface='working-assistant']")
+            expect(card).to_have_count(1)
+            expect(card).to_have_attribute("aria-label", f"Planner · Working on #{task['number']} · Weigh the full barrel on Thursday")
+            expect(card.get_by_role("button", name="Stop Planner")).to_be_visible()
+            expect(home.locator("[data-ai-surface='working-agent']")).to_have_count(0)
+            expect(home.get_by_text("not signed in yet")).to_have_count(0)
         # Ada owns the space: she may stop Kai's agent, though she may not prompt it.
         page = self.open_task("ada", task["id"])
         line = page.get_by_role("complementary", name="Details").locator("[data-agent-line='working']")
@@ -292,7 +376,16 @@ class AgentTakesTask(unittest.TestCase):
         page.wait_for_timeout(1500)
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
         view = self.open_task("kai", task["id"])
-        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by Ada Kowalska.")).to_be_visible()
+        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped.")).to_be_visible()
+        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by")).to_have_count(0)
+        # Round 15 ai P3: the agent's own line no longer names who stopped it ("Stopped by Marek Zieliński." to Marek, without "(you)"): the history line does.
+        # The history says a stop, not a take or a finish (v0.2.1 release gate, M21), to each reader in their words.
+        history = view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")
+        # The owner is named by the full name, the reader with "(you)" (F-026 "Naming people", personas-33).
+        expect(history).to_contain_text(f"stopped Kai's Planner; the task is back with {KAI['name']} (you)")
+        expect(history).not_to_contain_text("its agent finished")
+        ada_view = self.open_task("ada", task["id"])
+        expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Kai's Planner; the task is back with Kai")
         # #919: the stop is reported to the agent's chat too, by name.
         lines = self.api(kai, "GET", f"/api/v1/agent-chats/{self.ids['agent']}/messages", status=200)["items"]
         self.assertIn(f"Stopped by Ada Kowalska: #{task['number']} Weigh the full barrel on Thursday", [line["body"] for line in lines])

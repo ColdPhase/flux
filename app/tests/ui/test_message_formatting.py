@@ -307,6 +307,41 @@ class MessageFormatting(unittest.TestCase):
 
     # ------------------------------------------------------------------------------------------------ nothing runs
 
+    def test_05a_a_task_or_page_chip_opens_what_it_names(self) -> None:
+        """Train 37 rows 9-10: `#N` and `[[Page]]` open the task and the page, as links do, and punctuation sits against a chip."""
+        project = self.ids["project"]
+        task = self.api("ada", "POST", f"/api/v1/projects/{project}/work", {"title": "Calibrate the probes"}, status=201)
+        context = self.context("ada")
+        doc = context.request.post(f"/api/v1/projects/{project}/docs", headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())},
+                                   data={"title": "Probe wiring", "body": "Red to 3V3."})
+        self.assertEqual(doc.status, 201, doc.text())
+        words = f"Wiring first (#{task['number']}), then see [[Probe wiring]]."
+        self.api("ada", "POST", f"/api/v1/projects/{project}/conversations", {"body": words, "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page()
+        page.goto(f"/projects/{project}")
+        body = page.locator(".message-body", has_text="Wiring first").first
+        expect(body).to_be_visible()
+        chip = body.locator(".ref-chip[data-ref=task]")
+        expect(chip).to_have_text(f"#{task['number']}")
+        # No gap between a chip and the punctuation beside it: the chip's own box ends where its text's padding does.
+        gap = chip.evaluate("""el => { const next = el.nextSibling; const r = document.createRange(); r.setStart(next, 0); r.setEnd(next, 1);
+          return r.getBoundingClientRect().left - el.getBoundingClientRect().right; }""")
+        self.assertLessEqual(gap, 0.5, "the ')' sits against the chip")
+        # A task of the space being read opens in the panel beside the conversation, as its card does (round 15 look-2 P2-3).
+        chip.click()
+        page.wait_for_url(re.compile(rf"/projects/{project}\?open=work:{task['id']}"))
+        expect(page.get_by_role("complementary", name="Details")).to_contain_text("Calibrate the probes")
+        page.go_back()
+        wiki = page.locator(".message-body", has_text="Wiring first").first.locator(".ref-chip[data-ref=wiki]")
+        expect(wiki).to_have_text("Probe wiring")
+        # The keyboard reaches the chip once the conversation shows its messages after Back (they are drawn hidden until their reads settle, #155),
+        # and the conversation's arrival focus never takes it back (F-026 §4).
+        expect(wiki).to_be_visible()
+        wiki.focus()
+        expect(wiki).to_be_focused()
+        page.keyboard.press("Enter")
+        page.wait_for_url(re.compile(rf"/projects/{project}/docs/{doc.json()['id']}$"))
+
     def test_06_text_that_looks_like_html_or_a_script_stays_text(self) -> None:
         self.api("ben", "POST", f"/api/v1/projects/{self.ids['project']}/conversations", {"body": HOSTILE, "clientMessageId": str(uuid.uuid4())}, status=201)
         page = self.page()

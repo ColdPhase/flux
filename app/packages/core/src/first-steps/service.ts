@@ -4,12 +4,17 @@ import type { FirstStepRows } from './ports.js';
 
 export * from './ports.js';
 
-const NONE: FirstSteps = { steps: [], joined: [], offerPush: false, everyoneSpaceId: null };
+/** The steps as the person's rows tell them; the server adds the plans its runtime offers (`FirstSteps.plans`). */
+export type FirstStepsRead = Omit<FirstSteps, 'plans'>;
+
+const NONE: FirstStepsRead = { steps: [], joined: [], offerPush: false, firstSpaceId: null };
 
 /** How long after joining the company a person is still a new person (founder direction, 2026-11-13, #1438): days from the membership's start. */
 export const NEW_PERSON_DAYS = 30;
 /** The card's rows at most. */
 export const FIRST_STEP_ROWS = 3;
+/** The people who joined, read at most: those past the card's rows are named on its last row ("Say hello · Ola joined too"), none is dropped. */
+export const FIRST_STEP_JOINED = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -22,28 +27,28 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * role that shows it. An owner or admin whose link was used also gets `joined`, one row per new person with no direct message with them yet ("Nia
  * joined · Say hello", #1438, #1424), in the place of "Invite people", which is done once a link was made; the card is still for the steps.
  */
-export async function readFirstSteps(userId: string, rows: FirstStepRows, now = new Date()): Promise<FirstSteps> {
+export async function readFirstSteps(userId: string, rows: FirstStepRows, now = new Date()): Promise<FirstStepsRead> {
   const company = await rows.company(userId);
   if (!company || company.hidden || company.role === 'guest') return NONE;
   if (now.getTime() - company.joinedAt.getTime() > NEW_PERSON_DAYS * DAY_MS) return NONE;
   const steps: FirstStep[] = [];
-  let joined: FirstSteps['joined'] = [];
+  let joined: FirstStepsRead['joined'] = [];
   const admin = company.role === 'owner' || company.role === 'admin';
   if (admin) {
     const [invited, connected] = await Promise.all([rows.invitedAnyone(company.id), rows.aiConnected(userId)]);
     if (company.name === COMPANY_NAME) steps.push('name_company');
     if (!invited) steps.push('invite_people');
-    else joined = await rows.joinedPeople(userId, company.id, FIRST_STEP_ROWS);
+    else joined = await rows.joinedPeople(userId, company.id, FIRST_STEP_JOINED);
     if (!connected) steps.push('connect_ai');
   } else {
     const [wrote, photo] = await Promise.all([rows.wroteMessage(userId, company.id), rows.hasPhoto(userId)]);
-    if (!wrote && company.everyoneSpaceId) steps.push('first_message');
+    if (!wrote && company.firstSpaceId) steps.push('first_message');
     if (!photo) steps.push('photo');
   }
   // Nothing left: the card is done, for good. Push on this device alone never keeps or brings it back (it stays offered in Settings and by the one-time offer).
-  if (!steps.length) { await rows.hide(userId, now); return { ...NONE, everyoneSpaceId: company.everyoneSpaceId }; }
+  if (!steps.length) { await rows.hide(userId, now); return { ...NONE, firstSpaceId: company.firstSpaceId }; }
   // The people who joined are a row beside a step that is left, never a reason for the card to stay or to come back.
-  return { steps, joined, offerPush: !admin, everyoneSpaceId: company.everyoneSpaceId };
+  return { steps, joined, offerPush: !admin, firstSpaceId: company.firstSpaceId };
 }
 
 /** Hide: the card never shows again for this person, on any device. */

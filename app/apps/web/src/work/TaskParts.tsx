@@ -4,7 +4,7 @@ import { Morph, StatusGlyph } from '../ui';
 import { DateField } from '../ui/DateField';
 import { STATUS_LABEL, TASK_STATES, dueLabel, statusPhrase } from './format';
 import { PropertyMenu } from './PropertyMenu';
-import { inComposer } from '../ui/keys';
+import { isTyping } from '../ui/keys';
 
 // The parts of the task panel that are edited where they are read (F-026 S9, S10): the state with
 // keys 1-5, and the title. Neither has a Save button; both save when the person is done.
@@ -20,7 +20,7 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
       const status = TASK_STATES[Number(event.key) - 1];
       if (!status || event.key.length !== 1) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]:not(#details)') || inComposer(target)) return;
+      if (isTyping(target) || target?.closest('[role="dialog"]:not(#details)')) return;
       // Only while the focus is in the panel or nowhere in particular.
       if (target && target !== document.body && !target.closest('#details')) return;
       event.preventDefault();
@@ -58,20 +58,28 @@ export function DueField({ value, editable, finished, disabled, onSave }: { valu
   // The editor is left. Focus goes back to the "Due" button only when it was inside the editor or its calendar (a key closed it, or a
   // day was chosen), so nothing is on `body` once they are gone; a press elsewhere (the composer, the Status menu) took focus where
   // the person meant to go, and it stays there.
+  const restore = useRef(false);
   const leave = (how: 'close' | 'away' = 'close') => {
     setEditing(false);
-    if (how === 'away') return;
-    requestAnimationFrame(() => {
+    restore.current = how !== 'away';
+  };
+  // The frame is asked for once the button is back: a day saved after its request answers can render after a frame asked for at once,
+  // and that frame found no button to focus (the editor stands in its place until then).
+  useLayoutEffect(() => {
+    if (editing || !restore.current) return undefined;
+    restore.current = false;
+    const frame = requestAnimationFrame(() => {
       const now = document.activeElement;
       if (!now || now === document.body) opener.current?.focus({ preventScroll: true });
     });
-  };
+    return () => cancelAnimationFrame(frame);
+  }, [editing]);
   const late = !!value && !finished && value < todayKey();
   const text = value ? dueLabel(value) : 'Add a date';
   if (!editable) return <span className="wd-value">{value ? <>{text}{late ? <span className="wd-muted"> · overdue</span> : null}</> : <span className="wd-muted">No date</span>}</span>;
   if (!editing) {
     return (
-      <button ref={opener} type="button" className="wd-state wd-due" aria-label={value ? `Due ${text}` : 'Due, add a date'} disabled={disabled} onClick={() => setEditing(true)}>
+      <button ref={opener} type="button" className="wd-state wd-due" aria-label={value ? `Due ${text}` : 'Due, add a date'} aria-disabled={disabled || undefined} onClick={() => { if (!disabled) setEditing(true); }}>
         <span className={value ? undefined : 'wd-muted'}>{text}</span>{late ? <span className="wd-muted"> · overdue</span> : null}
       </button>
     );

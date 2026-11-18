@@ -78,17 +78,21 @@ class WaitingFor(unittest.TestCase):
                 self.assertEqual(stored["waitingFor"]["id"], self.kai)
                 self.assertEqual(stored["blocker"], "Waiting for the price list")
                 expect(card.get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
-                card.get_by_role("button", name="Cancel").click()
-                expect(card).to_contain_text("Waiting for Kai Nowak")
+                # The reason written after the pick saves over the pick, never as a conflict with it (personas-30: "Someone changed this…").
+                field.fill("The new price list")
+                card.get_by_role("button", name="Save", exact=True).click()
+                expect(card).to_contain_text("Waiting for Kai Nowak · The new price list")
+                expect(panel.get_by_text(re.compile("Someone changed this"))).to_have_count(0)
+                self.assertEqual(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["blocker"], "The new price list")
                 shot(page, f"waiting-for-details-{'phone' if phone else 'computer'}")
                 # Resolving ends the wait; the toast's Undo puts the reason and the person back without a second blocker message.
-                panel.get_by_role("button", name="Resolve").click()
+                panel.get_by_role("button", name="Unblock").click()
                 expect(card).to_have_count(0)
                 self.assertIsNone(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["waitingFor"])
                 page.get_by_role("button", name="Undo").click()
                 expect(card).to_contain_text("Waiting for Kai Nowak")
                 back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
-                self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "Waiting for the price list", self.kai))
+                self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "The new price list", self.kai))
 
     def test_02_the_create_window_has_no_status_and_no_waiting_for_a_new_task_is_to_do(self):
         """#1424: a new task is always To do, so Create offers neither Status nor Waiting for; it is blocked in the panel that opens on it."""
@@ -110,13 +114,15 @@ class WaitingFor(unittest.TestCase):
                 title = f"Choose the diffuser {'phone' if phone else 'computer'}"
                 task = self.block(self.task(title), blocker="Which finish?", waitingFor={"kind": "human", "id": self.kai})
                 page = self.page("kai", phone); page.goto("/inbox")
-                heading = f"Ada Kowalska is waiting for you: #{task['number']} {title} · Which finish?"
+                # The task is the title, and the reason the line under it, said once (personas-28).
+                heading = f"Ada Kowalska is waiting for you: #{task['number']} {title}"
                 item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=heading))
                 expect(item.first).to_be_visible()
+                expect(item.first).to_contain_text("Which finish?")
                 expect(item.first.get_by_role("button", name="Unblock")).to_have_count(0)
                 if not phone: expect(open_item(item.first).get_by_role("button", name="Done", exact=True)).to_be_visible()
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
-                open_item(item.first).get_by_role("button", name="Open task").click()
+                open_item(item.first).get_by_role("button", name="Open", exact=True).click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
                 expect(page.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Kai Nowak")
 
@@ -168,14 +174,14 @@ class WaitingFor(unittest.TestCase):
         page = self.page("ada"); page.goto(f"/projects/{self.project}/tasks")
         page.get_by_role("radio", name="Board", exact=True).click()
         card = page.locator(f".tb-card[data-card-id='{named['id']}'] .tb-card__blocker")
-        # The card says one thing it waits for (#868): the person, else the reason.
-        expect(card).to_have_text("Waiting for Kai Nowak")
+        # The card says what it waits for (#868) in the words of the panel, the List, Home and the Inbox (personas-28): the person and the reason.
+        expect(card).to_have_text("Waiting for Kai Nowak · Needs the gateway in its new place first.")
         expect(page.locator(f".tb-card[data-card-id='{unnamed['id']}'] .tb-card__blocker")).to_have_text("Needs the heat-shrink delivery.")
         page.get_by_role("radio", name="List", exact=True).click()
         row = page.locator(".ws-task").filter(has_text="Move the LoRa gateway to the fence post").first
-        expect(row).to_contain_text("waiting for Kai Nowak · Needs the gateway in its new place first.")
-        expect(row).not_to_contain_text("waiting for Needs")
-        expect(page.locator(".ws-task").filter(has_text="Seal the probe cables").first).not_to_contain_text("waiting for Needs")
+        expect(row).to_contain_text("Waiting for Kai Nowak · Needs the gateway in its new place first.")
+        expect(row).not_to_contain_text(re.compile("waiting for Needs", re.I))
+        expect(page.locator(".ws-task").filter(has_text="Seal the probe cables").first).not_to_contain_text(re.compile("waiting for Needs", re.I))
 
     def decision(self, title: str):
         return api(self.ada_ctx, "POST", self.root + "/decisions", {"title": title, "rationale": "So the far beds can be reached."}, 201)
@@ -211,6 +217,21 @@ class WaitingFor(unittest.TestCase):
                 self.assertEqual((stored["status"], stored["waitingFor"], stored["blocker"]), ("in_progress", None, None))
                 self.notice(self.page("ada", phone), task["number"], f"#{task['number']} can continue: Kai Nowak is done")
 
+    def test_01b_enter_with_one_person_found_picks_that_person(self):
+        """In every person picker, Enter with exactly one person found picks that person (founder decision, round 8, #1424)."""
+        task = self.block(self.task("Order the reading lamps"), blocker="Waiting for the quote")
+        page = self.page("ada"); panel = self.panel(page, task)
+        card = panel.get_by_role("region", name="Blocker")
+        card.get_by_role("button", name="Edit").click()
+        field = card.get_by_role("combobox", name="Waiting for")
+        field.fill("Kai")
+        expect(card.get_by_role("option", name="Kai Nowak")).to_be_visible()
+        with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as saved:
+            field.press("Enter")
+        self.assertEqual(saved.value.status, 200)
+        expect(card.get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
+        self.assertEqual(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["waitingFor"]["id"], self.kai)
+
     def test_08_the_panel_waits_for_a_decision_or_a_task_and_the_card_says_what(self):
         for phone in (False, True):
             with self.subTest(phone=phone):
@@ -244,9 +265,9 @@ class WaitingFor(unittest.TestCase):
                 # The board's card and the list's row say it in one line, as drawn.
                 page.goto(f"/projects/{self.project}/tasks")
                 if not phone: page.get_by_role("radio", name="Board", exact=True).click()
-                expect(page.locator(f".tb-card[data-card-id='{task['id']}'] .tb-card__blocker")).to_have_text(f"Waiting for #{other['number']}")
+                expect(page.locator(f".tb-card[data-card-id='{task['id']}'] .tb-card__blocker")).to_have_text(f"Waiting for #{other['number']} · Needs a go-ahead")
                 page.get_by_role("radio", name="List", exact=True).click()
-                expect(page.locator(".ws-task").filter(has_text=f"Mount the far sensor {tag}").first).to_contain_text(f"waiting for #{other['number']}")
+                expect(page.locator(".ws-task").filter(has_text=f"Mount the far sensor {tag}").first).to_contain_text(f"Waiting for #{other['number']} · Needs a go-ahead")
 
     def test_09_an_accepted_decision_sends_the_task_back_to_doing_and_the_stream_says_so(self):
         for phone in (False, True):

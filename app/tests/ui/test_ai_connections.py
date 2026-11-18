@@ -24,6 +24,8 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forward
 
 MOCK = os.environ.get("FLUX_OPENAI_MOCK_URL", "http://127.0.0.1:8091")
 ENDPOINT = "http://openai-mock:8091/v1"
+# The price fields' plain words (design §7, founder decision 2026-11-14, #1424).
+PRICE = "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)"
 PASSWORD = "a provider of my own choosing"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Ada Nowak", "email": f"ada.nowak+{STAMP}@example.test"}
@@ -120,7 +122,9 @@ class AiConnectionSettings(unittest.TestCase):
         provider = page.get_by_label("Provider", exact=True)
         expect_value(provider, "")
         options = [text.strip() for text in labels(provider)]
-        self.assertEqual(options, ["Choose a provider", *PROVIDERS])
+        # The placeholder is the closed field's words, never an option of the list (v0.2.1 UI audit, P3 4).
+        self.assertEqual(options, PROVIDERS)
+        expect(provider).to_have_text("Choose a provider")
         body = window.inner_text()
         for vendor in ("Claude Platform", "claude-sonnet-5", "pays Anthropic", "sk-ant-"):
             self.assertNotIn(vendor, body, "no vendor is named before the owner chooses one (PROV-2)")
@@ -148,15 +152,15 @@ class AiConnectionSettings(unittest.TestCase):
                          "the server lists models without any key")
         expect(page.locator("datalist")).to_have_count(0)
         choose(model, value="llama3.1:8b")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         # #1424: a key is never saved on a model with no price, which could not be used: Connect says so above the form and saves nothing.
         self.fill_key(page, KEYS["openai_compatible"])
         before = self.connections(page)
         page.get_by_role("button", name="Connect", exact=True).click()
         expect(page.get_by_role("alert").filter(has_text="Enter this model’s price to use it with a daily budget")).to_be_visible()
         self.assertEqual(self.connections(page), before, "a key without a price is not saved")
-        page.get_by_label("Input price").fill("0")
-        page.get_by_label("Output price").fill("0")
+        page.get_by_label("Input", exact=True).fill("0")
+        page.get_by_label("Output", exact=True).fill("0")
         self.fill_key(page, KEYS["openai_compatible"])
         shot(page, "ai-connection-1440-compatible-form")
         page.get_by_role("button", name="Connect", exact=True).click()
@@ -167,7 +171,9 @@ class AiConnectionSettings(unittest.TestCase):
         expect(metadata.locator("div").filter(has_text="Provider")).to_contain_text("OpenAI-compatible endpoint")
         expect(metadata.locator("div").filter(has_text="Model")).to_contain_text("llama3.1:8b")
         expect(metadata).to_contain_text(ENDPOINT)
-        expect(metadata).to_contain_text("$0.00 input · $0.00 output per 1M tokens · Entered by you")
+        # The same plain words as the Connect AI form (train 37 row 5).
+        expect(metadata).to_contain_text("$0.00 for what you send and $0.00 for what it writes, per million tokens · Entered by you")
+        expect(metadata).not_to_contain_text("per 1M tokens")
         expect(key.get_by_test_id("key-usage")).to_have_text("$0.00 of $5 today")
         saved = self.connection(page, provider="openai_compatible")
         self.assertEqual((saved["provider"], saved["model"], saved["baseUrl"], saved["price"]["source"], saved["dailyBudgetCents"]),
@@ -190,10 +196,29 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Show available models").click()
         expect(page.get_by_role("status").filter(has_text="1 model from OpenAI-compatible endpoint")).to_be_visible()
         expect_value(page.get_by_label("Model", exact=True), "only-model")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         cancel, connect = page.get_by_role("button", name="Cancel", exact=True).last.bounding_box(), page.get_by_role("button", name="Connect", exact=True).bounding_box()
         self.assertLess(cancel["x"], connect["x"], "Cancel is left of the one primary, as in the window's first step")
         self.assertGreater(connect["x"] + connect["width"], page.viewport_size["width"] * 0.5, "the pair sits on the right")
+
+    def test_03c_an_endpoint_that_wants_a_key_lists_its_models_with_the_key_typed(self) -> None:
+        """Release gate O05: "Show available models" reads the list with the key in the field; a refused key says so under it."""
+        page = self.page()
+        page.goto("/settings/ai-connections")
+        page.get_by_role("button", name="Add a key").click()
+        choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
+        page.get_by_label("Endpoint base URL").fill("http://openai-mock:8091/keyed/v1")
+        key = page.get_by_label("API key", exact=True)
+        key.fill(KEYS["openai_compatible"])
+        page.get_by_role("button", name="Show available models").click()
+        expect(page.get_by_role("status").filter(has_text="2 models from OpenAI-compatible endpoint")).to_be_visible()
+        self.assertEqual(values(page.get_by_label("Model", exact=True)), ["llama3.1:8b", "qwen2.5:7b-instruct", "__other__"])
+        asked = [item["authorization"] for item in mock_requests() if item["path"] == "/keyed/v1/models"]
+        self.assertEqual(asked[-1], f"Bearer {KEYS['openai_compatible']}", "the typed key goes with the listing")
+        key.fill("local-refused-placeholder")
+        page.get_by_role("button", name="Show available models").click()
+        expect(page.get_by_role("alert").filter(has_text="This key was refused by the endpoint. Check it and try again.")).to_be_visible()
+        self.no_key_anywhere(page)
 
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()
@@ -210,7 +235,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_text("6 models from Anthropic.")).to_be_visible()
         choose(page.get_by_label("Model", exact=True), value="claude-sonnet-5")
         expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 for what you send and $10.00 for what it writes, per million tokens · Flux’s price list of ")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(page.get_by_role("group", name=PRICE)).to_have_count(0)
         open_more(page)
         page.get_by_label("Name (optional)", exact=True).fill("Work Anthropic")
         self.fill_key(page, KEYS["anthropic"], "12.50")
@@ -261,8 +286,8 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Show available models").click()
         expect(page.get_by_role("status").filter(has_text="This endpoint is not allowed on this server")).to_be_visible()
         page.get_by_label("Model", exact=True).fill("llama3.1:8b")
-        page.get_by_label("Input price").fill("0")
-        page.get_by_label("Output price").fill("0")
+        page.get_by_label("Input", exact=True).fill("0")
+        page.get_by_label("Output", exact=True).fill("0")
         self.fill_key(page, KEYS["openai_compatible"])
         page.get_by_role("button", name="Connect", exact=True).click()
         alert = page.get_by_role("alert")
@@ -278,9 +303,9 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Add a key").tap()
         choose(page.get_by_label("Provider", exact=True), label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         open_more(page)
-        for label in ("Provider", "Model", "Input price", "Output price", "Daily budget (USD)"):
+        for label in ("Provider", "Model", "Input", "Output", "Daily budget (USD)"):
             box = page.get_by_label(label, exact=True).last.bounding_box()
             self.assertIsNotNone(box)
             self.assertGreaterEqual(box["height"], 44, label)
@@ -329,7 +354,9 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("Add Flux to the app you already use.")
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
-        expect(guide).to_contain_text("with Ask me first on, every change waits for your OK")
+        # What waits for your OK is said once, at the top of the page, not again in the guide (persona P3 B-7).
+        expect(guide).not_to_contain_text("waits for your OK")
+        expect(page.locator(".connection")).to_contain_text("with Ask me first on every change waits for your OK")
         tabs.get_by_role("tab", name="Claude Code", exact=True).click()
         shot(page, "ai-connection-1440-connect-guide")
         tabs.get_by_role("tab", name="Codex", exact=True).click()
@@ -435,7 +462,9 @@ class AiConnectionSettings(unittest.TestCase):
         expect(window.get_by_role("alert")).to_contain_text("can cost up to $0.27, so the daily budget must be at least that")
         # #1424: the problem is in the budget, so More is open by itself with the field in view.
         expect(window.get_by_label("Daily budget (USD)", exact=True)).to_be_visible()
-        window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
+        # The key was not refused, only the budget: it stays in its field (v0.2.1 release gate, J31).
+        expect(window.get_by_role("alert")).not_to_contain_text("The key was cleared")
+        expect(window.get_by_label("API key", exact=True)).to_have_value(KEYS["anthropic"])
         window.get_by_label("Daily budget (USD)", exact=True).fill("5")
         window.get_by_role("button", name="Connect", exact=True).click()
         expect(window).to_have_count(0)

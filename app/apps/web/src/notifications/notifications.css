@@ -2,7 +2,7 @@
    mark for "new", no counts. */
 .inbox__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
 /* A settings page's title (Your assistant, How your assistant works): the --fs-xl of the other settings titles, not the browser's 1.5em. */
-.inbox__head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
+.inbox__head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); line-height: 1.25; color: var(--t1); }
 .inbox__head p { max-width: 460px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .inbox__head > div:first-child { flex: 1 1 320px; min-width: 0; }
 .inbox__loading { display: flex; justify-content: center; padding: 48px 0; }
@@ -42,7 +42,7 @@
 
 /* The addresses, as the final design draws them: a tick on the left, the address with a line under it, then Send again and Remove at the
    right edge; the row of the field to add one follows. */
-.sset-card .nset__addr { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; column-gap: 12px; }
+.sset-card .sset-row.nset__addr { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; column-gap: 12px; }
 .nset__tick { grid-column: 1; display: grid; place-items: center; }
 /* The Settings check (a ring, filled and ticked when on), drawn by hand so the box itself can be a 44 px target on touch (--pad) while the mark stays 18 px (#1380). */
 .nset__tick input {
@@ -62,18 +62,20 @@
 .nset__send { grid-column: 3; }
 .nset__remove { grid-column: 4; }
 .nset__addr .ui-btn { flex: none; }
-.nset__add { flex-wrap: wrap; gap: 8px; }
+.sset-row.nset__add { flex-wrap: wrap; gap: 8px; }
 .nset__add input { flex: 1; min-width: 0; }
 .nset__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .nset__row .ui-select { flex: 1; min-width: 0; }
 .nset__row input, .nset__add input, .nset__row .ui-select, .nset__times .ui-select {
   min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md);
 }
-.nset__row input:focus-visible, .nset__add input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.nset__row input:focus-visible, .nset__add input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .nset__add input[aria-invalid="true"] { border-color: var(--t1); }
+/* The field and its Add button are one row of one height: a row's button is 32 px (README §2), so the field is too. Touch makes both 44 below. */
+.nset__add input { min-height: var(--ctl); }
 .nset__add-error { display: flex; align-items: center; gap: 6px; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t1); }
 
-/* Muted places. */
+/* Muted spaces and messages. */
 .nset__panel .nset__lead { margin: 0 0 10px; }
 .nset__muted { list-style: none; margin: 0 0 10px; padding: 0; }
 .nset__muted li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; border-bottom: 1px solid var(--line); }
@@ -95,7 +97,7 @@
 @media (pointer: coarse) {
   .nset__row input, .nset__add input, .nset__row .ui-select, .nset__times .ui-select { min-height: 44px; }
   /* The tick is a 44 px target; the row's own padding gives way to it. */
-  .sset-card .nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto auto; padding-left: 4px; }
+  .sset-card .sset-row.nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto auto; padding-left: 4px; }
   .nset__tick { height: 44px; margin-block: -8px; }
   .nset__tick input { --pad: 13px; }  /* the checkbox itself is 44 × 44 too, its tick stays 18 px in the middle (#1380) */
 }
@@ -111,7 +113,7 @@
   .nset__panel { padding: 6px 16px 14px; }
   .nset__row input, .nset__add input { min-width: 0; }
   /* A phone: Remove stays at the right edge of the first line, Send again goes under the text, so a long address keeps its width. */
-  .sset-card .nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 8px; padding-left: 4px; row-gap: 0; }
+  .sset-card .sset-row.nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 8px; padding-left: 4px; row-gap: 0; }
   .nset__addr > .sset-row__b { grid-row: 1; }
   .nset__tick { grid-row: 1; }
   .nset__remove { grid-column: 3; grid-row: 1; }

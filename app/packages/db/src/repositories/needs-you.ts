@@ -14,6 +14,7 @@ import { openRows } from '../sealing.js';
 const s = schema.needsYouStates;
 const d = schema.projectDecisions;
 const n = schema.notifications;
+type NeedsYouRestore = NonNullable<typeof schema.needsYouStates.$inferSelect['restore']>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function needsYouRows(db: DbExecutor) {
@@ -21,7 +22,7 @@ export function needsYouRows(db: DbExecutor) {
   const takeOut = async (userId: string, ids: string[]): Promise<string[]> => {
     if (!ids.length) return [];
     await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), inArray(n.id, ids), isNull(n.readAt)));
-    const done = { state: 'done' as const, until: null, untilWorkId: null };
+    const done = { state: 'done' as const, until: null, untilWorkId: null, restore: null };
     await db.insert(s).values(ids.map((id) => ({ userId, itemKey: `note:${id}`, ...done }))).onConflictDoUpdate({
       target: [s.userId, s.itemKey], set: { ...done, updatedAt: sql`now()` },
     });
@@ -30,12 +31,13 @@ export function needsYouRows(db: DbExecutor) {
   return {
     async states(userId: string) {
       const rows = await db.select().from(s).where(eq(s.userId, userId));
-      return rows.map((row) => ({ key: row.itemKey, state: row.state, until: row.until, untilWorkId: row.untilWorkId, updatedAt: row.updatedAt }));
+      return rows.map((row) => ({ key: row.itemKey, state: row.state, until: row.until, untilWorkId: row.untilWorkId, restore: row.restore ?? null, updatedAt: row.updatedAt }));
     },
 
-    async putState(userId: string, key: string, value: { state: 'done' | 'declined' | 'snoozed'; until: Date | null; untilWorkId: string | null }) {
-      await db.insert(s).values({ userId, itemKey: key, ...value }).onConflictDoUpdate({
-        target: [s.userId, s.itemKey], set: { ...value, updatedAt: sql`now()` },
+    async putState(userId: string, key: string, value: { state: 'done' | 'declined' | 'snoozed'; until: Date | null; untilWorkId: string | null; restore?: NeedsYouRestore | null }) {
+      const row = { ...value, restore: value.restore ?? null };
+      await db.insert(s).values({ userId, itemKey: key, ...row }).onConflictDoUpdate({
+        target: [s.userId, s.itemKey], set: { ...row, updatedAt: sql`now()` },
       });
     },
 
@@ -103,6 +105,25 @@ export function needsYouRows(db: DbExecutor) {
     },
 
     /**
+     * A task the person makes from a message answers what that message asked or mentioned of them (personas-28): their unread question and
+     * mention notifications of exactly those messages are read and marked done, as a reply in the conversation takes them. An agent's
+     * question card is answered with its own answers and stays. Returns the Inbox keys it took out.
+     */
+    async answerWithTask(userId: string, projectId: string, messageIds: string[]): Promise<string[]> {
+      const ids = [...new Set(messageIds.map((id) => id.toLowerCase()).filter((id) => UUID.test(id)))];
+      if (!ids.length) return [];
+      const q = schema.agentQuestions;
+      const cards = new Set((await db.select({ messageId: q.messageId }).from(q).where(and(eq(q.askedUserId, userId), inArray(q.messageId, ids))))
+        .map((row) => row.messageId.toLowerCase()));
+      const open = ids.filter((id) => !cards.has(id));
+      if (!open.length) return [];
+      const rows = await db.select({ id: n.id }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), inArray(n.reason, ['question', 'mention']),
+        eq(n.sourceType, 'project'), eq(n.sourceId, projectId), sql`starts_with(lower(${n.url}), ${`/projects/${projectId.toLowerCase()}/conversations/`})`,
+        inArray(sql`lower(split_part(${n.url}, '#message-', 2))`, open)));
+      return takeOut(userId, rows.map((row) => row.id));
+    },
+
+    /**
      * The same for a direct message (#1249): a message that names someone is a mention or a question there, as in a space thread, so the
      * person's reply in that conversation answers their unread ones, read and done as Done takes them. A DM has no agent question cards.
      */
@@ -120,12 +141,19 @@ export function needsYouRows(db: DbExecutor) {
       return rows.length > 0;
     },
 
-    /** Members of the project's workspace, by name: candidates only; the policy decides who may act. */
+    /**
+     * The people in the space, by name: candidates only; the policy decides who may act. They are the ones its decisions are asked of (their
+     * Inbox lists the spaces they are in, `memberFilter`): everyone but a guest in a space for the whole company, else the people added to it.
+     * A company admin outside a closed space is not asked, so "… can accept too" never names them (personas-27).
+     */
     async workspaceMembersOfProject(projectId: string, limit: number) {
+      const m = schema.workspaceMembers;
       const rows = await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.projects)
-        .innerJoin(schema.workspaceMembers, eq(schema.workspaceMembers.workspaceId, schema.projects.workspaceId))
-        .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
-        .where(eq(schema.projects.id, projectId)).orderBy(schema.authUsers.name).limit(limit);
+        .innerJoin(m, eq(m.workspaceId, schema.projects.workspaceId))
+        .innerJoin(schema.authUsers, eq(schema.authUsers.id, m.userId))
+        .where(and(eq(schema.projects.id, projectId), or(and(eq(schema.projects.visibility, 'workspace'), sql`${m.role} <> 'guest'`),
+          sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${schema.projects.id} AND g.user_id = ${m.userId})`)))
+        .orderBy(schema.authUsers.name).limit(limit);
       return rows;
     },
 
@@ -135,6 +163,18 @@ export function needsYouRows(db: DbExecutor) {
       const rows = await db.select({ id: schema.projectWorkItems.id, status: schema.projectWorkItems.status }).from(schema.projectWorkItems)
         .where(inArray(schema.projectWorkItems.id, ids));
       return new Map(rows.map((row) => [row.id, row.status as string]));
+    },
+    /**
+     * When each of these tasks last changed status (its newest `status` activity entry, by id): for a task blocked now, when it became blocked.
+     * An Undo takes its own entry back, so a task put back to Blocked keeps the time it was first blocked (sweep-34 C11). A task created
+     * blocked has no entry. Reads the plain columns only, by `project_task_activity_work_idx`.
+     */
+    async statusChangedAt(ids: string[]) {
+      if (!ids.length) return new Map<string, Date>();
+      const a = schema.projectTaskActivity;
+      const rows = await db.select({ workId: a.workId, at: sql<Date>`max(${a.createdAt})`.mapWith(a.createdAt) }).from(a)
+        .where(and(inArray(a.workId, ids), eq(a.kind, 'status'))).groupBy(a.workId);
+      return new Map(rows.map((row) => [row.workId, row.at]));
     },
   };
 }

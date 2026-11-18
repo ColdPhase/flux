@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { assistantChangeWords, assistantWorkChangeArgs, DM_NOTIFICATIONS_CHANGED_EVENT, messagePreview, PROJECT_NOTIFICATIONS_CHANGED_EVENT } from '@flux/contracts';
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
@@ -88,11 +88,12 @@ export function notificationGeneratorRows(db: DbExecutor) {
     },
     async insertNotification(row: {
       id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; reason: Reason; eventId: string;
-      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean;
+      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean; answer?: boolean; from: string;
     }) {
       const inserted = await db.insert(n).values({
         id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
         reason: row.reason, eventId: row.eventId, title: row.title, body: row.body, url: row.url, inInbox: row.inInbox, aiOrigin: row.aiOrigin,
+        answer: row.answer === true, fromActor: row.from,
       }).onConflictDoNothing({ target: [n.userId, n.eventId], where: sql`${n.eventId} IS NOT NULL` }).returning({ id: n.id });
       return inserted.length > 0;
     },
@@ -200,6 +201,16 @@ export function notificationFactRows(db: DbExecutor) {
     const [row] = await db.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, id));
     return row?.owner ?? null;
   };
+  /**
+   * Which of these messages reached the person's Inbox as a question to them (#1424 decision 1): the notice the generator stored for them, reason
+   * `question`, whatever made it one (their name, or an answer to what they asked). The one detection decides the asker of an answer too.
+   */
+  const askedOf = async (userId: string, sourceType: SourceType, sourceId: string, rows: { authorId: string; url: string }[]) => {
+    if (!rows.length) return [];
+    const asked = new Set((await db.select({ url: n.url }).from(n).where(and(eq(n.userId, userId), eq(n.reason, 'question'), eq(n.sourceType, sourceType),
+      eq(n.sourceId, sourceId), inArray(n.url, rows.map((item) => item.url))))).map((item) => item.url));
+    return rows.map((item) => ({ authorId: item.authorId, askedAuthor: asked.has(item.url) }));
+  };
   return {
     names,
     async sealedWorkspace(workspaceId: string) {
@@ -228,7 +239,10 @@ export function notificationFactRows(db: DbExecutor) {
       // applies to the messages sent after it, so reading an event again later (a rewound cursor) decides as it did.
       const chosen = await db.select({ userId: f.userId, following: f.following }).from(f)
         .where(and(eq(f.conversationId, message.conversationId), lte(f.updatedAt, message.createdAt)));
-      const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
+      // The owner's mark in the agent's label (#1424, 2026-11-17): removed from the company (of an encrypted space: its company), as `namesIn` reads it.
+      const ownerRemoved = sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = coalesce(w.company_workspace_id, w.id)
+        WHERE w.id = ${message.workspaceId}::uuid AND r.user_id = ${schema.agents.ownerUserId})`;
+      const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId, ownerRemoved }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
       // A local client writes as its person and may tell people (LC-2); every other agent's line tells only its owner (#1089, AG-4). An
       // identity with a server setup is a server agent whatever else signed in as it, and one with neither tells only its owner too.
@@ -238,14 +252,50 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(schema.assistantSettings.agentId, message.authorAgentId)).limit(1) : [];
       const [asked] = await db.select({ userId: schema.agentQuestions.askedUserId, question: schema.agentQuestions.question }).from(schema.agentQuestions)
         .where(eq(schema.agentQuestions.messageId, message.id));
+      // What others wrote here since the author last did (#1424 decision 1): a message among them that reached the author's Inbox as a question
+      // to them is answered now.
+      const sinceRows = message.authorId === null ? [] : await db.select({ id: pm.id, authorId: pm.authorId }).from(pm)
+        .where(and(eq(pm.conversationId, message.conversationId), lt(pm.sequence, message.sequence), isNotNull(pm.authorId), ne(pm.authorId, message.authorId), isNull(pm.removedAt),
+          sql`${pm.sequence} > coalesce((SELECT max(own.sequence) FROM project_messages own WHERE own.conversation_id = ${message.conversationId} AND own.author_id = ${message.authorId} AND own.sequence < ${message.sequence}), 0)`))
+        .orderBy(desc(pm.sequence)).limit(20);
+      const since = message.authorId === null ? [] : await askedOf(message.authorId, 'project', message.projectId,
+        sinceRows.map((item) => ({ authorId: item.authorId!, url: `/projects/${message.projectId}/conversations/${message.conversationId}#message-${item.id}` })));
+      // A decision's one discussion (#1424): a question in it that names nobody asks the decision's proposer, an agent's owner for an
+      // agent's proposal (persona round 8 P2 3), and its notice names the decision.
+      const pd = schema.projectDecisions;
+      const [bound] = await openRows(db, 'project_decisions', await db.select({ id: pd.id, workspaceId: pd.workspaceId, title: pd.title, proposedByKind: pd.proposedByKind, proposedById: pd.proposedById })
+        .from(schema.projectDecisionDiscussions).innerJoin(pd, eq(pd.id, schema.projectDecisionDiscussions.decisionId))
+        .where(eq(schema.projectDecisionDiscussions.conversationId, message.conversationId)));
+      const askee = !bound ? null : bound.proposedByKind === 'human' ? bound.proposedById
+        : (await db.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, bound.proposedById)))[0]?.owner ?? null;
       return {
-        asked: asked ?? null,
+        asked: asked ?? null, ...(bound ? { decision: { title: bound.title, askee } } : {}),
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
-        authorName: agent?.name ?? null, via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
+        authorName: agent?.name ?? null, ...(agent ? { authorOwnerId: agent.ownerUserId, authorOwnerRemoved: agent.ownerRemoved } : {}), via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
+        since,
         ...(message.authorAgentId && (server || !client) ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };
+    },
+    async joinQuestions(userId: string, place: { projectId: string } | { workspaceId: string }, days: number) {
+      const pm = schema.projectMessages;
+      const pr = schema.projects;
+      const scope = 'projectId' in place ? eq(pm.projectId, place.projectId) : and(eq(pr.workspaceId, place.workspaceId), eq(pr.visibility, 'workspace'));
+      const rows = await db.select({ message: pm }).from(pm).innerJoin(pr, eq(pr.id, pm.projectId))
+        .where(and(scope, isNull(pm.removedAt), isNotNull(pm.authorId), ne(pm.authorId, userId), gte(pm.createdAt, sql`now() - make_interval(days => ${days})`),
+          sql`NOT EXISTS (SELECT 1 FROM project_messages later WHERE later.conversation_id = ${pm.conversationId} AND later.sequence > ${pm.sequence}
+            AND later.removed_at IS NULL AND later.author_id IS DISTINCT FROM ${pm.authorId})`,
+          sql`NOT EXISTS (SELECT 1 FROM notifications told WHERE told.user_id = ${userId}
+            AND told.url = '/projects/' || ${pm.projectId}::text || '/conversations/' || ${pm.conversationId}::text || '#message-' || ${pm.id}::text)`))
+        .orderBy(desc(pm.createdAt), desc(pm.id)).limit(200);
+      const messages = await openRows(db, 'project_messages', rows.map((row) => row.message));
+      const out = [];
+      for (const message of messages) {
+        out.push({ id: message.id, projectId: message.projectId, projectName: await projectName(message.projectId), conversationId: message.conversationId,
+          authorId: message.authorId!, via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount });
+      }
+      return out;
     },
     async dmMessage(dmId: string, messageId: string) {
       const [row] = await db.select({ message: schema.dmMessages, dm: schema.dms }).from(schema.dmMessages)
@@ -256,9 +306,20 @@ export function notificationFactRows(db: DbExecutor) {
       const participants = await db.select({ id: schema.dmParticipants.userId }).from(schema.dmParticipants).where(eq(schema.dmParticipants.dmId, dmId));
       const [message] = await openRows(db, 'dm_messages', [row.message]);
       const [dm] = await openRows(db, 'dms', [row.dm]);
+      // What others wrote at this message's level (the roots, or its thread with its root) since its author last did there (#1424 decision 1).
+      const dmm = schema.dmMessages;
+      const root = row.message.threadRootId;
+      const level = root ? sql`(${dmm.threadRootId} = ${root} OR ${dmm.id} = ${root})` : isNull(dmm.threadRootId);
+      const ownLevel = root ? sql`(own.thread_root_id = ${root} OR own.id = ${root})` : sql`own.thread_root_id IS NULL`;
+      const sinceRows = await db.select({ id: dmm.id, authorId: dmm.authorId }).from(dmm)
+        .where(and(eq(dmm.dmId, dmId), level, lt(dmm.sequence, row.message.sequence), ne(dmm.authorId, row.message.authorId), eq(dmm.kind, 'text'), isNull(dmm.removedAt),
+          sql`${dmm.sequence} > coalesce((SELECT max(own.sequence) FROM dm_messages own WHERE own.dm_id = ${dmId} AND own.author_id = ${row.message.authorId} AND own.sequence < ${row.message.sequence} AND ${ownLevel}), 0)`))
+        .orderBy(desc(dmm.sequence)).limit(20);
+      const since = await askedOf(row.message.authorId, 'dm', dmId, sinceRows.map((item) => ({ authorId: item.authorId, url: `/dm/${dmId}#message-${item.id}` })));
       return {
         id: message!.id, workspaceId: dm!.workspaceId, dmId, kind: dm!.kind as 'pair' | 'group', title: dm!.title,
         authorId: message!.authorId, via: message!.via ?? null, viaAgent: !!message!.via && !!message!.viaColour, body: message!.body, participantIds: participants.map((item) => item.id),
+        since,
       };
     },
     async work(workId: string) {

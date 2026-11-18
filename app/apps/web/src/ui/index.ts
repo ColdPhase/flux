@@ -18,12 +18,11 @@ export { Drawer, Overlay, Sheet, focusableIn, trapTab, useStripOnlyModal } from 
 export { AgentIdentity, AgentTag } from './AgentIdentity';
 export { AGENT_HUES, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';
 export { Morph } from './Morph';
+export { PersonName } from './PersonName';
 export { StatusGlyph, TASK_STATE_WORD } from './StatusGlyph';
-export { PanelActions, PanelGlyph, PanelMeta, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
+export { PanelActions, PanelGlyph, PanelMeta, REVEAL_EVENT, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { publishHighestTopEdge, publishTopEdge } from './edgeInset';
 export { useFocusBack } from './focusBack';
-export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
+export { ToastProvider, UNDO_MS, useClearOfToast, useLeaveUndoToasts, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { Mascot, Opening, OpeningRows, PullToRefresh } from './Moments';
-export { Slider } from './Slider';
-export { Option, OptionGroup, Select, type OptionGroupProps, type OptionProps, type SelectProps } from './Select';

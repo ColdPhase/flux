@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode, type Ref, type TextareaHTMLAttributes } from 'react';
+import { youLabel } from '../docs/format';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import { SKETCH_LIMITS, WORK_LIMITS, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson } from '@flux/contracts';
@@ -7,8 +8,10 @@ import { useIntentKeys } from '../api/intent-keys';
 import { getProject } from '../api/sketches';
 import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
+import { personLabel, startsSpaces } from '../people/api';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
 import { NewSpaceForm } from '../project/NewSpace';
+import { awaitField, isTyping } from '../ui/keys';
 import '../app/settings.css';
 import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
@@ -16,15 +19,18 @@ import { lastSpace } from '../app/lastSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
-import { Button, Icon, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
+import { Avatar, Button, Icon, Kreska, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast } from '../ui';
+import { Select, Option, OptionGroup } from '../ui/Select';
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
-import { createWork, proposeDecision } from '../work/api';
+import { createWork, proposeDecision, withdrawDecision } from '../work/api';
+import { holdProposal } from '../work/heldProposals';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
-import { useCreatedToast } from '../work/taskState';
-import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
+import { useCreatedToast, WORK_CREATION_UNDONE_EVENT } from '../work/taskState';
 import { SpaceFace } from '../ui/SpaceFace';
+import { leaveFocusToDestination } from '../ui/Overlay';
+import { returnFocusToObject } from '../ui/SidePanel';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -54,12 +60,16 @@ const KINDS: { id: Shown; label: string; name: string; manual?: boolean }[] = [
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
 export function CreateHost({ request, onClose, onTask }: { request: CreateRequest | null; onClose: () => void; onTask?: (projectId: string) => void }) {
   const phone = useMediaQuery(MEDIA.phone);
+  // The new space opens with the cursor in its composer on a computer (`focusComposerOnArrival`); what is typed on the way is kept for it.
+  const touch = useMediaQuery(MEDIA.touch);
   // Each opening starts on Task (F-026 S3), or on Space while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects, workspace } = useShellData();
-  // A guest cannot start spaces, so with none of their own they open on Task like anyone else.
+  // A guest cannot start spaces, so with none of their own they open on Task like anyone else, and Space is not one of their tabs (#1424).
   // A thought needs no space (it goes on My map), so a Thought asked for opens as one for someone with no space yet (#866).
-  const opening: Shown = request?.kind === 'thought' ? 'thought' : request?.kind === 'space' || (!projects.length && workspace?.role !== 'guest') ? 'space'
+  // A guest with no space yet has only Thought, which goes on My map (#1424): a task, a decision and a page each need a space they cannot make.
+  const opening: Shown = request?.kind === 'thought' || (!startsSpaces(workspace) && !projects.length) ? 'thought'
+    : startsSpaces(workspace) && (request?.kind === 'space' || !projects.length) ? 'space'
     : request?.kind === 'decision' ? 'decision' : request?.kind === 'page' ? 'page' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
@@ -68,7 +78,7 @@ export function CreateHost({ request, onClose, onTask }: { request: CreateReques
     <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={KINDS.find((item) => item.id === kind)!.name}
       className={kind === 'space' ? 'newspace-win' : 'create'}>
       {request ? (kind === 'space'
-        ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { onClose(); void navigate(`/projects/${project.id}`); }} />
+        ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { if (!touch) awaitField(); onClose(); void navigate(`/projects/${project.id}`); }} />
         : <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onSpace={(name) => setChosen({ request, kind: 'space', name })} onClose={onClose} onTask={onTask} />) : null}
     </Overlay>
   );
@@ -87,7 +97,9 @@ interface Carried {
 interface PanelIds { id: string; tab: string; field: string; active: boolean }
 
 function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void; onTask?: (projectId: string) => void }) {
-  const { me, projects } = useShellData();
+  const { me, projects, workspace } = useShellData();
+  // What can be made here and nothing else (#1424): a guest starts no space, and without one a guest's only tab is Thought (My map).
+  const kinds = startsSpaces(workspace) ? KINDS : KINDS.filter((item) => item.id !== 'space' && (projects.length > 0 || item.id === 'thought'));
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const known = (id: string | undefined) => (id && projects.some((project) => project.id === id) ? id : undefined);
@@ -119,14 +131,15 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
   // A pointer on a tab goes on to its text, so typing continues there; the arrow keys keep focus on the tabs.
   const pointerOnTab = (event: MouseEvent) => {
     const tab = event.detail > 0 ? (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab : undefined;
-    if (tab) requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus());
+    // What is typed on the way is kept for the field (F-026 §4): "Paint the shed" typed at once lost "Paint " on the tab.
+    if (tab) { awaitField(); requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus()); }
   };
   const shared = { phone, carried, projectId, onProject: changeProject, onClose };
   return (
     <div className="create__in">
       <div className="create__head ui-panel__head">
         <div className="create__kinds" onClick={pointerOnTab}>
-          <Tabs variant="segmented" className="create__tabs" label="Create" items={KINDS} value={kind} panelIdPrefix={prefix}
+          <Tabs variant="segmented" className="create__tabs" label="Create" items={kinds} value={kind} panelIdPrefix={prefix}
             onChange={(id) => { if (id === 'space') onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title)); else onKind(id as Kind); }} />
         </div>
         <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
@@ -137,6 +150,36 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
       <PageForm {...shared} ids={ids('page')} />
     </div>
   );
+}
+
+/**
+ * The title of a task or a decision: one field whose words wrap onto the next line instead of running out of sight (round 15 look-2 P2-6:
+ * on a phone a title made from a long message showed only its middle). It is a textarea that grows with its words; Enter does what Enter in
+ * a one-line field does (the form's own button), Shift+Enter is not a new line either, since a title has none.
+ */
+function TitleField({ fieldRef, className, value, onChange, ...rest }: { fieldRef: Ref<HTMLTextAreaElement>; className: string; value: string; onChange: (value: string) => void }
+  & Pick<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id' | 'aria-label' | 'aria-describedby' | 'maxLength' | 'disabled' | 'placeholder'>) {
+  const own = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
+  // Its height follows its words, measured again whenever they or the window's width change.
+  useLayoutEffect(() => {
+    const field = own.current;
+    if (!field) return undefined;
+    const fit = () => { field.style.height = 'auto'; field.style.height = `${field.scrollHeight}px`; };
+    fit();
+    const observer = new ResizeObserver(() => fit());
+    observer.observe(field.parentElement ?? field);
+    return () => observer.disconnect();
+  }, [value]);
+  return <textarea ref={own} rows={1} className={className} value={value} {...rest}
+    onChange={(event) => onChange(event.target.value.replace(/\r?\n/g, ' '))}
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey) return;
+      event.preventDefault();
+      const form = event.currentTarget.form;
+      const go = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+      if (go) { if (!go.disabled) go.click(); } else form?.requestSubmit();
+    }} />;
 }
 
 /**
@@ -177,7 +220,8 @@ function PlacePicker({ projectId, onChange, compact = false, plain = false }: { 
       {compact ? <Icon name="chevron-down" size={12} /> : null}
       <Select aria-label="Space" value={projectId} onChange={(next) => onChange(next)}>
         {current ? null : <Option value="">Choose a space</Option>}
-        {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
+        {/* Each space with its tile, as the chip shows the chosen one (visual review 2026-11-17). */}
+        {projects.map((project) => <Option key={project.id} value={project.id}><span className="create__opt"><span className="create__tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} /></span>{project.name}</span></Option>)}
       </Select>
     </label>
   );
@@ -240,12 +284,12 @@ interface Context { project: Project; members: { userId: string; name: string }[
 
 function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose, onTask }: PanelProps & { request: CreateRequest; prefilled: boolean; onTask?: (projectId: string) => void }) {
   // The Owner choice offers your own agents and nobody else's (#904, AG-5): another person's agent is reached through that person.
-  const { me, projects, agents: ownAgents } = useShellData();
+  const { me, projects, workspace, agents: ownAgents } = useShellData();
   const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
   const created = useCreatedToast(() => revalidator.revalidate());
   const noteId = useId();
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   // A task made from a message, thoughts or a typed title starts from that; a blank one keeps its private draft.
   const draft = useDraft(me.user.id, `project-work:${projectId || 'none'}`);
   // An uncertain response can be retried after a reload with the same key.
@@ -257,9 +301,11 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
   const [saved] = useState(() => savedForm(unresolvedOf(readDraft(me.user.id, pendingContext)), prefilled ? (request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
   const [outcome, setOutcome] = useState(saved?.outcome ?? '');
-  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? '' });
-  // An owner belongs to one project's people: another project starts with none.
-  const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
+  // A task from your own message, your own `/task` words or made on My tasks starts as yours (#1424 M, round 15); any other starts with no owner.
+  const mine = request.ownerMe ? `human:${me.user.id}` : '';
+  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? mine });
+  // An owner belongs to one project's people: another project starts with none, or with you where the task starts as yours.
+  const owner = ownerPick.projectId === projectId ? ownerPick.value : mine;
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
   // Sources belong to the project they were picked in: another project (from any tab's picker) starts with none, rather
   // than failing on submit.
@@ -287,19 +333,19 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     void getProject(projectId, controller.signal).then(async (project) => {
       // The Owner choice offers the people in the space and nobody else (F-037), so nobody is given a task unannounced.
       const audience = await listProjectPeople(projectId, controller.signal).catch(() => [] as ProjectPerson[]);
-      const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
+      const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name, guest: !!person.guest }));
       setContext({ projectId, value: { project, members } });
     }).catch(() => { if (!controller.signal.aborted) setContext({ projectId, value: null }); });
     return () => controller.abort();
   }, [projectId]);
   const loaded = context?.projectId === projectId ? context.value : null;
 
-  const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: m.userId === me.user.id ? `${m.name} (you)` : m.name }))
-    : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
+  const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: personLabel(m, me.user.id), id: m.userId, name: m.name }))
+    : [{ value: `human:${me.user.id}`, label: youLabel(me.user.name, true), id: me.user.id, name: me.user.name }]), [loaded, me.user.id, me.user.name]);
   // F-029 (#614): no agent owners while the workspace's AI is off.
   const aiOff = useSpaceAi(loaded?.project.id).blocked;
-  const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
-  const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
+  const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)`, colour: agent.colour }));
+  const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ (\((you|agent)\)|· Guest)$/, '') ?? 'No owner';
 
   const text = oneLine(title);
   const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId;
@@ -311,7 +357,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     const command: CreateWorkCommand = {
       title: text,
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
-      ...(owner && !(aiOff && owner.startsWith('agent:')) ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
+      // Always said, `null` for No owner: the server makes a task from your own message yours only when no owner is named (#1424 M).
+      owner: owner && !(aiOff && owner.startsWith('agent:')) ? { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } : null,
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
     };
     const payload = JSON.stringify([projectId, command]);
@@ -335,14 +382,19 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         pending.setText(rest.length ? JSON.stringify(rest) : '');
       }
       request.onCreated?.();
-      revalidator.revalidate();
-      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1). "Add another" opens
+      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1). "Another task" opens
       // this window again on the same space (#1235); there is no switch that keeps it open.
       onTask?.(projectId);
       created(item, () => openCreate({ kind: 'task', projectId }));
-      if (!mounted.current) return;
+      if (!mounted.current) { revalidator.revalidate(); return; }
+      // The window closes to go to the new task's panel: focus is not handed back to what opened the window, so closing the panel gives
+      // it to the task's own card, what stands for it, never to a message the window was opened over (F-026 §4, personas-36).
+      leaveFocusToDestination();
+      returnFocusToObject();
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
+      // After the panel's own step (its `?open=` address), so that step does not drop the read that brings the new task's card.
+      revalidator.revalidate();
     } catch (cause) {
       if (mounted.current) setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add tasks.' : cause instanceof Error ? cause.message : 'Could not create the task.');
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
@@ -351,25 +403,27 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 
   if (noPlace) return (
     <Panel ids={ids} where={where} onSubmit={() => undefined} foot={<><p className="create__note">A task belongs to a space</p><Go label="Create task" busy={false} ready={false} phone={phone} /></>}>
-      <p className="create__note">There is no space yet. Make one with New space, then add its tasks here.</p>
+      <p className="create__note">{startsSpaces(workspace) ? 'There is no space yet. Make one with New space, then add its tasks here.' : 'You’re not in a space yet. When someone adds you to one, you can add its tasks here.'}</p>
     </Panel>
   );
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<>
-      <p className="create__note">Goes to Tasks · Conversation gets a one-line note</p>
+      <p className="create__note">It goes to Tasks and the conversation</p>
       <Go label="Create task" busy={busy} ready={ready} phone={phone} />
     </>}>
       <label className="ui-vh" htmlFor={ids.field}>Title</label>
-      <input ref={titleRef} id={ids.field} className="create__title" value={flat(title)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
+      <TitleField fieldRef={titleRef} id={ids.field} className="create__title" value={flat(title)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What needs doing?"
         aria-describedby={!prefilled && (draft.text || draft.storage === 'visit') ? noteId : undefined}
-        onChange={(event) => setTitle(event.target.value)} />
+        onChange={setTitle} />
       <textarea className="create__details" aria-label="Details" rows={2} value={outcome} maxLength={WORK_LIMITS.outcome} disabled={busy}
-        placeholder="Add details or what “done” means…" onChange={(event) => setOutcome(event.target.value)} />
+        placeholder="Add details…" onChange={(event) => setOutcome(event.target.value)} />
       <div className="create__props">
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
-          <Option value="">No owner</Option>
-          <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}</OptionGroup>
-          {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}>{a.label}</Option>)}</OptionGroup> : null}
+          {/* "No owner" has the person glyph in the face's place, as the task card's (round 15 look-2 P3-7): its word starts where the names do. */}
+          <Option value=""><span className="create__opt"><span className="create__noface" aria-hidden="true"><Icon name="person" size={16} /></span>No owner</span></Option>
+          {/* A face on every row, as in the mention and New message lists (visual review 2026-11-17). */}
+          <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}><span className="create__opt"><Avatar name={p.name} id={p.id} size="sm" />{p.label}</span></Option>)}</OptionGroup>
+          {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}><span className="create__opt"><Kreska size={20} hue={a.colour} />{a.label}</span></Option>)}</OptionGroup> : null}
         </PickChip>
         <div className="create__prop">
           <span className="create__lab" aria-hidden="true">Link</span>
@@ -381,7 +435,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
                 <button type="button" className="create__chip-x" aria-label={`Remove link to ${source.label}`} onClick={() => setSources(sources.filter((s) => s !== source))}><Icon name="x" size={12} /></button>
               </span>
             ))}
-            <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ Link a message or thought</button>
+            <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ From a message or thought</button>
           </div>
         </div>
       </div>
@@ -427,9 +481,12 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
       setError(cause instanceof AccountChangedError ? cause.message : 'Could not save the thought. Your text is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
-  const where = <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
+  // A window that opens on Thought (a guest with no space, the map's "+") puts the cursor in it, as Task does (F-026 §4, persona round 28).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ids.active) document.getElementById(ids.field)?.focus(); }, []);
+  const where = <span className="create__private"><Icon name="lock" size={13} />Only you see it</span>;
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Added to My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
+    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">It goes on My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
       <textarea id={ids.field} className="create__text" aria-label="Thought" rows={3} value={carried.text} disabled={busy} placeholder="What’s on your mind?"
         onChange={(event) => { carried.set(event.target.value); setError(''); }} />
       <TooLong text={body} limit={SKETCH_LIMITS.text} />
@@ -485,65 +542,128 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
 
 /**
  * Decision: a proposal in the chosen project, the one form for New › Decision and for the composer's `/decide` (#1419). One made from a
- * message or a thread starts from its words with the message quoted as its source (#763 WF-3). "Decision proposed · Undo" follows, and the
- * proposal reaches the people who can accept it only when that window ends.
+ * message or a thread starts from its words with the message quoted as its source (#763 WF-3). The proposal is sent at once and reaches
+ * everyone at once; "Decision proposed · Undo" follows, and its Undo withdraws it for everyone (founder decision L, #1424, 2026-11-15).
  */
 function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, request }: PanelProps & { request: CreateRequest }) {
-  const { projects } = useShellData();
+  const { projects, me, workspace } = useShellData();
   const revalidator = useRevalidator();
   const toast = useToast();
   const [why, setWhy] = useState('');
-  // "Replace an accepted decision…" shows its choice here, in the same window; the choice is of the space it was made in.
+  // "This replaces an older decision…" shows its choice here, in the same window; the choice is of the space it was made in.
   const [replacing, setReplacing] = useState(false);
   const [replaces, setReplaces] = useState<{ projectId: string; id: string; title: string } | null>(null);
   const supersedes = replacing && replaces?.projectId === projectId ? replaces : null;
-  // Nothing is sent while the window is open: proposing is held for Undo, so the form never waits on the server.
+  // The window closes at once on Propose and its card shows while the request is on its way, so the form never waits on the server.
   const busy = false;
   const inFlight = useRef(false);
   const [error, setError] = useState('');
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const whyRef = useRef<HTMLTextAreaElement>(null);
   const project = projects.find((item) => item.id === projectId);
+  // Whether anyone else is in the space (persona round 8): the footer says the true thing, also to its only member.
+  const [alone, setAlone] = useState<{ projectId: string; alone: boolean } | null>(null);
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const controller = new AbortController();
+    void listProjectPeople(projectId, controller.signal)
+      .then((people) => setAlone({ projectId, alone: !people.some((person) => person.kind === 'human' && person.id !== me.user.id) }))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [projectId, me.user.id]);
+  const onlyMe = alone?.projectId === projectId && alone.alone;
   // A message source belongs to the project it was said in.
   const source = request.projectId === projectId ? request.sources?.find((item) => item.ref.type === 'message') ?? null : null;
   const title = oneLine(carried.text);
   const ready = !!title && title.length <= WORK_LIMITS.title && !!project && !busy;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ids.active && request.kind === 'decision') { titleRef.current?.focus(); if (source) titleRef.current?.select(); } }, []);
+  useEffect(() => {
+    if (!ids.active || request.kind !== 'decision') return;
+    // A `/decide` with its words goes on in Why (F-026 §4, personas-36); a decision from a message starts on its title, selected.
+    if (request.afterTitle && oneLine(carried.text)) { whyRef.current?.focus(); return; }
+    titleRef.current?.focus();
+    if (source) titleRef.current?.select();
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   function submit() {
     if (!ready || !project || inFlight.current) return;
     inFlight.current = true;
     const snapshot = carried.begin();
     const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}), ...(supersedes ? { supersedes: supersedes.id } : {}), ...(source ? { sources: [{ type: 'message' as const, id: source.ref.id }] } : {}) };
     const target = project.id;
-    const handle = startProposal((key, keepalive) => proposeDecision(target, command, key, keepalive), (outcome) => {
+    // Sent now (#1424 L): it reaches the people who can accept it at once. Its card shows in the conversation while the request is on its way.
+    const sent = proposeDecision(target, command, crypto.randomUUID());
+    const made = sent.then((decision) => decision.id, () => null);
+    const card = holdProposal({ projectId: target, workspaceId: project.workspaceId ?? '', title, by: { kind: 'human', id: me.user.id, name: me.user.name },
+      sources: source ? [source.ref] : [], conversationId: source?.conversationId ?? null }, made);
+    let undone = false;
+    sent.then((decision) => {
+      card.proposed(decision.id);
       revalidator.revalidate();
-      if (outcome !== 'accepted') toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
+    }, () => {
+      card.drop();
+      revalidator.revalidate();
+      if (!undone) toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
     });
+    // Undo withdraws it for everyone (#1424 L); pressed before the proposal was made, it is withdrawn as soon as it exists.
+    async function withdraw() {
+      let decision: { id: string; version: number };
+      try { decision = await sent; } catch { return; }
+      try {
+        await withdrawDecision(decision);
+        card.drop();
+        // The panel showing it closes, as an undone task's does.
+        window.dispatchEvent(new CustomEvent(WORK_CREATION_UNDONE_EVENT, { detail: { decisionId: decision.id } }));
+        toast({ message: 'Not proposed' });
+      } catch (cause) {
+        // Gone already is what Undo wanted; anything else keeps it: accepted or used meanwhile, it stays.
+        if (cause instanceof ApiError && cause.status === 404) { card.drop(); toast({ message: 'Not proposed' }); }
+        else toast({ message: cause instanceof ApiError && cause.status === 409 ? 'It was already accepted or used, so it stays.' : 'It could not be taken back. Open it to look again.', tone: 'danger' });
+      } finally { revalidator.revalidate(); }
+    }
     carried.made(snapshot);
-    // A `/decide` keeps its words in the composer until Propose, as `/task` does until Create: closing the window loses nothing, and the
-    // words are not left behind to be sent again while the proposal waits out its Undo.
+    // A `/decide` keeps its words in the composer until Propose, as `/task` does until Create: closing the window loses nothing.
     request.onCreated?.();
-    // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
+    // Stays set: the window closes, and a second submit in the same tick must not send a second proposal.
     onClose();
-    toast({ message: 'Decision proposed', tone: 'neutral', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
-      if (handle.undo()) toast({ message: 'Not proposed' });
-      else toast({ message: 'It was already proposed; it waits in the Inbox of those who can accept it.' });
+    // F-026 §4 (persona round 30 P2 5): a `/decide` from the composer leaves the cursor in the composer, as `/task` does, so the next words
+    // are written there. Proposed through New, focus goes to the proposal's card once it is in the conversation (it is drawn a moment later;
+    // focusing too early took the card before it), unless the person has moved on meanwhile.
+    if (!request.onCreated) {
+      const until = performance.now() + 5000;
+      // The card that stays: the decision's own, once the proposal is made (the held one is replaced then, and a focus on it would be lost).
+      let madeId: string | null = null;
+      void made.then((id) => { madeId = id; });
+      const toCard = () => {
+        const active = document.activeElement;
+        // Moved on: typing somewhere, or in a panel.
+        if (active && (isTyping(active) || active.closest('#details'))) return;
+        const element = madeId ? document.querySelector<HTMLElement>(`#content [data-decision-card="${CSS.escape(madeId)}"]`) : null;
+        if (element) { element.focus(); return; }
+        if (performance.now() < until) requestAnimationFrame(toCard);
+      };
+      requestAnimationFrame(toCard);
+    }
+    toast({ message: 'Decision proposed', tone: 'neutral', action: { label: 'Undo', key: 'Z', onClick: () => {
+      if (undone) return;
+      undone = true;
+      void withdraw();
     } } });
   }
   return (
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
-      foot={<><p className="create__note">{project ? 'Goes to the Inbox of those who can accept it' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+      foot={<><p className="create__note">{!project ? 'A decision belongs to a space' : onlyMe ? 'Only you are in this space: it stays on its card until you accept it' : 'Everyone else in the space sees it in their Inbox'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
-        <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
-          onChange={(event) => { carried.set(event.target.value); setError(''); }} />
+        <TitleField fieldRef={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
+          onChange={(value) => { carried.set(value); setError(''); }} />
         {source ? <blockquote className="create__source"><span>From the message</span>{source.label}</blockquote> : null}
-        <textarea className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why this is the right call (optional)"
+        <textarea ref={whyRef} className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why (optional)"
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}
         {replacing ? <ReplaceChoice key={project.id} projectId={project.id} value={supersedes?.id ?? ''} onChange={(next) => setReplaces(next ? { projectId: project.id, ...next } : null)} />
-          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>Replace an accepted decision…</button>}
-      </> : <p className="create__note">There is no space yet. Make one with New space, then propose its decisions here.</p>}
+          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>This replaces an older decision…</button>}
+      </> : <p className="create__note">{startsSpaces(workspace) ? 'There is no space yet. Make one with New space, then propose its decisions here.' : 'You’re not in a space yet. When someone adds you to one, you can propose its decisions here.'}</p>}
     </Panel>
   );
 }
@@ -557,7 +677,7 @@ function ReplaceChoice({ projectId, value, onChange }: { projectId: string; valu
   const page = choices.page;
   const paged = !!page && (!!page.previousCursor || !!page.nextCursor || page.before > 0);
   const [kept, setKept] = useState<{ id: string; title: string } | null>(null);
-  // "Replace an accepted decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
+  // "This replaces an older decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
   const field = useRef<HTMLButtonElement>(null);
   const ready = !!page;
   useEffect(() => { if (ready) field.current?.focus(); }, [ready]);
@@ -603,9 +723,14 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
   const state = !text ? 'idle' : !current ? 'loading' : current.items ? 'ready' : 'failed';
   // A link that was just taken no longer needs offering.
   const items = (current?.items ?? []).filter((f) => !taken.some((t) => t.type === f.ref.type && t.id === f.ref.id));
+  // The window grows for the search (create.css) and the search and its results scroll into view, never cut under the footer (visual review 2026-11-17).
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.scrollIntoView({ block: 'nearest' }); }, [state, items.length]);
   return (
-    <div className="create__picker">
-      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search this space’s messages and thoughts" value={query}
+    // The window grows for results only once something is typed: an empty search keeps its height, with one line that says what to type
+    // (round 15 look-2 P2-5: 170 px of empty window under the field).
+    <div ref={box} className={`create__picker${text ? ' create__picker--searching' : ''}`}>
+      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.stopPropagation(); onDone(); }
@@ -617,6 +742,7 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
           <li key={`${item.ref.type}:${item.ref.id}`}><button type="button" className="create__result" onClick={() => onPick(item.ref, item.label)}><small>{item.kind}</small><span>{item.label}</span></button></li>
         )) : null}
       </ul>
+      {!text ? <p className="create__note">Type a few words of the message or the thought.</p> : null}
       {text && state === 'ready' && !items.length ? <p className="create__note" role="status">No message or thought matches.</p> : null}
       {state === 'failed' ? <p className="create__error" role="alert">Search is unavailable right now.</p> : null}
     </div>

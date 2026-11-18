@@ -2,9 +2,9 @@ import type { ConversationMessage, Project, ProjectPerson } from '@flux/contract
 import type { PendingSend } from '../composer/draft';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
-import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, MessageTime, ShownAnswerName, SourceCitation, SourceTag, ViaTag, pendingMessageRow, shownAnswer, shownLabel } from '../app/messageParts';
+import { AgentAuthor, AuthorFace, AuthorName, ContributionMark, DeletedSourceCitation, MessageTime, ShownAnswerName, SourceCitation, SourceTag, ViaTag, messageHue, pendingMessageRow, shownAnswer, shownLabel } from '../app/messageParts';
 import type { Receipt } from '../app/receipts';
-import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, MessageTaskCards, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
 import { projectMessageEdits } from './messageChanges';
@@ -12,7 +12,6 @@ import type { MessageWorkPreview } from '../work/message-associations';
 import { useAddToMap } from '../project/addToMap';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
-import { RefLink } from '../place/origin';
 
 /** One reply of the open thread: the message with its actions (hover, swipe, long press) and what was made from it. */
 type ThreadReplyProps = {
@@ -57,8 +56,8 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
-      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} {...(shown ? { hue: shown.colour } : {})} /> : null}
-      {!mine && !stored.continued ? <div className="project-convo__message-meta">{shown ? <ShownAnswerName shown={shown} asker={name} /> : <><strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong><ViaTag via={message.via} /></>}</div> : null}
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} hue={messageHue(message)} /> : null}
+      {!mine && !stored.continued ? <div className="project-convo__message-meta">{shown ? <ShownAnswerName shown={shown} asker={name} /> : <><strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <AuthorName workspaceId={project.workspaceId} authorId={message.authorId} name={name} removed={!!message.removedAuthorName} />}</strong><ViaTag via={message.via} /></>}</div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
@@ -68,6 +67,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
+      <MessageTaskCards preview={preview} />
       <MessageActions {...actions} />
       {touch.dots}{touch.node}
     </li>

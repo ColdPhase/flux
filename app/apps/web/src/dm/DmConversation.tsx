@@ -1,20 +1,21 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
-import { NewBelow, UNREAD_READ_BACK, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
-import { MessageDay } from '../app/messageParts';
+import { NewBelow, UNREAD_READ_BACK, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { NavigateWithNote } from '../app/NavigateWithNote';
 import { NotAvailable } from '../app/NotAvailable';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
+import { youLabel } from '../docs/youLabel';
 import { ApiError } from '../api/client';
 import { dmReaders, dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerFiles, useFileDrop } from '../composer/Files';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
-import { askError, askState } from '../assistant/format';
+import { askError, askState, canHaveAi, connectsFirst } from '../assistant/format';
+import { useShellActions } from '../app/shellContext';
 import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useFollowEnd } from '../assistant/useFollowEnd';
@@ -23,8 +24,8 @@ import { useAskMenu } from '../assistant/useAskMenu';
 import { ComposerMenu } from '../app/ComposerMenu';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
-import { audienceLine, dmTitle, othersIn } from './names';
+import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useClearOfToast, useMediaQuery, useToast } from '../ui';
+import { dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
 import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
@@ -39,6 +40,7 @@ import { useOriginPanelBack } from '../place/origin';
 import { useReturning } from '../place/memory';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
+import { awaitField, focusArrival, focusComposerOnArrival, focusField } from '../ui/keys';
 
 /**
  * One direct message (#107): a private conversation with its audience always in view. Messages
@@ -103,6 +105,8 @@ function DmContent({ initial }: { initial: Dm }) {
   // The feed element as state too, so the reading-position owner starts once it is on screen.
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((element: HTMLDivElement | null) => { feedRef.current = element; setFeedNode(element); }, []);
+  // An Undo toast never covers the last message or its Delete / Keep row (#1424).
+  useClearOfToast(feedRef, feedNode);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
   // The author edited or deleted a root here (#1006): it is replaced at once; a reply is the thread panel's.
@@ -127,20 +131,32 @@ function DmContent({ initial }: { initial: Dm }) {
   const [receiptTick, setReceiptTick] = useState(0);
   const opener = useRef<string | null>(null);
   const [replyFocus, setReplyFocus] = useState(false);
-  // A notice's Reply (#1243) arrives asking to write: the composer takes focus, once per arrival.
-  useEffect(() => {
+  // A notice's or the Inbox's Reply (#1243, C-1) arrives asking to write: the composer takes focus, once per arrival, and keeps it from the
+  // message the link names (`focusArrival`).
+  useLayoutEffect(() => {
     if (!(location.state as { focusComposer?: boolean } | null)?.focusComposer) return undefined;
-    const frame = requestAnimationFrame(() => document.getElementById('dm-composer')?.focus({ preventScroll: true }));
-    return () => cancelAnimationFrame(frame);
+    return focusField('dm-composer');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+  // Opening this conversation from anywhere (New message › "Message Piotr", a person's name, Home's "Say hello", the sidebar) on a computer
+  // puts the cursor in its composer (`focusComposerOnArrival`, persona round 26 P2 #2): a sentence typed at once is the message, never
+  // shortcuts. Not when a link names a message (it is marked and takes the focus), a thread is open, or the other person has left.
+  useLayoutEffect(() => {
+    if (touch || location.hash.startsWith('#message-') || threadId || (location.state as { focusComposer?: boolean } | null)?.focusComposer) return undefined;
+    const left = initial.kind === 'pair' ? initial.counterpart : null;
+    if (left && !initial.participants.some((person) => person.id === left.id)) return undefined;
+    return focusComposerOnArrival('dm-composer');
+    // Once, as the conversation opens (each conversation is its own screen).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // #537: the task copy being previewed. Nothing is written until it is confirmed there.
   const [copy, setCopy] = useState<{ message: DmMessage; excerpt: string | undefined } | null>(null);
 
   const title = dmTitle(dm, me.user.id);
-  const audience = audienceLine(dm, me.user.id);
   const others = othersIn(dm, me.user.id);
-  const nameOf = (id: string) => id === me.user.id ? 'You' : people.get(id)?.name ?? 'Former participant';
+  // An author is named by their full name, the reader "Ada Kowalska (you)", never "You" alone (design §5 "Naming people"); someone who left the
+  // company or was removed is "Stefan Kowal (removed)", as the server names them in `people` (#1424, 2026-11-17).
+  const nameOf = (id: string) => id === me.user.id ? youLabel(me.user.name, true) : people.get(id)?.name ?? 'Former participant';
 
   const learn = useCallback((list: DmPerson[]) => setPeople((current) => {
     const next = new Map(current);
@@ -155,6 +171,14 @@ function DmContent({ initial }: { initial: Dm }) {
 
   const atBottom = () => { const el = feedRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
   const toBottom = () => requestAnimationFrame(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; });
+  /**
+   * A read that found the reader at the end keeps them there once what it brought is drawn, unless they scrolled up meanwhile: the
+   * frame comes after the decision, and a reader who has just left the end is not pulled back to it (the "↓ N new" line counts for them).
+   */
+  const followEnd = () => {
+    const top = feedRef.current?.scrollTop ?? 0;
+    requestAnimationFrame(() => { const el = feedRef.current; if (el && el.scrollTop >= top - 1) el.scrollTop = el.scrollHeight; });
+  };
 
   /** Fetches the newest window and any replies between it and what is on screen. */
   const refresh = useCallback(async () => {
@@ -180,12 +204,13 @@ function DmContent({ initial }: { initial: Dm }) {
           setDm(latest);
           learn(latest.people);
           setMessages((current) => merge(current, incoming));
-          if (follow) toBottom();
+          if (follow) followEnd();
         } catch (cause) { denied(cause); }
       } while (refreshAgain.current);
     } finally { refreshing.current = false; }
   }, [denied, initial.id, learn]);
 
+  const { openConnectAi } = useShellActions();
   const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id, threadRootId: null }, onShown: () => { void refresh(); toBottom(); } });
   // A new answer, or the agent at work, comes into view at the end, also when the working line becomes the taller answer (#842).
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
@@ -223,7 +248,11 @@ function DmContent({ initial }: { initial: Dm }) {
   useMessageReadingPosition(feedRef, returned.pending ? null : feedNode, !returned.pending, '', returned.restore, 'dm-stream');
   // A reader who comes back is on a screen they have seen, whatever their viewing receipts say (leaving a moment after a screen settles loses them):
   // a "New" divider that would stand inside that screen is not drawn, it would push down what they were reading (S23, nothing moves under you, #1335).
-  // Above the screen or below it the divider moves nothing they look at, so it stays. This runs after the place is restored, in the same frame.
+  // Above the screen or below it the divider moves nothing they look at, so it stays. The divider also gives the first new message its head again
+  // (the author's name, after a run of one person's messages), so a first new message that is partly on that screen would grow under the reader:
+  // the divider is judged from its own top to the end of that message. This runs after the place is restored, in the same frame.
+  // Taking it away shortens what stands above the screen, so the screen's first message (the reading place's own rule) keeps its top where it is.
+  const keepPlace = useRef<{ id: string; offset: number } | null>(null);
   useLayoutEffect(() => {
     if (!returned.restore || !unreadFrom) return;
     const feed = feedRef.current;
@@ -231,10 +260,23 @@ function DmContent({ initial }: { initial: Dm }) {
     if (!feed || !mark) return;
     const box = feed.getBoundingClientRect();
     const top = mark.getBoundingClientRect().top;
-    if (top >= box.top && top < box.bottom) setUnreadFrom(null);
+    const bottom = document.getElementById(`message-${unreadFrom}`)?.getBoundingClientRect().bottom ?? mark.getBoundingClientRect().bottom;
+    if (top < box.bottom && bottom > box.top) {
+      const first = [...feed.querySelectorAll<HTMLElement>('[id^="message-"]')].find((row) => row.getBoundingClientRect().bottom > box.top);
+      keepPlace.current = first ? { id: first.id, offset: first.getBoundingClientRect().top - box.top } : null;
+      setUnreadFrom(null);
+    }
     // Once, when the place is restored: the divider is judged against the screen the reader comes back to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returned.restore]);
+  useLayoutEffect(() => {
+    const keep = keepPlace.current;
+    keepPlace.current = null;
+    const feed = feedRef.current;
+    const row = keep ? document.getElementById(keep.id) : null;
+    if (!feed || !keep || !row) return;
+    feed.scrollTop += row.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
+  }, [unreadFrom]);
   // Older than the loaded window: page back until the message is loaded, then show it. A link names a message; with none, the first new one does (#1246).
   const unreadWanted = !arrived && !wanted && !!unreadFrom;
   const seek = arrived ?? (unreadWanted ? unreadFrom : null);
@@ -264,7 +306,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const stopUnread = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    if (anchor) { anchor.scrollIntoView({ block: 'start' }); focusArrival(anchor); return; }
     // A return positions itself, once its message is loaded; everything else opens on the latest, or on what is new.
     if (returned.pending || returned.restore || waitingForUnread) return;
     const el = feedRef.current;
@@ -298,7 +340,7 @@ function DmContent({ initial }: { initial: Dm }) {
     const prompt = draft.replace(/^\/ai\s*/, '').trim();
     const state = askState(assistant.status, false, workspace?.role === 'guest');
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this conversation.'); return; }
-    if (state.kind !== 'ready') { setAskFailure(state.note); return; }
+    if (state.kind !== 'ready') { setAskFailure(state.note); if (state.action === 'connect') openConnectAi(); return; }
     const active = captureScope();
     setAskFailure('');
     noteAssistantUse(me.user.id);
@@ -367,7 +409,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const newBelow = useNewBelow(feedNode);
   const entryIds = [...shown.map((message) => `message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)];
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrivedIds, following) => {
-    if (!following) newBelow.add(countBelow(feedRef.current, arrivedIds, (id) => document.getElementById(id)));
+    if (!following) newBelow.add(arrivedBelow(feedRef.current, arrivedIds, (id) => document.getElementById(id)));
   }, { animate: false });
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
@@ -379,7 +421,11 @@ function DmContent({ initial }: { initial: Dm }) {
 
   function openThread(rootId: string, reply: boolean) {
     opener.current = rootId;
-    setReplyFocus(reply);
+    // A thread is opened to reply: on a computer its field takes focus, so what is typed next is the reply, never a shortcut (C-1). On a
+    // touch screen only Reply does, as a focused field would raise the keyboard over the thread being read.
+    const write = reply || !touch;
+    if (write) awaitField();
+    setReplyFocus(write);
     const next = new URLSearchParams(params);
     next.set('thread', rootId);
     // Opening another thread replaces the open one, so closing is still one step back to the conversation.
@@ -399,8 +445,9 @@ function DmContent({ initial }: { initial: Dm }) {
     if (cause instanceof ApiError && cause.status === 404 && !denied(cause)) return;
     denied(cause);
   }, [denied]);
-  const threadCount = useCallback((rootId: string, replies: number) => {
-    setMessages((current) => current.some((m) => m.id === rootId && m.replyCount !== replies) ? current.map((m) => m.id === rootId ? { ...m, replyCount: replies } : m) : current);
+  const threadCount = useCallback((rootId: string, replies: number, lastReplyAt: string | null) => {
+    setMessages((current) => current.some((m) => m.id === rootId && (m.replyCount !== replies || m.lastReplyAt !== lastReplyAt))
+      ? current.map((m) => m.id === rootId ? { ...m, replyCount: replies, lastReplyAt } : m) : current);
   }, []);
   const copyTrigger = useRef<string | null>(null);
   function startCopy(message: DmMessage, excerpt: string | undefined) {
@@ -422,10 +469,14 @@ function DmContent({ initial }: { initial: Dm }) {
   const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
   // `/` lists the commands that apply here, in a space's words (#1419 item 11, #1424): `/file`, and `/ai` unless the person is a guest. A direct
   // message has no tasks or decisions to make from a draft, no suggestions (#1224) and no `@`, so the one composer behaves the same everywhere.
-  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: !recipientGone, suggestions: [], commands: workspace?.role === 'guest' ? ['file'] : ['file', 'ai'],
-    onDraft: (value) => change(value), onAsk: () => undefined });
+  // `/ai` is offered when it can do something (#1424): not to a guest, nor on a server that runs no AI; chosen without an assistant, it opens Connect AI.
+  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: !recipientGone, suggestions: [], commands: workspace?.role === 'guest' || !canHaveAi(assistant.status) ? ['file'] : ['file', 'ai'],
+    onDraft: (value) => change(value), onAsk: () => undefined,
+    onCommand: (command) => { if (command === 'ai' && connectsFirst(askState(assistant.status))) openConnectAi(); } });
   const goneNotice = recipientGone
-    ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
+    // Someone no longer in the company cannot reopen it (personas-30): the notice says where they went, as a send would answer.
+    ? leftNotice || (dm.counterpartGone === 'company' ? `${counterpart!.name.split(/\s+/)[0]} is no longer in the company, so this conversation has nobody to send to.`
+      : `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`)
     : '';
   const typing = useTyping(me.user.id, !gone ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   const threadOpen = !!threadId && !!messages.length && !gone;
@@ -451,7 +502,8 @@ function DmContent({ initial }: { initial: Dm }) {
               </span>
               <div className="dm__who">
                 <h2>{title}</h2>
-                <p><Icon name="lock" size={12} /> {audience} can read this conversation. It stays outside every space.</p>
+                {/* The header names who is in it ("Only you, Basia and Ola"); the start says what that means, without naming them again (round 15). */}
+                <p><Icon name="lock" size={12} /> Only the people in it can read this conversation. It stays outside every space.</p>
               </div>
             </header>
           )}
@@ -473,7 +525,7 @@ function DmContent({ initial }: { initial: Dm }) {
                   observed={!mine} receipt={seen.get(message.id)} nav="stream"
                   onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} />;
                 // Where what is new begins (#1246): its day line first, then the divider, then the message.
-                return message.id === unreadFrom ? [newDay ? <MessageDay key={`day-${message.id}`} label={label} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;
+                return message.id === unreadFrom ? [<UnreadDivider key="unread" day={newDay ? label : null} />, bubble] : bubble;
               })}
             </ol>
           ) : (

@@ -121,14 +121,36 @@ function sameWord(asked: string, name: string): 'exact' | 'form' | null {
 }
 
 /**
+ * "Assistant (Ada's agent)" read without a regular expression: the text before the first "(", and the owner before "'s agent)" (also "’s",
+ * "'", "’"). A name an agent passes is the model's text, so it is read in linear time (CodeQL js/polynomial-redos on the pattern it replaces).
+ */
+function agentLabel(from: string): { name: string; owner: string } | null {
+  const text = from.trim();
+  if (!text.endsWith(')')) return null;
+  const open = text.indexOf('(');
+  if (open < 0) return null;
+  const inner = text.slice(open + 1, -1);
+  if (!inner.toLowerCase().endsWith('agent')) return null;
+  const before = inner.slice(0, -'agent'.length);
+  const spaced = before.trimEnd();
+  if (spaced.length === before.length) return null;
+  let owner = spaced;
+  if (owner.endsWith('s') && /['’]$/u.test(owner.slice(0, -1))) owner = owner.slice(0, -2);
+  else if (/['’]$/u.test(owner)) owner = owner.slice(0, -1);
+  else return null;
+  if (!owner) return null;
+  return { name: text.slice(0, open).trimEnd(), owner };
+}
+
+/**
  * Who `from` names among the candidates (#1410): every word of it matches a word of the name (an agent may also be named as people see
  * it, "Assistant (Ada's agent)", whose owner's words then match its owner). Exact words win over other forms: "Ada" is Ada and not
  * Adam when there is an Ada. None, one or several; the caller says which.
  */
 export function authorsNamed(from: string, candidates: readonly AuthorCandidate[]): AuthorCandidate[] {
-  const label = /^(.*?)\s*\((.+?)['’]s?\s+agent\)\s*$/iu.exec(from.trim());
-  const asked = foldedNameWords(label ? label[1]! : from);
-  const owner = label ? foldedNameWords(label[2]!) : [];
+  const label = agentLabel(from);
+  const asked = foldedNameWords(label ? label.name : from);
+  const owner = label ? foldedNameWords(label.owner) : [];
   if (!asked.length) return [];
   const score = (words: readonly string[], of: readonly string[]): 'exact' | 'form' | null => {
     let form = false;

@@ -3,7 +3,7 @@
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. One project with open, in-progress, blocked and done tasks owned by two people and an
 agent. The tests cover what the renders show at 1440x900 and 390x844 in light and dark (state as
-glyph plus word, #number, title, owner as a 20 px avatar or Kreska, inverted Blocked pill, a phone
+glyph plus word, #number, title, owner as a 20 px avatar or Kreska (no second Blocked pill: the line says it), a phone
 list with the one control row), one tap on the glyph and the keys 1 to 4 changing the state, swipe left then
 Done on the phone, a toast with Undo (button and key Z) that restores the previous state through the
 API, and the board's drag and drop keyboard alternative with its announcement. Every change is
@@ -203,7 +203,7 @@ class TasksFinalJourney(unittest.TestCase):
                 supplier = self.card(page, SUPPLIER)
                 expect(supplier.locator(".ui-task-number")).to_have_text(f"#{self.numbers['supplier']}")
                 expect(supplier.get_by_role("button", name=SUPPLIER, exact=True)).to_be_visible()
-                expect(supplier.locator(".tb-card__name")).to_have_text("You")
+                expect(supplier.locator(".tb-card__name")).to_have_text(f"{ADA['name']} (you)")
                 self.assertEqual(supplier.locator(".tb-av").evaluate("el => [el.offsetWidth, el.offsetHeight]"), [20, 20])
                 expect(self.card(page, LABELS).locator(".tb-card__owner")).to_have_text("No owner")
                 enclosure = self.card(page.get_by_role("region", name="Blocked", exact=True), ENCLOSURE)
@@ -226,16 +226,29 @@ class TasksFinalJourney(unittest.TestCase):
             expect(row.locator(".ws-task__glyph .ui-glyph--" + status)).to_have_count(1)
             expect(row.locator(".ws-item__s")).to_contain_text(f"#{self.numbers[key]}")
             expect(row.locator(".ws-item__s")).to_contain_text(WORD[status])  # the word accompanies the glyph
-        expect(self.row(page, ENCLOSURE).locator(".ui-pill--inv")).to_have_text("Blocked")
-        expect(self.row(page, ENCLOSURE).locator(".ws-item__s")).to_contain_text(f"waiting for {BLOCKER}")
+        # The line already says Blocked: the row has no second, dark "Blocked" pill, and shows its owner like every other row (release audit P3 9).
+        expect(self.row(page, ENCLOSURE).locator(".ui-pill--inv")).to_have_count(0)
+        expect(self.row(page, ENCLOSURE).locator(".ws-item__s")).to_contain_text(f"Waiting for {BLOCKER}")  # one blocked line in the same words everywhere (F-026, persona round 28)
         expect(self.row(page, SUPPLIER).locator(".ws-av")).to_have_text("AK")
         expect(self.row(page, CALIBRATE).locator(".ws-item__r .kreska")).to_have_count(1)
         for owner in (self.row(page, SUPPLIER).locator('.ws-av'), self.row(page, CALIBRATE).locator('.ws-item__r .kreska')):
             box = owner.bounding_box()
             assert box
             self.assertEqual((box['width'], box['height']), (20, 20), '#346 AC-1: owner marks are 20 CSS px')
-        expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text("you")
+        # The reader is named as everywhere a person is (design "Naming people", personas-36): "Ada Kowalska (you)", never "you" alone.
+        expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text(f"{ADA['name']} (you)")
         shot(page, "346-tasks-list-1440-light")
+        # Round 15 confirm S6: the task open in the panel is marked on its whole row, its state glyph inside the mark.
+        self.row(page, SUPPLIER).locator(".ws-item").click()
+        expect(self.row(page, SUPPLIER).locator(".ws-item")).to_have_attribute("aria-current", "true")
+        page.mouse.move(2, 2)
+        mark = self.row(page, SUPPLIER).evaluate("""row => {
+          const probe = document.createElement('i'); probe.style.background = 'var(--hov)'; document.body.append(probe);
+          const hov = getComputedStyle(probe).backgroundColor; probe.remove();
+          const glyph = row.querySelector('.ws-task__glyph .ui-glyph').getBoundingClientRect();
+          const marked = [row.querySelector('.ws-task__fg'), row.querySelector('.ws-item')].filter((el) => getComputedStyle(el).backgroundColor === hov);
+          return { glyph: glyph.left, marks: marked.map((el) => el.getBoundingClientRect().left) }; }""")
+        self.assertTrue(mark["marks"] and min(mark["marks"]) <= mark["glyph"] - 4, f"the open row's mark holds its state glyph: {mark}")
 
     # ---------------------------------------------------------------- AC-2: one tap, keys 1-4, Undo
 
@@ -269,7 +282,7 @@ class TasksFinalJourney(unittest.TestCase):
         card = self.card(page, SUPPLIER)
         card.get_by_role("button", name=SUPPLIER, exact=True).focus()
         page.keyboard.press("4")
-        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['supplier']} done")
+        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['supplier']} moved to Done")
         self.assertEqual(self.task(page, "supplier")["status"], "done")
         expect(self.card(page.get_by_role("region", name="Done", exact=True), SUPPLIER).get_by_role("button", name=SUPPLIER, exact=True)).to_be_focused()
         page.keyboard.press("z")
@@ -321,7 +334,7 @@ class TasksFinalJourney(unittest.TestCase):
         page.on('request',lambda request:events.append({'method':request.method,'body':request.post_data_json,'ifMatch':request.headers.get('if-match')}) if request.method=='PATCH' else None)
         try:
             self.card(page,SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True).focus();page.keyboard.press('4')
-            expect(page.locator('.ui-toast')).to_contain_text(f"#{self.numbers['supplier']} done")
+            expect(page.locator('.ui-toast')).to_contain_text(f"#{self.numbers['supplier']} moved to Done")
             page.wait_for_function("window.__groupControl.doneOpen && window.__groupControl.doneFinished")
             page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
             phase['undo']=True;page.keyboard.press('z')
@@ -365,7 +378,7 @@ class TasksFinalJourney(unittest.TestCase):
         page.on('request',lambda request:events.append({'method':request.method,'body':request.post_data_json,'ifMatch':request.headers.get('if-match')}) if request.method=='PATCH' else None)
         try:
             self.card(page,SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True).focus();page.keyboard.press('4')
-            expect(page.locator('.ui-toast')).to_contain_text(f"#{self.numbers['supplier']} done")
+            expect(page.locator('.ui-toast')).to_contain_text(f"#{self.numbers['supplier']} moved to Done")
             page.wait_for_function("window.__groupControl.doneOpen && window.__groupControl.doneFinished")
             page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
             phase['undo']=True;page.keyboard.press('z')
@@ -422,7 +435,7 @@ class TasksFinalJourney(unittest.TestCase):
         page.reload()
         self.row(page, ENCLOSURE).locator(".ws-item").focus()
         page.keyboard.press("4")
-        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['enclosure']} done")
+        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['enclosure']} moved to Done")
         done = self.task(page, "enclosure")
         self.assertEqual((done["status"], done["blocker"]), ("done", None), "leaving Blocked clears the blocker on the server")
         page.locator(".ui-toast").get_by_role("button", name="Undo").click()
@@ -476,8 +489,9 @@ class TasksFinalJourney(unittest.TestCase):
                 mine = page.locator(".tb-bar")
                 expect(mine.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
                 enclosure = self.row(page, ENCLOSURE)
-                expect(enclosure.locator(".ui-pill--inv")).to_have_text("Blocked")
-                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
+                expect(enclosure.locator(".ui-pill--inv")).to_have_count(0)
+                expect(enclosure.locator(".ws-item__r .ws-av")).to_have_count(1)
+                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · {ADA['name']} (you) · Blocked · Waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-id")).to_have_count(1)
@@ -521,9 +535,9 @@ class TasksFinalJourney(unittest.TestCase):
                 self.assertEqual(self.task(page, "labels")["status"], "open", "a swipe alone changes nothing")
                 done.tap()
                 toast = page.locator(".ui-toast")
-                expect(toast).to_contain_text(f"#{self.numbers['labels']} done")
+                expect(toast).to_contain_text(f"#{self.numbers['labels']} moved to Done")
                 # Closing by swipe is one of the moments that winks (#352 AC-1): the same Undo toast carries it.
-                expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} done").locator(".kreska")).to_have_attribute("data-expression", "wink")
+                expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} moved to Done").locator(".kreska")).to_have_attribute("data-expression", "wink")
                 self.assertEqual(self.task(page, "labels")["status"], "done")
                 toast.get_by_role("button", name="Undo").tap()
                 expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
@@ -598,6 +612,12 @@ class TasksFinalJourney(unittest.TestCase):
                     page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 568})
                     page.add_style_tag(content=f'html {{ font-size: {16 * factor}px !important; }}')
                     row = self.row(page, LABELS)
+                    if width == 320 and factor == 1:
+                        # The search keeps its whole placeholder on a 320 px phone: "Search", not "Searc" (release audit P3 20).
+                        room = page.get_by_label('Search tasks').evaluate("""el => { const ctx = document.createElement('canvas').getContext('2d'), s = getComputedStyle(el);
+                            ctx.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+                            return { room: el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight), word: ctx.measureText(el.placeholder).width }; }""")
+                        self.assertGreaterEqual(room['room'] + 0.5, room['word'], f'the placeholder fits its field: {room}')
                     before = self.task(page, 'labels')
                     row.get_by_role('button', name='To do. Set to Doing').tap()
                     toast = page.locator('.ui-toast')
@@ -742,7 +762,7 @@ class TasksFinalJourney(unittest.TestCase):
                 middle.focus()
                 page.wait_for_timeout(100)
                 before = pane.evaluate('el => el.scrollTop')
-                # An Undo toast stays until it is taken or closed (#347 Toast contract). It is dismissed without moving focus
+                # An Undo toast lasts 10 s (#1424), longer than this check waits. It is dismissed without moving focus
                 # (a DOM click, as a timeout would), so the focus check below still proves the toast leaving keeps the reader's row.
                 page.locator('.ui-toast__close').last.evaluate('el => el.click()')
                 expect(page.locator('.ui-toast')).to_have_count(0)

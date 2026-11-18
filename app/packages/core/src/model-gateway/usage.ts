@@ -29,7 +29,17 @@ export interface UsageMeter {
   push(chunk: Uint8Array): void;
   /** The answer ended normally: its usage, or null when it had none that can be used. */
   end(): GatewayUsage | null;
+  /**
+   * The answer was cut before its end (train 37 row 20): the most it can have used so far, where the stream said its input before it was
+   * cut (Anthropic's `message_start`), or null. Its output is every byte of the text it streamed as a token, and {@link CUT_OUTPUT_MARGIN} more
+   * the provider may have written that never arrived. The gateway uses it only for a run its owner (or Flux) stopped; a cut nobody asked
+   * for keeps all it held (#854).
+   */
+  cut(): GatewayUsage | null;
 }
+
+/** Tokens a provider may have written after the last byte that arrived, before it saw the connection close. */
+export const CUT_OUTPUT_MARGIN = 1024;
 
 type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -81,12 +91,20 @@ export function wholeAnswerUsage(operation: GatewayOperation, provider: AiProvid
   }
 }
 
-/** Reads one stream's events; `event` sees every `data:` value that is JSON, and `result` gives the usage at the end. */
-interface StreamReader { event(data: Json): void; result(): GatewayUsage | null }
+/**
+ * Reads one stream's events; `event` sees every `data:` value that is JSON, and `result` gives the usage at the end. `sofar`, where the wire
+ * format says its input at the start, gives the usage of a stream cut after it (output: `streamed`, an upper bound of its tokens).
+ */
+interface StreamReader { event(data: Json): void; result(): GatewayUsage | null; sofar?(streamed: number): GatewayUsage | null }
 
 function anthropicStream(): StreamReader {
   let start: Json | null = null; let delta: Json | null = null; let failed = false; let stopped = false;
   return {
+    sofar(streamed) {
+      if (failed || !start) return null;
+      const known = anthropicUsage({ ...start, ...(delta ?? {}) });
+      return known ? { ...known, outputTokens: Math.max(known.outputTokens, streamed) + CUT_OUTPUT_MARGIN } : null;
+    },
     event(data) {
       if (data.type === 'message_start' && isObject(data.message) && isObject(data.message.usage)) start = { ...data.message.usage };
       else if (data.type === 'message_delta' && isObject(data.usage)) delta = { ...(delta ?? {}), ...data.usage };
@@ -153,15 +171,19 @@ export function usageMeter(operation: GatewayOperation, provider: AiProviderKind
         if (over) return null;
         try { return wholeAnswerUsage(operation, provider, JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { return null; }
       },
+      // A whole answer says nothing of its usage until it is complete.
+      cut: () => null,
     };
   }
   const reader = operation === 'anthropic_messages' ? anthropicStream() : operation === 'openai_responses' ? responsesStream()
     : operation === 'gemini_generate' ? geminiStream() : chatStream(provider);
-  let line: Buffer[] = []; let lineSize = 0; let broken = false;
+  let line: Buffer[] = []; let lineSize = 0; let broken = false; let streamed = 0;
   const take = (bytes: Buffer) => {
     const text = bytes.toString('utf8').replace(/\r$/, '');
     if (!text.startsWith('data:')) return;
     const data = text.slice(5).trimStart();
+    // Every byte of what was streamed counts as a token at most once: no token is shorter than a byte of its JSON event.
+    streamed += Buffer.byteLength(data);
     // A delta of text or of a tool's arguments is skipped unread; only these can say something about usage or the end.
     if (!/"(usage|usageMetadata|message_start|message_delta|message_stop|error|response\.(completed|incomplete|failed))"/.test(data)) return;
     let parsed: unknown;
@@ -189,5 +211,7 @@ export function usageMeter(operation: GatewayOperation, provider: AiProviderKind
       if (line.length) take(Buffer.concat(line));
       return reader.result();
     },
+    // A part line is not an event: what was cut in it is counted by the margin.
+    cut: () => (broken ? null : reader.sofar?.(streamed + lineSize) ?? null),
   };
 }

@@ -81,8 +81,8 @@ async function leaveEncryptedSpace(principal: Principal, spaceId: string, userId
       throw error instanceof ConflictError && error.code === 'LAST_UNLOCK_PASSWORD' ? await onlyKeyholder() : error;
     }
   }
-  await workspaces.deleteMember(spaceId, userId);
   await workspaces.recordRemoved(spaceId, userId, principal.id);
+  await workspaces.deleteMember(spaceId, userId);
   if (sealedChange) await ports.encryption(tx).recordRemovals(spaceId);
   await recordEvent(eventPorts(ports, tx), principal, spaceId, 'workspace.member_removed.v1', spaceId, { userId });
   await recordAccessEnded(ports, tx, principal, spaceId, userId);

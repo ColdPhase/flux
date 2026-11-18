@@ -139,7 +139,11 @@ company's owners and admins (`requireCompanyAdmin`; the fixture bearer of a test
 it), until a space itself can be encrypted. People call a project a *space*. Everyone in the
 company but a guest creates spaces (`project.create`); a new space is `restricted` and its creator
 gets a `manager` grant. A space's people are its grants: `manager` is a space admin (people only,
-never a guest, and an agent never holds it) and `contributor` a space member. Every member is in
+never a guest, and an agent never holds it) and `contributor` a space member. Becoming a guest turns
+the person's `manager` grants into `contributor` ones marked `admin_held` (migration 0095); becoming a
+member, admin or owner again turns them back, so the role change's Undo restores what it removed
+(personas-35, final design §7 Settings). Removal keeps the mark and Restore puts it back, so a guest removed and restored still gets
+the role back when they are a member again; a role a space admin then sets on that grant (`updateGrant`) replaces what was held. Every member is in
 Everyone through its `workspace` visibility; guests are not. In the company, only setup makes a
 `workspace`-visible space (`SPACE_NOT_FOR_EVERYONE`).
 
@@ -152,8 +156,19 @@ admin who removes one from the space's people only takes them off its list (an i
 and `OWNER_REQUIRED` refusals guarded the deny, which is gone). Joining with a provider runs
 on every provider sign-in, so an account that linked it later joins too. Someone who leaves or is
 removed goes on `workspace_removed_people` and stays out, also on a provider sign-in, until an
-owner or admin restores them from Settings › Company. Restore brings them back as a `member`, in
-Everyone; leaving ended their grants, so other spaces are added by hand. With
+owner or admin restores them from Settings › Company. Removal keeps what the person had on that row
+(migration 0089, `role` and `kept`: their space grants and their direct messages, ids and roles only), read before the
+membership goes. Restore brings them back as they were (founder decision, #1424 F, 2026-11-15): the same role, each kept
+space that still exists with the same grant (`project.grant_set.v1`), and each kept direct message (`dm.changed.v1`,
+`rejoined`), in one transaction. Only an owner restores a former owner (`OWNER_REQUIRED`), as only an owner gives the role.
+Restoring someone to the company does not bring back their places in its encrypted spaces: leaving the company ended each one as a
+removal from that space (C-24), kept on the space's own removed list, and only the space's admins change its people (the company's
+admins cannot, [encrypted spaces](../product/encrypted-workspaces.md)); an admin of that space brings them back there
+(`POST /api/v1/workspaces/:space/removed-people/:user/restore`, which asks what adding does) or adds them again. A space admin who
+held its keys comes back with no unlock password: a current holder must grant one, as for any new admin. "Name (removed)" is for the
+company alone (#1424, 2026-11-17): every read asks `workspace_removed_people` of the company (`coalesce(company_workspace_id, id)`), so
+someone taken out of one encrypted space, still in the company, keeps their plain name there, as after leaving a plain space.
+Joining again any other way (a link, adding) clears the row and what it kept. With
 single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WITH_SSO`).
 Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
 
@@ -354,7 +369,9 @@ is a space of the same workspace other than Everyone (`400` otherwise); encrypte
 then grants the person `contributor` there, recorded as `project.grant_set.v1` by the link's maker, who is still a company owner or admin
 (the checks above) and so may change that space's people. A space deleted since adds nothing (`space_id` is set null). The list shows the
 space's name (`space`), and the answer of joining names the space the join page opens with its composer ready (`landingSpaceId`):
-Everyone, or for a guest the link's space, or none. In the same transaction the creator gets an Inbox notice
+the link's space when the person is in it, else Everyone for a member or admin, else none (founder decision 2026-11-14, #1424). New
+space ties links made in its window to the space it creates: `POST .../projects` takes `invites` (ids of pending links of this
+workspace that the caller made and that name no space yet; `400` for any other id), and sets their `space_id` in the same transaction. In the same transaction the creator gets an Inbox notice
 "<name> joined <company>" linking Settings › Company, or the space's settings when the link named one. Settings › Company shows invite links only
 without single sign-on: with it, the provider decides who joins.
 
@@ -413,6 +430,9 @@ a Better Auth `reset-password:` verification value, stored as its SHA-256 only, 
   `201 { link, expiresAt }` once; the link is never listed or shown again. 10 a minute per person and API process.
 - `./flux reset-link <email>` runs the same in the API container for any password account (`via: command`).
 - `POST /api/auth/request-password-reset` with email set up mails a link (`via: email`).
+- `POST /api/v1/identity/reset-link/account` with `{ token }` (no session): the reset page says whose password it is about,
+  "Reset the password for ada@…". It answers `200 { email }` to the holder of a link that still works and `404` for one that is
+  used, stopped, expired or unknown; 30 a minute per address and API process, `cache-control: no-store`.
 
 Making a link stops the account's earlier links. Using one stops every other link of the account and ends every session of the
 person (`revokeSessionsOnPasswordReset`, and their local clients, C-42). A password change in Settings › Account stops no link

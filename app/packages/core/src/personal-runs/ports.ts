@@ -151,7 +151,8 @@ export interface MessageSource {
   contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string;
   /**
    * Who wrote it, as people see it (#1160, `authorLabel`): a person's name, or an agent with whose it is, "Fieldbot (Jonas's agent)". The
-   * repository gives the stored names; the run names only who can read the space now (`namedAuthors`).
+   * repository gives the stored names. A run reads a space's messages with the Flux tools, which name authors as people see them
+   * (`spaceAuthorsNamed`: who can read the space now, and someone who left the company or was removed as "Stefan Kowal (removed)", #1424).
    */
   authorName: string;
   /** `ownerUserId`: an agent's owner, whom the run names only while they can read the space. */
@@ -252,6 +253,11 @@ export interface PersonalRunRepository {
    * first and then oldest first: the next starts when the one before it ends.
    */
   startableQueued(limit: number, keys?: boolean): Promise<string[]>;
+  /**
+   * The owner's requests on this key that wait, queued, for its next day (#854): what raising its budget starts again (train 37 row 37). Absent: none
+   * is looked up.
+   */
+  waitingForBudget?(ownerUserId: string, connectionId: string): Promise<string[]>;
   insertRun(run: NewRun): Promise<RunRecord>;
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
   /**
@@ -270,7 +276,7 @@ export interface PersonalRunRepository {
    * background sweep, so a run a crashed worker left behind ends without the owner's next invoke.
    */
   endStaleAny(olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
-  /** Ends working runs on the runtime that are not in `running` and are older than this, one bounded batch. */
+  /** Ends working runs in the runtime (a plan's and an API key's, #1441) that are not in `running` and are older than this, one bounded batch. */
   endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
   /** Holds the owner's lane until the transaction ends, so two claims of one owner never pass the lane check together. */
   lockLane(ownerUserId: string): Promise<void>;
@@ -706,7 +712,9 @@ export type PersonalRuntimeEvent =
   | { kind: 'search'; n: number; query: string }
   | { kind: 'found'; n: number; results: string[]; queries?: string[] }
   /** The CLI's words as it streams them (#1248): `turn` is its message; Codex hands each message whole. */
-  | { kind: 'text'; turn: number; text: string };
+  | { kind: 'text'; turn: number; text: string }
+  /** Message `turn` calls a tool: its words were a working note, not the answer (founder check, Hubert 2026-11-17). */
+  | { kind: 'note'; turn: number };
 
 /** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
 export type PersonalRuntimeEnd =

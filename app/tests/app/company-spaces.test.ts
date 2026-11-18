@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { ENCRYPTED_WORKSPACES_PATH, IDENTITY_CAPABILITIES_PATH, type IdentityCapabilities, type Project, type RemovedPerson, type Workspace } from '@flux/contracts';
+import { ENCRYPTED_WORKSPACES_PATH, IDENTITY_CAPABILITIES_PATH, ME_REMOVED_FROM_PATH, type Dm, type DmSummary, type IdentityCapabilities, type Page, type Project, type RemovedFrom, type RemovedPerson, type Workspace } from '@flux/contracts';
 import { buildNotificationEmail, COMPANY_NAME, EVERYONE_SPACE_NAME, getProject, joinCompany, listProjects, type Principal } from '@flux/core';
 import { accessPorts } from '@flux/db';
 import Fastify from 'fastify';
@@ -201,15 +201,44 @@ describe('in the company', () => {
     expectStatus(await member.browser.request('GET', `/api/v1/projects/${everyoneId}`), 200);
   });
 
-  test('a guest is no space admin, and someone who becomes a guest stops being one', async () => {
+  test('a guest is no space admin, and someone who becomes a guest stops being one until they are a member again', async () => {
     const space = await newSpace(colleague, 'Guest rules');
+    const plain = await newSpace(admin, 'Guest rules, plain member');
+    expectStatus(await setGrant(admin, plain.id, colleague, 'contributor'), 201);
     const refused = await setGrant(colleague, space.id, guest, 'manager');
     assert.equal(refused.status, 422, refused.text);
     assert.equal(raw(refused), 'GUEST_NOT_SPACE_ADMIN');
+    const roles = async () => Object.fromEntries((await pool.query<{ project_id: string; role: string }>('SELECT project_id, role FROM project_grants WHERE project_id = ANY($1::uuid[]) AND user_id = $2',
+      [[space.id, plain.id], colleague.id])).rows.map((row) => [row.project_id, row.role]));
     expectStatus(await admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${colleague.id}`, { body: { role: 'guest' }, headers: { 'idempotency-key': randomUUID() } }), 200);
-    const held = (await pool.query<{ role: string }>('SELECT role FROM project_grants WHERE project_id = $1 AND user_id = $2', [space.id, colleague.id])).rows;
-    assert.deepEqual(held.map((row) => row.role), ['contributor']);
+    assert.deepEqual(await roles(), { [space.id]: 'contributor', [plain.id]: 'contributor' });
+    // Picking the old role again (the role change's Undo, personas-35) gives back what becoming a guest took: the space admin role, and only it.
     expectStatus(await admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${colleague.id}`, { body: { role: 'member' }, headers: { 'idempotency-key': randomUUID() } }), 200);
+    assert.deepEqual(await roles(), { [space.id]: 'manager', [plain.id]: 'contributor' });
+    const held = (await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM project_grants WHERE user_id = $1 AND admin_held', [colleague.id])).rows[0]!.n;
+    assert.equal(held, 0, 'nothing is held once it is given back');
+  });
+
+  test('a guest\'s held space admin role outlasts removal and Restore, and a role a space admin then sets replaces it (0095)', async () => {
+    const held = await person('Company Held Admin');
+    await join(held, 'member');
+    const kept = await newSpace(held, 'Held through removal');
+    const chosen = await newSpace(held, 'Held then chosen');
+    const patch = (role: string) => admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${held.id}`, { body: { role }, headers: { 'idempotency-key': randomUUID() } });
+    const grants = async () => Object.fromEntries((await pool.query<{ project_id: string; role: string; admin_held: boolean }>(
+      'SELECT project_id, role, admin_held FROM project_grants WHERE project_id = ANY($1::uuid[]) AND user_id = $2', [[kept.id, chosen.id], held.id])).rows
+      .map((row) => [row.project_id, `${row.role}${row.admin_held ? ' (held)' : ''}`]));
+    expectStatus(await patch('guest'), 200);
+    assert.deepEqual(await grants(), { [kept.id]: 'contributor (held)', [chosen.id]: 'contributor (held)' });
+    // A space admin (the company's admin reaches every space) makes them a plain member of one space on purpose: nothing is held there now.
+    expectStatus(await setGrant(admin, chosen.id, held, 'contributor'), 201);
+    assert.deepEqual(await grants(), { [kept.id]: 'contributor (held)', [chosen.id]: 'contributor' });
+    expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${held.id}`), 204);
+    assert.deepEqual(await grants(), {});
+    expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${held.id}/restore`), 201);
+    assert.deepEqual(await grants(), { [kept.id]: 'contributor (held)', [chosen.id]: 'contributor' }, 'Restore brings back the held role as held');
+    expectStatus(await patch('member'), 200);
+    assert.deepEqual(await grants(), { [kept.id]: 'manager', [chosen.id]: 'contributor' }, 'a member again: the held one given back, the chosen one kept');
   });
 
   test('a company admin reaches every space but belongs only to the ones they were added to', async () => {
@@ -225,27 +254,94 @@ describe('in the company', () => {
     assert.ok(theirs.items.every((item) => item.member === true), 'for everyone else, what they see is what they belong to');
   });
 
-  test('someone removed stays out on a provider sign-in until an admin restores them: back in Everyone, and other spaces by hand', async () => {
+  test('someone removed stays out on a provider sign-in until an admin restores them as they were: role, spaces and direct messages (#1424 F)', async () => {
     const space = await newSpace(admin, 'Before leaving');
+    const second = await newSpace(admin, 'Second place');
+    const doomed = await newSpace(admin, 'Gone meanwhile');
     const leaver = await person('Company Leaver');
-    await join(leaver, 'member');
-    expectStatus(await setGrant(admin, space.id, leaver, 'contributor'), 201);
+    await join(leaver, 'admin');
+    expectStatus(await setGrant(admin, space.id, leaver, 'manager'), 201);
+    expectStatus(await setGrant(admin, second.id, leaver, 'contributor'), 201);
+    expectStatus(await setGrant(admin, doomed.id, leaver, 'contributor'), 201);
+    // A direct message with a colleague, read by both: removal takes the leaver's place in it, Restore gives it back.
+    const dm = expectStatus(await leaver.browser.request('POST', `/api/v1/workspaces/${companyId}/dms`, { body: { participantIds: [colleague.id] } }), 201) as Dm;
+    expectStatus(await leaver.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Before I go', clientMessageId: randomUUID() } }), 201);
+    const joinedAt = (await pool.query<{ joined_at: Date }>('SELECT joined_at FROM dm_participants WHERE dm_id = $1 AND user_id = $2', [dm.id, leaver.id])).rows[0]!.joined_at;
+    const removedFrom = async (who: Person) => (expectStatus(await who.browser.request('GET', ME_REMOVED_FROM_PATH), 200) as RemovedFrom).company;
+    assert.equal(await removedFrom(leaver), null, 'in the company: nothing to say');
     expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${leaver.id}`), 204);
+    assert.equal(await removedFrom(leaver), (await company())[0]!.name, 'removed: told which company they are no longer in');
+    assert.equal(await removedFrom(member), null, 'someone still in it is told nothing');
+    const refused = await colleague.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Still there?', clientMessageId: randomUUID() } });
+    assert.equal(refused.status, 409, refused.text);
+    // The other side reads why, before writing (personas-30): no longer in the company, which only an admin's Restore undoes.
+    const gone = expectStatus(await colleague.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as Dm;
+    assert.equal(gone.counterpartGone, 'company');
+    await pool.query('DELETE FROM projects WHERE id = $1', [doomed.id]);
 
     const listed = expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[];
-    assert.deepEqual(listed.filter((entry) => entry.userId === leaver.id).map((entry) => entry.email), [leaver.email]);
+    const entry = listed.find((item) => item.userId === leaver.id)!;
+    assert.deepEqual({ email: entry.email, role: entry.role, spaces: entry.spaces }, { email: leaver.email, role: 'admin', spaces: 2 },
+      'the list says what Restore brings back: the role, and the spaces that still exist besides Everyone');
     expectStatus(await member.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 403, 'not for a member');
     assert.equal(await joinCompany(leaver.id, { sso: true }, db, accessPorts), null, 'signing in with the provider does not bring them back');
     assert.equal(await roleIn(companyId, leaver.id), null);
 
     expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 403, 'only an admin restores');
-    expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 201);
-    assert.equal(await roleIn(companyId, leaver.id), 'member');
+    const back = expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 201) as { role: string };
+    assert.equal(back.role, 'admin', 'an Admin returns as Admin');
+    assert.equal(await roleIn(companyId, leaver.id), 'admin');
+    assert.equal(await removedFrom(leaver), null, 'restored: nothing to say again');
     expectStatus(await leaver.browser.request('GET', `/api/v1/projects/${everyoneId}`), 200, 'in Everyone again');
-    expectStatus(await leaver.browser.request('GET', `/api/v1/projects/${space.id}`), 404, 'other spaces come back by hand');
+    const grants = (await pool.query<{ project_id: string; role: string }>('SELECT project_id, role FROM project_grants WHERE user_id = $1 AND workspace_id = $2 ORDER BY role',
+      [leaver.id, companyId])).rows;
+    assert.deepEqual(grants.filter((row) => row.project_id !== everyoneId), [{ project_id: second.id, role: 'contributor' }, { project_id: space.id, role: 'manager' }],
+      'each space that still exists, with the role they had there; the deleted one is skipped');
+    const spaces = await listProjects({ kind: 'human', id: leaver.id }, companyId, { limit: 100 }, db, accessPorts);
+    assert.deepEqual([space.id, second.id].map((id) => spaces.items.find((item) => item.id === id)?.member), [true, true], 'their spaces are theirs again');
+    // Their direct message is back for both sides: listed for them, and the colleague writes to them again.
+    const theirs = expectStatus(await leaver.browser.request('GET', `/api/v1/workspaces/${companyId}/dms?limit=100`), 200) as Page<DmSummary>;
+    assert.ok(theirs.items.some((item) => item.id === dm.id), 'the conversation is listed for the restored person');
+    const again = expectStatus(await leaver.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as Dm;
+    assert.deepEqual(again.messages.map((message) => message.body), ['Before I go']);
+    assert.deepEqual(again.audience.participantIds.slice().sort(), [leaver.id, colleague.id].sort());
+    assert.equal((expectStatus(await colleague.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as Dm).counterpartGone, undefined, 'both take part again');
+    expectStatus(await colleague.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Welcome back', clientMessageId: randomUUID() } }), 201,
+      'the other side no longer reads that they left');
+    const rejoined = (await pool.query<{ joined_at: Date }>('SELECT joined_at FROM dm_participants WHERE dm_id = $1 AND user_id = $2', [dm.id, leaver.id])).rows[0]!.joined_at;
+    assert.equal(rejoined.getTime(), joinedAt.getTime(), 'with the time they first joined it');
+    const events = (await pool.query<{ kind: string; object_id: string }>(`SELECT kind, object_id FROM events WHERE actor_id = $1 AND kind = ANY($2) AND object_id = ANY($3)
+      ORDER BY seq`, [`human:${admin.id}`, ['project.grant_set.v1', 'dm.changed.v1'], [space.id, second.id, dm.id]])).rows;
+    assert.deepEqual(events.filter((event) => event.kind === 'dm.changed.v1').map((event) => event.object_id), [dm.id], 'their conversation hears of it');
+    assert.ok([space.id, second.id].every((id) => events.some((event) => event.kind === 'project.grant_set.v1' && event.object_id === id)), 'and so do their spaces');
     const after = expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[];
-    assert.equal(after.some((entry) => entry.userId === leaver.id), false, 'off the list');
+    assert.equal(after.some((item) => item.userId === leaver.id), false, 'off the list');
     expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 404, 'nobody to restore');
+  });
+
+  test('only an owner restores a former owner, as only an owner gives the role; someone who comes back by a link starts afresh', async () => {
+    const [chief, returning] = await Promise.all(['Company Chief', 'Company Returning'].map(person));
+    await join(chief, 'admin'); await join(returning, 'member');
+    await pool.query("UPDATE workspace_members SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2", [companyId, chief.id]);
+    const owner = await person('Company Second Owner');
+    await join(owner, 'admin');
+    await pool.query("UPDATE workspace_members SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2", [companyId, owner.id]);
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${chief.id}`), 204);
+    const listed = (expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[]).find((item) => item.userId === chief.id)!;
+    assert.equal(listed.role, 'owner');
+    const refused = await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${chief.id}/restore`);
+    assert.equal(refused.status, 403, refused.text);
+    assert.equal(raw(refused), 'OWNER_REQUIRED');
+    assert.equal(await roleIn(companyId, chief.id), null, 'nothing changed');
+    expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${chief.id}/restore`), 201);
+    assert.equal(await roleIn(companyId, chief.id), 'owner');
+    // Joining again any other way clears what the removal kept: an admin adding them back gives the role they choose, and nothing more.
+    const space = await newSpace(admin, 'Kept for nobody');
+    expectStatus(await setGrant(admin, space.id, returning, 'contributor'), 201);
+    expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${returning.id}`), 204);
+    expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/members`, { body: { userId: returning.id, role: 'member' }, headers: { 'idempotency-key': randomUUID() } }), 201);
+    assert.equal((await pool.query('SELECT 1 FROM workspace_removed_people WHERE workspace_id = $1 AND user_id = $2', [companyId, returning.id])).rowCount, 0);
+    assert.equal((await pool.query('SELECT 1 FROM project_grants WHERE project_id = $1 AND user_id = $2', [space.id, returning.id])).rowCount, 0);
   });
 
   test('a password account joins on its first provider sign-in, however it came to exist', async () => {

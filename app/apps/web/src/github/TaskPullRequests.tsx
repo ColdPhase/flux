@@ -5,7 +5,8 @@ import {
 } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { getGithubCapabilities, getGithubTaskRule, listTaskGithubLinks } from './api';
-import { Button, Icon, Select, Option } from '../ui';
+import { Button, Icon } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { STATUS_LABEL, shortDate } from '../work/format';
 import './task-pull-requests.css';
 

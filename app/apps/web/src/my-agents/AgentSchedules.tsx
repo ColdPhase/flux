@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { ASSISTANT_SCHEDULE_STARTERS, type AssistantJob, type MyAgent } from '@flux/contracts';
+import { useEffect, useRef, useState } from 'react';
+import { ASSISTANT_SCHEDULE_STARTERS, oneLinePreviewText, type AssistantJob, type MyAgent } from '@flux/contracts';
 import { Button, Icon, Spinner } from '../ui';
 import { ChangeSchedule } from './ChangeSchedule';
+import { plainInstruction } from './plainInstruction';
 import { scheduleWhen, whenText } from './schedules';
 import type { AgentSchedulesState } from './useAgentSchedules';
 
@@ -30,7 +31,8 @@ function detail(job: AssistantJob) {
   const parts = [scheduleWhen(job)];
   if (!job.enabled) parts.push('Off');
   else if (job.next[0]) parts.push(`Next ${job.next[0].label}`);
-  if (job.last) parts.push(`${whenText(job.last.at, job.timeZone)}: ${job.last.line}`);
+  // The run's line in plain words, as any one-line place shows a message (round 15 real-model confirmation: "Done: **12 tasks are still open**").
+  if (job.last) parts.push(`${whenText(job.last.at, job.timeZone)}: ${oneLinePreviewText(job.last.line)}`);
   return parts.join(' · ');
 }
 
@@ -81,6 +83,23 @@ export function ScheduleList({ agent, state }: { agent: MyAgent; state: AgentSch
  */
 export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentSchedulesState }) {
   const [open, setOpen] = useState(false);
+  const row = useRef<HTMLButtonElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  // Escape closes the list (train 37 row 29), as every panel over the chat; the focus goes back to the line that opened it when it was in the
+  // list or nowhere, and stays where the person was typing otherwise. A field inside it that uses Escape itself (Change) takes it first.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const focus = document.activeElement;
+      const inside = !!focus && !!frame.current?.contains(focus);
+      if (inside && focus.closest('input, textarea, select, [contenteditable="true"]')) return;
+      setOpen(false);
+      if (inside || !focus || focus === document.body) row.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   const jobs = state.jobs ?? [];
   // A schedule that was just deleted can still be put back: keep the line (and its Undo) until the person leaves it.
   if (!jobs.length && !(open && state.undo)) {
@@ -90,8 +109,8 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
   }
   const first = jobs.find((job) => job.enabled) ?? jobs[0];
   return (
-    <div className="agc__sched" data-schedules-header="">
-      <button type="button" className="agc__sched-row" aria-expanded={open} aria-controls="agent-schedules-panel" onClick={() => setOpen((value) => !value)}>
+    <div className="agc__sched" data-schedules-header="" ref={frame}>
+      <button ref={row} type="button" className="agc__sched-row" aria-expanded={open} aria-controls="agent-schedules-panel" onClick={() => setOpen((value) => !value)}>
         <Icon name="clock" size={16} />
         <span className="agc__sched-text">{first ? `${scheduleWhen(first)} · ${first.title}${first.enabled ? '' : ' · Off'}` : 'No schedules'}</span>
         <span className="agc__sched-count">{jobs.length === 1 ? '1 schedule' : `${jobs.length} schedules`}</span>
@@ -102,6 +121,7 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
   );
 }
 
+
 /**
  * Under the agent's answer in its chat, as drawn: the schedule that sentence prepared, what it will do, the one tap that turns it on (AG-9 "confirms it
  * there"), and Change.
@@ -111,7 +131,7 @@ export function ReadySchedule({ job, state, agent }: { job: AssistantJob; state:
   return (
     <div className="agc__ready" data-prepared-schedule={job.id}>
       <p className="agc__ready-when"><Icon name="clock" size={15} /><b>{scheduleWhen(job)}</b><span> · {job.title}</span></p>
-      <p className="agc__ready-text">{job.text}</p>
+      <p className="agc__ready-text">{plainInstruction(job.text)}</p>
       <div className="agc__ready-actions">
         {job.enabled
           ? <span className="agc__on"><Icon name="check" size={14} />Turned on</span>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useRevalidator } from 'react-router';
-import type { AgentProjectOwner, Project } from '@flux/contracts';
+import { removedName, type AgentProjectOwner, type Project } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
@@ -12,12 +12,14 @@ const EMPTY: AgentOwners = new Map();
 
 /**
  * A historical author or a native row's agent may lose its access; its owner name still needs a fresh
- * authorized audience, so the projected relation only selects a current audience entry, never a name.
+ * authorized audience, so the projected relation only selects a current audience entry, never a name. An owner who left the company or
+ * was removed is the one name the server gives, "Stefan Kowal (removed)" (`removedName`, founder decision 2026-11-17, #1424).
  */
 export function agentAuthorOwner(author: { id: string; projectOwner?: AgentProjectOwner }, owners: AgentOwners): string | undefined {
   const current = owners.get(author.id);
   if (current) return current;
   const projected = author.projectOwner;
+  if (projected?.removedName !== undefined) return removedName(projected.removedName);
   return projected ? owners.get(`human:${projected.id}`) : undefined;
 }
 

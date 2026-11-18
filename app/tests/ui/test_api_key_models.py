@@ -15,9 +15,11 @@ import unittest
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
-from app_select import choose, open_more, open_select, values
+from app_select import choose, labels, open_more, open_select, values
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
+# The price fields' plain words (design §7, founder decision 2026-11-14, #1424).
+PRICE = "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)"
 PASSWORD = "a provider of my own choosing"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Ines Park", "email": f"ines.park+{STAMP}@example.test"}
@@ -118,13 +120,13 @@ class ApiKeyModels(unittest.TestCase):
         page.keyboard.press("Escape")
         # #1424: Anthropic's newest Sonnet, the balanced model, is already chosen (here a model Flux has no price for, so its price is asked). The models are the provider's own (founder direction, 2026-11-12). Opus shows its list price.
         expect(model).to_contain_text("Claude Sonnet 5.7")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         expect(page.get_by_test_id("connection-price")).to_have_count(0)
         choose(model, value="claude-opus-5-5")
         expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 for what you send and $20.00 for what it writes, per million tokens · Flux’s price list of ")
         # A model Flux has no price for asks its price; "Other model id…" opens the plain field.
         choose(model, value="claude-sonnet-5-7")
-        price = page.get_by_role("group", name="Price per 1M tokens (USD)")
+        price = page.get_by_role("group", name=PRICE)
         expect(price).to_contain_text("Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget")
         choose(model, value="__other__")
         expect(page.get_by_label("Model id", exact=True)).to_be_visible()
@@ -137,6 +139,11 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
         saved = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "Ines's Anthropic key"]
         self.assertEqual([(item["provider"], item["model"]) for item in saved], [("anthropic", "claude-opus-5-5")])
+        # Your API keys names the model as Connect AI did, the provider's "Claude Opus 5.5", never Flux's short "Opus 5.5" (release audit ffcb07c);
+        # and its budget line is whole sentences, with no "counts against it: your agents."
+        card = page.get_by_role("listitem", name="Ines's Anthropic key")
+        expect(card.locator("dt", has_text="Model").locator("xpath=following-sibling::dd")).to_have_text("Claude Opus 5.5")
+        expect(card).not_to_contain_text("counts against it:")
         self.no_key_in_page(page)
 
     def test_02a_the_key_step_opens_with_only_the_provider_and_the_key_and_connect_waits_for_a_provider(self) -> None:
@@ -175,15 +182,11 @@ class ApiKeyModels(unittest.TestCase):
         choose(provider, label="Anthropic")
         expect(connect).to_be_enabled()
         expect(page.get_by_label("Model", exact=True)).to_have_count(0)
-        expect(help_line).to_have_text(f"{plain} An Anthropic API key beginning with sk-ant-. A key of your Claude Max, Ultra or Team plan uses its monthly API credits.")
+        expect(help_line).to_have_text(f"{plain} Anthropic API keys begin with sk-ant-. A key of your Claude Max, Ultra or Team plan uses its monthly API credits.")
         choose(provider, label="OpenAI-compatible endpoint")
         expect(page.get_by_role("textbox", name="Model")).to_be_editable()
-        # Back to no provider: the first state again.
-        choose(provider, label="Choose a provider")
-        expect(page.get_by_label("Model", exact=True)).to_have_count(0)
-        expect(connect).to_be_disabled()
-        expect(help_line).to_have_text(plain)
-        self.assertEqual(form.evaluate(visible), ["Provider", "API key", "More settings", "Cancel", "Connect"])
+        # "Choose a provider" is the closed field's placeholder, not an option to tick (v0.2.1 UI audit, P3 4).
+        self.assertNotIn("Choose a provider", labels(provider))
 
     def test_02b_the_form_asks_first_only_for_the_provider_and_the_key_and_keeps_the_rest_behind_more(self) -> None:
         """#1424 (founder decision, 2026-11-14): Provider and API key first; the model already chosen once the key is read; the budget and the
@@ -200,7 +203,7 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_label("Provider", exact=True)).to_be_visible()
         expect(page.get_by_label("API key", exact=True)).to_be_visible()
         expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(page.get_by_role("group", name=PRICE)).to_have_count(0)
         expect(window.get_by_label("Daily budget (USD)", exact=True)).to_be_hidden()
         expect(window.get_by_label("Name (optional)", exact=True)).to_be_hidden()
         more = page.get_by_role("button", name="More settings")
@@ -211,7 +214,7 @@ class ApiKeyModels(unittest.TestCase):
         model = page.get_by_role("combobox", name="Model")
         expect(model).to_contain_text("Claude Sonnet 5.7")  # Anthropic's newest Sonnet, the balanced model
         choose(model, value="claude-opus-5-5")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(page.get_by_role("group", name=PRICE)).to_have_count(0)
         fits()
         words = window.inner_text()
         for jargon in ("Chat Completions", "Console organization", "input / output", "per 1M tokens, input"):
@@ -230,6 +233,55 @@ class ApiKeyModels(unittest.TestCase):
         added = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] not in before]
         self.assertEqual([(item["name"], item["model"], item["dailyBudgetCents"]) for item in added], [("Anthropic key", "claude-opus-5-5", 500)])
         self.no_key_in_page(page)
+
+    def test_02b2_an_unpriced_model_asks_its_price_in_plain_words_and_the_window_still_does_not_scroll(self) -> None:
+        """v0.2.1 UI audit P2-2, design §7 (founder decision 2026-11-14, #1424): the price reads "Price in US dollars for a million tokens sent
+        to the model (input) and a million it writes (output)", never "per 1M tokens" or "Input price". With the price fields and More open,
+        the window does not scroll and Cancel and Connect stay in view, at 1440 × 900 and at 1280 × 800. The fields have no native steppers."""
+        for size in ({"width": 1440, "height": 900}, {"width": 1280, "height": 800}):
+            with self.subTest(size=size):
+                page = self.page()
+                page.set_viewport_size(size)
+                self.form(page)
+                self.type_key(page, GOOD)
+                model = page.get_by_role("combobox", name="Model")
+                expect(model).to_contain_text("Claude Sonnet 5.7")  # the default, a model Flux has no price for in the stack
+                price = page.get_by_role("group", name=PRICE)
+                expect(price).to_be_visible()
+                expect(price).to_contain_text("Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.")
+                for field in ("Input", "Output"):
+                    expect(price.get_by_label(field, exact=True)).to_be_editable()
+                    self.assertEqual(price.get_by_label(field, exact=True).evaluate("el => getComputedStyle(el).appearance"), "textfield", f"{field}: no steppers")
+                open_more(page)
+                window = page.locator(".cai-window")
+                expect(window.get_by_label("Name (optional)", exact=True)).to_be_visible()
+                words = window.inner_text()
+                for jargon in ("1M", "Input price", "Output price", "USD per"):
+                    self.assertNotIn(jargon, words, "plain words")
+                height, visible = window.evaluate("el => [el.scrollHeight, el.clientHeight]")
+                self.assertLessEqual(height, visible + 1, f"the window does not scroll: {height} px in {visible}")
+                frame = page.locator(".cai-dialog").bounding_box()
+                for name in ("Cancel", "Connect"):
+                    button = window.get_by_role("button", name=name, exact=True).bounding_box()
+                    self.assertLessEqual(button["y"] + button["height"], min(frame["y"] + frame["height"], size["height"]), f"{name} is in view: {button} {frame}")
+                # The two prices sit on one line, and the budget beside the name.
+                inputs = [price.get_by_label(field, exact=True).bounding_box() for field in ("Input", "Output")]
+                self.assertAlmostEqual(inputs[0]["y"], inputs[1]["y"], delta=1)
+                budget, name = window.get_by_label("Daily budget (USD)", exact=True).bounding_box(), window.get_by_label("Name (optional)", exact=True).bounding_box()
+                self.assertAlmostEqual(budget["y"], name["y"], delta=1)
+                shot(page, named(f"api-key-models-{size['width']}-unpriced-more"))
+        # The phone: one column, the price fields touch-sized and without the WebKit steppers.
+        phone = self.page(phone=True)
+        self.form(phone)
+        self.type_key(phone, GOOD)
+        price = phone.get_by_role("group", name=PRICE)
+        expect(price).to_be_visible()
+        for field in ("Input", "Output"):
+            box = price.get_by_label(field, exact=True)
+            self.assertEqual(box.evaluate("el => getComputedStyle(el).appearance"), "textfield", f"{field}: no steppers on the phone")
+            self.assertGreaterEqual(box.bounding_box()["height"], 44, field)
+        self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), phone.evaluate("window.innerWidth"))
+        shot(phone, named("api-key-models-390-unpriced"))
 
     def test_02c_the_model_chosen_is_the_providers_balanced_one_found_by_family_name(self) -> None:
         """#1424 (founder decision, 2026-11-14): Anthropic's newest Sonnet, OpenAI's newest Sol, Gemini's newest Flash, whatever their place in the
@@ -305,7 +357,8 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
         # One plain sentence with Anthropic's key shape; the help line under the key, which says the shape too, is hidden meanwhile.
         expect(alert).to_have_text("This doesn’t look like an Anthropic key: those begin with sk-ant-.")
-        hint = "An Anthropic API key beginning with sk-ant-."
+        # A whole sentence, never the fragment "An Anthropic API key beginning with sk-ant-." (release audit ffcb07c).
+        hint = "Anthropic API keys begin with sk-ant-."
         self.assertEqual(page.evaluate("document.body.innerText").count("sk-ant-"), 1, "the key shape is said once")
         self.assertEqual(page.evaluate("document.body.innerText").count(hint), 0, "the help line is hidden while the alert says it")
         expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-describedby", re.compile(r"^\S+-refused$"))
@@ -358,6 +411,22 @@ class ApiKeyModels(unittest.TestCase):
         self.assertEqual((refused.status, refused.json()["code"]), (422, "AI_MODEL_REQUIRED"), refused.text())
         self.assertEqual(self.connected(waiting), before)
 
+    def test_03bb_the_line_about_a_model_goes_when_the_key_is_refused(self) -> None:
+        """B-6/D-6: "Choose a model first…" was said while the list was read; a refused key has no model field, so the line goes with it."""
+        page = self.page()
+        self.form(page)
+        held: list[Route] = []
+        page.route(re.compile(r".*/api/v1/ai-model-lists$"), lambda route: held.append(route))  # the answer waits until the test lets it through
+        self.type_key(page, REFUSED)
+        expect(page.get_by_role("status").filter(has_text="Reading Anthropic’s models…")).to_be_visible()
+        page.get_by_role("button", name="Connect", exact=True).click()
+        expect(page.get_by_role("alert").filter(has_text="Choose a model first.")).to_be_visible()
+        held[0].fulfill(status=200, content_type="application/json", body=json.dumps({"provider": "anthropic", "status": "key_refused", "models": [], "checkedOn": "2026-11-14"}))
+        expect(page.get_by_role("alert").filter(has_text="This key was refused by Anthropic.")).to_be_visible()
+        expect(page.get_by_text("Choose a model first")).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
+        expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
+
     def test_03c_a_model_that_cannot_use_tools_is_refused_and_the_key_stays_for_another(self) -> None:
         """RT-1 rule 2 (#1441): the server's one `ping` check refuses the model, not the key, so the key is not cleared."""
         page = self.page()
@@ -368,8 +437,8 @@ class ApiKeyModels(unittest.TestCase):
         model = page.get_by_role("combobox", name="Model")
         choose(model, value="__other__")
         page.get_by_label("Model id", exact=True).fill("claude-no-tools-1")
-        page.get_by_label("Input price", exact=True).fill("1")
-        page.get_by_label("Output price", exact=True).fill("5")
+        page.get_by_label("Input", exact=True).fill("1")
+        page.get_by_label("Output", exact=True).fill("5")
         open_more(page)
         page.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
         page.get_by_role("button", name="Connect", exact=True).click()

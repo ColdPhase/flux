@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
 import { PgBoss } from 'pg-boss';
-import { projectObjectNoticesPath, type Project } from '@flux/contracts';
+import { decisionAppPath, projectObjectNoticesPath, type Project } from '@flux/contracts';
 import { connectionString, pool } from './support/db.js';
 import { sealedNotificationTitle } from '@flux/core';
 import { apiUrl, Browser, publicOrigin } from './support/http.js';
@@ -388,6 +388,17 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     assert.equal(accepted.rows.length, 1, 'the content-free invitation is stored');
     await assert.rejects(insert('Ada invited you to work together in Garden club'), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'one name for a call');
     await assert.rejects(insert('Ada invited you to a call in a secret project'), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
+    await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
+  });
+
+  test('a decision notice in A links the decision over its space\'s conversation by ids only, and the old Tasks form is refused (migration 0086)', async () => {
+    const decision = randomUUID();
+    const insert = (link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'review', $4, '', $5, false) RETURNING id`, [ben.id, A, ids.A.project, sealedNotificationTitle('review', 'Ada', 'Garden club'), link]);
+    const accepted = await insert(decisionAppPath(ids.A.project, decision));
+    assert.equal(accepted.rows.length, 1, 'the decision\'s one address is stored');
+    await assert.rejects(insert(`/projects/${ids.A.project}/tasks?open=decision:${decision}`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'no decision opens over Tasks');
+    await assert.rejects(insert(`${decisionAppPath(ids.A.project, decision)}&topic=secret`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a link with words');
     await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
   });
 

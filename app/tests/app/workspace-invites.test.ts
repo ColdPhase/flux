@@ -50,7 +50,7 @@ describe('F-035 invite links', () => {
     // A visitor with the link, not signed in, sees what it is for; a link for anyone names no address.
     const anonymous = new Browser();
     const seen = expectStatus(await preview(anonymous, token), 200) as InvitePreview;
-    assert.deepEqual({ ...seen, expiresAt: undefined }, { workspaceName: 'Riverside Makers', invitedBy: 'Ada Invites', role: 'member', expiresAt: undefined,
+    assert.deepEqual({ ...seen, expiresAt: undefined }, { workspaceName: 'Riverside Makers', spaceName: null, invitedBy: 'Ada Invites', role: 'member', expiresAt: undefined,
       emailLocked: false, email: null, encrypted: false, state: 'pending' });
     assert.equal((await anonymous.request('POST', '/api/v1/invites/accept', { body: { token } })).status, 401, 'accept needs a session');
 
@@ -80,7 +80,7 @@ describe('F-035 invite links', () => {
     assert.deepEqual(events[1]!.data, { userId: danId, role: 'member', inviteId: invite.id });
   });
 
-  test('#1438: a link made from a space adds the person to that space, names it to the maker and lands them in Everyone', async () => {
+  test('#1438, #1424: a link made from a space adds the person to that space, names it to the maker and lands them in it', async () => {
     const project = async (name: string, visibility: 'workspace' | 'restricted') =>
       (await ada.browser.request('POST', `/api/v1/workspaces/${space}/projects`, { body: { name, visibility } }));
     const tool = (expectStatus(await project('Tool library', 'restricted'), 201) as { id: string }).id;
@@ -102,11 +102,13 @@ describe('F-035 invite links', () => {
     const listed = expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[];
     assert.deepEqual(listed.find((item) => item.id === invite.id)?.space, { id: tool, name: 'Tool library' });
 
+    // Persona round (#1424): the join page names the space the link is for, not only the company; a company link names none.
+    assert.equal((expectStatus(await preview(new Browser(), tokenOf(invite)), 200) as InvitePreview).spaceName, 'Tool library');
     const { browser } = await register(email, password, 'Maja Invites');
     const majaId = ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id;
     const joined = expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult;
     assert.equal(joined.status, 'joined');
-    assert.equal(joined.landingSpaceId, landing, 'a member opens the space everyone reads, with the composer ready');
+    assert.equal(joined.landingSpaceId, tool, 'founder decision 2026-11-14 (#1424): a member opens the link\'s space, with the composer ready');
     // In the space as a member, granted by the link's maker.
     assert.equal((expectStatus(await browser.request('GET', `/api/v1/projects/${tool}`), 200) as { access: string }).access, 'contributor');
     const grant = (await pool.query<{ kind: string; actor_id: string; data: { role: string; principal: { id: string } } }>(
@@ -116,7 +118,12 @@ describe('F-035 invite links', () => {
     const notice = (await pool.query<{ title: string; body: string; url: string }>(`SELECT title, body, url FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [ben.id])).rows[0]!;
     assert.deepEqual(notice, { title: 'Maja Invites joined Riverside Makers', body: 'They are in Everyone and Tool library.', url: `/projects/${tool}/settings` });
     // Accepting again changes nothing and lands the same way.
-    assert.equal((expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult).landingSpaceId, landing);
+    assert.equal((expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult).landingSpaceId, tool);
+    // A link made for the company (no space) lands a member in the space everyone reads.
+    const companyLink = await create(ada, space, { role: 'member' });
+    assert.equal((expectStatus(await preview(new Browser(), tokenOf(companyLink)), 200) as InvitePreview).spaceName, null);
+    const kai = await register(uniqueEmail('kai-invites'), password, 'Kai Invites');
+    assert.equal((expectStatus(await accept(kai, tokenOf(companyLink)), 200) as AcceptInviteResult).landingSpaceId, landing);
 
     // A guest is not in the space everyone reads: they open the link's space.
     const guestEmail = uniqueEmail('olek-invites');
@@ -129,9 +136,42 @@ describe('F-035 invite links', () => {
     const gone = (expectStatus(await project('Old shed', 'restricted'), 201) as { id: string }).id;
     const goneInvite = await create(ada, space, { role: 'guest', spaceId: gone });
     assert.ok([200, 204].includes((await ada.browser.request('DELETE', `/api/v1/projects/${gone}`)).status), 'the space is deleted');
+    assert.equal((expectStatus(await preview(new Browser(), tokenOf(goneInvite)), 200) as InvitePreview).spaceName, null, 'a deleted space is not named');
     const late = await register(uniqueEmail('pia-invites'), password, 'Pia Invites');
     const lateJoined = expectStatus(await accept(late, tokenOf(goneInvite)), 200) as AcceptInviteResult;
     assert.deepEqual([lateJoined.status, lateJoined.landingSpaceId], ['joined', null]);
+  });
+
+  test('#1424: New space ties the links made in its window to the space it creates, and the person lands in it', async () => {
+    const newSpace = (who: Person, body: Record<string, unknown>) => who.browser.request('POST', `/api/v1/workspaces/${space}/projects`, { body, headers: key() });
+    const email = uniqueEmail('lena-invites');
+    const made = await create(ada, space, { role: 'member', email });
+    assert.equal(made.space, null, 'made before the space exists, the link names none');
+    const anyone = await create(ada, space, { role: 'member' });
+    const used = await create(ada, space, { role: 'member' });
+    const user = await register(uniqueEmail('used-invites'), password, 'Used Invites');
+    expectStatus(await accept(user, tokenOf(used)), 200);
+    // Only the caller's own links of this company: Ben's link, a random id or a malformed one refuse the whole space.
+    const bens = await create(ben, space, { role: 'member' });
+    for (const invites of [[bens.id], [randomUUID()], ['not-an-id']]) {
+      assert.equal((await newSpace(ada, { name: `Refused ${invites[0]}`, visibility: 'restricted', invites })).status, 400, `refused: ${invites[0]}`);
+    }
+    const studio = expectStatus(await newSpace(ada, { name: 'Glaze studio', visibility: 'restricted', invites: [made.id, anyone.id, used.id] }), 201) as { id: string };
+    const listed = expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[];
+    assert.deepEqual(listed.find((item) => item.id === made.id)?.space, { id: studio.id, name: 'Glaze studio' });
+    assert.deepEqual(listed.find((item) => item.id === anyone.id)?.space, { id: studio.id, name: 'Glaze studio' });
+    assert.equal(listed.find((item) => item.id === bens.id)?.space, null, 'a refused space ties nothing');
+    // A used link has nothing left to tie.
+    assert.equal((await pool.query<{ space_id: string | null }>('SELECT space_id FROM workspace_invites WHERE id = $1', [used.id])).rows[0]!.space_id, null);
+    const lena = await register(email, password, 'Lena Invites');
+    const joined = expectStatus(await accept(lena, tokenOf(made)), 200) as AcceptInviteResult;
+    assert.equal(joined.landingSpaceId, studio.id, 'she lands in the new space');
+    assert.equal((expectStatus(await lena.browser.request('GET', `/api/v1/projects/${studio.id}`), 200) as { access: string }).access, 'contributor');
+    // A link already tied to a space keeps it.
+    const second = expectStatus(await newSpace(ada, { name: 'Kiln room', visibility: 'restricted', invites: [anyone.id] }), 201) as { id: string };
+    const again = expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[];
+    assert.equal(again.find((item) => item.id === anyone.id)?.space?.id, studio.id);
+    assert.notEqual(second.id, studio.id);
   });
 
   test('the token is not at rest: only its SHA-256 is stored, and no event or stored answer holds it', async () => {
@@ -224,6 +264,32 @@ describe('F-035 invite links', () => {
     assert.equal((expectStatus(await accept(cleo, tokenOf(invite)), 200) as AcceptInviteResult).status, 'joined');
     expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/members/${cleo.id}`), 204);
     assert.equal((await create(ada, space, { role: 'member', email: 'not an address' }, 400)).code, 'INVALID_INPUT');
+  });
+
+  test('#1424: a link for an address that joined another way waits for nobody: it is neither listed nor counted', async () => {
+    const gil = await person('Gil Invites');
+    const first = await create(ada, space, { role: 'member', email: gil.email });
+    const second = await create(ada, space, { role: 'member', email: gil.email });
+    const anyone = await create(ada, space, { role: 'member' });
+    const waiting = async () => (expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[]).map((item) => item.id);
+    for (const id of [first.id, second.id, anyone.id]) assert.ok((await waiting()).includes(id), 'all three wait before anyone joins');
+    assert.equal((expectStatus(await accept(gil, tokenOf(first)), 200) as AcceptInviteResult).status, 'joined');
+    const after = await waiting();
+    assert.ok(!after.includes(first.id), 'the link used is gone');
+    assert.ok(!after.includes(second.id), 'the second link for the same address no longer says it waits');
+    assert.ok(after.includes(anyone.id), 'a link for anyone still waits');
+    // Someone who leaves can be invited again by that address: the link waits again.
+    expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/members/${gil.id}`), 204);
+    assert.ok((await waiting()).includes(second.id));
+    for (const id of [second.id, anyone.id]) expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/invites/${id}`), 204);
+  });
+
+  test('#1424: the company\'s owner is named as such in a space\'s people, to everyone who reads them', async () => {
+    const shop = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${space}/projects`, { body: { name: 'Owner word', visibility: 'restricted' }, headers: key() }), 201) as { id: string }).id;
+    expectStatus(await ada.browser.request('POST', `/api/v1/projects/${shop}/grants`, { body: { principal: { kind: 'human', id: ben.id }, role: 'contributor' }, headers: key() }), 201);
+    const people = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${shop}/people`), 200) as { id: string; owner?: true }[];
+    assert.equal(people.find((item) => item.id === ada.id)?.owner, true);
+    assert.equal(people.find((item) => item.id === ben.id)?.owner, undefined, 'an admin is not the owner');
   });
 
   test('role limits: never owner, admin only from an owner, expiry only 1, 7 or 30 days', async () => {

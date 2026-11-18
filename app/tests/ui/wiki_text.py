@@ -30,8 +30,8 @@ def wait_until_shared(page: Page) -> None:
 
 
 def saved(page: Page) -> Locator:
-    """The page's state line once nothing waits to be saved."""
-    return page.locator(".wiki-head__meta").filter(has_text=re.compile(r"^Saved · "))
+    """The page's state line once nothing waits to be saved: "Saved" stays while a quick save runs, so it is read with nothing pending."""
+    return page.locator('.wiki-head__meta[data-live-pending="0"]').filter(has_text=re.compile(r"^Saved · "))
 
 
 def has_text(text: Locator, snippet: str) -> None:

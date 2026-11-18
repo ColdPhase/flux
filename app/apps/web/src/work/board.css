@@ -28,7 +28,7 @@
   border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--seg-off); transition: var(--tr);
 }
 .tb-mode__b svg { display: none; }
-.tb-mode__b:hover { color: var(--t1); }
+@media (hover: hover) { .tb-mode__b:hover { color: var(--t1); } }
 .tb-mode__b[aria-checked="true"] { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
 @media (forced-colors: active) { .tb-mode__b[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
 /* Mine is the system's outline Button with the person icon, as drawn (#1373); pressed it takes the --t1 edge (ui.css). */
@@ -76,12 +76,14 @@
   border-radius: 16px; background: var(--el); box-shadow: var(--sh-card);
   transition: border-color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
-.tb-card:hover { box-shadow: var(--sh-card), inset 0 0 0 1px var(--line2); }
+/* Hover is for a pointer that hovers: a tap leaves no edge on the card under the finger (F-026 "One look for one element"). */
+@media (hover: hover) { .tb-card:hover { box-shadow: var(--sh-card), inset 0 0 0 1px var(--line2); } }
 /* While a card is dragged only the target column's card area lights up, never the card under the pointer. */
 html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
-.tb-card:has(.tb-card__open:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
-/* The task open in the panel is a soft fill, not a ring (#763 IN-3, Spokój rule 6); keyboard focus keeps its outline. */
-.tb-card:has(.tb-card__open[aria-current="true"]) { background: var(--pick); }
+.tb-card:has(.tb-card__open:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* The task open in the panel is a soft fill, not a ring (#763 IN-3, Spokój rule 6); keyboard focus keeps its outline. The fill is --hov,
+   where every word of the card (its number and owner in --t3) keeps 4.5:1 (design L69); --pick did not. */
+.tb-card:has(.tb-card__open[aria-current="true"]) { background: var(--hov); }
 .tb-card__id { font-family: var(--mono); font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 .tb-card__state { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .tb-card__t { margin: 0; font-size: var(--fs-base); font-weight: 400; line-height: var(--lh); }
@@ -91,11 +93,18 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card__open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .tb-card__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: anywhere; }
 .tb-card__blocker { margin-top: 0; padding-left: 9px; border-left: 2px solid var(--t2); font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+/* One line: a long owner's name ends in an ellipsis beside the number, so cards keep one height (founder direction 2026-11-17 visual review).
+   The owner counts as its face, its mark and a few letters (80 px) when the line is laid out: where the number, the due day and that much do
+   not fit (a narrow column beside the open panel), the owner takes the line under them, right-aligned, rather than shrink to "AK (you)" and
+   spill "(you)" past the card's edge (round 15 look-3 F1). */
 .tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: var(--fs-sm); }
+.tb-card__foot > :not(.tb-card__owner) { flex: none; }
 .tb-card__due { color: var(--t2); font-size: var(--fs-sm); }
 .tb-card__foot > .tb-card__owner { margin-left: auto; }
-.tb-card__owner { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
-.tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t3); }
+.tb-card__owner { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; flex: 1 1 80px; min-width: 0; max-width: max-content; }
+/* An agent's one label (#1364) keeps its whole words and takes the next line when it must. */
+.tb-card__owner--agent { flex-basis: auto; }
+.tb-card__name { color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {
   display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%;
@@ -129,7 +138,10 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   /* Beside a docked panel a computer's or tablet's board is this narrow too (#1365): the columns that do not fit are shown by a thin bar,
      so they can be reached with a mouse as well as by a swipe. The phone keeps its bare swipe. */
   @media (min-width: 641px) {
-    .tb-board { scrollbar-width: thin; scrollbar-color: var(--t3) transparent; padding-bottom: 20px; }
+    /* The columns that run on past the edge fade into it, and the last one ends with the page's margin (founder direction 2026-11-17 visual review). */
+    .tb-board { scrollbar-width: thin; scrollbar-color: var(--t3) transparent; padding-bottom: 20px; padding-right: 0;
+      mask-image: linear-gradient(to right, transparent 0, #000 var(--space-page), #000 calc(100% - var(--space-page)), transparent 100%); }
+    .tb-board::after { content: ""; flex: 0 0 calc(var(--space-page) - 12px); }
     .tb-board::-webkit-scrollbar { display: block; height: 8px; }
     .tb-board::-webkit-scrollbar-thumb { border-radius: var(--r-pill); background: var(--t3); }
   }
@@ -142,6 +154,13 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-add.ui-btn { display: none; }
   .tb-bar { flex-wrap: nowrap; padding-top: 10px; }
   .tb-search { flex: 1 1 0; margin-left: 2px; }
+}
+/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc". */
+@media (max-width: 359px) {
+  .tb-bar { gap: 6px; }
+  .tb-mode__b { padding: 0 9px; }
+  .tb-bar .tb-mine { padding-inline: 9px; }
+  .tb-search { gap: 4px; }
 }
 
 @media (pointer: coarse) {

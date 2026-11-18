@@ -6,7 +6,7 @@
  * cursor come only from objects the caller may read at the moment of the request: the server
  * applies the access policy inside the SQL before ranking, limiting and highlighting.
  */
-import type { WorkStatus } from './work.js';
+import { decisionAppPath, type WorkStatus } from './work.js';
 
 import type { LockedWorkspaceRef } from './encryption.js';
 
@@ -47,13 +47,17 @@ export function searchTargetPath(target: SearchTarget): string {
     case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
     case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
-    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
+    // A match in the page as it is now opens the page itself, where it is read and edited; only an earlier version opens as a saved one (round 15).
+    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}${target.current ? '' : `/versions/${target.version}`}`;
     // A file (C-63) opens its message with its preview open, at the page that matched for a PDF.
     case 'file': return `/projects/${target.projectId}/conversations/${target.conversationId}?file=${target.fileId}${target.page ? `&page=${target.page}` : ''}#message-${target.messageId}`;
     case 'sketch': return `/map/${target.sketchId}`;
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
-    // Work, decisions and results open in Details on the project's Tasks view (#101, #117).
+    // A decision opens as a decision: in the one panel over its space's conversation, where its card is (P4), as the Inbox, a
+    // notification, Discuss and the conversation's card open it, never over a Tasks view that does not list it.
+    case 'decision': return decisionAppPath(target.projectId, target.id);
+    // A task opens in Details on the space's Tasks view (#101, #117).
     default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;
   }
 }
@@ -83,8 +87,8 @@ export type SearchTarget =
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'dm_message'; dmId: string; messageId: string }
   | { type: 'material'; projectId: string; materialId: string; version: number }
-  /** A doc (#112) at the version that matched. */
-  | { type: 'doc'; projectId: string; docId: string; version: number }
+  /** A doc (#112) at the version that matched; `current` when that is the page as it is now, which then opens itself. */
+  | { type: 'doc'; projectId: string; docId: string; version: number; current?: true }
   /** A file someone sent (C-63): its message, with its preview open at `page` (a PDF's page where the match is). */
   | { type: 'file'; projectId: string; conversationId: string; messageId: string; fileId: string; page?: number }
   | { type: 'work' | 'decision'; projectId: string; id: string }
@@ -103,8 +107,26 @@ export interface SearchResult {
   /** A second line from the body with the matched words marked, when the body has one. */
   snippet: SearchText | null;
   place: SearchPlace;
-  /** Who wrote or proposed it, when known. */
+  /**
+   * Who wrote or proposed it, when known: a person who left the company or was removed is "Stefan Kowal (removed)" (`removedName`, founder
+   * decision 2026-11-17, #1424).
+   */
   author: string | null;
+  /**
+   * Present when the reader wrote it, or a person result is the reader: the row names them "Kasia Wójcik (you)" as every view does (design §5
+   * "Naming people", personas-37).
+   */
+  mine?: true;
+  /**
+   * Present when the author is an agent, or the result is an agent's answer its person showed everyone (#1232), also an agent with no colour
+   * (ink): its row's tile is the Kreska, never inferred from how the name reads (a person may be named "Planner · Ada's agent").
+   */
+  byAgent?: true;
+  /**
+   * Present when that author is an agent, or the result is an agent's answer its person showed everyone (#1232): the agent's colour, so the
+   * result's tile is its Kreska in it (#1528), as the message itself draws it. Absent for a person and for an agent without a colour (ink).
+   */
+  agentColour?: import('./agents.js').AgentColour;
   /** When this text was written or last changed. */
   at: string;
   target: SearchTarget;

@@ -200,10 +200,14 @@ class MapTaskCountJourney(unittest.TestCase):
         }""")
 
     def settle(self, page: Page, selector: str) -> None:
-        """Wait until an element and its ancestors finished their enter motion."""
+        """Wait until an element and its ancestors finished their enter motion: opaque, with no animation of theirs still running or pending
+        (opacity alone let WebKit's contrast check meet the chooser mid-fade)."""
         page.wait_for_function("""selector => {
           const el = document.querySelector(selector); if (!el) return false;
-          for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
+          for (let n = el; n; n = n.parentElement) {
+            if (Number(getComputedStyle(n).opacity) !== 1) return false;
+            if (n.getAnimations().some((a) => a.pending || a.playState === 'running')) return false;
+          }
           return true;
         }""", arg=selector)
 
@@ -288,7 +292,7 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(links).to_have_count(3)
         expected = [
             ("order", ORDER, "Doing", "Owner Nia Okafor"),
-            ("calibrate", CALIBRATE, "Blocked", "Owner Ada Lind"),
+            ("calibrate", CALIBRATE, "Blocked", "Owner Ada Lind (you)"),
             ("protocol", PROTOCOL, "To do", "No owner yet"),
         ]
         for index, (key, title, status, owner) in enumerate(expected):
@@ -297,7 +301,8 @@ class MapTaskCountJourney(unittest.TestCase):
             expect(link).to_contain_text(title)
             expect(link.locator(".sk-task__id")).to_have_text(f"#{self.numbers[key]}")
             expect(link).to_contain_text(f"#{self.numbers[key]} · {status}")
-            expect(link).to_contain_text(f"{owner} · added by Ada Lind")
+            # Ada reads it: she is "Ada Lind (you)", as everywhere a person is named (design "Naming people", personas-36).
+            expect(link).to_contain_text(f"{owner} · added by Ada Lind (you)")
             expect(link).to_have_attribute("title", f"Task {work_id}")
             expect(link).to_have_attribute("data-work-id", work_id)
             expect(link).to_have_attribute("href", f"/projects/{self.ids['project']}/tasks?open=work:{work_id}")
@@ -322,7 +327,7 @@ class MapTaskCountJourney(unittest.TestCase):
         drafted = self.chooser(page, DRAFTED)
         expect(drafted.get_by_role("link")).to_have_count(1)
         expect(drafted.get_by_role("link")).to_contain_text(f"#{self.numbers['diffuser']} · Done")
-        expect(drafted.get_by_role("link")).to_contain_text("Owner Nia Okafor · added by Ada Lind")
+        expect(drafted.get_by_role("link")).to_contain_text("Owner Nia Okafor · added by Ada Lind (you)")
         page.keyboard.press("Escape")
         expect(self.row_badge(page, "drafted")).to_be_focused()
         self.unchanged(page)

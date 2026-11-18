@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import { reconcileAgentRuntime, type AgentRuntimeConfig, type RuntimeManagerPort, type RuntimeAuthOperation } from '@flux/core';
 import { agentRuntimeOperations, agentRuntimeStore } from '@flux/db';
 import { db, insertedHuman, pool } from './support/db.js';
+import { claimRuntimeSlot } from './support/runtime-slot.js';
 
 // #480 (F-022 T3, #331 "never installed"): the durable client history of migration 0118 against the real
 // PostgreSQL store. The decision at release does not depend on the slot's files: a missing CLI with nothing in
@@ -16,15 +17,15 @@ const config: AgentRuntimeConfig = { clients: ['claude_code', 'codex'], commerci
 async function owned(work: (c: { ownerUserId: string; sessionId: string; bindingId: string; slot: string; boot: string }) => Promise<void>) {
   const owner = await insertedHuman('client-history-owner');
   const sessionId = randomUUID(), bindingId = randomUUID(), boot = randomUUID();
-  const slot = `runtime-${600 + Math.floor(Math.random() * 99)}`;
   await pool.query(`INSERT INTO auth_sessions(id, user_id, token, expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`,
     [sessionId, owner.id, `test-cookie-${randomUUID()}`]);
-  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'ready',$2)`, [slot, boot]);
+  const slot = await claimRuntimeSlot(pool, { bootId: boot });
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId, owner.id, slot]);
   try {
     await work({ ownerUserId: owner.id, sessionId, bindingId, slot, boot });
   } finally {
     await pool.query('DELETE FROM auth_users WHERE id=$1', [owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1', [slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1', [slot]);
   }
 }
@@ -127,9 +128,11 @@ test('purge: a client the slots reported not_installed is confirmed only against
   ];
   for (const scenario of cases) {
     // Purge updates every binding. Roll back the whole fixture, including nested adapter transactions.
+    // The slot's name is claimed outside (not ready, so no binder places anyone there); it is ready only inside the fixture.
+    const slot = await claimRuntimeSlot(pool, { state: 'unknown' });
     await assert.rejects(db.transaction(async (tx) => {
-      await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-998', 'ready')`);
-      await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES (${bindingId}, ${owner.id}, 'runtime-998', 'active')`);
+      await tx.execute(sql`UPDATE agent_runtime_slots SET state = 'ready', out_of_pool_reason = NULL WHERE slot = ${slot}`);
+      await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES (${bindingId}, ${owner.id}, ${slot}, 'active')`);
       for (const client of scenario.history) await tx.execute(sql`INSERT INTO agent_runtime_client_history(binding_id, client) VALUES (${bindingId}, ${client})`);
       const purgeId = await agentRuntimeOperations(tx).beginPurge();
       await agentRuntimeOperations(tx).forgetAll(purgeId, scenario.confirmed, scenario.pairs);
@@ -137,6 +140,6 @@ test('purge: a client the slots reported not_installed is confirmed only against
       assert.equal(view.lastRelease?.reason, 'purge', scenario.name);
       assert.equal(view.lastRelease?.signOutFailed, scenario.failed, scenario.name);
       throw rollback;
-    }), (error) => error === rollback, scenario.name);
+    }), (error) => error === rollback, scenario.name).finally(() => pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]));
   }
 });

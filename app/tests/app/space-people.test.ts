@@ -33,6 +33,11 @@ describe('the people of a space', () => {
     }
     const roles = Object.fromEntries((await people(member)).map((row) => [row.id, row.access]));
     assert.deepEqual(roles, { [spaceAdmin.id]: 'manager', [member.id]: 'contributor', [guest.id]: 'contributor' });
+    // Persona round (#1424): a guest of the company is marked so for everyone who reads the list (the guest too), so every list says "Guest".
+    for (const who of [spaceAdmin, member, guest]) {
+      const marks = Object.fromEntries((await people(who)).filter((row) => row.kind === 'human').map((row) => [row.id, row.guest ?? false]));
+      assert.deepEqual(marks, { [spaceAdmin.id]: false, [member.id]: false, [guest.id]: true });
+    }
     expectStatus(await outsider.browser.request('GET', projectPeoplePath(space.id)), 404);
   });
 

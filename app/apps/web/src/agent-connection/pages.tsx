@@ -5,7 +5,7 @@ import { getMe } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
 import { SettingsBack } from '../app/SettingsBack';
 import { signInPath } from '../auth/logic';
-import { Button, Icon, Kreska, agentHue } from '../ui';
+import { Button, Icon, Kreska } from '../ui';
 import { decideAgentConsent, followOAuthRedirect, getConsentContext, listAgentConnections, revokeAgentConnection, type ConsentContext } from './api';
 import { ClientGuide } from './ClientGuide';
 import { AskMeFirst } from './AskMeFirst';
@@ -96,7 +96,8 @@ export function AgentConnectionPage() {
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     {items.length ? <ul className="connection__list" aria-label="Connected clients">{items.map((connection) => <li className="connection__saved sset-card" key={connection.id}>
       <div className="connection__row">
-        <Kreska size={22} hue={agentHue(connection.agentId)} />
+        {/* The app's one mark, the terminal, as in its row in Settings › AI (F-026 §7): it is not an agent, so no Kreska and no agent colour. */}
+        <span className="connection__mark" aria-hidden="true"><Icon name="terminal" size={16} /></span>
         <div className="connection__summary">
           <strong>{connection.name}</strong>
           <span className="connection__meta">For code on your computer. Same rules as your agents.</span>
@@ -105,9 +106,9 @@ export function AgentConnectionPage() {
       <AskMeFirst connectionId={connection.id} initial={connection.mayDo} />
       {confirming === connection.id
         ? <div className="connection__revoke"><span>Disconnect now? Its access stops at once and what it had waiting is dropped.</span>
-          <Button variant="secondary" busy={busy} onClick={() => { void disconnect(connection.id); }}>Disconnect</Button>
-          <Button variant="link" onClick={() => setConfirming(null)}>Cancel</Button></div>
-        : <Button variant="link" onClick={() => setConfirming(connection.id)}>Disconnect</Button>}
+          <Button variant="secondary" size="sm" busy={busy} onClick={() => { void disconnect(connection.id); }}>Disconnect</Button>
+          <Button variant="quiet" size="sm" onClick={() => setConfirming(null)}>Cancel</Button></div>
+        : <Button variant="quiet" size="sm" onClick={() => setConfirming(connection.id)}>Disconnect</Button>}
     </li>)}</ul> : <p className="connection__help">Nothing is connected yet. Add Flux to the app you use below; it asks you once.</p>}
     {ended.length ? <details className="connection__history">
       <summary>Disconnected ({ended.length})</summary>

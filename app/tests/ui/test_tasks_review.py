@@ -184,7 +184,7 @@ class TasksReviewJourney(unittest.TestCase):
                 self.row(page, PRIVATE).locator(".ws-item").focus()
                 page.keyboard.press("4")
                 toast = page.locator(".ui-toast")
-                expect(toast).to_contain_text("done")
+                expect(toast).to_contain_text("moved to Done")
                 changed = self.task(page, "private")
                 self.assertEqual(changed["status"], "done")
                 patches: list[str] = []
@@ -235,7 +235,7 @@ class TasksReviewJourney(unittest.TestCase):
             meta = row.locator(".ws-item__s")
             expect(meta.locator(".agent-id"), f"{label}: {title} shows the agent's one label").to_have_count(1)
             expect(meta.locator(".agent-tag"), f"{label}: {title} has no separate tag").to_have_count(0)
-            expect(meta, f"{label}: {title} names the owner").to_contain_text("· Ada's agent")
+            expect(meta, f"{label}: {title} names the owner").to_contain_text("Ada's ")
             expect(meta, f"{label}: {title} names the agent").to_contain_text("Alex")
             word = meta.locator('.ws-task__word')
             expect(word).to_contain_text({'agent_open': 'To do', 'agent_doing': 'Doing', 'agent_blocked': 'Blocked'}[key])
@@ -249,7 +249,8 @@ class TasksReviewJourney(unittest.TestCase):
                 }"""), f'{label}: {title} exposes the state, tag and owner without clipping')
         expect(self.row(page, "Alex the person's job").locator(".agent-tag")).to_have_count(0)
         expect(self.row(page, "Alex the person's job").locator(".ws-item__s")).to_contain_text("Alex")
-        expect(self.row(page, "Agent stuck job").locator(".ui-pill--inv")).to_have_text("Blocked")
+        expect(self.row(page, "Agent stuck job").locator(".ui-pill--inv")).to_have_count(0)
+        expect(self.row(page, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Blocked")
 
     def test_06_agent_rows_keep_the_agent_tag_the_name_and_the_owner(self) -> None:
         desktop = self.page("ada")
@@ -362,7 +363,7 @@ class TasksReviewJourney(unittest.TestCase):
                 self.open_private_task(page)
                 self.row(page, PRIVATE).locator(".ws-item").focus()
                 page.keyboard.press("4")
-                expect(page.locator(".ui-toast")).to_contain_text("done")
+                expect(page.locator(".ui-toast")).to_contain_text("moved to Done")
                 changed = self.task(page, "private")
                 patches: list[str] = []
                 page.on("request", lambda request: patches.append(request.url) if request.method == "PATCH" else None)

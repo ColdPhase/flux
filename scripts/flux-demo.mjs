@@ -157,7 +157,8 @@ if (existing) {
       ['Borrow two sensors from the school?', 'budget'],
     ];
     for (const [index, [text, label]] of thoughts.entries()) {
-      await add({ text, x: 260, y: (index - 1) * 110, linkFrom: { thoughtId: root.thought.id, label } });
+      // Room for a task line under each thought (geometry.ts TASK_LINE_ROOM) and a gap, so linking a task never makes cards overlap.
+      await add({ text, x: 260, y: (index - 1) * 170, linkFrom: { thoughtId: root.thought.id, label } });
     }
     summary.seeded.push(`map "${sketch.title}" with ${thoughts.length + 1} connected thoughts`);
   } else {

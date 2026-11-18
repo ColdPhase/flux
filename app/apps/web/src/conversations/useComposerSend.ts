@@ -1,10 +1,12 @@
 import type { KeyboardEvent } from 'react';
 import { plainMessageText, type Conversation } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { GUEST_AI_LINE } from '../assistant/format';
 import { useShellActions } from '../app/shellContext';
 import { getProject } from '../project/api';
 import type { useTyping } from '../typing/useTyping';
 import { sendsOnEnter } from '../ui';
+import { awaitField } from '../ui/keys';
 import { firstLine } from '../work/format';
 import type { AssistantAsk } from './useAssistantAsk';
 import type { ComposerDrafts } from './useComposerDrafts';
@@ -34,17 +36,22 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     const submitted = publicComposer.draft;
     const consume = () => publicComposer.consumeBody(submitted);
     // Typed in a thread, the words are about that thread (#694): its opening message is the source, so the thread shows what came of it.
-    const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
+    const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody, conversationId: conversation.id } : null;
     // `/task` and `/decide` open the one Create window with the words as its title, the thread's opening message as its source.
     // The composer keeps its words until the task or decision exists: closing the window loses nothing (and a newer draft is never consumed).
-    openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
-      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)) }] } : {}) });
+    // A task from your own `/task` words is yours (#1424 M).
+    // A `/decide` goes on in Why: a decision reaches everyone, so the words typed after it are its reason, not more of its title (personas-36).
+    // What is typed while the window opens is kept for Why, so no letter is lost on the way (F-026 §4, a form's first field).
+    // Keys typed while it opens in the composer that is being left are kept for Why too, never typed on in the composer (personas-37 P3-1).
+    if (name === 'decide') awaitField(undefined, document.getElementById(composerId));
+    openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume, ...(name === 'task' ? { ownerMe: true } : { afterTitle: true }),
+      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)), conversationId: fromThread.conversationId }] } : {}) });
   }
   async function send() {
     typing.stop();
     if (asking) { await ask.sendToAssistant(); return; }
     // AG-10: `/ai` in a space whose AI is off is not a message for the people here: the words stay in the field.
-    if (aiOff && writable && /^\/ai(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? 'Guests don’t have AI.' : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
+    if (aiOff && writable && /^\/ai(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? GUEST_AI_LINE : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
     const command = writable ? /^\/(task|decide)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
@@ -68,8 +75,17 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     }
   }
   function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // A key the page kept for a field on its way (the Why of a `/decide` that is opening) is not the composer's.
+    if (event.nativeEvent.defaultPrevented) return;
     if (menu.menuKey(event)) return;
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); ask.exitAsk(); return; }
+    // Tab from a `/decide` with its words does what Enter does (F-026 §4, personas-37 P3-1): the window opens with the cursor in Why, the next
+    // field, and every letter typed on goes there. Tab to Send left the focus on a button, where the first word was lost and a Space sent it.
+    if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && writable && !asking && /^\/decide\s+\S/.test(draft.trim())) {
+      event.preventDefault();
+      void send();
+      return;
+    }
     if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
   return { send, onKey };

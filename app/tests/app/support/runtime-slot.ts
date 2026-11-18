@@ -108,3 +108,36 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
 }
 
 export function portOf(url: string) { return Number(new URL(url).port); }
+
+/** What claims a slot row: a `pg` pool or client, or one connection in an open transaction (the claim then ends with it). */
+export interface SlotRows {
+  query(text: string, values: unknown[]): Promise<{ rowCount: number | null }>;
+}
+
+/**
+ * Names that tests use as they are and never put in the shared database: `runtime-1` is the test stack's own runtime, and the core tests'
+ * in-process managers know `runtime-1`, `runtime-2` and `runtime-12`. No claim hands them out.
+ */
+const FIXED_SLOT_NAMES = new Set(['runtime-1', 'runtime-2', 'runtime-12']);
+
+/**
+ * Claims a runtime slot name nobody else holds in the shared test database, with its row, and returns the name. A slot name is
+ * `runtime-<1..999>` (`agent_runtime_slots_slot_check`), so it cannot carry a random id, and the suite's files run together on one database,
+ * some leaving their rows behind (out of the pool): the insert is the claim (`ON CONFLICT DO NOTHING RETURNING` says whether the name was
+ * free, waiting for a concurrent insert of the same name to end), and another name is tried. A test that starts its own slot claims the name
+ * first with `state: 'unknown'` (the binder never places anyone there) and makes it ready once the slot runs. Remove the slot's bindings
+ * before its row: the shared stack's binder may have given a ready test slot to another test's person.
+ */
+export async function claimRuntimeSlot(rows: SlotRows, row: { state?: 'ready' | 'unknown'; bootId?: string; capacity?: number } = {}): Promise<string> {
+  const names = Array.from({ length: 999 }, (_, index) => `runtime-${index + 1}`).filter((name) => !FIXED_SLOT_NAMES.has(name));
+  for (let index = names.length - 1; index > 0; index--) {
+    const other = Math.floor(Math.random() * (index + 1));
+    [names[index], names[other]] = [names[other]!, names[index]!];
+  }
+  for (const slot of names) {
+    const claimed = await rows.query(`INSERT INTO agent_runtime_slots(slot, state, boot_id, capacity) VALUES ($1, $2, $3, $4) ON CONFLICT (slot) DO NOTHING RETURNING slot`,
+      [slot, row.state ?? 'ready', row.bootId ?? null, row.capacity ?? null]);
+    if (claimed.rowCount === 1) return slot;
+  }
+  throw new Error('every runtime slot name is taken');
+}

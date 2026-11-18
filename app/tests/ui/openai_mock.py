@@ -41,6 +41,10 @@ class Handler(BaseHTTPRequestHandler):
             requests.append({"method": "GET", "path": self.path, "authorization": self.headers.get("authorization")})
         if self.path == "/v1/models":
             return self.reply(200, MODELS)
+        # An endpoint that lists its models only to a key (v0.2.1 release gate, O05): 401 without a bearer or with a refused one.
+        if self.path == "/keyed/v1/models":
+            key = (self.headers.get("authorization") or "").removeprefix("Bearer ")
+            return self.reply(200, MODELS) if key and "refused" not in key else self.reply(401, {"error": {"message": "invalid api key"}})
         return self.reply(404, {"error": {"message": "not found"}})
 
     def do_POST(self) -> None:

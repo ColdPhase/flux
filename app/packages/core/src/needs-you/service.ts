@@ -1,19 +1,25 @@
 import {
   assistantChangeSummary,
+  blockedWords,
+  decisionAppPath,
   type AssistantChange,
   MAX_SNOOZE_DAYS,
+  oneLinePreviewText,
+  type NeedsYouAsideEntry,
+  type NeedsYouAsideResponse,
   type NeedsYouItem,
   type NeedsYouKind,
   type NeedsYouResolved,
   type NeedsYouResponse,
   type NeedsYouTaskRef,
   type ResolveNeedsYouCommand,
+  type WaitingOn,
 } from '@flux/contracts';
 import { ForbiddenError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { linkReader } from '../work/service.js';
 import type { WorkRecord } from '../work/ports.js';
-import type { NeedsYouPorts, StoredNeedsYou } from './ports.js';
+import type { NeedsYouPorts, NeedsYouRestore, StoredNeedsYou } from './ports.js';
 import { channelsOf } from '../notifications/preferences.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,7 +32,13 @@ const CALL_URL = /^\/projects\/([0-9a-f-]{36})\/live\/([0-9a-f-]{36})(?:\?invita
 const MAX_ITEMS = 300;
 const MAX_DECISIONS = 200;
 const MAX_ACCEPTERS = 6;
+/** Most notifications read for the queue's mentions, questions, invitations and tasks given to the person. */
+const MAX_NOTES = 400;
+/** `notifying` (#1243) counts at most this many unread notifications, the newest, however many read ones are newer. */
+const NOTIFYING_NEWEST = 100;
 const OVER = new Set(['done']);
+
+const DAY_MS = 86_400_000;
 
 const iso = (date: Date) => date.toISOString();
 const excerpt = (text: string, max = 200) => {
@@ -62,7 +74,16 @@ function holds(state: StoredNeedsYou, now: Date, statuses: Map<string, string>) 
 export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new Date()) {
   /** Unread notifications that would notify the person, counted by the read of `candidates` that made the list (#1243). */
   const notifyingOf = new WeakMap<NeedsYouItem[], number>();
-  async function candidates(principal: Principal): Promise<NeedsYouItem[]> {
+  /** The spaces the person could read for the read of `candidates` that made the list. */
+  const projectsOf = new WeakMap<NeedsYouItem[], Set<string>>();
+  /** Whether the person was in any company for that read: someone removed is in none, and keeps their choices for Restore (personas-35). */
+  const memberOf = new WeakMap<NeedsYouItem[], boolean>();
+  /**
+   * Everything that needs the person now. `keep`: `note:` keys listed even though their notification is read, so the "done today" list
+   * can show a mention, a question or a task the person marked done (Done reads it, #1424 E). `finished`: `note:` keys of tasks given to the
+   * person that their own Done finished, with the version it left, listed while the task is still as that Done left it (personas-33).
+   */
+  async function candidates(principal: Principal, keep: ReadonlySet<string> = new Set(), finished: ReadonlyMap<string, number> = new Map()): Promise<NeedsYouItem[]> {
     const userId = human(principal);
     const items: NeedsYouItem[] = [];
     const workspaceIds = await ports.access.workspaceIds(principal);
@@ -92,10 +113,19 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (!works.has(id)) works.set(id, await ports.work.findWork(id));
       return works.get(id) ?? null;
     };
+    /** Reads the tasks a loop below will ask for in one statement, so a long queue is not one read per task (the route is polled). */
+    const prefetch = async (ids: readonly string[]) => {
+      const missing = [...new Set(ids)].filter((id) => !works.has(id));
+      if (!missing.length) return;
+      const found = await ports.work.findWorks(missing);
+      for (const id of missing) works.set(id, found.get(id) ?? null);
+    };
+    await prefetch(decisions.flatMap((decision) => links(decision.id)
+      .filter((link) => link.from.id === decision.id && link.role === 'affects' && link.to.type === 'work').slice(0, 4).map((link) => link.to.id)));
     for (const decision of decisions) {
-      // #763 FT-8: your own proposal waits for someone else; it asks you only when nobody else here can accept it.
-      if (decision.proposedBy.kind === 'human' && decision.proposedBy.id === userId
-        && (accepters.get(decision.projectId) ?? []).some((person) => !person.you)) continue;
+      // #763 FT-8: your own proposal waits for someone else, never in your Inbox, also when nobody else here can accept it (personas-30:
+      // the only person of a space found what they had just proposed there as something that needs them). It stays on its card.
+      if (decision.proposedBy.kind === 'human' && decision.proposedBy.id === userId) continue;
       const related = links(decision.id).filter((link) => link.from.id === decision.id);
       const basedOn = related.filter((link) => link.role === 'source' && link.toTitle).map((link) => link.toTitle).slice(0, 4);
       const affects: NeedsYouTaskRef[] = [];
@@ -108,13 +138,14 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const name = authors.get(`${by.kind}:${by.id}`) ?? (by.kind === 'agent' ? 'Agent' : 'Someone');
       const supersedes = decision.supersedesId ? (await ports.work.findDecision(decision.supersedesId))?.title ?? null : null;
       items.push({
-        key: `decision:${decision.id}`, kind: 'decision', title: decision.title, detail: excerpt(decision.rationale),
+        key: `decision:${decision.id}`, kind: 'decision', title: decision.title, detail: excerpt(oneLinePreviewText(decision.rationale)),
         project: { id: decision.projectId, name: projectNames.get(decision.projectId) ?? 'Space' },
         from: { kind: by.kind, id: by.id, name }, at: iso(decision.createdAt),
-        url: `/projects/${decision.projectId}/tasks?open=decision:${decision.id}`,
+        url: decisionAppPath(decision.projectId, decision.id),
         decision: {
           id: decision.id, version: decision.version, proposedBy: { kind: by.kind, id: by.id, name }, basedOn, affects,
-          accepters: accepters.get(decision.projectId) ?? [], canAccept: true, supersedes,
+          // Only the people it is asked of (personas-27): the one who proposed it is not asked, unless that is you and nobody else can.
+          accepters: (accepters.get(decision.projectId) ?? []).filter((person) => person.you || !(by.kind === 'human' && person.id === by.id)), canAccept: true, supersedes,
         },
         blocked: null, reason: null, snoozeTask: affects[0] ?? null,
       });
@@ -123,23 +154,34 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // The person's blocked tasks.
     const plans = blocked.length ? await ports.work.taskPlans(blocked.map((task) => task.id)) : new Map();
     const askers = await ports.work.names(blocked.flatMap((task) => (task.waitingFor?.id === userId ? [task.owner ?? task.createdBy] : [])));
+    const waitedFor = await ports.work.names(blocked.flatMap((task) => (task.waitingFor ? [task.waitingFor] : [])));
+    // An item's time is when the task was blocked (C11), not its last edit: put back to Blocked by an Undo, it keeps its place in the list.
+    const changedAt = blocked.length ? await ports.repository.statusChangedAt(blocked.map((task) => task.id)) : new Map<string, Date>();
+    // The task a blocked task waits for: the one it names, else its first unfinished prerequisite.
+    const waitingOf = (task: WorkRecord): { id: string } | undefined => (task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
+      : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status)));
+    await prefetch(blocked.flatMap((task) => { const waiting = waitingOf(task); return waiting ? [waiting.id] : []; }));
     for (const task of blocked) {
-      const waiting = task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
-        : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status));
+      const waiting = waitingOf(task);
       const waitingTask = waiting ? await work(waiting.id) : null;
       const waitingDecision = task.waitingOn?.kind === 'decision' ? await ports.work.findDecision(task.waitingOn.id) : null;
       // The person waited on hears it as "Ada is waiting for you"; the owner (or an agent owner's person) keeps the plain item.
       const waitedOn = task.waitingFor?.id === userId && !(task.owner?.kind === 'human' && task.owner.id === userId);
       const asker = waitedOn ? askers.get(`${(task.owner ?? task.createdBy).kind}:${(task.owner ?? task.createdBy).id}`) ?? 'Someone' : null;
       const reason = task.blocker?.trim() ? excerpt(task.blocker, 120) : null;
+      // The task is the title, and what it waits for is the line under it, in the words the board, the panel and Home use (personas-28):
+      // "#6 Seal the lids", "Waiting for Basia Wrona · the new seals". The person waited on reads who waits, and the reason alone.
+      const on: WaitingOn | null = waitingDecision ? { kind: 'decision', id: waitingDecision.id, title: waitingDecision.title }
+        : task.waitingOn?.kind === 'task' && waitingTask ? { kind: 'task', id: waitingTask.id, number: waitingTask.number, title: waitingTask.title } : null;
+      const person = task.waitingFor ? { name: waitedFor.get(`${task.waitingFor.kind}:${task.waitingFor.id}`) ?? 'Someone' } : null;
+      const blockedAt = iso(changedAt.get(task.id) ?? task.createdAt);
       items.push({
         key: `blocked:${task.id}`, kind: 'blocked',
-        title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}${reason ? ` · ${reason}` : ''}`
-          : reason ? `#${task.number} is blocked: ${reason}` : `#${task.number} ${task.title} is blocked`,
-        detail: waitedOn ? (reason ?? task.title) : task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
-        from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
+        title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}` : `#${task.number} ${excerpt(task.title, 120)}`,
+        detail: waitedOn ? reason ?? '' : excerpt(blockedWords({ blocker: task.blocker, waitingFor: person, waitingOn: on }), 160), project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
+        from: null, at: blockedAt, url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
-        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
+        blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: blockedAt, waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
           waitingDecision: waitingDecision ? { id: waitingDecision.id, title: waitingDecision.title } : null, waitingOn: task.waitingOn,
           ...(waitedOn ? { waitedBy: asker } : {}) },
         snoozeTask: waitingTask ? ref(waitingTask) : null,
@@ -148,7 +190,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
 
     // People's questions and mentions, still unread.
     const since = now().getTime() - MENTION_DAYS * 86_400_000;
-    const inbox = await ports.inbox.listReadable(userId, 100);
+    // Read by kind, never as the newest N of every notification: what needs the person stays however many ordinary messages came since (C1).
+    const inbox = await ports.inbox.needs(userId, { since: new Date(since), keep: [...keep].flatMap((key) => (key.startsWith('note:') ? [key.slice(5)] : [])),
+      limit: MAX_NOTES, newest: NOTIFYING_NEWEST });
     // What would notify the person now and is still unread (#1243): the tab's "(N)" and the app's badge.
     const level = (await ports.level?.(userId)) ?? 'needsYou';
     const channels = channelsOf({ level, emailMe: false });
@@ -161,6 +205,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     if (openAsked.length) for (const [id, name] of await ports.access.projectNames([...new Set(openAsked.map((question) => question.projectId))])) projectNames.set(id, name);
     const noteOfQuestion = new Map<string, string>();
     for (const note of inbox.items) { const question = note.reason === 'question' ? questionOf(note.url) : undefined; if (question && !noteOfQuestion.has(question.id)) noteOfQuestion.set(question.id, note.id); }
+    await prefetch(openAsked.flatMap((question) => (question.taskId ? [question.taskId] : [])));
     for (const question of openAsked) {
       if (ports.aiAllowed && !await ports.aiAllowed(question.projectId)) continue;
       const task = question.taskId ? await work(question.taskId) : null;
@@ -179,18 +224,23 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     }
     // An invitation to a call asks something only while someone is in the call (F-041). A call started in a space is no item here (#1438 point 11).
     const callOf = (url: string | null) => { const match = CALL_URL.exec(url ?? ''); return match ? { projectId: match[1]!.toLowerCase(), sessionId: match[2]!.toLowerCase() } : null; };
-    const callNotes = inbox.items.filter((note) => note.reason === 'invitation' && !note.readAt);
+    const callNotes = [...inbox.items.filter((note) => !note.readAt), ...inbox.unreadNewest].filter((note) => note.reason === 'invitation');
     const callIds = [...new Set(callNotes.flatMap((note) => { const call = callOf(note.url); return call ? [call.sessionId] : []; }))];
     const running = callIds.length && ports.runningCalls ? await ports.runningCalls(callIds) : new Set<string>();
     // The tab's "(N)" counts what asks something now: an invitation not once the call is over (F-041).
-    const askingNow = (note: (typeof callNotes)[number]) => { const call = callOf(note.url); return !(call && ports.runningCalls) || running.has(call.sessionId); };
-    const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push
+    const askingNow = (note: { url: string | null }) => { const call = callOf(note.url); return !(call && ports.runningCalls) || running.has(call.sessionId); };
+    const notifying = inbox.unreadNewest.filter((note) => note.reason && note.reason in channels && channels[note.reason].push
       && (note.reason !== 'invitation' || askingNow(note))).length;
     // The space of a notification made in a space, read together (#1424): the Inbox says "Kind · who · space" for every row.
     const noteProjects = [...new Set(inbox.items.filter((note) => note.source.type === 'project' && !note.readAt).map((note) => note.source.id))].filter((id) => !projectNames.has(id));
     if (noteProjects.length) for (const [id, name] of await ports.access.projectNames(noteProjects)) projectNames.set(id, name);
+    const unread = (note: (typeof inbox.items)[number]) => !note.readAt || keep.has(`note:${note.id}`);
+    // A question or a mention in a decision's discussion says which decision it is about (#1424, persona round 8).
+    const threadOf = (url: string | null) => /\/conversations\/([0-9a-f-]{36})#/i.exec(url ?? '')?.[1]?.toLowerCase() ?? null;
+    const asking = inbox.items.filter((note) => (note.reason === 'mention' || note.reason === 'question') && unread(note)).map((note) => threadOf(note.url)).filter((id): id is string => !!id);
+    const discussed = asking.length && ports.decisionsDiscussed ? await ports.decisionsDiscussed([...new Set(asking)]) : new Map<string, { decisionId: string; title: string }>();
     for (const note of inbox.items) {
-      if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || note.readAt || note.createdAt.getTime() < since) continue;
+      if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || !unread(note) || note.createdAt.getTime() < since) continue;
       const call = note.reason === 'invitation' ? callOf(note.url) : null;
       if (note.reason === 'invitation' && call && ports.runningCalls && !running.has(call.sessionId)) continue;
       // The question card above stands for it while open; once answered, nothing is left to do.
@@ -202,13 +252,37 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const from = note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null;
       const project = note.source.type === 'project' ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null;
       // A message between two people has a sender and no space: its sentence ends with the phrase, where a group's names the group.
-      const pair = note.source.type === 'dm' && / (asked|mentioned) you$/.test(note.title);
-      const words = from && (project || pair) ? excerpt(note.body) : '';
+      const pair = note.source.type === 'dm' && / (asked|mentioned|answered) you$/.test(note.title);
+      // What it says is its title, whole: the open item reads a long question in full (round 15 look-1 P2-3); a row clamps it to two lines.
+      const words = from && (project || pair) ? excerpt(note.body, 600) : '';
       const plain = words && (note.reason === 'mention' || note.reason === 'question');
+      // An answer to a question the person asked (#1424 decision 1), as the generator recorded it: a Reply in a plain and an encrypted space alike.
+      const answer = note.answer === true;
+      const about = note.reason === 'invitation' ? undefined : discussed.get(threadOf(note.url) ?? '');
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
-        ...(call ? { call } : {}),
+        ...(call ? { call } : {}), ...(answer ? { answer: true } : {}), ...(about ? { about } : {}),
+      });
+    }
+    // A task someone else or an agent gave you (#1424 C), from the newest notification that gave it, while it is unread (opening the task
+    // reads it) and the task is still yours, not started, not finished and not undone. A blocked one is its Blocked item.
+    const givenSeen = new Set<string>();
+    await prefetch(inbox.items.flatMap((note) => (note.reason === 'assigned' && note.given && unread(note) ? [note.given] : [])));
+    for (const note of inbox.items) {
+      if (note.reason !== 'assigned' || !note.given || givenSeen.has(note.given)) continue;
+      givenSeen.add(note.given);
+      if (!unread(note)) continue;
+      const task = await work(note.given);
+      const doneByYou = task?.status === 'done' && finished.get(`note:${note.id}`) === task.version;
+      if (!task || !projects.has(task.projectId) || task.owner?.kind !== 'human' || task.owner.id !== userId || (task.status !== 'open' && !doneByYou) || task.creationRevertedAt) continue;
+      if (!projectNames.has(task.projectId)) for (const [id, name] of await ports.access.projectNames([task.projectId])) projectNames.set(id, name);
+      items.push({
+        key: `note:${note.id}`, kind: 'task', title: `#${task.number} ${excerpt(task.title, 120)}`, detail: '',
+        project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
+        from: note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null,
+        at: iso(note.createdAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`, decision: null, blocked: null, reason: null, snoozeTask: null,
+        task: { workId: task.id, number: task.number, version: task.version },
       });
     }
     // Suggestions agents you connected made through MCP (#661), one question each.
@@ -244,39 +318,94 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // One list, newest first (README §7 Inbox, founder decision 2026-11-13); the key keeps two items of the same moment in a steady order.
     const sorted = items.sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
     notifyingOf.set(sorted, notifying);
+    projectsOf.set(sorted, projects);
+    memberOf.set(sorted, workspaceIds.length > 0);
     return sorted;
   }
 
-  /** The queue after the person's own choices; also forgets choices that no longer mean anything. */
-  async function queue(principal: Principal) {
-    const userId = human(principal);
-    const all = await candidates(principal);
-    const notifying = notifyingOf.get(all) ?? 0;
-    const stored = await ports.repository.states(userId);
-    const statuses = await ports.repository.workStatuses(stored.flatMap((entry) => (entry.untilWorkId ? [entry.untilWorkId] : [])));
-    const at = now();
-    const byKey = new Map(stored.map((entry) => [entry.key, entry]));
-    const shown: NeedsYouItem[] = [];
-    let later = 0;
-    for (const item of all) {
-      const entry = byKey.get(item.key);
-      if (!entry || !holds(entry, at, statuses)) { shown.push(item); continue; }
-      if (entry.state === 'snoozed') later += 1;
-    }
-    // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten.
-    const keys = new Set(all.map((item) => item.key));
-    const stale = stored.filter((entry) => (entry.state === 'snoozed' && !holds(entry, at, statuses))
-      || (!entry.key.startsWith('note:') && !keys.has(entry.key))).map((entry) => entry.key);
-    await ports.repository.deleteStates(userId, stale);
-    const dayAgo = at.getTime() - 86_400_000;
-    const doneToday = stored.filter((entry) => entry.state !== 'snoozed' && entry.updatedAt.getTime() >= dayAgo && (entry.key.startsWith('note:') || keys.has(entry.key))).length;
-    return { items: shown.slice(0, MAX_ITEMS), all, later, doneToday, notifying };
+  /** The row of done today for a blocked task the person's Done finished or let continue, from the task as that Done left it. */
+  async function doneBlockedItem(key: string, restore: NeedsYouRestore, projects: ReadonlySet<string>): Promise<NeedsYouItem | null> {
+    const task = await ports.work.findWork(restore.workId);
+    if (!task || task.version !== restore.version || task.creationRevertedAt || !projects.has(task.projectId)) return null;
+    const asker = task.owner ?? task.createdBy;
+    const waitedBy = restore.wait ? (await ports.work.names([asker])).get(`${asker.kind}:${asker.id}`) ?? 'Someone' : null;
+    const name = (await ports.access.projectNames([task.projectId])).get(task.projectId) ?? 'Space';
+    return {
+      key, kind: 'blocked', title: waitedBy ? `${waitedBy} is waiting for you: #${task.number} ${excerpt(task.title, 80)}` : `#${task.number} ${excerpt(task.title, 120)}`,
+      detail: '', project: { id: task.projectId, name }, from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
+      decision: null, reason: null, snoozeTask: null,
+      blocked: { workId: task.id, number: task.number, version: task.version, blocker: null, since: iso(task.updatedAt), waitingForUserId: restore.waitingForUserId ?? null,
+        waitingFor: null, waitingDecision: null, waitingOn: restore.waitingOn ?? null, ...(waitedBy ? { waitedBy } : {}) },
+    };
   }
 
+  /**
+   * The queue after the person's own choices; also forgets choices that no longer mean anything. What is put off (`later`) and what was
+   * done in the last 24 hours (`done`) are the items that would come back if brought back: the two counts and their lists (#1424 E).
+   */
+  async function queue(principal: Principal) {
+    const userId = human(principal);
+    const stored = await ports.repository.states(userId);
+    const at = now();
+    const dayAgo = at.getTime() - DAY_MS;
+    const doneLately = (entry: StoredNeedsYou) => entry.state !== 'snoozed' && entry.updatedAt.getTime() >= dayAgo;
+    const finished = new Map(stored.flatMap((entry) => (entry.restore && doneLately(entry) && entry.key.startsWith('note:') ? [[entry.key, entry.restore.version] as const] : [])));
+    const all = await candidates(principal, new Set(stored.filter((entry) => doneLately(entry) && entry.key.startsWith('note:')).map((entry) => entry.key)), finished);
+    const notifying = notifyingOf.get(all) ?? 0;
+    const statuses = await ports.repository.workStatuses(stored.flatMap((entry) => (entry.untilWorkId ? [entry.untilWorkId] : [])));
+    const byKey = new Map(stored.map((entry) => [entry.key, entry]));
+    const shown: NeedsYouItem[] = [];
+    const later: { item: NeedsYouItem; entry: StoredNeedsYou }[] = [];
+    const done: { item: NeedsYouItem; entry: StoredNeedsYou }[] = [];
+    // A Done that changed a task holds while the task is as it left it (personas-33); changed since (blocked again, reopened), the item is a
+    // need again, or no longer anything, and the choice is forgotten.
+    const versionOf = (item: NeedsYouItem) => item.task?.version ?? item.blocked?.version;
+    const moved = new Set<string>();
+    for (const item of all) {
+      const entry = byKey.get(item.key);
+      if (entry?.restore && versionOf(item) !== entry.restore.version) moved.add(entry.key);
+      if (!entry || moved.has(entry.key) || !holds(entry, at, statuses)) { shown.push(item); continue; }
+      if (entry.state === 'snoozed') later.push({ item, entry });
+      else if (doneLately(entry)) done.push({ item, entry });
+    }
+    // A blocked task the person's Done finished or let continue is no need any more, yet it is in done today until Put back (personas-33).
+    const keys = new Set(all.map((item) => item.key));
+    for (const entry of stored) {
+      if (!entry.restore || keys.has(entry.key) || !entry.key.startsWith('blocked:') || !doneLately(entry)) continue;
+      const item = await doneBlockedItem(entry.key, entry.restore, projectsOf.get(all) ?? new Set());
+      if (item) { done.push({ item, entry }); keys.add(entry.key); }
+    }
+    // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten. Someone removed from the company
+    // sees no need at all while they are out, yet their choices are kept: Restore brings back everything Remove took (founder decision F,
+    // personas-35: 26 items put off for later came back into the Inbox after Remove and Restore).
+    const member = memberOf.get(all) ?? true;
+    const stale = stored.filter((entry) => (entry.state === 'snoozed' && !holds(entry, at, statuses)) || moved.has(entry.key)
+      || (member && !entry.key.startsWith('note:') && !keys.has(entry.key))).map((entry) => entry.key);
+    await ports.repository.deleteStates(userId, stale);
+    return { items: shown.slice(0, MAX_ITEMS), all, later, done, notifying };
+  }
+
+  const asideEntry = ({ item, entry }: { item: NeedsYouItem; entry: StoredNeedsYou }): NeedsYouAsideEntry => ({
+    item, state: entry.state, until: entry.until ? iso(entry.until) : null,
+    untilTask: entry.untilWorkId ? (item.snoozeTask?.id === entry.untilWorkId ? item.snoozeTask : null) : null, at: iso(entry.updatedAt),
+  });
+  /** Soonest back first; one that waits for a task comes after every one that waits for a time. */
+  const backAt = (entry: StoredNeedsYou) => entry.until?.getTime() ?? Number.MAX_SAFE_INTEGER;
+
   return {
-    async list(principal: Principal): Promise<NeedsYouResponse> {
-      const { items, later, doneToday, notifying } = await queue(principal);
-      return { items, count: items.length, later, doneToday, notifying };
+    /** `leaveOut`: items "N for later" and "N done today" do not count (a locked encrypted space's, F-030), as their lists leave them out. */
+    async list(principal: Principal, leaveOut: (item: NeedsYouItem) => boolean = () => false): Promise<NeedsYouResponse> {
+      const { items, later, done, notifying } = await queue(principal);
+      return { items, count: items.length, later: later.filter((entry) => !leaveOut(entry.item)).length, doneToday: done.filter((entry) => !leaveOut(entry.item)).length, notifying };
+    },
+
+    /** The lists behind "2 for later" and "4 done today" (#1424 E): exactly what those counts count. */
+    async aside(principal: Principal): Promise<NeedsYouAsideResponse> {
+      const { later, done } = await queue(principal);
+      return {
+        later: [...later].sort((a, b) => backAt(a.entry) - backAt(b.entry) || a.item.key.localeCompare(b.item.key)).map(asideEntry),
+        done: [...done].sort((a, b) => b.entry.updatedAt.getTime() - a.entry.updatedAt.getTime() || a.item.key.localeCompare(b.item.key)).map(asideEntry),
+      };
     },
 
     async resolve(principal: Principal, key: string, command: ResolveNeedsYouCommand): Promise<NeedsYouResolved> {
@@ -288,7 +417,22 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const extra = (command as { until?: unknown; untilWorkId?: unknown });
       if (command.action !== 'snooze' && (extra.until !== undefined || extra.untilWorkId !== undefined)) throw new InvalidInputError('Only a snooze has a time or a task');
       if (command.action === 'snooze' && (extra.until === undefined) === (extra.untilWorkId === undefined)) throw new InvalidInputError('Snooze until a time or until a task is done, not both', 'NEEDS_YOU_SNOOZE_CHOICE');
-      if (command.action === 'done') value = { state: 'done', until: null, untilWorkId: null };
+      let restore: NeedsYouRestore | null = null;
+      if (command.action === 'done') {
+        value = { state: 'done', until: null, untilWorkId: null };
+        // Done on a task given to you finishes it; on your blocked task too; for the person a task waits for, the task continues
+        // (#1424, round 8). The change is the task's own, and what it changed is kept so Undo and Put back change it back (personas-33).
+        if (item.kind === 'task' && item.task && ports.tasks) {
+          const after = await ports.tasks.finish(principal, item.task.workId, item.task.version);
+          restore = { workId: item.task.workId, version: after.version, to: 'open' };
+        } else if (item.kind === 'blocked' && item.blocked && ports.tasks) {
+          const blocked = item.blocked;
+          const waited = blocked.waitedBy !== undefined && blocked.waitedBy !== null;
+          const after = waited ? await ports.tasks.waitDone(principal, blocked.workId, blocked.version) : await ports.tasks.finish(principal, blocked.workId, blocked.version);
+          restore = { workId: blocked.workId, version: after.version, to: 'blocked', ...(waited ? { waitingForUserId: userId, wait: true as const }
+            : { ...(blocked.waitingForUserId ? { waitingForUserId: blocked.waitingForUserId } : {}), ...(blocked.waitingOn ? { waitingOn: { kind: blocked.waitingOn.kind, id: blocked.waitingOn.id } } : {}) }) };
+        }
+      }
       else if (command.action === 'decline') value = { state: 'declined', until: null, untilWorkId: null };
       else if (typeof extra.untilWorkId === 'string') {
         if (!UUID.test(extra.untilWorkId) || item.snoozeTask?.id !== extra.untilWorkId) throw new InvalidInputError('This item has no such task to wait for', 'NEEDS_YOU_TASK_UNKNOWN');
@@ -301,7 +445,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         }
         value = { state: 'snoozed', until, untilWorkId: null };
       }
-      await ports.repository.putState(userId, item.key, value);
+      await ports.repository.putState(userId, item.key, { ...value, restore });
       // Done is also "read" for a mention or question, so the notification history agrees.
       const noteId = item.key.startsWith('note:') ? item.key.slice(5) : questionNotes.get(item);
       if (noteId && value.state !== 'snoozed') await ports.repository.setNotificationRead(userId, noteId, true);
@@ -315,6 +459,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const lower = key.toLowerCase();
       const own = (await ports.repository.states(userId)).find((entry) => entry.key === lower);
       if (!own) return;
+      // What the Done changed goes back first: a task changed since answers a conflict and the choice stays (personas-33).
+      if (own.restore && own.state === 'done' && ports.tasks) await ports.tasks.putBack(principal, own.restore, new Date(own.updatedAt.getTime() - 60_000));
       await ports.repository.deleteStates(userId, [lower]);
       if (lower.startsWith('note:') && own.state !== 'snoozed') await ports.repository.setNotificationRead(userId, lower.slice(5), false);
       if (lower.startsWith('question:') && own.state !== 'snoozed') {

@@ -54,7 +54,7 @@ export function createPictureUseCases(unit: PictureUnitOfWork, storage: FileStor
   return {
     async setPhoto(principal: Principal, bytes: Uint8Array): Promise<PhotoSet> {
       const userId = person(principal);
-      if (bytes.byteLength > PICTURE_LIMITS.photoBytes) throw new PayloadTooLargeError('A photo is at most 5 MiB', 'PHOTO_TOO_LARGE');
+      if (bytes.byteLength > PICTURE_LIMITS.photoBytes) throw new PayloadTooLargeError('A photo is at most 5 MB', 'PHOTO_TOO_LARGE');
       if (bytes.byteLength < 1) throw new InvalidInputError('Send the picture\'s bytes', 'UNSUPPORTED_PICTURE');
       const objects = await storeRenditions(storage, await renderer.render(bytes));
       const id = randomUUID();

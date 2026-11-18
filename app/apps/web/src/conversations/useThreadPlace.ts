@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import type { outboxView } from '../composer/draft';
 import { pageBackTo } from '../app/seekMessage';
-import { UNREAD_READ_BACK, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { UNREAD_READ_BACK, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from '../app/receipts';
 import { useArrivals } from '../ui';
 import { observeProjectMessages, olderMessages, projectReaders, projectReceipts } from './api';
@@ -10,6 +10,8 @@ import { feedEntries, mergeMessages } from './feed';
 import type { PaneCore } from './paneCore';
 import type { ThreadReading } from './useThreadReading';
 import type { ThreadReplies } from './useThreadReplies';
+import { focusArrival } from '../ui/keys';
+import { WAITING_HASH_PREFIX } from '../assistant/waitingHash';
 
 interface Options {
   thread: ThreadReplies; reading: ThreadReading; outbox: ReturnType<typeof outboxView>;
@@ -61,10 +63,11 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     // whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
     // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
     // message cannot take focus. A return to this entry keeps the place the reader left (useMessageWork).
-    if (threadRestore) return;
+    // Opened at a run's waiting changes (the Inbox's Open, `#waiting-<runId>`): they bring themselves into view (WaitingChanges).
+    if (threadRestore || hash.startsWith(WAITING_HASH_PREFIX)) return;
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
+    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) focusArrival(anchor); return; }
     if (!feed) return;
     if (revealed && unreadLoaded && !unreadPlaced.current) {
       unreadPlaced.current = true;
@@ -72,7 +75,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     }
     if (stopUnread.current) return;
     feed.scrollTop = revealed && leftOff === null ? feed.scrollHeight : 0;
-  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff, hash]);
   // Genuine replies arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.
@@ -84,7 +87,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   // What arrives below a reader who is above the end is counted in "↓ N new" (#1246); a reader at the end follows it.
   const newBelow = useNewBelow(feedNode);
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id), (arrivedIds, following) => {
-    if (!following) newBelow.add(countBelow(scrollRef.current, arrivedIds, (id) => document.getElementById(id)));
+    if (!following) newBelow.add(arrivedBelow(scrollRef.current, arrivedIds, (id) => document.getElementById(id)));
   });
   // #534: a thread's replies are watched like the stream's roots, and "Seen by" needs every reply of the person's own run.
   const receiptLines = [...replyEntries.map((entry) => entry.type === 'message'

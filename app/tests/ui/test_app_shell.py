@@ -194,6 +194,13 @@ def open_details_in_app(page: Page) -> None:
                   [urllib.parse.urlsplit(page.url).path, panel_task(page, project.group(1))])
 
 
+def press_shortcut(page: Page, key: str) -> None:
+    """A single-key shortcut pressed on the page itself. Arriving in a conversation on a computer puts the cursor in its composer (persona
+    round 26, P2 #2), where a key is typing: a person who wants the shortcut leaves the field first, as this does."""
+    page.evaluate("() => { const a = document.activeElement; if (a && a.matches('input, textarea, [contenteditable=\"true\"]')) a.blur(); }")
+    page.locator("body").press(key)
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -414,7 +421,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         # A long enough password clears the last attempt's error and the length hint (#189).
         expect(page.get_by_text("Use at least 12 characters.")).to_have_count(0)
-        expect(page.get_by_text("At least 12 characters. A short sentence works well.")).to_have_count(0)
+        expect(page.get_by_text("At least 12 characters. You can use a few words.")).to_have_count(0)
         expect(page.get_by_label("Password")).not_to_have_attribute("aria-invalid", "true")
         shot(page, "sign-up-desktop-light")
         page.get_by_role("button", name="Create account").click()
@@ -447,7 +454,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         # My tasks, reached from Home, names itself (#763 NV-1).
@@ -526,7 +533,7 @@ class AppShellJourney(unittest.TestCase):
         # #763 FT-1: with no project Home does not list the personal pages; they stay reachable by address and Back.
         page.goto("/tasks")
         expect(page).to_have_url(f"{ORIGIN}/tasks")
-        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(page.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -652,8 +659,9 @@ class AppShellJourney(unittest.TestCase):
                     # a rounding tolerance, not a smaller target.
                     self.assertTrue(all(height >= 43.95 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
                 if device == "desktop":
-                    self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
-                    self.assertTrue(all(height > 32 for height in geometry["hintedHeights"]), f"the hint line makes its row taller: {geometry}")
+                    # ⋯ menus have the message menu's rows: 14 px words and 40 px rows (design guide, round 15 look-2 P3-6).
+                    self.assertTrue(all(abs(height - 40) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 40px: {geometry}")
+                    self.assertTrue(all(height > 40 for height in geometry["hintedHeights"]), f"the hint line makes its row taller: {geometry}")
                 mode = "tablet-820x900-dpr1" if device == "tablet" else "desktop-1440x900-dpr1"
                 scheme = "dark" if dark else "light"
                 shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
@@ -766,7 +774,7 @@ class AppShellJourney(unittest.TestCase):
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")
-        expect(narrow.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
+        expect(narrow.get_by_role("heading", name="No tasks of yours are open")).to_be_visible()
         self.assertLessEqual(narrow.evaluate("document.documentElement.scrollWidth"), 360, "no horizontal scroll at 360px")
         shot(narrow, "phone-360-tasks-light")
 
@@ -867,11 +875,18 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Save new password").click()
         expect(page.get_by_text("That password is too easy to guess.")).to_be_visible()
         expect(page.get_by_role("link", name="Request a new link")).to_have_count(0)
+        expect(page.get_by_text(f"Reset the password for {EMAIL}.")).to_be_visible()
         page.get_by_label("New password", exact=True).fill(NEW_PASSWORD)
         page.get_by_label("Repeat new password").fill(NEW_PASSWORD)
+        requests: list[str] = []
+        page.on("request", lambda request: requests.append(request.url))
         page.get_by_role("button", name="Save new password").click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         expect(page.get_by_role("status").filter(has_text="Your password was changed")).to_be_visible()
+        # The address the reset page named is filled in, so only the new password is left to type (personas-35); it travels in no address.
+        expect(page.get_by_label("Email")).to_have_value(EMAIL)
+        expect(page.get_by_label("Password")).to_be_focused()
+        self.assertFalse([url for url in requests + [page.url] if "jo.marsh" in url], "no address carries the email")
 
         # Resetting signs out every session, including the saved one.
         old = self.page()
@@ -1128,12 +1143,22 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(response.status, 201)
             route.abort("failed")
         owner.route("**/api/v1/conversations/*/messages", lose_committed_reply)
+        # As above, Flux does not answer the reads either until the reload: the refresh the lost answer starts would otherwise bring the
+        # committed copy and replace the waiting reply before "Waiting to send" is read (the race this step lost on train 28).
+        held_reads.clear()
+        owner.route(unanswered, flux_does_not_answer_reads)
         owner.get_by_label("Reply", exact=True).fill("Reload after lost reply")
         owner.get_by_role("button", name="Send reply").click()
         queued = thread_of(owner).locator("[data-client-message-id]").filter(has_text="Reload after lost reply")
         expect(queued).to_contain_text("Waiting to send")
         expect(owner.get_by_label("Reply", exact=True)).to_have_value("")
         owner.unroute("**/api/v1/conversations/*/messages", lose_committed_reply)
+        owner.unroute(unanswered, flux_does_not_answer_reads)
+        for route in held_reads:
+            try:
+                route.abort("failed")
+            except Exception:  # noqa: BLE001 - the page already gave up that read (its own abort)
+                pass
         # The waiting reply and its id survive the reload, and it is sent again as the thread opens.
         owner.reload()
         expect(queued).to_have_count(0)

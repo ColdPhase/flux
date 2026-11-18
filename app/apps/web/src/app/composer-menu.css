@@ -1,7 +1,8 @@
-/* The "@" and "/" menu above the composer (F-026 S5), and mention chips in messages. */
+/* The "@" and "/" menu above the composer (F-026 S5), and mention chips in messages. The 8 px between the menu and the composer is the
+   pane's --bg (the last shadow), so no strip of the conversation shows between them (round 14). */
 .composer__box { position: relative; }
 .cmenu { position: absolute; z-index: var(--z-menu); left: 0; bottom: calc(100% + 8px); width: min(100%, 352px); padding: 6px; border-radius: 16px;
-  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); max-height: max(120px, min(var(--cmenu-room, 100vh), 60vh, 420px)); overflow: auto; overscroll-behavior: contain; }
+  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line), 0 8px 0 0 var(--bg); max-height: max(120px, min(var(--cmenu-room, 100vh), 60vh, 420px)); overflow: auto; overscroll-behavior: contain; }
 .cmenu__h { padding: 4px 10px 6px; color: var(--t3); font-size: var(--fs-sm); }
 .cmenu__o { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 10px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); cursor: pointer; }
 .cmenu__o.is-active { background: var(--sub); }

@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
-import { Avatar, Button, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
+import { Button, Icon, MEDIA, useMediaQuery } from '../ui';
 import { useKeyboardMove, useReorder } from '../ui/reorder';
 import { MoreMenu, type MoreItem } from './HeaderParts';
 import { useNeedsYouSpaces } from '../notifications/dot';
@@ -10,8 +10,10 @@ import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
+import { startsConversations, startsSpaces } from '../people/api';
 import { useShellActions } from './shellContext';
 import { SpaceFace } from '../ui/SpaceFace';
+import { DmRows } from '../dm/DmIndex';
 import './settings.css';
 
 /**
@@ -21,7 +23,7 @@ import './settings.css';
  * something there needs the person (#1250). The order is the person's own and a row's ⋯ moves it (always shown on touch).
  */
 export function ProjectsIndex() {
-  const { me, directMessages, agents, lockedWorkspaces } = useShellData();
+  const { me, directMessages, agents, lockedWorkspaces, removedFrom, workspace } = useShellData();
   const projects = useOrderedProjects();
   const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
@@ -37,8 +39,8 @@ export function ProjectsIndex() {
   const move = useKeyboardMove(list, rows);
   const moveBy = (id: string, step: -1 | 1) => move(() => { moves.moveTo(id, projects.findIndex((project) => project.id === id) + step); }, `[data-space-id="${CSS.escape(id)}"] .proj-index__more`);
   const moveItems = (id: string, at: number): MoreItem[] => [
-    ...(at > moves.fixed ? [{ label: 'Move up', run: () => moveBy(id, -1) }] : []),
-    ...(at < projects.length - 1 ? [{ label: 'Move down', run: () => moveBy(id, 1) }] : []),
+    ...(at > moves.fixed ? [{ label: 'Move up', icon: 'chevron-up' as const, run: () => moveBy(id, -1) }] : []),
+    ...(at < projects.length - 1 ? [{ label: 'Move down', icon: 'chevron-down' as const, run: () => moveBy(id, 1) }] : []),
   ];
   const phone = useMediaQuery(MEDIA.phone);
   // An encrypted space has a small lock after its name, as in the sidebar (F-026 §4).
@@ -67,7 +69,8 @@ export function ProjectsIndex() {
                     <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{calls.has(project.id) ? <Icon name="call" size={12} className="proj-index__live" data-call-mark="" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
                   </span>
                   {fresh && quiet ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : needing.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
-                  <Icon name="chevron-right" size={14} className="set-row__go" />
+                  {/* No chevron: a row of this list ends in its dot and its ⋯, as a Messages row below ends in its time; a dot, a chevron and a
+                      ⋯ in a row were three ends (round 14, look-b P20). */}
                 </Link>
                 {items.length ? <MoreMenu label={`More for ${project.name}`} size={14} className="proj-index__more" items={items} /> : null}
               </li>
@@ -82,52 +85,35 @@ export function ProjectsIndex() {
                     <span className="set-row__t">{space.name}</span>
                     <span className="set-row__s">{lockedLine(space)}</span>
                   </span>
-                  <Icon name="chevron-right" size={14} className="set-row__go" />
                 </Link>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="proj-index__empty">
-            <p>No spaces yet. Create one, or it appears here when someone adds you to theirs.</p>
-            <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button>
-          </div>
+          removedFrom ? (
+            <div className="proj-index__empty">
+              <p>You’re no longer in {removedFrom}. Ask an owner or admin of the company for an invite link to come back.</p>
+            </div>
+          ) : (
+            <div className="proj-index__empty">
+              {/* A guest does not start spaces (#1424): their line says only how one reaches them. */}
+              <p>{startsSpaces(workspace) ? 'No spaces yet. Create one, or it appears here when someone adds you to theirs.' : 'No spaces yet. A space appears here when someone adds you to it.'}</p>
+              {startsSpaces(workspace) ? <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button> : null}
+            </div>
+          )
         )}
         <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
-        {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). */}
-        {phone ? (
+        {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). A guest with no conversation and no agent has no
+            Messages heading over nothing, as in the sidebar (audit P3 5, persona round 6): the first one someone starts with them brings it. */}
+        {phone && (directMessages.length || agents.length || (!!workspace && startsConversations(workspace))) ? (
           <section className="proj-index__dms" aria-labelledby="proj-index-dms">
             <h2 id="proj-index-dms">Messages</h2>
-            {/* The same card and grid as the spaces, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
+            {/* The same list as the Messages page (dm/DmIndex.tsx): the spaces' card and grid, with a fixed time column (#763 NV-5). */}
             {directMessages.length || agents.length ? (
-              <ul className="set-card proj-index__dmlist" aria-label="Conversations">
-                {agents.map((agent, index) => (
-                  <li key={agent.id}>
-                    <Link to={`/agents/${agent.id}`} className="set-row" data-agent={agent.id}>
-                      <Kreska size={36} hue={agent.colour} />
-                      <span className="set-row__b">
-                        <span className="set-row__t proj-index__one">{agent.name}</span>
-                        <span className="set-row__s proj-index__one">{index === 0 ? 'Your agent · answers /ai' : 'Your agent'}</span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-                {directMessages.map((dm) => (
-                  <li key={dm.id}>
-                    <Link to={`/dm/${dm.id}`} className="set-row" aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
-                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
-                      <span className="set-row__b">
-                        <span className="set-row__t proj-index__one">{dm.title}</span>
-                        <span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span>
-                      </span>
-                      {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
-                      {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="proj-index__lead">No conversations yet. Only the people in each one can read it.</p>}
-            <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link>
+              <DmRows />
+            ) : <p className="proj-index__lead">No messages yet. Only the people in each conversation can read it.</p>}
+            {/* A guest replies in conversations they are added to and starts none (#1424): no New message for them. */}
+            {(!!workspace && startsConversations(workspace)) ? <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link> : null}
           </section>
         ) : null}
       </div>

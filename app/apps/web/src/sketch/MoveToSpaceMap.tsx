@@ -4,8 +4,10 @@ import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { addLink, listSpaceMaps, moveThoughtsToMap } from '../api/sketches';
 import { useShellData, type ProjectSummary } from '../app/data';
+import { startsSpaces } from '../people/api';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
-import { Button, Icon, MEDIA, Option, Overlay, Select, useMediaQuery, useToast } from '../ui';
+import { Button, Icon, MEDIA, Overlay, useMediaQuery, useToast } from '../ui';
+import { Option, Select } from '../ui/Select';
 import { quote } from './format';
 import '../people/space.css';
 
@@ -91,7 +93,7 @@ export function useMoveToSpaceMap({ sketch, selection, versionOf, onMoved, onBac
         setMoving(null);
         const where = `${project.name}`;
         onMoved();
-        toast({ message: `Moved to ${where}${mapTitle && mapTitle !== UNTITLED_SKETCH ? ` · ${mapTitle}` : ''}`, tone: 'success', timeout: 8000, action: { label: 'Undo', key: 'Z', onClick: () => { void undo(moved, where); } } });
+        toast({ message: `Moved to ${where}${mapTitle && mapTitle !== UNTITLED_SKETCH ? ` · ${mapTitle}` : ''}`, tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => { void undo(moved, where); } } });
       }} />
   );
   return { start, dialog };
@@ -174,7 +176,7 @@ function MoveForm({ moving, onClose, onMoved }: { moving: Moving; onClose: () =>
           <Select id={ids.space} value={projectId} placeholder="Choose a space" disabled={busy} onChange={(next) => { setProjectId(next); setError(''); }}>
             {spaces.map((space) => <Option key={space.id} value={space.id}>{space.name}</Option>)}
           </Select>
-        ) : <p className="newspace__error">You are not in a space yet. Make one with New space.</p>}
+        ) : <p className="newspace__error">{startsSpaces(workspace) ? 'You are not in a space yet. Make one with New space.' : 'You’re not in a space yet. It appears here when someone adds you to one.'}</p>}
       </div>
       <div className="newspace__field">
         <label className="newspace__label" htmlFor={ids.map}>Map{loaded && loaded.length > 1 ? <span>{loaded.length} maps in this space</span> : null}</label>

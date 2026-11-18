@@ -11,12 +11,14 @@ import type { SidebarUnitOfWork } from './ports.js';
 //   out, when it is written and when it is read (they may have lost access since). A change
 //   is recorded as an event about the person, which only they receive, so their other tabs read the order again.
 // - "Mark all as read": every space's return point moves to the newest position of the person's own audience, and the chats of their
-//   agents are marked read. Undo puts back exactly what this moved, and only where nothing has moved it since. Nothing here touches the
+//   agents and the person's direct messages are marked read. Undo puts back exactly what this moved, and only where nothing has moved it since. Nothing here touches the
 //   Inbox: what needs an action stays where it is.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The most chats one Undo carries: a person has a handful of agents. */
 const MOST_CHATS = 100;
+/** The most direct messages one Undo carries. */
+const MOST_DMS = 1000;
 
 function human(principal: Principal) {
   if (principal.kind !== 'human' || !principal.id) throw new InvalidInputError('A signed-in person is required');
@@ -89,7 +91,9 @@ export function createSidebarUseCases(unit: SidebarUnitOfWork) {
           }
         }
         const chats = await repository.readChats(userId);
-        const undo: ReadAllUndo = { mark: last?.id ?? null, spaces: moved, chats };
+        // People's direct messages have an unread state too (#1424 decision 10): only those of workspaces that can be read now.
+        const dms = await repository.readDms(userId, await access.readableWorkspaceIds(principal));
+        const undo: ReadAllUndo = { mark: last?.id ?? null, spaces: moved, chats, dms };
         return { undo };
       });
     },
@@ -105,12 +109,20 @@ export function createSidebarUseCases(unit: SidebarUnitOfWork) {
         if (!chat || typeof chat !== 'object' || typeof chat.agentId !== 'string' || !UUID.test(chat.agentId) || typeof chat.now !== 'string' || chat.now.length > 64
           || (chat.before !== null && (typeof chat.before !== 'string' || chat.before.length > 64))) throw new InvalidInputError('A chat is not valid', 'INVALID_READ_UNDO');
       }
+      // Direct messages read by Mark all as read (#1424 decision 10); an Undo that read none may leave them out.
+      const dms = command?.dms ?? [];
+      if (!Array.isArray(dms) || dms.length > MOST_DMS) throw new InvalidInputError('The direct messages must be a short list', 'INVALID_READ_UNDO');
+      for (const dm of dms) {
+        if (!dm || typeof dm !== 'object' || typeof dm.dmId !== 'string' || !UUID.test(dm.dmId) || !Number.isSafeInteger(dm.now) || dm.now < 0
+          || (dm.before !== null && (!Number.isSafeInteger(dm.before) || dm.before < 0))) throw new InvalidInputError('A direct message is not valid', 'INVALID_READ_UNDO');
+      }
       if (command.mark !== null && (typeof command.mark !== 'string' || !UUID.test(command.mark))) throw new InvalidInputError('mark must come from Mark all as read', 'INVALID_READ_UNDO');
       await unit.run(async ({ repository }) => {
         const seq = command.mark === null ? null : await repository.audienceSeq(recipient, command.mark.toLowerCase());
         if (command.mark !== null && seq === null) throw new InvalidInputError('mark must come from Mark all as read', 'INVALID_READ_UNDO');
         if (seq !== null) for (const id of spaces) await repository.restore(userId, id, seq);
         for (const chat of chats) await repository.restoreChat(userId, chat);
+        for (const dm of dms) await repository.restoreDm(userId, { dmId: dm.dmId.toLowerCase(), before: dm.before, now: dm.now });
       });
     },
   };

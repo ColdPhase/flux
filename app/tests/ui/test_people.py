@@ -23,7 +23,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from app_select import choose, expect_value
+from app_select import choose, expect_value, open_select
 from app_select import labels as app_labels
 
 from create_window import create_other
@@ -202,7 +202,7 @@ class PeopleJourney(unittest.TestCase):
         self.add(page, PEOPLE["mia"][1], "Guest")
         expect(page.locator(".people__done")).to_have_text("Mia Novak joined Riverside Makers as guest.")
         expect(people.get_by_role("listitem")).to_have_count(4)
-        expect(page.get_by_role("heading", name="People · 4")).to_be_visible()
+        expect(page.get_by_role("heading", name="People 4")).to_be_visible()
         self.assertEqual(self.roles(page, self.riverside), {self.ids["ada"]: "owner", self.ids["kai"]: "member", self.ids["lee"]: "admin", self.ids["mia"]: "guest"})
         self.no_horizontal_scroll(page, DESKTOP["width"])
         shot(page, "people-desktop-1440-light")
@@ -218,8 +218,9 @@ class PeopleJourney(unittest.TestCase):
         self.assertEqual(labels, ["Member", "Guest"], labels)
         roster = page.get_by_role("list", name="People in Riverside Makers")
         expect(roster.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
-        expect(page.get_by_role("button", name="Change Ada Kowalska")).to_have_count(0)
-        expect(page.get_by_role("button", name="Change Kai Tanaka")).to_be_visible()
+        expect(page.get_by_role("combobox", name="Role of Ada Kowalska")).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Role of Kai Tanaka")).to_be_visible()
+        self.assertEqual(app_labels(page.get_by_role("combobox", name="Role of Kai Tanaka")), ["Admin", "Member", "Guest"], "no Owner for an admin")
         response = page.request.patch(f"/api/v1/workspaces/{self.riverside}/members/{self.ids['kai']}",
                                       data={"role": "owner"}, headers={"origin": ORIGIN})
         self.assertEqual(response.status, 403, response.text())
@@ -232,8 +233,9 @@ class PeopleJourney(unittest.TestCase):
         form = self.add_form(page)
         # #1438: an address nobody has an account with gets a link locked to it, at once.
         self.add(page, NOBODY)
-        expect(form.get_by_role("group", name="New invite link")).to_be_visible()
-        expect(form.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(NOBODY)
+        # The new link shows once, in its row of the links waiting to be used, listed under the people (#1424).
+        expect(page.get_by_role("group", name="New invite link")).to_be_visible()
+        expect(page.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(NOBODY)
         shot(page, "people-desktop-1440-not-found")
 
         self.add(page, PEOPLE["kai"][1].upper())
@@ -248,21 +250,20 @@ class PeopleJourney(unittest.TestCase):
     def test_03_owner_changes_a_role(self) -> None:
         page = self.page("ada", dark=True)
         self.open_people(page, "Riverside Makers")
-        change = page.get_by_role("button", name="Change Lee Moreno")
-        change.click()
-        editor = page.get_by_role("group", name="Change Lee Moreno")
-        expect(editor.get_by_label("Role")).to_be_focused()
-        expect_value(editor.get_by_label("Role"), "admin")
-        # Esc closes the editor and returns focus to its button.
+        # The role is the menu it looks like (#1424): "Admin ▾" opens the roles, and the one chosen is the role.
+        role = page.get_by_role("combobox", name="Role of Lee Moreno")
+        expect_value(role, "admin")
+        # Esc closes the menu and changes nothing.
+        box = open_select(role)
         page.keyboard.press("Escape")
-        expect(editor).to_have_count(0)
-        expect(change).to_be_focused()
-        change.click()
-        choose(editor.get_by_label("Role"), label="Member")
-        expect(editor).to_contain_text("Is in Everyone, starts spaces and sees the ones they’re added to.")
+        expect(box).to_have_count(0)
+        expect(role).to_be_focused()
+        expect_value(role, "admin")
         shot(page, "people-desktop-1440-dark-change-role")
-        editor.get_by_role("button", name="Save role").click()
-        expect(page.locator(".people__done")).to_have_text("Lee Moreno is now a member.")
+        choose(role, label="Member")
+        # At once, with a 10 s Undo (personas-35): the toast says it, the status line does not say it again.
+        expect(page.locator(".ui-toast").filter(has_text="Lee is a member now")).to_be_visible()
+        expect(page.locator(".people__done")).to_have_text("")
         expect(page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member")
         self.assertEqual(self.roles(page, self.riverside)[self.ids["lee"]], "member")
         shot(page, "people-desktop-1440-dark")
@@ -273,11 +274,11 @@ class PeopleJourney(unittest.TestCase):
         self.open_people(ada, "Riverside Makers")
         expect(ada.get_by_text("You’re the only owner of Riverside Makers. To leave, make someone else an owner first.")).to_be_visible()
         expect(ada.get_by_role("button", name="Leave Riverside Makers")).to_have_count(0)
-        ada.get_by_role("button", name="Change your role").click()
-        mine = ada.get_by_role("group", name="Change your role")
-        choose(mine.get_by_label("Role"), label="Admin")
-        mine.get_by_role("button", name="Save role").click()
-        expect(mine.get_by_role("alert")).to_have_text("Riverside Makers needs at least one owner. Make someone else an owner first.")
+        mine = ada.get_by_role("combobox", name="Your role")
+        choose(mine, label="Admin")
+        row = ada.get_by_role("list", name="People in Riverside Makers").locator(f"[data-person='{self.ids['ada']}']")
+        expect(row.get_by_role("alert")).to_have_text("Riverside Makers needs at least one owner. Make someone else an owner first.")
+        expect_value(mine, "owner")
         self.assertEqual(self.roles(ada, self.riverside)[self.ids["ada"]], "owner")
 
         kai = self.page("kai")
@@ -287,7 +288,11 @@ class PeopleJourney(unittest.TestCase):
         expect(people.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(kai.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
         expect(kai.get_by_role("button", name=re.compile("^Change "))).to_have_count(0)
-        expect(kai.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_be_visible()
+        expect(kai.get_by_role("combobox", name=re.compile("^(Role of |Your role)"))).to_have_count(0)
+        expect(kai.get_by_role("button", name=re.compile("^(Remove|Reset link)"))).to_have_count(0)
+        # A member is told once, at the top of the Company page, that only admins change it (release audit P3 20).
+        expect(kai.get_by_text(re.compile("Only admins can change this page"))).to_have_count(1)
+        expect(kai.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_have_count(0)
         expect(kai.get_by_role("button", name="Leave Riverside Makers")).to_be_visible()
         shot(kai, "people-desktop-1440-member-read-only")
 
@@ -306,7 +311,7 @@ class PeopleJourney(unittest.TestCase):
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
         create_other(page, "Space")
         window = page.get_by_role("dialog", name="New space")
-        expect(window).to_contain_text("You’re the admin of this space")
+        expect(window).to_contain_text("You’re in it as the owner.")
         page.get_by_label("Space name").fill(RESTRICTED)
         window.get_by_role("button", name="Add people").click()
         picker = window.get_by_role("group", name=re.compile("^People in "))
@@ -324,7 +329,8 @@ class PeopleJourney(unittest.TestCase):
         self.settings_page(page, self.kiln)
         card = self.people_card(page, RESTRICTED)
         expect(card.get_by_role("listitem")).to_have_count(2)
-        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        # The company's owner is its Owner here too, one word in every list (#1424).
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(card.get_by_role("listitem").filter(has_text="Kai Tanaka")).to_contain_text("Member")
         # Add people: only people who are not in it yet are offered.
         page.get_by_role("button", name="Add people", exact=True).click()
@@ -367,7 +373,7 @@ class PeopleJourney(unittest.TestCase):
         self.settings_page(page, self.kiln)
         card = self.people_card(page, RESTRICTED)
         choose(card.get_by_label("Role of Kai Tanaka"), label="Admin")
-        expect(page.locator(".spset__status")).to_have_text("Kai is now an admin of Kiln controller.")
+        expect(page.locator(".ui-toast").filter(has_text="Kai is an admin of Kiln controller now")).to_be_visible()
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[1]["access"], "manager")
 
         # Removing someone waits for an OK: it names what happens, and Keep leaves them be.
@@ -378,7 +384,7 @@ class PeopleJourney(unittest.TestCase):
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[0], 200)
         card.get_by_role("button", name="Remove Kai Tanaka from Kiln controller").click()
         card.get_by_role("group", name="Remove Kai Tanaka").get_by_role("button", name="Remove", exact=True).click()
-        expect(page.locator(".spset__status")).to_have_text("Kai was removed from Kiln controller.")
+        expect(page.locator(".spset__status")).to_have_text("Kai is no longer in Kiln controller.")
         expect(card.get_by_text("Kai Tanaka")).to_have_count(0)
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[0], 404)
         status, grants = self.api(page, f"/api/v1/projects/{self.kiln}/grants")
@@ -414,12 +420,25 @@ class PeopleJourney(unittest.TestCase):
     def test_09_remove_someone_and_leave(self) -> None:
         page = self.page("ada")
         self.open_people(page, "Riverside Makers")
-        page.get_by_role("button", name="Change Mia Novak").click()
-        editor = page.get_by_role("group", name="Change Mia Novak")
-        editor.get_by_role("button", name="Remove from Riverside Makers").click()
-        confirm = editor.get_by_role("group", name="Remove Mia Novak")
-        expect(confirm).to_contain_text("Mia loses access to Riverside Makers at once: its spaces, and anything given to them there.")
-        confirm.get_by_role("button", name="Remove Mia").click()
+        # Founder decision 2026-11-14 (#1424): Remove is on the person's row, as in Space settings, and asks in place (Remove / Keep);
+        # the role menu holds only the roles.
+        row = page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Mia Novak")
+        self.assertEqual(app_labels(row.get_by_role("combobox", name="Role of Mia Novak")), ["Owner", "Admin", "Member", "Guest"])
+        remove = row.get_by_role("button", name="Remove Mia Novak from Riverside Makers")
+        expect(remove).to_be_visible()
+        remove.click()
+        confirm = row.get_by_role("group", name="Remove Mia Novak")
+        # Plain words for that person (personas-33/34): what she loses, what stays, and that Restore undoes it.
+        expect(row.locator(".people__removing")).to_have_text(
+            "Mia loses access to Riverside Makers and its spaces at once. Tasks given to Mia stay; you can give them to someone else. Restore brings everything back.")
+        expect(row).not_to_contain_text("anything given to them there")
+        expect(confirm.get_by_role("button", name="Keep")).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(confirm).to_have_count(0)
+        expect(remove).to_be_focused()
+        remove.click()
+        shot(page, "people-desktop-1440-remove-on-the-row")
+        confirm.get_by_role("button", name="Remove", exact=True).click()
         expect(page.locator(".people__done")).to_have_text("Mia Novak is no longer in Riverside Makers.")
         expect(page.get_by_role("list", name="People in Riverside Makers").get_by_text("Mia Novak")).to_have_count(0)
         self.assertNotIn(self.ids["mia"], self.roles(page, self.riverside))
@@ -446,9 +465,14 @@ class PeopleJourney(unittest.TestCase):
             # Settings › Company is a page of its own on the phone too.
             sheet = page
             expect(sheet.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem")).to_have_count(2)
-            change = sheet.get_by_role("button", name="Change Kai Tanaka")
+            change = sheet.get_by_role("combobox", name="Role of Kai Tanaka")
             size = box(page, change)
             self.assertGreaterEqual(size["height"], 44, "touch target")
+            # #1424: Reset link and Remove sit on the row on the phone too, as 44 px targets, with nothing running off the screen.
+            for name in ("Reset link for Kai Tanaka", "Remove Kai Tanaka from Riverside Makers"):
+                target = sheet.get_by_role("button", name=name)
+                expect(target).to_be_visible()
+                self.assertGreaterEqual(box(page, target)["height"], 44, name)
             self.no_horizontal_scroll(page, PHONE["width"])
             shot(page, f"people-phone-390-{theme}")
 
@@ -550,16 +574,54 @@ class PeopleFocus(unittest.TestCase):
         roster = page.get_by_role("list", name="People in Fern Hollow")
         expect(roster.get_by_role("listitem")).to_have_count(5)
 
-    def test_2_changing_a_role_still_moves_focus_to_the_roster(self) -> None:
-        """The member's editor that had focus is gone, so the roster heading takes it (its status line says what changed)."""
+    def test_2_changing_a_role_keeps_focus_on_the_role(self) -> None:
+        """The role menu stays where it was after a change (#1424), so focus does: the status line says what changed."""
         page = self.people_page()
-        page.get_by_role("button", name="Change Noa Berg").click()
-        editor = page.get_by_role("group", name="Change Noa Berg")
-        choose(editor.get_by_label("Role"), label="Guest")
-        editor.get_by_role("button", name="Save role").click()
-        expect(page.locator(".people__done")).to_have_text("Noa Berg is now a guest.")
+        role = page.get_by_role("combobox", name="Role of Noa Berg")
+        choose(role, label="Guest")
+        toast = page.locator(".ui-toast").filter(has_text="Noa is a guest now")
+        expect(toast).to_be_visible()
         self.after_next_frames(page)
-        expect(page.locator("#people-here")).to_be_focused()
+        expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_be_focused()
+        # Personas-35: a role that takes access away is never one click without a way back. Undo gives the role back, and focus stays on it.
+        toast.get_by_role("button", name="Undo").click()
+        expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_contain_text("Member")
+        expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_be_focused()
+
+    def test_3_a_role_changed_on_the_page_moves_no_row(self) -> None:
+        """personas-33 P3: choosing Admin for someone sorted their row up under the pointer. The rows keep their places until the page is
+        visited again."""
+        page = self.people_page()
+        for key in ("lee", "mia"):
+            added = page.request.post(f"{ORIGIN}/api/v1/workspaces/{self.workspace}/members", data={"email": self.emails[key], "role": "member"},
+                                      headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+            self.assertIn(added.status, (200, 201, 409), added.text())
+        page.reload()
+        roster = page.get_by_role("list", name="People in Fern Hollow")
+        expect(roster.get_by_role("combobox", name="Role of Mia Novak")).to_be_visible()
+        order = lambda: roster.locator(":scope > li[data-person]").evaluate_all("rows => rows.map((row) => row.dataset.person)")
+        before = order()
+        last = roster.locator(":scope > li[data-person]").last
+        name = last.locator(".people__who b").inner_text().strip()
+        role = page.get_by_role("combobox", name=f"Role of {name}")
+        choose(role, label="Admin")
+        toast = page.locator(".ui-toast").filter(has_text=f"{name.split()[0]} is an admin now")
+        expect(toast).to_be_visible()
+        expect(role).to_contain_text("Admin")
+        self.after_next_frames(page)
+        self.assertEqual(order(), before, "the row stays where the pointer is")
+        expect(page.get_by_role("combobox", name=f"Role of {name}")).to_be_focused()
+        # Undo gives the role back (t35-p3), and the row stays put then too.
+        toast.get_by_role("button", name="Undo").click()
+        expect(role).not_to_contain_text("Admin")
+        self.after_next_frames(page)
+        self.assertEqual(order(), before, "Undo moves no row either")
+        choose(role, label="Admin")
+        expect(role).to_contain_text("Admin")
+        # The next visit sorts by role: admins come before members.
+        page.reload()
+        expect(roster.get_by_role("combobox", name=f"Role of {name}")).to_be_visible()
+        self.assertLess(order().index(last_id := before[-1]), len(before) - 1, f"{last_id} is listed among the admins on the next visit")
 
 
 if __name__ == "__main__":

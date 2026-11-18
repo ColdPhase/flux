@@ -13,7 +13,7 @@ import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
 import { audience, quote, sketchHref } from './format';
-import { freeSpot, freeSpotNear, rectOf, type Rect } from './geometry';
+import { freeSpot, freeSpotNear, PAD, rectOf, type Rect } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
@@ -201,14 +201,22 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // Focus moves after the next commit (a list row replaces its editor only then), and only if
   // focus is not already somewhere the person put it meanwhile.
   const pendingFocus = useRef<string | null>(null);
-  const focusThought = useCallback((selector: string) => { pendingFocus.current = selector; }, []);
+  const pendingSince = useRef(0);
+  const focusThought = useCallback((selector: string) => { pendingFocus.current = selector; pendingSince.current = Date.now(); }, []);
+  // Focus that fell to nothing meanwhile (the page itself, or the page's content, where a field disabled while it saves leaves it: the first
+  // thought of a new map, personas-35) is nowhere the person put it, so the new thought still takes it. Until the thought is drawn, the next
+  // commits ask again, for two seconds at most.
   useLayoutEffect(() => {
     const selector = pendingFocus.current;
     if (!selector) return;
-    pendingFocus.current = null;
     const active = document.activeElement;
-    if (active && active !== document.body && !active.matches('.sk-edit, .sk-li-edit') && rootRef.current?.contains(active) === false) return;
-    rootRef.current?.querySelector<HTMLElement>(selector)?.focus();
+    const nowhere = !active || active === document.body || active === document.getElementById('content');
+    if (!nowhere && !active.matches('.sk-edit, .sk-li-edit') && rootRef.current?.contains(active) === false) { pendingFocus.current = null; return; }
+    const target = rootRef.current?.querySelector<HTMLElement>(selector);
+    if (!target && Date.now() - pendingSince.current < 2000) return;
+    pendingFocus.current = null;
+    if (!target) return;
+    target.focus();
   });
 
   // Selection follows what exists: someone else may remove a selected thought meanwhile.
@@ -339,9 +347,10 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   };
 
   /**
-   * Where a thought from a message lands (CW-12): in free space inside the part of the map in view, clear of the
-   * breadcrumb and the dock, measured from the drawn thoughts. With nothing drawn yet, or on the phone's columns, the
-   * first free place, and the map shows it.
+   * Where a thought from a message, or a new one with no parent, lands (CW-12): in free space inside the part of the map in view, clear of the
+   * breadcrumb, the dock, the minimap and the zoom, measured from the drawn thoughts. The first thought of an empty map takes the top left of
+   * the part in view, under the breadcrumb, where Fit would frame it: the map's camera and the thought agree, so it is never drawn outside the
+   * view, under the minimap, the zoom, the dock or the toast (personas-37). On the phone's columns, the first free place, and the map shows it.
    */
   const arrivalSpot = () => {
     const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height + 60 };
@@ -358,12 +367,24 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       const topLeft = plane(view.left + 24, view.top + 72), bottomRight = plane(view.right - 24, view.bottom - 96);
       const bounds: Rect = { x: topLeft.x, y: topLeft.y, w: bottomRight.x - topLeft.x, h: bottomRight.y - topLeft.y };
       const rects = drawn.map(({ t: thought, box: drawnBox }) => ({ x: thought.x, y: thought.y, w: thought.width, h: Math.max(rectOf(thought, heights).h, drawnBox.height / zoom) }));
+      // What floats over the canvas (the minimap and the zoom) is as much in the way as a thought: nothing lands under it.
+      for (const floating of rootRef.current?.querySelectorAll<HTMLElement>('.sk-minimap, .sk-zoom') ?? []) {
+        const over = floating.getBoundingClientRect(), at = plane(over.left, over.top);
+        rects.push({ x: at.x, y: at.y, w: over.width / zoom, h: over.height / zoom });
+      }
       const spot = freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size, bounds)
         ?? freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size);
       if (spot) return spot;
     }
-    // Nothing measurable yet: under everything on the map, at its left edge, which is always free.
     const all = (sketch?.thoughts ?? []).map((t) => rectOf(t, heights));
+    const zoomed = rootRef.current?.querySelector<HTMLElement>('.sk-zoomed[data-origin-x]');
+    if (!phone && canvas && zoomed && !all.length) {
+      const at = zoomed.getBoundingClientRect(), view = canvas.getBoundingClientRect();
+      const zoom = Number(zoomed.dataset.zoom) || 1;
+      const top = parseFloat(getComputedStyle(canvas).paddingTop) || 0;
+      return { x: Math.round(Number(zoomed.dataset.originX) + (view.left + PAD - at.left) / zoom), y: Math.round(Number(zoomed.dataset.originY) + (view.top + top + PAD - at.top) / zoom) };
+    }
+    // Nothing measurable yet: under everything on the map, at its left edge, which is always free.
     if (!phone && all.length) return { x: Math.min(...all.map((r) => r.x)), y: Math.max(...all.map((r) => r.y + r.h)) + 48 };
     return spots(null, 1, size)[0]!;
   };
@@ -394,12 +415,13 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     if (blocked(replace)) return;
     // S15 applies to every entry point, including + on a focused thought and clipboard drafts.
     if (phone) parentId = null;
-    const [spot] = at ? [at] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+    // A thought with no parent lands in free space the person can see, as one from a message does; beside its parent otherwise.
+    const [spot] = at ? [at] : parentId === null ? [arrivalSpot()] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true });
     setConnectFrom(null);
     setEditing(null);
-    say(!text ? (at ? 'Private connected thought draft · Enter saves, Escape cancels' : 'Private thought draft · Enter saves, Escape cancels')
-      : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard · Enter saves, Escape cancels`);
+    // The keys are said once, in the draft itself (founder direction 2026-11-17 visual review); a phone has no keys to name.
+    say(!text ? (at ? 'Private connected thought draft' : 'Private thought draft') : `Private ${linkOf(text) ? 'link' : 'thought'} draft from the clipboard`);
   };
 
   /** The dot without a pointer: Enter or Space starts a connection from this thought; choose the other one next. */
@@ -703,7 +725,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       <div className="sk-page">
         <div className="view-empty">
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This map isn’t available' : 'The map couldn’t be opened'}
-            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All maps</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
+            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All maps</Link> : <Button variant="secondary" icon="refresh" onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
             {connectionDraft !== null ? <label>Your unsaved connection label<textarea aria-label="Recoverable connection label" readOnly value={connectionDraft} /></label> : null}
             {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.lines ? capture.draft.lines.map((line) => line.text).join('\n') : capture.draft.text} /></label> : null}
@@ -729,6 +751,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   };
 
   const mapMode = mode === 'map';
+  // An empty map offers Thought alone, as a space's empty map does: Select, Move around, Undo and the zoom are not drawn until there is
+  // something for them to act on (README §7 Maps, #1424). Map | List is a view, not a tool: it stays, so the header keeps its shape.
+  const bare = mapMode && !sketch.thoughts.length && !doc.canUndo;
   const viewModes = <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
     {(['map', 'list'] as const).map((m) => (
       <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
@@ -771,31 +796,27 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     }}
     onPaste={coarse ? () => void pasteFromClipboard() : undefined}
     onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say(capture.draft?.lines ? 'Pasted thoughts cancelled' : 'Thought draft cancelled'); focusThought('.sk-add'); }} /> : null;
-  const notices = (
-    <>
-        {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
-
-        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
-            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
-        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
-          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
-          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
-        </div> : null}
-
-        {!mapMode ? draftForm() : null}
-        {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}
-
-        {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
-          <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
-          <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
-        </label> : null}
-    </>
-  );
+  // Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
+  // button: the editor would blur first, and leaving the field saves, even for Cancel edit.
+  const editControls = editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
+    <Button variant="primary" size="sm" aria-label="Save edit" disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save'}</Button>
+    <Button variant="secondary" size="sm" aria-label="Cancel edit" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel</Button>
+  </div> : null;
+  const recovery = doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null;
+  const uploadingNote = uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null;
+  const keptEdit = editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
+    <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
+    <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
+  </label> : null;
+  // On the map the edit's Save and Cancel stand beside the thought, in its toolbar (SketchMap), and the notices float over the plane under
+  // the header. In the computer's List they would lie on its first rows (founder check, Hubert 2026-11-17: "elements sit on top of each
+  // other"), so there the notices that stay (read-only, a private movement, a kept edit) open the list's column, in its flow.
+  const notices = <>{recovery}{uploadingNote}{keptEdit}</>;
   // What a local client changed on this space's map, with its change line and Undo (#868); a private map has no client in it.
   const clientChanges = taskProjectId ? <ClientChanges key={sketchId} projectId={taskProjectId} kind="map" id={sketchId} refreshKey={sketch.version} /> : null;
   const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
   const statusLine = (
-    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${phone && status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
+    <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
       {sayLine}
       {!doc.problem && status.change ? <span className={doc.saving ? undefined : 'sk-ok'}> · {busy}</span> : null}
     </p>
@@ -814,22 +835,27 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   }
   // #509 AC-5 / #510 AC-5: one toolbar at the bottom, the same element in the Map and the List, so
   // switching moves nothing (Spokój rule 7). The pointer tools only act on the canvas; in the List
-  // they are dimmed, not removed, so + Thought and Undo keep their places.
+  // they are not shown but keep their room, so + Thought and Undo keep their places (round 14 look-b P13: two greyed tools that did nothing).
   const dock = canWrite && !phone ? (
     <div className="sk-tools" role="toolbar" aria-label="Map tools">
-      <button type="button" className="sk-tool" aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
-        onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
-      </button>
-      <button type="button" className="sk-tool" aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
-        onClick={() => { if (!mapMode) return; setHand(!hand); if (connectFrom) escape(); }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8.5V3.75a1 1 0 012 0V7.5M7 7.5V2.75a1 1 0 012 0V7.5M9 7.5V3.5a1 1 0 012 0v4M11 7V5.25a1 1 0 012 0V10a4 4 0 01-4 4H7.75a4 4 0 01-3-1.4L2.75 10.1a1 1 0 011.4-1.4L5 9.9" /></svg>
-      </button>
-      <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
-      {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
-      <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
+      {bare ? null : <>
+        <button type="button" className={`sk-tool${mapMode ? '' : ' sk-tool--away'}`} aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
+          onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
+        </button>
+        <button type="button" className={`sk-tool${mapMode ? '' : ' sk-tool--away'}`} aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
+          onClick={() => { if (!mapMode) return; setHand(!hand); if (connectFrom) escape(); }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8.5V3.75a1 1 0 012 0V7.5M7 7.5V2.75a1 1 0 012 0V7.5M9 7.5V3.5a1 1 0 012 0v4M11 7V5.25a1 1 0 012 0V10a4 4 0 01-4 4H7.75a4 4 0 01-3-1.4L2.75 10.1a1 1 0 011.4-1.4L5 9.9" /></svg>
+        </button>
+        <span className={`sk-div${mapMode ? '' : ' sk-tool--away'}`} aria-hidden="true" />
+      </>}
+      {/* The dock is a pill, so its word tools are pills like its round tools (founder check, Hubert 2026-11-17): a hover fill follows the dock's curve. */}
+      <button type="button" className="sk-tool sk-tool--word sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
+      {coarse && !bare ? <button type="button" className="sk-tool sk-tool--word sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
+      {bare ? null : <>
+        <span className="sk-div" aria-hidden="true" />
+        <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
+      </>}
     </div>
   ) : null;
   const readonlyNote = !canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : 'You can look at this map; people who can change it keep it up to date.'}</p> : null;
@@ -850,7 +876,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {readonlyNote}
             {notices}
           </div>
-          <SketchMap {...shared} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
+          <SketchMap {...shared} editControls={editControls} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
@@ -889,14 +915,16 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       <div className="sk-page sk-page--map sk-page--list" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
         <div className="sk sk--map">
           <div className="sk-list-scroll">
+            {readonlyNote || recovery || keptEdit ? <div className="sk-list-notices">{readonlyNote}{recovery}{keptEdit}</div> : null}
             {clientChanges}
             {list}
             <p className="sk-help" id={helpId}>{listHelp}</p>
           </div>
           <div className="sk-over">
             {head}
-            {readonlyNote}
-            {notices}
+            {editControls}
+            {draftForm()}
+            {uploadingNote}
           </div>
           <div className="sk-dock">
             <div className="sk-line">{statusLine}</div>
@@ -935,12 +963,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
         {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
 
-        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
-            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
-        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
-          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
-          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
-        </div> : null}
+        {editControls}
 
         {draftForm()}
         {uploading ? <p className="sk-draft sk-draft--uploading" role="status"><Icon name="image" size={14} />Uploading the pasted image privately…</p> : null}

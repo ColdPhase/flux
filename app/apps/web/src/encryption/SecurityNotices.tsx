@@ -3,6 +3,7 @@ import type { InboxItem } from '@flux/contracts';
 import { Button, Icon } from '../ui';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, announceInboxChange, getInbox, markInboxRead } from '../notifications/api';
+import './encryption.css';
 
 const at = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 

@@ -293,6 +293,24 @@ function binding(source: Source): Extension {
   ];
 }
 
+/** How long text waits for its save before the row above the title says "Saving…" (founder check, Hubert 2026-11-17). */
+const SLOW_SAVE_MS = 1000;
+
+/**
+ * Whether a save is slow: something has waited `SLOW_SAVE_MS` and no save finished meanwhile (`progress`, the last saved
+ * moment, moves on each one). Typing with quick saves never turns it on, however long it goes on.
+ */
+function useSlowSave(waiting: boolean, progress: number | null) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setTimeout(() => setSlow(true), SLOW_SAVE_MS);
+    // A finished save, or nothing waiting any more, starts the wait afresh.
+    return () => { window.clearTimeout(timer); setSlow(false); };
+  }, [waiting, progress]);
+  return waiting && slow;
+}
+
 interface PageEditorProps { doc: Doc; project: Project; userId: string; mode: PageMode }
 
 /**
@@ -513,13 +531,25 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
     const scroller = parent.current?.closest<HTMLElement>('.wiki-main');
     if (!heading || !view || !scroller) return;
     landing.current();
+    // The page scrolls (smoothly unless motion is reduced); it lands through the editor, which draws the heading's lines before it
+    // scrolls to them, so the page is not moved off them while they are drawn (WebKit, 2026-11-17).
     landing.current = scrollPage(scroller, () => {
       if (!view.dom.isConnected) return null;
       const block = view.lineBlockAt(Math.min(heading.at, view.state.doc.length));
       return scroller.scrollTop + view.documentTop + block.top - scroller.getBoundingClientRect().top - 24;
-    });
+    }, () => view.dispatch({ effects: EditorView.scrollIntoView(Math.min(heading.at, view.state.doc.length), { y: 'start', yMargin: 24 }) }));
   };
   useEffect(() => () => landing.current(), []);
+  // A section an answer cited (C-62) opens at its heading: the current version's address opens this page with its `#section-N` (round 15
+  // new P2-4), once the text has that heading; each address lands once, so the reader's own scrolling stays theirs.
+  const landed = useRef('');
+  const cited = /^#section-\d{1,3}$/.test(location.hash) ? location.hash.slice(1) : '';
+  useEffect(() => {
+    if (!cited || landed.current === `${location.key}${cited}` || !headings.some((item) => item.id === cited) || !view || !parent.current?.closest('.wiki-main')) return;
+    landed.current = `${location.key}${cited}`;
+    go(cited);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cited, location.key, headings, view]);
 
   // Someone renamed the page: its title follows the saved version, which the room names with each save (#950: no read).
   const savedVersion = shared?.head?.savedVersion ?? doc.version;
@@ -581,13 +611,16 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const people = shared ? [...new Map([...shared.peers.values()].filter((peer) => peer.actor.id !== userId).map((peer) => [peer.actor.id, { id: peer.actor.id, name: peer.actor.name }])).values()] : [];
   const docTime = Date.parse(doc.createdAt);
   const at = (time: number | null) => ago(new Date(time ?? docTime).toISOString(), now);
-  // Text typed on a new page before its source could take it is not shared or saved yet (#1171).
-  const state = earlyTyped && shared?.status !== 'private' ? 'Saving…' : local
-    ? local.conflict ? 'Not saved · this page changed' : local.saving || local.dirty ? 'Saving…' : local.problem ? 'Not saved yet' : `Saved · ${at(local.savedAt)}`
-    : !shared || shared.status === 'connecting' && !shared.pendingCount ? `Saved · ${at(shared?.savedAt ?? null)}`
-      : shared.status === 'reconnecting' ? 'Reconnecting · your text is kept'
-        : shared.status === 'private' ? 'Not saved · your text is kept in this tab'
-          : shared.pendingCount ? 'Saving…' : `Saved · ${at(shared.savedAt)}`;
+  // The row above the title stays calm while the person writes (founder check, Hubert 2026-11-17): what is typed is kept in this
+  // tab from the first key, so a save that is quick never shows; "Saving…" is said only once text has waited a second with no
+  // save finished. Text typed on a new page before its source could take it waits too (#1171). A problem shows at once.
+  const savedAt = local?.savedAt ?? shared?.savedAt ?? null;
+  const slow = useSlowSave(earlyTyped || (local ? local.saving : (shared?.pendingCount ?? 0) > 0), savedAt);
+  const state = local?.conflict ? 'Not saved · this page changed'
+    : local?.problem ? 'Not saved yet'
+      : shared?.status === 'reconnecting' ? 'Reconnecting · your text is kept'
+        : shared?.status === 'private' ? 'Not saved · your text is kept in this tab'
+          : slow ? 'Saving…' : `Saved · ${at(savedAt)}`;
   const legacy = useMemo(() => {
     try { const value = JSON.parse(sessionStorage.getItem(`flux:doc-edit:${userId}:${doc.id}`) ?? 'null') as { body?: string } | null; return typeof value?.body === 'string' && value.body.length <= DOC_LIMITS.body ? value.body : null; }
     catch { return null; }

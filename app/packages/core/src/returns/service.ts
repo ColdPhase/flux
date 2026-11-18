@@ -1,9 +1,9 @@
-import { messagePreview, viaName } from '@flux/contracts';
+import { messagePreview, ownerInLabel, viaName } from '@flux/contracts';
 import type {
   ReturnItem, ReturnNextStep, ReturnPlace, ReturnPoint, ReturnSource, ReturnSummary, ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
-import { isQuestion, mentions, mentionsSomeone } from '../notifications/addressing.js';
+import { asksStarter, mentions, threadAskee } from '../notifications/addressing.js';
 import type { Principal } from '../principal.js';
 import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, ReturnSketch, StoredReturnPoint } from './ports.js';
 import { GITHUB_RULE_AUTOMATION } from '../github/rules.js';
@@ -111,14 +111,15 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const recipient = `human:${userId}`;
     const place = parseReturnPlace(placeInput);
     const resolved = await resolve(principal, place);
-    const baseKeys = resolved.type === 'home' ? ['home']
-      : resolved.type === 'project' ? [resolved.key, 'home'] : [resolved.key, key('project', resolved.projectId!)];
+    // A conversation never viewed starts from its space's point: the space's stream showed its roots. A space never opened starts from its
+    // beginning, never from Home's point: Home shows a few rows of every space, and visiting it, or following its Continue, must not mark
+    // the spaces not opened as read (their names stay bold, #1424).
+    const enclosing = resolved.type === 'conversation' ? key('project', resolved.projectId!) : null;
+    const baseKeys = resolved.type === 'home' ? ['home'] : enclosing ? [resolved.key, enclosing] : [resolved.key];
     const stored = await returns.points(userId, baseKeys);
     const own = stored.get(resolved.key);
-    // A place never viewed starts from the enclosing place's point (a project from Home); a
-    // project or conversation seen nowhere yet starts from its beginning (#133, first visit).
-    const base: { seq: number } | undefined = own ?? (resolved.type === 'home' ? undefined : stored.get(baseKeys[1]!) ?? { seq: 0 });
-    const since = own?.savedAt ?? (resolved.type === 'home' ? null : stored.get(baseKeys[1]!)?.savedAt ?? null);
+    const base: { seq: number } | undefined = own ?? (resolved.type === 'home' ? undefined : (enclosing ? stored.get(enclosing) : undefined) ?? { seq: 0 });
+    const since = own?.savedAt ?? (enclosing ? stored.get(enclosing)?.savedAt ?? null : null);
     // The mark is read before the events, so a change that lands in between shows again next time.
     const last = await returns.lastEvent(recipient);
     const untilSeq = last?.seq ?? 0;
@@ -246,13 +247,14 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (const item of work.values()) if (item.ownerKey) actorKeys.add(item.ownerKey);
     for (const item of decisions.values()) actorKeys.add(item.proposedByKey);
     for (const message of messages.values()) actorKeys.add(`${message.author.kind}:${message.author.id}`);
-    const names = await returns.names([...actorKeys]);
-    // People by first name, as in conversation ("Nia's task"); agents by their full name.
+    const names = await returns.names([...actorKeys], [...new Set(events.flatMap((event) => event.workspaceId ? [event.workspaceId] : []))]);
+    // People by first name, as in conversation ("Nia's task"), and someone removed from the company by the whole marked name, "Stefan Kowal
+    // (removed)" (#1424, delta review N2), the one rule of an agent's label for its owner; agents by their one label, "Planner · Ada's agent".
     const nameOf = (actorKey: string | null) => {
       if (!actorKey) return null;
       const name = names.get(actorKey)?.trim();
       if (!name) return actorKey.startsWith('agent:') ? 'An agent' : 'A former member';
-      return actorKey.startsWith('human:') ? name.split(/\s+/)[0]! : `${name} (agent)`;
+      return actorKey.startsWith('human:') ? ownerInLabel(name) : name;
     };
     const myName = names.get(me) ?? '';
     const canWrite = new Map<string, boolean>();
@@ -395,19 +397,23 @@ export function createReturnUseCases(ports: ReturnPorts) {
       const lastPost = lastPosts.get(conversation.id);
       const answered = !!lastPost && lastPost > message.createdAt;
       const addressed = mentions(message.body, myName);
-      const involved = (conversation.createdBy.kind === 'human' && conversation.createdBy.id === userId) || !!lastPost;
-      // A question addressed to someone else by name is theirs, even in a conversation you are part of (#763 A2).
-      if (!answered && (addressed || (involved && isQuestion(message.body) && !mentionsSomeone(message.body)))) {
+      // One rule with the Inbox (personas-27): a question that names nobody asks the thread's starter, and nobody else, and in a decision's
+      // discussion the decision's proposer (`threadAskee`, personas-33 P2 5); a question addressed to someone else by name is theirs (#763 A2).
+      const askee = threadAskee(conversation);
+      const toStarter = asksStarter(message.body, message.author.kind === 'human' ? message.author.id : null, askee) && askee === userId;
+      // Where it was asked: a decision's discussion is named by its decision, as the Inbox says it ("about “Shop opens at 6:30”").
+      const where = conversation.decision ? `about ${quote(excerpt(conversation.decision.title, 60))}` : `in ${quote(excerpt(conversation.opening, 60))}`;
+      if (!answered && (addressed || toStarter)) {
         const name = nameOf(`${message.author.kind}:${message.author.id}`)!;
         const author = marked(name, message);
         items.push({ ...base, kind: 'question', actor: author,
-          text: addressed ? `${author} asked you: ${quote(excerpt(message.body))}` : `${author} asked: ${quote(excerpt(message.body))}`,
-          detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
+          // Asked by name or as the thread's starter, it is asked of you, as the Inbox says it.
+          text: `${author} asked you: ${quote(excerpt(message.body))}`,
+          detail: `${where.charAt(0).toUpperCase()}${where.slice(1)}`, needsYou: true,
           source: { type: 'message', projectId: message.projectId, conversationId: conversation.id, messageId: message.id },
           step: { priority: addressed ? 1 : 2, text: message.via && message.viaAgent ? `Answer ${author}'s question` : `Answer ${name}'s question${message.via ? `, posted via ${message.via}` : ''}`,
             // The request itself comes first and is not cut short; where it was asked follows briefly.
-            reason: addressed ? `${quote(excerpt(message.body, 200))} ${author} asked you in ${quote(excerpt(conversation.opening, 40))}.`
-              : `${quote(excerpt(message.body, 200))} ${author} asked in ${quote(excerpt(conversation.opening, 40))}, a conversation you are part of.` } });
+            reason: `${quote(excerpt(message.body, 200))} ${author} asked you ${conversation.decision ? `about ${quote(excerpt(conversation.decision.title, 40))}` : `in ${quote(excerpt(conversation.opening, 40))}`}.` } });
         continue;
       }
       const grouped = conversationGroups.get(conversation.id) ?? [];
@@ -425,7 +431,9 @@ export function createReturnUseCases(ports: ReturnPorts) {
       items.push({
         id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: marked(nameOf(`${latest.author.kind}:${latest.author.id}`), latest),
         project: place(conversation.projectId),
-        text: started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
+        // A decision's discussion is named by its decision, as the Inbox and the notice name it (personas-34): "Ola replied about “…”".
+        text: conversation.decision ? `${who} replied about ${quote(excerpt(conversation.decision.title, 70))}`
+          : started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
         detail: excerpt(messagePreview(latest.body, latest.attachmentCount), 110), needsYou: false,
         // Opens on the first new message, a whole message and never mid-way.
         source: { type: 'message', projectId: conversation.projectId, conversationId, messageId: first.id },

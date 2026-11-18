@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose
 from app_select import labels as app_labels
-from create_window import kind_tab, new_space_window, open_create, window
+from create_window import create_other, kind_tab, new_space_window, open_create, window
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from test_settings import assert_touch_target
 
@@ -103,14 +103,13 @@ class FirstRunSettingsPeople(unittest.TestCase):
         self.sign_up("maria", "Maria Nowak")
         page = self.page("maria")
         page.goto("/")
-        open_create(page)
-        form = new_space_window(page).get_by_role("form", name="New space")
-        expect(form.get_by_label("Space name")).to_be_focused()
-        expect(form.get_by_role("alert")).to_have_text("You’re not in a company on this Flux yet. Ask an admin for an invite link.")
-        expect(form.get_by_role("button", name="Create space")).to_be_disabled()
-        expect(form.get_by_role("combobox", name="Workspace")).to_have_count(0)
+        # Without a company there is nothing to make (personas-30): no New, and C opens nothing.
+        expect(page.get_by_role("region", name="You’re not in a company here yet")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True)).to_have_count(0)
+        page.evaluate("() => (document.activeElement instanceof HTMLElement) && document.activeElement.blur()")
+        page.keyboard.press("c")
+        expect(page.get_by_role("dialog")).to_have_count(0)
         self.assertEqual(self.workspaces(page), [], "nothing was made")
-        page.goto("/")
         expect(page.get_by_role("region", name="You’re not in a company here yet")).to_contain_text("Got an invite link? Open it to join your company.")
         # The test deployment's fixture route gives Maria a company of her own for the tests below.
         made = self.api(page, "POST", "/api/v1/workspaces", {"name": "Maria’s company"}, status=201)
@@ -256,7 +255,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
             calm = page.locator("[data-ai-settings='server-off']")
             expect(calm).to_be_visible()
             expect(calm.get_by_role("link", name=re.compile("^Claude Code or Codex on your computer"))).to_have_attribute("href", "/settings/agents/connect")
-            card = calm.get_by_text("Off on this Flux server. Your agents wait until it is on.")
+            card = calm.get_by_text("AI is off on this server. Your agents start when it is turned on.")
             expect(card).to_be_visible()
             expect(page.get_by_role("region", name="Your agents")).to_have_count(0)
             expect(page.get_by_role("link", name=re.compile("^Use an API key"))).to_have_count(0)
@@ -361,7 +360,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(olek.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Maria Nowak")
         expect(olek.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
         expect(olek.get_by_role("region", name="Name").get_by_role("button", name=re.compile("^Change"))).to_have_count(0)
-        expect(olek.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_be_visible()
+        # A member is told once, at the top of the page: "Only admins can change this page." (release audit P3 20).
+        expect(olek.get_by_text(re.compile("Only admins can change this page"))).to_have_count(1)
+        expect(olek.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_have_count(0)
         # The account menu holds no People any more; on the phone Settings lists Company.
         phone = self.page("maria", viewport=PHONE)
         phone.goto("/settings")
@@ -377,13 +378,21 @@ class FirstRunSettingsPeople(unittest.TestCase):
         newcomer = f"piotr.new+{STAMP}@example.test"
         invite.get_by_label("Email (optional)").fill(newcomer)
         invite.get_by_role("button", name="Create invite link").click()
-        field = invite.get_by_role("group", name="New invite link").get_by_role("textbox")
+        field = page.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
-        expect(invite.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(newcomer)
+        waiting = page.get_by_role("list", name=re.compile("^Waiting to be used"))
+        expect(waiting).to_contain_text(newcomer)
+        # #1424 (persona B-5): the links waiting to be used stay listed with Invite closed, and after a reload.
+        page.get_by_role("button", name="Invite", exact=True).click()
+        expect(page.get_by_role("region", name="Invite people")).to_have_count(0)
+        expect(waiting).to_contain_text(newcomer)
+        page.goto("/settings/company")
+        expect(page.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(newcomer)
+        link = next(item["link"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] == newcomer)
         shot(page, f"874-company-invite-link-1440-{UI_BROWSER}")
         # The link opens the join page; Piotr creates his account there and joins as a member.
         stranger = self.page()
-        stranger.goto(field.input_value())
+        stranger.goto(link)
         # #1438: the invite page is the create-account form; joining lands in the space everyone reads, or Home.
         stranger.get_by_label("Name").fill("Piotr Nowy")
         # #1471: the link is for his address, so the form has it filled in and locked.
@@ -422,16 +431,180 @@ class FirstRunSettingsPeople(unittest.TestCase):
         page.goto(f"/projects/{hers['id']}")
         expect(page.get_by_role("heading", level=1, name="Wera’s corner")).to_be_visible()
         expect(page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile("Wera’s corner"))).to_have_count(0)
-        # Removed, then restored: back in the company's list, and the space stays out until it is added by hand.
+        # Removed, then restored as she was (founder decision #1424 F): an Admin comes back an Admin, in the space she was in, with her messages.
+        dm = self.api(wera, "POST", f"/api/v1/workspaces/{space}/dms", {"participantIds": [self.ids["maria"]]})
+        self.api(wera, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Notes from the corner before I go", "clientMessageId": str(uuid.uuid4())}, status=201)
+        made_admin = page.request.patch(f"{ORIGIN}/api/v1/workspaces/{space}/members/{self.ids['wera']}", data={"role": "admin"},
+                                        headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(made_admin.status, 200, made_admin.text())
         removed_now = page.request.delete(f"{ORIGIN}/api/v1/workspaces/{space}/members/{self.ids['wera']}", headers={"origin": ORIGIN})
         self.assertEqual(removed_now.status, 204, removed_now.text())
+        # Maria's side of their conversation says where Wera went and offers no reopening (personas-30).
+        page.goto(f"/dm/{dm['id']}")
+        expect(page.get_by_text("Wera is no longer in the company, so this conversation has nobody to send to.")).to_be_visible()
+        expect(page.get_by_text(re.compile("can reopen it"))).to_have_count(0)
         page.goto("/settings/company")
         removed = page.get_by_role("list", name="People who were removed")
-        expect(removed).to_contain_text("Wera Removed")
-        removed.get_by_role("button", name="Restore").click()
-        expect(page.get_by_role("list", name=re.compile("^People in "))).to_contain_text("Wera Removed")
+        row = removed.get_by_role("listitem").filter(has_text="Wera Removed")
+        # Everyone counted, as her sidebar counts it (personas-30): Everyone and Wera’s corner.
+        expect(row).to_contain_text(re.compile(r" · Admin · 2 spaces"))
+        expect(page.get_by_text("Restore brings someone back with the role, spaces and direct messages they had.", exact=True)).to_be_visible()
+        shot(page, f"1424-restore-as-before-1440-{UI_BROWSER}")
+        row.get_by_role("button", name="Restore").click()
+        expect(page.get_by_text(re.compile(r"^Wera Removed is back in .+ as Admin, in 2 spaces\.$"))).to_be_visible()
+        people = page.get_by_role("list", name=re.compile("^People in "))
+        expect(people).to_contain_text("Wera Removed")
+        expect(people.locator(f"[data-person='{self.ids['wera']}']")).to_contain_text("Admin")
         expect(page.get_by_role("list", name="People who were removed")).to_have_count(0)
+        back = [grant["role"] for grant in self.api(page, "GET", f"/api/v1/projects/{hers['id']}/grants", status=200) if grant["principal"]["id"] == self.ids["wera"]]
+        self.assertEqual(back, ["manager"], "her space is hers again, as its admin")
+        # Her direct message is back for both sides: she reads it, and Maria's side does not say she left.
+        wera.goto(f"/dm/{dm['id']}")
+        expect(wera.get_by_text("Notes from the corner before I go")).to_be_visible()
+        page.goto(f"/dm/{dm['id']}")
+        expect(page.get_by_text("Notes from the corner before I go")).to_be_visible()
+        expect(page.get_by_text(re.compile("left this conversation"))).to_have_count(0)
         shot(page, f"874-company-every-space-1440-{UI_BROWSER}")
+
+    def test_11d_new_space_invites_someone_new_who_lands_in_it(self) -> None:
+        """Founder decision 2026-11-14 (#1424, persona B-3): New space offers Someone new? as Space settings does, the same component. The link is
+        made, copied and shown in place at once; Create space ties it to the new space, and the person who joins with it lands there."""
+        for viewport in (DESKTOP, PHONE):
+            phone = viewport == PHONE
+            with self.subTest(width=viewport["width"]):
+                page = self.page("maria", viewport=viewport)
+                page.goto("/")
+                if phone:
+                    page.get_by_role("button", name="Create", exact=True).tap()
+                else:
+                    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                    page.keyboard.press("c")
+                create_other(page, "Space")
+                win = new_space_window(page)
+                name = f"Herb garden {viewport['width']}"
+                win.get_by_label("Space name").fill(name)
+                win.get_by_role("button", name="Add people").click()
+                new = win.get_by_role("form", name="Invite someone new")
+                expect(win.get_by_text(re.compile(rf"^They join .+ and {name} with the link\.$"))).to_be_visible()
+                email = f"herbs{viewport['width']}.new+{STAMP}@example.test"
+                new.get_by_label("Someone new?").fill(email)
+                # Enter makes the link; it never submits the window around it.
+                new.get_by_label("Someone new?").press("Enter")
+                field = win.get_by_role("group", name="New invite link").get_by_role("textbox")
+                expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
+                link = field.input_value()
+                # One sentence about the link (#1424, persona B-4), and the window is still open on the space not yet made.
+                expect(win.get_by_role("status").filter(has_text="Invite link created")).to_have_text(
+                    re.compile(r"^Invite link created( and copied)?\. .*paste it into your message to them"))
+                expect(win.get_by_text("Flux doesn’t send it")).to_have_count(0)
+                expect(win.get_by_role("button", name="Create space")).to_be_visible()
+                projects = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/projects", status=200)["items"]
+                self.assertNotIn(name, [project["name"] for project in projects])
+                if not phone:
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"])
+                shot(page, f"1424-new-space-someone-new-{viewport['width']}-{UI_BROWSER}")
+                win.get_by_role("button", name="Create space").click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
+                pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
+                invites = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200)
+                made = next(item for item in invites if item["email"] == email)
+                self.assertEqual(made["space"], {"id": pid, "name": name})
+                # She creates her account from the link and lands in the new space with the composer ready (decision 2); a reload stays there.
+                newcomer = self.page(viewport=viewport)
+                newcomer.goto(link)
+                newcomer.get_by_label("Name").fill("Hanna Zielna")
+                expect(newcomer.get_by_label("Email")).to_have_value(email)
+                newcomer.get_by_label("Password").fill(PASSWORD)
+                newcomer.get_by_role("button", name="Create account and join").click()
+                expect(newcomer).to_have_url(f"{ORIGIN}/projects/{pid}")
+                expect(newcomer.locator("#project-composer")).to_be_focused()
+                newcomer.reload()
+                expect(newcomer).to_have_url(f"{ORIGIN}/projects/{pid}")
+                expect(newcomer.get_by_role("heading", level=1, name=name)).to_be_visible()
+
+    def test_11e_new_space_lists_every_link_it_made_and_says_what_cancel_does(self) -> None:
+        """personas-33/34/35 P3: in New space each Someone new? link stays listed beside the earlier ones (each still works), the window lists
+        who is invited with Add people closed too, and it says before Cancel that cancelling turns the links off, which Cancel then does."""
+        page = self.page("maria")
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.keyboard.press("c")
+        create_other(page, "Space")
+        win = new_space_window(page)
+        name = f"Seed swap {STAMP}"
+        win.get_by_label("Space name").fill(name)
+        win.get_by_role("button", name="Add people").click()
+        new = win.get_by_role("form", name="Invite someone new")
+        emails = [f"seeds{n}.new+{STAMP}@example.test" for n in (1, 2)]
+        links = []
+        # Typed as a person types, one address after the other (personas-36): after each Enter the cursor is back in the empty field, so the
+        # next address is never lost, and Enter never submits the window.
+        new.get_by_label("Someone new?").focus()
+        for email in emails:
+            page.keyboard.type(email)
+            page.keyboard.press("Enter")
+            field = win.get_by_label(f"Link for {email}", exact=True)
+            expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#"))
+            expect(new.get_by_label("Someone new?")).to_be_focused()
+            expect(new.get_by_label("Someone new?")).to_have_value("")
+            links.append(field.input_value())
+        # Enter in a link's read-only field does nothing either: the window stays open on the space not yet made.
+        win.get_by_label(f"Link for {emails[0]}", exact=True).press("Enter")
+        expect(win.get_by_role("button", name="Create space")).to_be_visible()
+        self.assertNotIn(name, [item["name"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/projects", status=200)["items"]])
+        # Invite with the field empty says what to do with the cursor where it is to be done.
+        new.get_by_role("button", name="Invite", exact=True).click()
+        expect(new.locator("xpath=..").get_by_role("alert")).to_have_text("Enter their email address.")
+        expect(new.get_by_label("Someone new?")).to_be_focused()
+        # The first link is still there with its own Copy link: the second did not replace it.
+        expect(win.get_by_label(f"Link for {emails[0]}", exact=True)).to_have_value(links[0])
+        expect(win.get_by_role("group", name="New invite link")).to_have_count(2)
+        invited = win.locator("[data-new-space-invites]")
+        expect(invited).to_have_text(re.compile(rf"^Invited with a link: {re.escape(emails[0])}, {re.escape(emails[1])}\. .*Cancel turns them off\.$"))
+        # Add people folded away: who is invited is still said.
+        win.get_by_role("button", name="Add people").click()
+        expect(new).to_have_count(0)
+        expect(invited).to_be_visible()
+        waiting = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] in emails]
+        self.assertEqual(len(waiting), 2, "both links work while the window is open")
+        shot(page, f"p3b-new-space-two-links-1440-{UI_BROWSER}")
+        win.get_by_role("button", name="Cancel", exact=True).click()
+        expect(win).to_have_count(0)
+        left: list = []
+        for _ in range(50):
+            left = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] in emails]
+            if not left:
+                break
+            page.wait_for_timeout(100)
+        self.assertEqual(left, [], "Cancel turned off the links, as the window said it would")
+
+    def test_11f_a_new_space_window_left_with_its_tab_turns_its_links_off_too(self) -> None:
+        """Pre-review P3: a link made in New space is tied to the space at Create; a tab closed or reloaded with the window open ran no cleanup,
+        so the link went on working as a company link nobody asked for. The window turns its links off on the way out, as Cancel does."""
+        page = self.page("maria")
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.keyboard.press("c")
+        create_other(page, "Space")
+        win = new_space_window(page)
+        win.get_by_label("Space name").fill(f"Seed tab {STAMP}")
+        win.get_by_role("button", name="Add people").click()
+        email = f"seeds.tab+{STAMP}@example.test"
+        new = win.get_by_role("form", name="Invite someone new")
+        new.get_by_label("Someone new?").fill(email)
+        new.get_by_role("button", name="Invite", exact=True).click()
+        expect(win.get_by_label(f"Link for {email}", exact=True)).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#"))
+        invites = lambda: [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] == email]  # noqa: E731
+        self.assertEqual(len(invites()), 1, "the link works while the window is open")
+        page.reload()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        left: list = invites()
+        for _ in range(50):
+            if not left:
+                break
+            page.wait_for_timeout(100)
+            left = invites()
+        self.assertEqual(left, [], "the reload turned the link off")
 
     def test_11b_the_sign_in_page_names_the_company(self) -> None:
         """The guide: the company's name is on the sign-in page, and the name setup gave it says nothing."""

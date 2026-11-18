@@ -9,6 +9,12 @@ import { isUuid } from './uuid.js';
  */
 export function workspaceInviteRepository(db: DbExecutor) {
   const i = schema.workspaceInvites;
+  /**
+   * A link for an address that is in the company already waits for nobody (#1424): that person joined another way (a second link, Add someone),
+   * and the link would only answer "already here". It is not listed or counted; a link for anyone is never matched.
+   */
+  const waitsForSomeone = sql`(${i.email} IS NULL OR NOT EXISTS (SELECT 1 FROM ${schema.workspaceMembers} m JOIN ${schema.authUsers} u ON u.id = m.user_id
+    WHERE m.workspace_id = ${i.workspaceId} AND lower(u.email) = ${i.email}))`;
   return {
     async insert(row: { id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date;
       spaceId: string | null }) {
@@ -21,13 +27,13 @@ export function workspaceInviteRepository(db: DbExecutor) {
       return db.select({ invite: i, creatorName: schema.authUsers.name, spaceName: schema.projects.name }).from(i)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, i.createdBy))
         .leftJoin(schema.projects, eq(schema.projects.id, i.spaceId))
-        .where(and(eq(i.workspaceId, workspaceId), isNull(i.revokedAt), isNull(i.acceptedAt), gt(i.expiresAt, now)))
+        .where(and(eq(i.workspaceId, workspaceId), isNull(i.revokedAt), isNull(i.acceptedAt), gt(i.expiresAt, now), waitsForSomeone))
         .orderBy(desc(i.createdAt), desc(i.id));
     },
 
     async pendingCount(workspaceId: string, now: Date): Promise<number> {
       const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(i)
-        .where(and(eq(i.workspaceId, workspaceId), isNull(i.revokedAt), isNull(i.acceptedAt), gt(i.expiresAt, now)));
+        .where(and(eq(i.workspaceId, workspaceId), isNull(i.revokedAt), isNull(i.acceptedAt), gt(i.expiresAt, now), waitsForSomeone));
       return row?.count ?? 0;
     },
 
@@ -53,6 +59,10 @@ export function workspaceInviteRepository(db: DbExecutor) {
 
     async markAccepted(inviteId: string, acceptedBy: string, at: Date) {
       await db.update(i).set({ acceptedAt: at, acceptedBy }).where(eq(i.id, inviteId));
+    },
+
+    async setSpace(inviteId: string, spaceId: string) {
+      await db.update(i).set({ spaceId }).where(eq(i.id, inviteId));
     },
 
     /** The workspace's oldest space everyone in it reads (the company's Everyone), or null (#1438). */

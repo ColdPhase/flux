@@ -5,6 +5,7 @@ import {
   taskWaitingDonePath,
   type UndoTaskCreationCommand,
   decisionAcceptPath,
+  decisionWithdrawPath, decisionUnacceptPath,
   decisionPath,
   projectDecisionsPath,
   projectLinksPath,
@@ -188,6 +189,18 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
       run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, expectedVersion(request)),
       replay: projectReader,
     }));
+
+  // Its accepter takes an acceptance back with Undo (#1424 round 8): proposed again, the replaced decision back, the resumed tasks waiting again.
+  app.post<{ Params: { decisionId: string } }>(decisionUnacceptPath(':decisionId'), async (request, reply) => {
+    const decision = await work.unacceptDecision(await principal(request), request.params.decisionId, expectedVersion(request));
+    return reply.header('etag', versionEtag(decision)).send(decision);
+  });
+
+  // Its proposer takes a proposal back with Undo (#1424 L): gone for everyone, with its notifications and Inbox items. If-Match is its version.
+  app.post<{ Params: { decisionId: string } }>(decisionWithdrawPath(':decisionId'), async (request, reply) => {
+    await work.withdrawDecision(await principal(request), request.params.decisionId, expectedVersion(request));
+    return reply.status(204).send();
+  });
 
   app.post<{ Params: { projectId: string }; Body: CreateObjectLinkCommand }>(projectLinksPath(':projectId'), { schema: { body: createLink } },
     async (request, reply) => command(request, reply, {

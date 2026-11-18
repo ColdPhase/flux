@@ -69,6 +69,8 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
   }
   const recovery = startPersonalRunRecovery({ recover: async () => { const ended = await recoverPersonalRuns(uow); await startNextRequests(); return ended; } });
   return {
+    /** Offers the queued runs that can start now: after the runtime's reconciliation freed a lost run's place (#860). */
+    startNextRequests,
     async stop() {
       await recovery.stop();
       // Short runs finish; a long one is left to the recovery of the next worker, like a crash.

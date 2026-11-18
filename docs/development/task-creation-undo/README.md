@@ -17,7 +17,9 @@ A task created by an agent through its own MCP tools, or by a person who used an
 sources, creation notice and receipts. It adds a read-only `task.creation_reverted` notice with the real actor and
 time, marks the task "Creation undone · read-only history" and drops it from the board, counts, map task counts,
 assigned lists, choosers and new targets. Direct links, existing references, the inbox and the export still find
-it and name it as undone history. Nothing it produced is deleted, and nothing brings it back: a retry of the
+it and name it as undone history. The conversation shows none of it (personas-27 P2 4, founder bar "nothing shown that was
+undone"): the task-notice feed keeps its creation and Undo notices, each carrying the task's lifecycle, but no reader's stream, "N task
+updates" fold, fold count or message card shows the task or a line about it. Nothing it produced is deleted, and nothing brings it back: a retry of the
 original creation (HTTP cache, native receipt, MCP) gets a typed `TASK_CREATION_REVERTED` conflict.
 
 ## A person's own new task (#763 B1, 2026-10-30)

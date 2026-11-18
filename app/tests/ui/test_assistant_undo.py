@@ -340,7 +340,7 @@ class AssistantUndo(unittest.TestCase):
         page, changes, calls = self.seen_by("jonas", undoable=True)
         self.open_conversation(page)
         message = page.get_by_role("region", name="What Ada’s assistant changed")
-        expect(message.locator(".assistant-message__who")).to_have_text("Ada’s assistant")
+        expect(message.locator(".assistant-message__who")).to_have_text("Ada's Assistant")
         line = message.locator(".assistant-message__line")
         expect(line).to_contain_text("Added task Order spare probes · updated the Wiki page Probes")
         expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(1)

@@ -3,7 +3,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { agentRuntimeUseCases, type RuntimeManagerPort, type RuntimeAuthOperation, type AgentRuntimeConfig } from '@flux/core';
 import { agentRuntimeStore, agentRuntimeOperations, createDatabase } from '@flux/db';
-import { db, pool, insertedHuman, insertedRuntimeSlot, connectionString } from './support/db.js';
+import { db, pool, insertedHuman, connectionString } from './support/db.js';
+import { claimRuntimeSlot } from './support/runtime-slot.js';
 
 // Actual DB adapter + production core. Manager barriers hold external responses without a DB
 // connection. Physical late-CLI/reboot behavior is separately exercised by real supervisor/PTY tests.
@@ -24,6 +25,7 @@ async function fixture(work: (f: Awaited<ReturnType<typeof setup>>) => Promise<v
   const f = await setup();
   try { await work(f); } finally {
     await pool.query('DELETE FROM auth_users WHERE id=$1', [f.owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1', [f.slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1', [f.slot]);
     await pool.query('UPDATE agent_runtime_auth_admission SET blocked=false,purge_id=NULL WHERE singleton');
     await f.second.pool.end();
@@ -31,7 +33,7 @@ async function fixture(work: (f: Awaited<ReturnType<typeof setup>>) => Promise<v
 }
 async function setup() {
   const owner = await insertedHuman('auth-core-owner'), sessionId = randomUUID(), bindingId = randomUUID(), bootId = randomUUID();
-  const slot = await insertedRuntimeSlot(bootId);
+  const slot = await claimRuntimeSlot(pool, { bootId });
   await pool.query(`INSERT INTO auth_sessions(id,user_id,token,expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`, [sessionId,owner.id,`fixture-${randomUUID()}`]);
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId,owner.id,slot]);
   const manager: RuntimeManagerPort = {

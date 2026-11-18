@@ -3,7 +3,7 @@ import { plainMessageText, type DecisionRowProjection, type NamedPrincipal, type
 import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
-import { decisionLine, statusPhrase } from '../work/format';
+import { decisionState, statusPhrase } from '../work/format';
 import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
 import { useProjectShell } from './data';
@@ -11,6 +11,7 @@ import { docUrl } from '../docs/api';
 import { useOpenConversation } from './OverviewContext';
 import { agentDisplayName } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
 import './overview.css';
 import { RefLink } from '../place/origin';
 
@@ -92,12 +93,13 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
   const { me } = useShellData();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, messageId);
   const owners = useAgentOwners(shell?.project);
+  const hue = useAgentHue();
   if (!shell) return null;
   const { project, people } = shell;
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
   // A retained agent's owner comes from the row's scoped relation, resolved against this fresh audience only.
   const byline = (who: NamedPrincipal): ReactNode =>
-    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={14} /> : who.name;
+    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={14} hue={hue(who)} /> : who.name;
   const conversation = open?.conversation ?? null;
   // Older messages loaded by the feed are absent from the route's latest-message window.
   // Keep exactly the selected native message, scoped to its reader/project/conversation,
@@ -117,7 +119,7 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([statusPhrase(item), item.owner ? byline(item.owner) : null]), open: { kind: 'work', id: item.id } });
-  const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'flag', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
+  const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'flag', kind: 'Decision', title: item.title, sub: decisionState(item), need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
   const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow)];
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
@@ -150,7 +152,7 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Wiki page · includes it' : 'Wiki page · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
   const author: ReactNode = message ? (message.authorId === null
-    ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
+    ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} hue={hue(message.author)} />
     : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title: ReactNode = message ? <>Message from {author}</> : 'Message';
 

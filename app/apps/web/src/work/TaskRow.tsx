@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
-import type { AgentOwners } from '../agents/owners';
-import { STATUS_LABEL, blockedParts, isFinished, statusPhrase, taskNumber } from './format';
+import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
+import { useAgentHue, type ColouredAgent } from '../agents/hues';
+import type { AgentHue } from '../ui';
+import { named } from '../docs/format';
+import { STATUS_LABEL, blockedLine, dueShort, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
 // A task row as drawn (F-026 S-P-Tasks): the state glyph (one tap changes the state), the title, "#number" and
@@ -11,17 +14,20 @@ import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 const ACTION = 76;
 const LOCK = 8;
 
-function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
+function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (agent: ColouredAgent) => AgentHue | undefined) {
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const owner = item.owner;
-  // An agent keeps its one label, "Planner · Ada's agent", in every state; a person with the same name does not get it.
-  const who = !owner ? 'no owner'
+  // An agent keeps its one label, "Planner · Ada's agent", in every state and for every reader (L1414–1416, L277): its owner comes from the
+  // row's projected owner when the reader's audience does not list the agent; a person with the same name does not get it.
+  const who = !owner ? 'No owner'
     : owner.kind === 'agent'
-      ? <AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />
-      : owner.id === meId ? 'you' : owner.name;
+      ? <AgentIdentity icon={false} name={owner.name} owner={agentAuthorOwner(owner, owners)} hue={hue(owner)} />
+      : named(owner, meId);
   const rest = [
-    item.status === 'blocked' && item.waitingFor ? `waiting for ${item.waitingFor.name}` : null,
-    item.status === 'blocked' ? (({ person, on, reason, thing }) => on ? `waiting for ${on}` : reason && thing && !person ? `waiting for ${reason}` : reason)(blockedParts(item)) : null,
+    // Its due day in the card's words, "Due 21 Nov" (round 15 look-3 e: the List showed none).
+    item.dueOn ? dueShort(item.dueOn) : null,
+    // What it waits for, in the words the board, the panel, Home and the Inbox use (personas-28).
+    item.status === 'blocked' ? blockedLine(item, meId) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     // The rule a task follows is in its panel or sheet, not on the row (#763 LD-2).
     item.relations.sourceMessages > 0 ? 'from a message' : null,
@@ -43,11 +49,14 @@ export interface TaskRowProps {
   owners: AgentOwners;
   writable: boolean;
   muted?: boolean;
+  /** The task is the one open in the panel. */
+  open?: boolean;
   onOpen: () => void;
   onChange: (item: StateTarget, status: WorkStatus) => void;
 }
 
-export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange }: TaskRowProps) {
+export function TaskRow({ item, meId, owners, writable, muted, open: shown, onOpen, onChange }: TaskRowProps) {
+  const hue = useAgentHue();
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<{ id: number; x: number; y: number; base: number; locked: boolean; wasOpen: boolean } | null>(null);
@@ -127,12 +136,11 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
             <StatusGlyph status={item.status} changeKey={item.id} />
           </button>
         ) : <span className="ws-task__glyph ws-task__glyph--still" role="img" aria-label={word}><StatusGlyph status={item.status} changeKey={item.id} /></span>}
-        <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>
-          <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners)}</span></span>
+        <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} aria-current={shown ? 'true' : undefined} onClick={click}>
+          <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners, hue)}</span></span>
           <span className="ws-item__r">
-            {item.status === 'blocked' ? <span className="ui-pill ui-pill--inv">Blocked</span>
-              : item.owner?.kind === 'agent' ? <Kreska size={20} />
-                : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}
+            {item.owner?.kind === 'agent' ? <Kreska size={20} hue={hue(item.owner)} />
+              : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}
           </span>
         </button>
       </div>

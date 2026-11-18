@@ -186,7 +186,7 @@ class ConversationFinal(unittest.TestCase):
     def test_02_a_task_notice_is_one_line_with_its_source(self) -> None:
         page = self.open("ada")
         made = self.notice(page, self.ids["from_message"])
-        expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
         expect(made.locator(".convo-notice__what")).to_have_text("created a task from Jonas’s message")
         expect(self.notice(page, self.ids["in_tasks"]).locator(".convo-notice__what")).to_have_text("created a task")
         expect(self.notice(page, self.ids["on_map"]).locator(".convo-notice__what")).to_have_text("created a task from the map")
@@ -210,7 +210,8 @@ class ConversationFinal(unittest.TestCase):
         expect(fold).to_have_count(1)
         toggle = fold.get_by_role("button", name=re.compile(r"^4 task updates"))
         expect(toggle).to_have_attribute("aria-expanded", "false")
-        expect(toggle).to_contain_text("Ada created 4 tasks")
+        # The fold names people as its cards do (personas-28): the full name, "(you)" for the reader.
+        expect(toggle).to_contain_text("Ada Kowalska (you) created 4 tasks")
         ids = json.loads(self.ids["folded"])
         for work_id in ids:
             expect(self.notice(page, work_id)).to_be_hidden()
@@ -314,7 +315,7 @@ class ConversationFinal(unittest.TestCase):
             page.get_by_role("listbox", name="Actions").get_by_role("option", selected=True).click()
         chooser.value.set_files({"name": "bed-readings.csv", "mimeType": "text/csv", "buffer": b"bed,dbm\nfar east,-112\n"})
         expect(page.get_by_text("bed-readings.csv")).to_be_visible()
-        expect(page.get_by_text("Ready, private", exact=False)).to_be_visible()
+        expect(page.get_by_text("Ready to send", exact=False)).to_be_visible()
         page.get_by_role("button", name="Remove bed-readings.csv").click()
         expect(composer).to_have_value("")
         # "@" lists people only (#1419); the chosen name goes in as a chip that sits on the text baseline.

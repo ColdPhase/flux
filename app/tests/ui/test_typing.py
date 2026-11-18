@@ -167,7 +167,13 @@ class TypingJourney(unittest.TestCase):
         # The receiver keeps its draft, keyboard focus and scroll.
         self.composer(bob).fill("PRIVATE-DRAFT receiver notes")
         self.composer(bob).focus()
-        bob.locator(".thread__feed").evaluate("el => { el.scrollTop = 120; }")
+        # The reader scrolls with the wheel, as a reader does: a scroll written by a script during the thread's first two seconds is not the
+        # reader's, and the thread keeps opening at its "New" divider over it (unreadReading.tsx `openAtUnread`, which WebKit showed in train 38).
+        feed = bob.locator(".thread__feed")
+        feed.hover()
+        bob.mouse.wheel(0, 120)
+        bob.wait_for_function("""() => { const el = document.querySelector('.thread__feed'); const top = el.scrollTop;
+            return new Promise((done) => setTimeout(() => done(top > 0 && el.scrollTop === top), 250)); }""")
         before = bob.locator(".thread__feed").evaluate("el => ({top:el.scrollTop,height:el.clientHeight,count:el.querySelectorAll('.project-convo__message').length})")
         original = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
         notice = bob.locator(".typing-notice")
@@ -384,8 +390,9 @@ class TypingJourney(unittest.TestCase):
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses)
         expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
         self.composer(alice).press("Escape")
-        # Since #195 the private prompt keeps its own draft: leaving ask mode restores the public reply draft.
-        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT ordinary reply before asking")
+        # Since #195 the private prompt keeps its own draft; leaving ask mode (× or Esc) keeps its words in the box, after the reply draft that was
+        # there (persona round 26, #1424), so nothing typed is thrown away.
+        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT ordinary reply before asking\nPRIVATE-DRAFT private assistant instructions")
         alice.wait_for_timeout(1800)
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses, "leaving ask mode does not advertise its restored text")
         self.composer(alice).fill("/ai PRIVATE-DRAFT command-mode prompt")

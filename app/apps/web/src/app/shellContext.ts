@@ -52,7 +52,7 @@ export interface OwnedView { kind: 'owned' }
 export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | OwnedView;
+export type DetailsView = 'place' | ObjectView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | OwnedView;
 
 /**
  * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's
@@ -85,7 +85,13 @@ export interface CreateRequest {
   projectId?: string;
   title?: string;
   /** What the task comes from (a message or the thoughts of a Map selection): linked, never moved or copied. */
-  sources?: { ref: ObjectRef; label: string }[];
+  /** `conversationId`: the conversation a message source is in, so a decision held for Undo shows in that thread at once too. */
+  sources?: { ref: ObjectRef; label: string; conversationId?: string }[];
+  /** The task starts with you as its Owner: it is made from your own message or your own `/task` words (founder decision M, #1424). */
+  ownerMe?: boolean;
+  /** The words of a `/decide` command are the whole title: the window opens with the cursor in the next field, Why, so what a keyboard
+   *  user types on is its reason and Enter there starts a line, never a proposal sent unfinished (F-026 §4, personas-36). */
+  afterTitle?: boolean;
   /** Called once the task or decision exists, e.g. a `/task` or `/decide` command consumes its composer text only then (closing the window keeps it). */
   onCreated?: () => void;
 }
@@ -102,6 +108,8 @@ export interface ShellActions {
   openCreate(request?: CreateRequest): void;
   /** Opens Search (⌘K), the one search across everything the person may open (#114). */
   openSearch(): void;
+  /** Opens the one Connect AI window where the person is (#1424): the same window as Settings › AI and Home's Connect AI. */
+  openConnectAi(): void;
   /** Opens the navigation drawer on a narrow screen, where the projects are listed. */
   openNavigation(): void;
   /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
@@ -125,9 +133,11 @@ export interface ShellActions {
   panelSlot: HTMLElement | null;
   /** The key of the view-owned panel the panel shows now, or null. */
   panelKey: string | null;
+  /** The task or decision the open panel shows now, or null: its card in the conversation is marked as the open one. */
+  shownObject: { kind: 'work' | 'decision'; id: string } | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openConnectAi: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null, shownObject: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

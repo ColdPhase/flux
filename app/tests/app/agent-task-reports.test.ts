@@ -7,7 +7,7 @@ import { stopRunBy } from '@flux/core';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { assistantScene, human, text, type AssistantScene } from './support/assistant-scene.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
 import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
@@ -152,10 +152,83 @@ describe('the report of a run on a task (#919)', () => {
     const line = await reportOf(live.runId);
     assert.equal(line.body, `Done: #${task.number} Tidy the sensor tasks`);
     assert.deepEqual([line.changes, line.undone], [1, 0], 'the created task is the one change; the agent\'s own thread line does not count');
+    assert.equal((await scene.taskRow(task.id)).status, 'done', 'the agent finished it');
     const undone = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.equal(undone.undone, 1, 'Undo took back exactly what the line counted');
     const after = (await chat()).find((item) => item.runId === live.runId) as AgentChatMessage;
     assert.deepEqual([after.changes, after.undone], [0, 1], 'nothing left to undo, and the line can say it was undone');
+    // The whole finish is taken back (AG-3, AG-5; v0.2.1 release gate M09/M52): not only its change, the Done too. The task is back with its owner,
+    // in Doing, as the task's own Done Undo leaves it, and the agent does not take it up again.
+    const back = (await pool.query('SELECT status, owner_user_id, owner_agent_id FROM project_work_items WHERE id = $1', [task.id])).rows[0];
+    assert.deepEqual(back, { status: 'in_progress', owner_user_id: scene.owner.id, owner_agent_id: null });
+    assert.equal(undone.message, `Undid 1 change. #${task.number} is back with you`);
+  });
+
+  test('a run whose only change is a new Wiki page counts it, and its Undo takes the page and the Done back and says the task is back (real-model gate #7, #13)', async () => {
+    await scene.setMayDo('act');
+    const task = await scene.task(scene.owner, 'Write the shift plan page');
+    const live = await scene.liveRun();
+    await pool.query(`UPDATE personal_runs SET kind = 'task', work_id = $2, agent_id = $3 WHERE id = $1`, [live.runId, task.id, scene.agentId]);
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, scene.agentId]);
+    const made = JSON.parse(text((await live.call('flux_create_doc', { doc: { title: 'Shift plan', body: 'Two half-shifts.' } })).message)) as { docId: string };
+    assert.ok(made.docId);
+    await scene.complete(live.runId);
+    const line = await reportOf(live.runId);
+    assert.equal(line.body, `Done: #${task.number} Write the shift plan page`);
+    // A new page's undo plan has no `thread`: it is one change, not none.
+    assert.deepEqual([line.changes, line.undone], [1, 0], 'the page is the one change of the run');
+    const undone = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+    assert.equal(undone.undone, 1);
+    assert.equal(undone.back, task.number, 'the Done was taken back with the page');
+    assert.equal(undone.message, `Undid 1 change. #${task.number} is back with you`);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_materials WHERE id = $1', [made.docId])).rows[0].n, 0, 'the page is gone');
+    const after = (await chat()).find((item) => item.runId === live.runId) as AgentChatMessage;
+    assert.deepEqual([after.changes, after.undone], [0, 1]);
+  });
+
+  test('an agent that marks its own task Done still reports: its words in the task and "Done" in its chat (real-model gate #13)', async () => {
+    await scene.setMayDo('act');
+    const task = await scene.task(scene.owner, 'Split the flyer job');
+    const talk = await (async () => {
+      expectStatus(await scene.owner.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'Go ahead', clientMessageId: randomUUID() } }), 201);
+      return expectStatus(await scene.owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+    })();
+    const begun = await db.transaction((tx) => scene.runs.startTask(personalRunPorts(tx, scene.queue.factory), { ownerUserId: scene.owner.id, agentId: scene.agentId, workId: task.id,
+      projectId: scene.place.id, conversationId: talk.conversationId!, prompt: `Task #${task.number}: Split the flyer job`, clientRunId: randomUUID() }));
+    assert.ok(begun.started, JSON.stringify(begun));
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, scene.agentId]);
+    const live = await scene.liveOf(begun.run.id);
+    // The run began working: the drain moves the task to Doing first (its own version), then the agent reads and closes it.
+    const current = await waitFor(async () => { const row = await scene.taskRow(task.id); return row.status === 'in_progress' ? row : null; }, 'the task in Doing');
+    const closed = await live.call('flux_update_task', { workId: task.id, expectedVersion: current.version, changes: { status: 'done' } });
+    assert.equal((await scene.taskRow(task.id)).status, 'done', text(closed.message));
+    // Its answer cites one source as `[1]`: only its owner's card lists sources, so the task and the chat drop the bare number (AG-7, as Show everyone).
+    await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), committed_at = now(), answer_body = $2, answer_sources = $3::jsonb,
+      cost_state = 'released', charged_micros = 0 WHERE id = $1`, [begun.run.id, 'Made the two print tasks [1] and closed this one.', JSON.stringify([{ type: 'work', id: task.id, revision: 1 }])]);
+    const line = await reportOf(begun.run.id);
+    assert.equal(line.body, `Done: #${task.number} Split the flyer job`);
+    assert.equal(line.words, 'Made the two print tasks and closed this one.');
+    const thread = expectStatus(await scene.owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+    const bodies = JSON.stringify(thread);
+    assert.match(bodies, /Made the two print tasks and closed this one\./, 'the report is posted in the task, without the bare [1]');
+  });
+
+  test('the agent closed its task with its own tool: the run\'s Undo gives the task back to its owner, in Doing (pre-review P2-5)', async () => {
+    await scene.setMayDo('act');
+    const { task, run } = await started('Label the spare fuses');
+    const live = await scene.liveOf(run.id);
+    const current = await waitFor(async () => { const row = await scene.taskRow(task.id); return row.status === 'in_progress' ? row : null; }, 'the task in Doing');
+    const closed = await live.call('flux_update_task', { workId: task.id, expectedVersion: current.version, changes: { status: 'done' } });
+    assert.equal((await scene.taskRow(task.id)).status, 'done', text(closed.message));
+    await complete(run.id, 'Labelled them and closed this one.');
+    assert.equal((await reportOf(run.id)).body, `Done: #${task.number} Label the spare fuses`);
+    const undone = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(run.id, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+    assert.equal(undone.undone, 1, undone.message);
+    // Not left in Doing with the agent and no run: back with the person whose agent it is, as the finish's own Undo leaves it.
+    const back = (await pool.query('SELECT status, owner_user_id, owner_agent_id FROM project_work_items WHERE id = $1', [task.id])).rows[0];
+    assert.deepEqual(back, { status: 'in_progress', owner_user_id: scene.owner.id, owner_agent_id: null });
+    assert.equal(undone.back, task.number);
+    assert.equal(undone.message, `Undid 1 change. #${task.number} is back with you`);
   });
 
   test('a person\'s stop reports who stopped it; the system giving up, and a run that is not on a task, report nothing', async () => {
@@ -177,5 +250,16 @@ describe('the report of a run on a task (#919)', () => {
     pi.gateway.script([{ text: 'Hi' }]);
     assert.equal(await scene.processor!.process(asked.run.id), 'completed', JSON.stringify(pi.lastPi()));
     assert.equal((await chat()).length, before);
+  });
+
+  test('a run names its task only while its owner can read the task\'s space, as its report does (#919)', async () => {
+    const { task, run } = await started('Label the spare probes');
+    assert.deepEqual((await scene.runs.get(human(scene.owner), run.id)).task, { id: task.id, number: task.number, title: 'Label the spare probes' });
+    const back = await loseSpace(scene.place.id, scene.owner.id);
+    try {
+      assert.equal((await scene.runs.get(human(scene.owner), run.id)).task, undefined, 'no task number or title from a space they cannot read');
+    } finally { await back(); }
+    assert.equal((await scene.runs.get(human(scene.owner), run.id)).task?.title, 'Label the spare probes');
+    await scene.runs.stop(human(scene.owner), run.id);
   });
 });

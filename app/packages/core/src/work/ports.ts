@@ -104,7 +104,7 @@ export interface TaskCreationNoticeRecord {
   reverted: { at: Date; by: ActorRef; noticeId: string } | null;
   createdAt: Date;
 }
-/** One moment of a decision the conversation announces (#694); the title and state are current. */
+/** A decision as the conversation announces it (#694): one card, its title and state current, and who accepted it on the card (#1424 D). */
 export type ObjectNoticeRecord = {
   id: string;
   workspaceId: string;
@@ -114,7 +114,9 @@ export type ObjectNoticeRecord = {
   sources: ObjectRef[];
   conversationId: string | null;
   createdAt: Date;
-} & { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus };
+} & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus; decided: { by: ActorRef; at: Date } | null;
+  /** Its one discussion (#1424): the thread on its card, its size and its newest message's time. */
+  discussion: { conversationId: string; replyCount: number; lastReplyAt: Date } | null };
 /** The native command that keeps a durable retry receipt (#154); creation keeps its own identity on the task row. */
 export type NativeOperation = 'work.update';
 export interface NativeCommandReceipt {
@@ -147,7 +149,7 @@ export type TaskActivityRecord = TaskActivityDetail & {
 /** Where an older page of activity starts: strictly before this entry in (time, id) order. */
 export interface TaskActivityPosition { position: string; id: string }
 /** Who a change is made by when it is a task rule acting for its author. */
-export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved';
+export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_stopped' | 'agent_deleted' | 'wait_resolved';
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export interface NewObjectLink {
@@ -216,10 +218,36 @@ export interface WorkRepository extends TaskGraphReader {
   /** Called in the same transaction as the work row, links and stream event. */
   insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
   listTaskNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<TaskCreationNoticeRecord>>;
-  /** Proposed and accepted decisions of the project as one stream, newest first (#694). */
+  /** The decisions of the project, one card each, newest first (#694, #1424 D). */
   listObjectNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<ObjectNoticeRecord>>;
-  /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
-  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
+  /**
+   * Takes a proposal back (#1424 L), under the project's graph lock and the decision's row lock: `used` when something else names it
+   * (a link to it, a task that waits for it, a decision that replaces it); otherwise the row, its own links, the notifications about
+   * it and the Inbox choices made on it are deleted.
+   */
+  withdrawDecision(id: string): Promise<'withdrawn' | 'used'>;
+  /**
+   * The tasks an acceptance resumed (#1424 round 8), each with its version right after: kept by the accept (replacing what an earlier
+   * acceptance of the same decision kept), read by its Undo, and cleared by `resumptions(id, { clear: true })`.
+   */
+  recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number; blocker: string | null }[]): Promise<void>;
+  resumptions(decisionId: string, options?: { clear?: boolean }): Promise<{ workId: string; version: number; blocker: string | null }[]>;
+  /** Whether a decision other than `replacing` (proposed or accepted) names this one as the decision it replaces (#1424 round 8). */
+  namedAsReplaced(id: string): Promise<boolean>;
+  /**
+   * An acceptance's Undo takes back what its resumption of this task left (#1424 round 8): the task's "can continue" line by `by` in the
+   * conversation, and the "can continue" notifications its owner got from it since `since` (with their queued emails).
+   */
+  takeBackResumption(work: WorkRecord, by: ActorRef, since: Date): Promise<void>;
+  /** The reason the task had when its latest change of state took it out of Blocked, or null (personas-33: the Inbox's Undo of a Done). */
+  reasonLeftBlockedWith(workId: string): Promise<string | null>;
+  /** Whether one of these messages of the project was written by this person (#1424 M: a task made from your own message is yours). */
+  messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string): Promise<boolean>;
+  /**
+   * One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. `undoes`: the change is an Undo, which
+   * takes back the task's latest line instead when that line is the move it undoes, by the same actor.
+   */
+  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null; undoes?: boolean }): Promise<void>;
   /** The blocked tasks that wait for this decision or task (#868), ascending by id. Read under the project's graph lock. */
   waiters(target: { kind: 'decision' | 'task'; id: string }): Promise<string[]>;
   /** Whether `start` waits, however far round, for the task `target` (#868): the chain of waits, followed to its end or to a loop. */
@@ -255,7 +283,8 @@ export interface WorkRepository extends TaskGraphReader {
    * keeps one activity entry (#488) per field of status, owner, due date and title that really changed, made by `by`
    * (`via`: on behalf of that person by a task rule). A change that leaves them as they were keeps none.
    */
-  updateWork(id: string, changes: WorkChanges, by: ActorRef, via?: TaskChangeVia): Promise<WorkRecord>;
+  /** `undoes`: the change is an Undo, which takes back the history's latest line of each kind it changes when that line is the change it undoes. */
+  updateWork(id: string, changes: WorkChanges, by: ActorRef, via?: TaskChangeVia, options?: { undoes?: boolean }): Promise<WorkRecord>;
   /**
    * Optional for pure domain compositions; the production adapter supplies both (#985). A person taking a task from an agent also ends
    * a local client's hold on it. `lockAgentSlots` takes the agent's co-work connection slots, before any graph or task lock, as claims and
@@ -311,6 +340,10 @@ export interface WorkRepository extends TaskGraphReader {
   titles(projectId: string, refs: ObjectRef[]): Promise<Map<string, { title: string; conversationId?: string; sketchId?: string }>>;
   /** Display names keyed by `<kind>:<id>`. */
   names(refs: ActorRef[]): Promise<Map<string, string>>;
+  /** People no longer in the company of each workspace (left or removed, not back), keyed `<workspaceId>:<userId>`; absent in plain fakes. */
+  formerMembers?(workspaceIds: string[], userIds: string[]): Promise<Set<string>>;
+  /** `names`, with the people no longer in the company of `workspaceId` as `human:<id>` keys, read together; absent in plain fakes. */
+  namesIn?(refs: ActorRef[], workspaceId: string | null): Promise<{ names: Map<string, string>; gone: Set<string> }>;
 }
 
 export type WorkEventKind =
@@ -318,6 +351,10 @@ export type WorkEventKind =
   | 'project.work_updated.v1'
   | 'project.decision_proposed.v1'
   | 'project.decision_accepted.v1'
+  /** Its proposer withdrew a proposal with Undo (#1424 L): readers refetch, and the card is gone. */
+  | 'project.decision_withdrawn.v1'
+  /** Its accepter took an acceptance back with Undo (#1424 round 8): readers refetch, and the card reads Proposed again. */
+  | 'project.decision_unaccepted.v1'
   | 'project.link_created.v1'
   /** A person's change of Owner ended a local client's hold (#985); the same event as a Stop. */
   | 'project.agent_stopped.v1';
@@ -369,6 +406,8 @@ export interface WorkPorts {
   work: WorkRepository;
   events: WorkEventLog;
   contributions: WorkContributions;
+  /** A task a person makes from messages answers what those messages asked of them (personas-28): their Inbox items of them are done. */
+  inbox?: { answerWithTask(userId: string, projectId: string, messageIds: string[]): Promise<string[]> };
 }
 
 /**

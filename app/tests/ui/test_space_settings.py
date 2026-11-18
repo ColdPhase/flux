@@ -28,6 +28,21 @@ ADA_EMAIL = f"ada.spaceset+{STAMP}@example.test"
 KAI_EMAIL = f"kai.spaceset+{STAMP}@example.test"
 LEE_EMAIL = f"lee.spaceset+{STAMP}@example.test"
 SPACE = "Kiln controller"
+# A real P-256 public key in the form the server gives (base64url), and the browser's permission and PushManager stubbed as push-offer.e2e.ts
+# does: headless Chromium reports "denied" even unasked, and its push service is outside this network. `%s` is the person's id.
+PUSH_KEY = "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM"
+PUSH_STUB = """(() => {
+  try { localStorage.setItem('flux:push-offer:%s', JSON.stringify({ready: true})); } catch (e) {}
+  if (typeof PushManager === 'undefined' || typeof Notification === 'undefined') return;
+  // This server has no push keys in the checks: the page is told it has one (no route, so the page's own worker stays allowed).
+  const fetched = window.fetch.bind(window);
+  window.fetch = (input, init) => String(input instanceof Request ? input.url : input).endsWith('/api/v1/push/public-key')
+    ? Promise.resolve(new Response(JSON.stringify({status: 'available', publicKey: '%s'}), {status: 200, headers: {'content-type': 'application/json'}}))
+    : fetched(input, init);
+  PushManager.prototype.getSubscription = async () => null;
+  PushManager.prototype.permissionState = async () => 'prompt';
+  Object.defineProperty(Notification, 'permission', {configurable: true, get: () => 'default'});
+})();"""
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -95,8 +110,8 @@ class SpaceSettings(unittest.TestCase):
 
     @staticmethod
     def names(card) -> str:
-        """The people a card lists, by name, whoever reads it (the reader's own row says "· you")."""
-        return "|".join(sorted(text.replace(" · you", "").strip() for text in card.locator(".spset__who b").all_inner_texts()))
+        """The people a card lists, by name, whoever reads it (the reader's own row says "(you)")."""
+        return "|".join(sorted(text.replace(" (you)", "").strip() for text in card.locator(".spset__who b").all_inner_texts()))
 
     def settings(self, page: Page) -> None:
         """⋯ › Settings in the space's header."""
@@ -176,7 +191,7 @@ class SpaceSettings(unittest.TestCase):
         expect(card).to_contain_text("Ada Kowalska")
         card.get_by_role("button", name="Remove Ada Kowalska from Kai’s room").click()
         card.get_by_role("group", name="Remove Ada Kowalska").get_by_role("button", name="Remove", exact=True).click()
-        expect(page.locator(".spset__status")).to_have_text("Ada was removed from Kai’s room.")
+        expect(page.locator(".spset__status")).to_have_text("Ada is no longer in Kai’s room.")
         expect(card).not_to_contain_text("Ada Kowalska")
         page.get_by_role("button", name="Add people", exact=True).click()
         add = page.get_by_role("group", name="Add people")
@@ -186,6 +201,68 @@ class SpaceSettings(unittest.TestCase):
         expect(card).to_contain_text("Ada Kowalska")
         grants = self.api(page, "GET", f"/api/v1/projects/{pid}/grants")
         self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["kai"], "manager"), (self.ids["ada"], "contributor")]))
+
+    def test_01b_people_rows_keep_whole_words_on_portrait_tablets_and_the_role_is_one_control(self) -> None:
+        """Release audit ffcb07c P2-2: on 800 and 820 px portrait tablets the company's page beside the section list is about 440 px wide, and with
+        Reset link and Remove on the row the addresses broke mid-word ("jonas@demo.flux.te / st") and names took two or three lines. A row
+        measures its page (L1659–1662): under 37.5 rem the name and address keep the first line and the role and the buttons go under them.
+        Space settings' rows follow the same rule, and their role is the same quiet "Member ▾" as the company's (P3: one role control)."""
+        self.ensure_world()
+        owner = self.page("ada")
+        pid = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Tablet rows", "visibility": "restricted"}, status=201)["id"]
+        self.api(owner, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["kai"]}, "role": "contributor"}, status=201)
+        words = """el => {
+            const who = el.querySelector('.people__who, .spset__who');
+            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "(you)" on it) is on that line.
+            const lines = (node) => { const range = document.createRange(); range.selectNodeContents(node);
+              let count = 0, bottom = -Infinity;
+              for (const r of [...range.getClientRects()].filter((r) => r.width > 0).sort((a, b) => a.top - b.top)) {
+                if (r.top >= bottom - 2) { count += 1; bottom = r.bottom; } else bottom = Math.max(bottom, r.bottom);
+              }
+              return count; };
+            const email = [...who.querySelectorAll('.lastactive-line')][0];
+            const address = email ? [...email.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('@')) : null;
+            const control = el.querySelector('.people__rolecell, .people__role, .spset__rolecell, .spset__role');
+            // The page the row measures (its `sset` container): narrow under 37.5 rem.
+            const page = el.closest('.sset-in'), ps = getComputedStyle(page);
+            const narrow = page.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight) < 37.5 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+            return { name: lines(who.querySelector('b')), address: address ? lines(address) : 1, text: who.innerText, narrow,
+                     under: control.getBoundingClientRect().top >= who.getBoundingClientRect().bottom - 1 };
+        }"""
+        # From 641 to 900 px the section list is a row above the page, so a portrait tablet's page keeps its whole width and a row has room
+        # for its role (founder direction 2026-11-17 visual review V24, README "One look for every Settings page"); a 1024 px portrait
+        # tablet has the list beside a narrow page, where the role and the buttons go under the name.
+        narrow_seen = False
+        for size in ({"width": 800, "height": 1280}, {"width": 820, "height": 1180}, {"width": 1024, "height": 1366}):
+            context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", service_workers="block", viewport=size, device_scale_factor=1,
+                                               has_touch=True, storage_state=self.states["ada"])
+            self.addCleanup(context.close)
+            page = context.new_page()
+            page.goto("/settings/company")
+            rows = page.locator(".people--page .people__item[data-person]")
+            expect(rows).to_have_count(3)
+            for row in rows.all():
+                drawn = row.evaluate(words)
+                self.assertEqual((drawn["name"], drawn["address"]), (1, 1), f"{size['width']} px: the name and the address are whole, each on one line: {drawn}")
+                self.assertEqual(drawn["under"], drawn["narrow"], f"{size['width']} px: the role and the buttons go under the name on a narrow page, beside it on a wide one: {drawn}")
+                narrow_seen = narrow_seen or drawn["narrow"]
+            shot(page, f"people-rows-tablet-{size['width']}-{UI_BROWSER}")
+            page.goto(f"/projects/{pid}/settings")
+            rows = page.locator(".spset .sset-row[data-person]")
+            expect(rows).to_have_count(2)
+            for row in rows.all():
+                drawn = row.evaluate(words)
+                self.assertEqual((drawn["name"], drawn["address"]), (1, 1), f"{size['width']} px: Space settings keeps names and addresses whole: {drawn}")
+            shot(page, f"space-rows-tablet-{size['width']}-{UI_BROWSER}")
+        self.assertTrue(narrow_seen, "one of the tablets has a narrow page, so the rows' stacking is measured")
+        # One role control: Space settings' role looks as the company's "Member ▾" does (no field border, the quiet button's type and colour).
+        page = self.page("ada")
+        look = "el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.backgroundColor, s.fontSize, s.fontWeight, s.color]; }"
+        page.goto("/settings/company")
+        company = page.locator(".people__rolecell .ui-select").nth(1).evaluate(look)
+        page.goto(f"/projects/{pid}/settings")
+        space = page.locator(".spset__rolecell .ui-select").first.evaluate(look)
+        self.assertEqual(space, company, "the role control is drawn the same in Space settings and in Settings › Company")
 
     def test_02_the_settings_of_an_admin(self) -> None:
         self.ensure_world()
@@ -221,10 +298,10 @@ class SpaceSettings(unittest.TestCase):
         expect(switch).to_have_attribute("aria-checked", "false")
         expect(switch).to_be_focused()
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["ai"], "blocked")
-        # The people: Ada (you, Admin) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
+        # The people: Ada (you, the company's Owner) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
         card = page.get_by_role("list", name="People in Kiln firmware")
         expect(card.get_by_role("listitem")).to_have_count(2)
-        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         # One button opens the company's list; no second step. Ada owns the company, so it also has "Someone new?" (#1438): an email and
         # Invite, which make the company's link for that address and this space; no link is there before Invite.
         page.get_by_role("button", name="Add people", exact=True).click()
@@ -233,11 +310,16 @@ class SpaceSettings(unittest.TestCase):
         expect(add.get_by_label("Someone new?")).to_be_visible()
         expect(add.get_by_role("button", name="Invite", exact=True)).to_be_visible()
         expect(add.get_by_role("group", name="New invite link")).to_have_count(0)
+        # No dead control (#1424, persona B-4): with nobody ticked the panel has one Close, and Add appears with the first tick.
+        expect(add.get_by_role("button", name=re.compile("^Add"))).to_have_count(0)
+        expect(add.get_by_role("button", name="Cancel")).to_have_count(0)
+        expect(add.get_by_role("button", name="Close")).to_be_visible()
         add.get_by_role("checkbox", name=re.compile("Lee Moreno")).check()
+        expect(add.get_by_role("button", name="Close")).to_have_count(0)
         add.get_by_role("button", name="Add 1 person").click()
         expect(page.locator(".spset__status")).to_have_text("Lee is now in Kiln firmware.")
         choose(card.get_by_label("Role of Lee Moreno"), label="Admin")
-        expect(page.locator(".spset__status")).to_have_text("Lee is now an admin of Kiln firmware.")
+        expect(page.locator(".ui-toast").filter(has_text="Lee is an admin of Kiln firmware now")).to_be_visible()
         expect(card.get_by_label("Role of Lee Moreno").first).to_be_focused()
         # Remove asks first: focus moves into the confirmation, Escape closes it and gives focus back.
         remove = card.get_by_role("button", name="Remove Lee Moreno from Kiln firmware")
@@ -253,10 +335,26 @@ class SpaceSettings(unittest.TestCase):
         expect(remove).to_be_focused()
         remove.click()
         confirm.get_by_role("button", name="Remove", exact=True).click()
-        expect(page.locator(".spset__status")).to_have_text("Lee was removed from Kiln firmware.")
+        expect(page.locator(".spset__status")).to_have_text("Lee is no longer in Kiln firmware.")
         self.api(self.page("lee"), "GET", f"/api/v1/projects/{pid}", status=404)
         type(self).ids["people"] = self.names(page.get_by_role("list", name="People in Kiln firmware"))
         shot(page, "874-space-settings-admin")
+
+    def test_02h_the_settings_opened_from_the_header_take_the_focus(self) -> None:
+        """personas-33 P3: the header's faces opened Space settings with the focus left on the faces button. The settings take it, as any
+        opened panel does (F-026 §4), whether opened from the faces or from ⋯ › Settings."""
+        self.ensure_world()
+        pid = self.ids["space"]
+        page = self.page("ada")
+        page.goto(f"/projects/{pid}")
+        faces = page.locator("header.top .top__audience")
+        faces.click()
+        expect(page).to_have_url(re.compile(rf"/projects/{pid}/settings$"))
+        expect(page.get_by_role("heading", name="Space settings")).to_be_focused()
+        self.assertTrue(page.evaluate("!!document.activeElement.closest('[data-space-settings]')"))
+        page.goto(f"/projects/{pid}")
+        self.settings(page)
+        expect(page.get_by_role("heading", name="Space settings")).to_be_focused()
 
     def test_02b_conversation_from_the_settings_opens_the_conversation_last_open_there(self) -> None:
         """#1169: on a space's settings the view switch's Conversation leads to the conversation last open in the space, on the computer
@@ -472,6 +570,11 @@ class SpaceSettings(unittest.TestCase):
         every = page.get_by_role("list", name="Every space in the company")
         row = every.get_by_role("listitem").filter(has_text="Old experiments")
         expect(row.get_by_role("link", name="Old experiments")).to_be_visible()
+        # The space is a row that opens it, as Settings' rows do, never an underlined name (L203–204; release audit ffcb07c P3 7).
+        drawn = row.get_by_role("link", name="Old experiments").evaluate(
+            "el => ({ line: getComputedStyle(el).textDecorationLine, name: getComputedStyle(el.querySelector('b')).textDecorationLine, width: el.getBoundingClientRect().width, row: el.closest('li').getBoundingClientRect().width })")
+        self.assertEqual((drawn["line"], drawn["name"]), ("none", "none"), drawn)
+        self.assertAlmostEqual(drawn["width"], drawn["row"], delta=1, msg=f"the whole row is the link: {drawn}")
         expect(every.get_by_role("button", name=re.compile("^Delete"))).to_have_count(0)
         expect(page.get_by_role("button", name="Delete…")).to_have_count(0)
         shot(page, "1424-company-spaces-no-delete")
@@ -697,11 +800,97 @@ class SpaceSettings(unittest.TestCase):
         noa.go_back()
         expect(noa.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
         expect(noa).to_have_url(re.compile(r"/projects$"))
-        # New message no longer offers the company's people.
-        noa.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages").click()
-        noa.get_by_role("link", name="New message").first.click()
-        expect(noa.locator("#content").get_by_role("heading", name="New message")).to_be_visible()
+        # New message no longer offers the company's people: without a company there is nothing to make, so nothing offers New message
+        # (persona round 30, F-026 "A person who is no longer in the company"); with no conversation and no agent, no Messages heading either.
+        expect(noa.get_by_role("navigation", name="Messages")).to_have_count(0)
+        expect(noa.get_by_role("link", name="New message")).to_have_count(0)
+        # Reached by its address, it lists nobody from the company.
+        noa.goto("/dm/new")
+        expect(noa.get_by_role("heading", level=1, name="New message")).to_be_visible()
+        expect(noa.get_by_role("heading", name="New message")).to_have_count(1)
         expect(noa.get_by_text("Ada Kowalska")).to_have_count(0)
+
+    def test_12_someone_removed_from_the_company_is_not_offered_notifications(self) -> None:
+        """personas-34 P3: a removed person's Home said they are no longer in the company, and still offered "Get notified when someone writes
+        to you or calls". Push is stubbed as push-offer.e2e.ts does (the page, its worker and the API are real; the server's key is stubbed)."""
+        self.ensure_world()
+        ada = self.page("ada")
+        email = f"ona.spaceset+{STAMP}@example.test"
+        self.sign_up("ona", "Ona Berg", email)
+        self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
+        ona_id = self.api(self.page("ona"), "GET", "/api/v1/me")["user"]["id"]
+        # A new member's first-steps card carries the same offer as its row, and the one-time offer then does not show (F-026 §7 Home,
+        # #1438): which of the two came first was a race. Ona hides the card, so the one-time offer is the one to look for.
+        self.api(self.page("ona"), "POST", "/api/v1/me/first-steps/hide", {}, status=204)
+        context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", viewport=DESKTOP, storage_state=self.states["ona"])  # sw-allowed: no route here; the offer needs the page's own worker
+        self.addCleanup(context.close)
+        context.add_init_script(PUSH_STUB % (ona_id, PUSH_KEY))
+        page = context.new_page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        if not page.evaluate("typeof PushManager !== 'undefined'"):
+            self.skipTest("this engine has no PushManager, so no offer is made to anyone here")
+        offer = page.locator("section.push-offer")
+        expect(offer).to_contain_text("Get notified when someone writes to you or calls")
+        gone = ada.request.delete(f"{ORIGIN}/api/v1/workspaces/{self.ids['workspace']}/members/{ona_id}", headers={"origin": ORIGIN})
+        self.assertEqual(gone.status, 204, gone.text())
+        page.reload()
+        # Out of the company (this module's company is not the instance's own, so Home says it is in none): no company to be told about.
+        expect(page.get_by_role("heading", name=re.compile(r"^You’re (no longer|not) in "))).to_be_visible()
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)
+        expect(offer).to_have_count(0)
+
+    def test_13_someone_new_keeps_the_cursor_for_the_next_address_and_lists_every_link_of_the_space(self) -> None:
+        """personas-36 P3: Invite with the field empty said what to do but left focus on Invite; after an invite focus went to the link's field,
+        so the next address typed was lost. The space's links were held by the page, so they went when Add people folded or on a reload, and
+        links made in New space were never there. Now the cursor is in the field for each, and the links are read from the server."""
+        self.ensure_world()
+        page = self.page("ada")
+        pid = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Glaze lab {STAMP}", "visibility": "restricted"}, status=201)["id"]
+        # A link made for this space somewhere else (New space ties its links to the space it creates): listed here too.
+        elsewhere = f"ula.spaceset+{STAMP}@example.test"
+        self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/invites", {"role": "member", "email": elsewhere, "expiresInDays": 7, "spaceId": pid}, status=201)
+        page.goto(f"/projects/{pid}/settings")
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+        links = page.locator("[data-space-links]")
+        expect(links.get_by_role("heading", name=re.compile(r"^Waiting to be used"))).to_contain_text("1")
+        expect(links.get_by_role("listitem").filter(has_text=elsewhere)).to_contain_text("by Ada Kowalska (you)")
+        page.get_by_role("button", name="Add people", exact=True).click()
+        add = page.get_by_role("group", name="Add people")
+        field = add.get_by_label("Someone new?")
+        # Invite with nothing typed: what to do, and the cursor where it is to be done.
+        add.get_by_role("button", name="Invite", exact=True).click()
+        expect(add.get_by_role("alert")).to_have_text("Enter their email address.")
+        expect(field).to_be_focused()
+        # Two addresses typed one after the other, each sent with Enter: the cursor is back in the empty field after each.
+        emails = [f"vera{n}.spaceset+{STAMP}@example.test" for n in (1, 2)]
+        for email in emails:
+            page.keyboard.type(email)
+            page.keyboard.press("Enter")
+            expect(links.get_by_role("listitem").filter(has_text=email)).to_have_count(1)
+            expect(field).to_be_focused()
+            expect(field).to_have_value("")
+        expect(add.get_by_role("status")).to_have_text(re.compile(r"^Invite link created( and copied)?\. "))
+        # The link just made shows once, in its row, to read or select.
+        expect(links.get_by_label(f"Link for {emails[1]}", exact=True)).to_have_value(re.compile(r"/join#"))
+        expect(links.get_by_role("listitem")).to_have_count(3)
+        # Add people folded and the page read again: every live link of the space is still listed, read from the server.
+        add.get_by_role("button", name="Close").click()
+        expect(links.get_by_role("listitem")).to_have_count(3)
+        page.reload()
+        expect(links.get_by_role("listitem")).to_have_count(3)
+        for email in (elsewhere, *emails):
+            expect(links.get_by_role("listitem").filter(has_text=email)).to_have_count(1)
+        # Revoke asks once, in place; the link stops working and leaves the list.
+        row = links.get_by_role("listitem").filter(has_text=elsewhere)
+        row.get_by_role("button", name=f"Revoke link for {elsewhere}").click()
+        row.get_by_role("group", name=f"Revoke link for {elsewhere}").get_by_role("button", name="Revoke link").click()
+        expect(links.get_by_role("listitem")).to_have_count(2)
+        expect(links.get_by_role("status")).to_have_text("Invite link revoked. It no longer works.")
+        live = [item["email"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/invites") if (item.get("space") or {}).get("id") == pid]
+        self.assertEqual(sorted(live), sorted(emails))
+        shot(page, f"p3-36-space-settings-links-1440-{UI_BROWSER}")
 
 
 if __name__ == "__main__":

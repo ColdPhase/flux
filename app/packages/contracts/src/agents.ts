@@ -1,5 +1,6 @@
 import type { AgentMayDo } from './agent-proposals.js';
 import type { AssistantModelPick } from './assistant-model.js';
+import { ownerInLabel } from './names.js';
 
 // A person's agents (F-036 AG-1, #857): everything is an agent. Each has a name, saved instructions in plain text, its own
 // model from any of the person's Connect AI connections, a memory of only what its owner told it to remember, its own calm
@@ -8,6 +9,12 @@ import type { AssistantModelPick } from './assistant-model.js';
 
 /** The agent colours (final design §2): the muted palette of equal lightness, and ink for a first agent. Kreska's lines take it. */
 export const AGENT_COLOURS = ['ink', 'clay', 'ochre', 'sage', 'teal', 'indigo', 'plum', 'rose'] as const;
+/**
+ * Every agent a read names carries its colour (#1528): a `{kind: 'agent', id}` anywhere in an `/api/v1` answer gets `colour`, filled in one place
+ * on the server (`apps/server/src/http/agent-colours.ts`), so the same agent looks the same to its owner and to everyone else, in every view.
+ * The agent shapes that have no `kind` (a task's agent line, who is in a task) carry it from their own read. An agent without a colour of its
+ * own (a local client's identity) has none and is drawn in ink.
+ */
 export type AgentColour = (typeof AGENT_COLOURS)[number];
 
 export const AGENT_LIMITS = {
@@ -100,4 +107,22 @@ export function nextAgentColour(inUse: readonly string[]): AgentColour {
   const palette = AUTO_COLOURS;
   const used = (colour: string) => inUse.filter((item) => item === colour).length;
   return palette.reduce((best, colour) => (used(colour) < used(best) ? colour : best), palette[0]!);
+}
+
+/**
+ * An agent's one label (principle 5, #1364), as `AgentIdentity` draws it: "Ada's Planner", its owner's first name and its own name, the one name
+ * an answer Ada showed everyone has too ("Ada's Assistant", #1232), so one agent is never named two ways on one screen (v0.2.1 release gate
+ * round 15, ai P2-5). An owner who left the company or was removed keeps the whole marked name, "Stefan Kowal (removed)'s Planner"
+ * (`ownerInLabel`, #1424).
+ */
+export const agentNamed = (name: string, owner: string) => `${ownerInLabel(owner)}'s ${name}`;
+
+/**
+ * The same label in words, where it is text (Search, a notice, a push, Home's lines): an agent whose owner the reader cannot be told is "a former
+ * member's Planner". What an agent reads names agents its own way, "Planner (Ada's agent)" (C-56), so a shown answer, "Ada's Planner", stays
+ * the person's to it.
+ */
+export function agentWords(name: string, ownerName: string | null | undefined): string {
+  const owner = ownerName?.trim();
+  return owner ? agentNamed(name, owner) : `a former member's ${name}`;
 }

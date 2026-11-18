@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input, Option, Select } from '../ui';
+import { Button, Icon, Input } from '../ui';
+import { Option, Select } from '../ui/Select';
 import { encryptionProblem, grantUnlockPassword, isWrongPassword, lockWorkspace, newRecoveryCode, setUnlockPassword, type EncryptedWorkspace, type KeyRotation } from './api';
 import { checkPassword, generatePassphrase, loadWords } from './passphrase';
 import { PasswordLength, passwordRefusal } from './PasswordLength';
@@ -87,7 +88,10 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const enc = workspace.encryption;
   const name = workspace.name;
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [status, setStatus] = useState('');
+  // What the section last said, and the state it holds in (round 15, daily P2-1): "Board minutes is locked." stayed under "Unlocked by Ada" after
+  // the space was unlocked from its centre card. A line is shown only while the space is in the state it was said in.
+  const [said, setSaid] = useState<{ text: string; state: string | null } | null>(null);
+  const setStatus = (text: string, state: string | null = null) => setSaid(text ? { text, state } : null);
   const [offered, setOffered] = useState(offerCode);
   if (offered !== offerCode) { setOffered(offerCode); setPanel({ kind: 'code' }); setStatus(''); }
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -95,6 +99,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const lineId = useId();
   const unkept = useUnkeptCode(workspace.id);
   if (!enc) return null;
+  const status = said && (said.state ?? enc.state) === enc.state ? said.text : '';
 
   const manager = myRole === 'owner' || myRole === 'admin';
   const owner = myRole === 'owner';
@@ -114,7 +119,18 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const passwordLabel = enc.myPassword ? 'Change your unlock password' : grantUntil || noCode ? 'Set your unlock password' : 'Use the recovery code';
 
   const unlockedLine = `Unlocked${enc.unlockedBy ? ` by ${enc.unlockedBy.name}` : ''}${enc.unlockedAt ? ` ${when(enc.unlockedAt)}` : ''}.`;
-  const closeTo = (key: string) => { setPanel(null); requestAnimationFrame(() => triggers.current[key]?.focus({ preventScroll: true })); };
+  // The trigger takes the focus at once, before the open group goes, so it never falls to the page: a lock or unlock turns the space's page
+  // into the locked panel or back into Space settings, and each takes a free focus for itself as it opens (test_encrypted_workspaces 22). The
+  // next frame puts it there again only if it was lost meanwhile (the trigger drawn anew): a key pressed since (Enter opening the group
+  // again) keeps what it focused.
+  const closeTo = (key: string) => {
+    triggers.current[key]?.focus({ preventScroll: true });
+    setPanel(null);
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body || !active.isConnected) triggers.current[key]?.focus({ preventScroll: true });
+    });
+  };
   const toggle = (next: Panel) => {
     setStatus('');
     setPanel((open) => (open && JSON.stringify(open) === JSON.stringify(next) ? null : next));
@@ -122,7 +138,8 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   // A button that cannot act while the space is locked is dimmed and still reachable, so nothing around it moves.
   const dim = (also = false) => ({ ...(locked || also ? { 'aria-disabled': true as const } : {}), className: `people__enc-button${locked || also ? ' is-dim' : ''}` });
   const guard = (run: () => void, also = false) => () => { if (locked || also) return; run(); };
-  const saved = (message: string, key: string) => { setStatus(message); closeTo(key); onChanged(); };
+  // `holds`: the state the line is about (locked after Lock, unlocked after Unlock); any other line holds in the state it was said in.
+  const saved = (message: string, key: string, holds: string = enc.state) => { setStatus(message, holds); closeTo(key); onChanged(); };
 
   return (
     <section className="details__sec people__enc" aria-labelledby={headingId} data-encryption-section={enc.state}>
@@ -163,12 +180,12 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
           onSaved={(message) => saved(message, 'password')} />
       ) : null}
       {panel?.kind === 'lock' && !locked ? (
-        <LockConfirm workspace={workspace} holder={enc.myPassword} onClose={() => closeTo('lock')} onLocked={() => saved(`${name} is locked.`, 'lock')} />
+        <LockConfirm workspace={workspace} holder={enc.myPassword} onClose={() => closeTo('lock')} onLocked={() => saved(`${name} is locked.`, 'lock', 'locked')} />
       ) : null}
       {panel?.kind === 'unlock' && locked ? (
         <div className="people__edit people__unlock" role="group" aria-label={`Unlock ${name}`}>
           <UnlockForm workspaceId={workspace.id} name={name} encryption={enc} autoFocus onCancel={() => closeTo('lock')}
-            onUnlocked={() => saved(`${name} is unlocked.`, 'lock')} />
+            onUnlocked={() => saved(`${name} is unlocked.`, 'lock', 'unlocked')} />
         </div>
       ) : null}
       {panel?.kind === 'code' ? (
@@ -177,7 +194,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
       {panel?.kind === 'shown' ? (
         <div className="people__edit people__code" role="group" aria-label="Your new recovery code">
           <RecoveryCodeBlock workspaceId={workspace.id} workspaceName={name} code={panel.code} lead={`This code unlocks ${name} if every password is lost. The old code no longer works. It’s shown only now: print it or write it down and keep it somewhere safe.`}
-            onDone={() => { setStatus('The new recovery code is in use.'); closeTo('code'); }} />
+            onDone={() => { setStatus('The new recovery code is in use.', enc.state); closeTo('code'); }} />
         </div>
       ) : null}
       {panel?.kind === 'allow' && candidates.length ? (
@@ -223,7 +240,8 @@ function ConfirmGroup({ label, line, field, action, busy, problem, onSubmit, onC
 function LockConfirm({ workspace, holder, onClose, onLocked }: { workspace: EncryptedWorkspace; holder: boolean; onClose: () => void; onLocked: () => void }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
-  const first = useFocusFirst<HTMLButtonElement>();
+  // The ask opens on its safe answer, as Remove's Keep and Revoke's Keep it (round 15, daily P3-3).
+  const keep = useFocusFirst<HTMLButtonElement>();
   async function lock() {
     if (busy) return;
     setBusy(true); setProblem('');
@@ -234,8 +252,8 @@ function LockConfirm({ workspace, holder, onClose, onLocked }: { workspace: Encr
     <div className="details__confirm people__confirm people__edit" role="group" aria-label={`Lock ${workspace.name}`} onKeyDown={closeOnEscape(onClose)}>
       <p>Everyone in {workspace.name} loses access until an owner or admin unlocks it again.{holder ? '' : ' You can’t unlock it yourself.'}</p>
       <div className="details__actions">
-        <Button ref={first} variant="primary" busy={busy} onClick={() => void lock()}>Lock {workspace.name}</Button>
-        <Button variant="quiet" onClick={onClose}>Keep it unlocked</Button>
+        <Button variant="danger" busy={busy} onClick={() => void lock()}>Lock {workspace.name}</Button>
+        <Button ref={keep} variant="secondary" onClick={onClose}>Keep it unlocked</Button>
       </div>
       <p className="people__problem" role="alert">{problem}</p>
     </div>

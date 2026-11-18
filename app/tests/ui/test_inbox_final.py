@@ -3,8 +3,8 @@
 "Needs you" is the one queue: a decision the person can accept, a question to them, their blocked task
 and a mention, across spaces, as one list with no filters and no "Needs you" pill (#1367): the list on the
 left and the open item on the right at 1440, one column on a phone. Done (E), Not now (S, one button with
-no menu: back tomorrow morning) and Accept (A) apply at once and offer Undo (Z); a decision cannot be
-un-accepted, so Undo of Accept is a delayed command. Ada's view is checked at 1440x900 and 390x844 (touch),
+no menu: back tomorrow morning) and Accept (A) apply at once and offer Undo (Z); Undo of Accept takes the
+acceptance back (round 8, #1424). Ada's view is checked at 1440x900 and 390x844 (touch),
 light and dark, against the API. Screenshots (inbox-final-*.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, press_shortcut, shot, start_forwarder
 
 PASSWORD = "a calm inbox for the garden"
 STAMP = int(time.time() * 1000)
@@ -335,13 +335,16 @@ class InboxFinal(unittest.TestCase):
         # Not now is one button with no menu (S11).
         expect(decision.get_by_role("button", name="Not now")).to_be_visible()
         expect(decision.get_by_role("button", name="Not now")).not_to_have_attribute("aria-haspopup", re.compile("."))
+        # D-4: the key shows on the button, as A does on Accept.
+        expect(decision.get_by_role("button", name="Not now").locator("kbd")).to_have_text("S")
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
         self.assertEqual(decision.locator(".ui-btn--primary").count(), 1, "one dark primary in the open item")
         # One person accepts (O-009): the card says who still can, not who "already accepted".
-        expect(decision.locator(".nyc__waiting")).to_contain_text("waiting for you")
-        expect(decision.locator(".nyc__waiting")).to_contain_text("Jonas Berg can accept too")
+        expect(decision.locator(".nyc__waiting")).to_contain_text("Waiting for you")
+        # Jonas proposed it, so he is not among those who can accept it (personas-27).
+        expect(decision.locator(".nyc__waiting")).not_to_contain_text("Jonas Berg")
         expect(self.card(page, ASKED)).to_contain_text("Question")
-        expect(self.card(page, "is blocked")).to_contain_text("your task")
+        expect(self.card(page, "Design a weatherproof enclosure")).to_contain_text("your task")
         # One shape for every kind (README §7, #1424): a muted line "Kind · who · space", then the title (what the mention or the question says). No bold
         # name before the kind, no time in the row, and the kind is always first.
         eyebrows = [text.strip() for text in cards.locator(".nyc__eyebrow--row").all_inner_texts()]
@@ -361,7 +364,7 @@ class InboxFinal(unittest.TestCase):
         self.assertEqual(cards.locator(".nyc__eyebrow--row b").count(), 0, "no bold name leads a row")
         for text in eyebrows:
             self.assertNotRegex(text, r"\d+ ?(min|h|d)\b|ago|yesterday", f"no time in a row: {text}")
-        expect(self.item(page, "is blocked")).to_contain_text("waiting for the probe dimensions")
+        expect(self.item(page, "Design a weatherproof enclosure")).to_contain_text("Waiting for the probe dimensions")
         expect(self.card(page, MENTIONED)).to_be_visible()
         # The count in the sidebar is the number of things that need you.
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox, 4 new").locator(".side__count")).to_have_text("4")
@@ -386,7 +389,7 @@ class InboxFinal(unittest.TestCase):
         # A decision is open as its card in the right column; Discuss goes to where it is talked about.
         expect(self.item(page, DECISION).get_by_role("heading", level=2, name=DECISION)).to_be_visible()
         # A blocked task opens as the task; a question opens its message.
-        self.item(page, "is blocked").get_by_role("button", name="Open task").click()
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Open", exact=True).click()
         expect(page.locator("#details")).to_contain_text("Design a weatherproof enclosure")
         page.keyboard.press("Escape")
         self.item(page, ASKED).get_by_role("button", name="Reply").click()
@@ -411,6 +414,7 @@ class InboxFinal(unittest.TestCase):
                 break
             page.keyboard.press("j")
         expect(mention).to_have_attribute("aria-current", "true")
+        expect(self.item(page, MENTIONED).get_by_role("button", name="Done").locator("kbd")).to_have_text("E")
         page.keyboard.press("e")
         toast = page.get_by_role("status").filter(has_text="Marked done")
         expect(toast).to_be_visible()
@@ -426,6 +430,90 @@ class InboxFinal(unittest.TestCase):
         page.get_by_role("button", name="Undo").click()
         expect(cards).to_have_count(4)
         self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked", "mention"]), "the restored queue")
+
+    def test_03b_keys_are_the_buttons_shown_and_g_i_lands_in_the_list(self) -> None:
+        # #1424 persona round: E on a decision said "Marked done" though the decision shows no Done (Accept · Not now · Discuss), and after
+        # G I the focus was on the page's body.
+        page = self.page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.keyboard.press("g")
+        page.keyboard.press("i")
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        first = page.locator(".nyq__list .nyc").first
+        expect(first).to_have_attribute("aria-current", "true")
+        expect(first.locator(".nyc__open"), "G I puts focus on the open item's row").to_be_focused()
+        # The ring goes round the row, not round the title's words (L931; release audit ffcb07c P3).
+        ring = first.evaluate("el => [getComputedStyle(el.querySelector('.nyc__card')).outlineStyle, getComputedStyle(el.querySelector('.nyc__open')).outlineStyle]")
+        self.assertEqual(ring, ["solid", "none"], "the focused row carries the ring, its title does not")
+        # J moves the focus with the selection.
+        page.keyboard.press("j")
+        second = page.locator(".nyq__list .nyc").nth(1)
+        expect(second).to_have_attribute("aria-current", "true")
+        expect(second.locator(".nyc__open")).to_be_focused()
+        page.keyboard.press("k")
+        expect(first.locator(".nyc__open")).to_be_focused()
+        # A decision has no Done: E does nothing to it.
+        pane = self.item(page, DECISION)
+        expect(pane.get_by_role("button", name=re.compile(r"^Done"))).to_have_count(0)
+        page.keyboard.press("e")
+        page.wait_for_timeout(700)
+        expect(page.get_by_role("status").filter(has_text="Marked done")).to_have_count(0)
+        expect(self.card(page, DECISION)).to_have_count(1)
+        self.assertIn("decision", self.kinds(), "the decision still waits")
+        # Enter on the open item's row (where G I puts focus) opens it, as Enter on the page did.
+        self.card(page, DECISION).locator(".nyc__open").focus()
+        page.keyboard.press("Enter")
+        expect(page.locator("#details")).to_contain_text(DECISION)
+
+    def test_03c_tab_moves_the_ring_and_the_open_item_together(self) -> None:
+        """personas-37 P2 (3x, both engines): Tab put the ring on the next row while the right column still showed the first item; A then
+        accepted the first for everyone, and Enter opened the ringed row, so Enter and A acted on different items. Whatever moves the focus
+        (Tab, Shift+Tab, a script), the row with the ring is the open item, and A and Enter act on it (F-026 §4)."""
+        page = self.page()
+        page.goto("/inbox")
+        rows = page.locator(".nyq__list .nyc")
+        expect(rows).to_have_count(4)
+        pane = page.locator(".nyq__col--open .nyc__title")
+
+        def ringed(index: int) -> None:
+            row = rows.nth(index)
+            expect(row.locator(".nyc__open"), f"row {index} has the ring").to_be_focused()
+            expect(row, f"row {index} is the open item").to_have_attribute("aria-current", "true")
+            expect(page.locator(".nyq__list .nyc[aria-current='true']")).to_have_count(1)
+            expect(pane, "the right column shows the ringed row").to_have_text(row.locator(".nyc__open").inner_text())
+
+        expect(rows.first.locator(".nyc__open")).to_be_focused()
+        page.keyboard.press("Tab")
+        ringed(1)
+        page.keyboard.press("Tab")
+        ringed(2)
+        page.keyboard.press("Shift+Tab")
+        ringed(1)
+        rows.nth(3).locator(".nyc__open").focus()
+        ringed(3)
+        # The decision is reached with Tab from the row above it: A accepts the decision with the ring, for everyone, and Z takes it back.
+        titles = [row.locator(".nyc__open").inner_text() for row in rows.all()]
+        at = next(index for index, title in enumerate(titles) if DECISION in title)
+        self.assertGreater(at, 0, "the decision is not the first row (newest first), so Tab has to bring the ring to it")
+        rows.nth(at - 1).locator(".nyc__open").focus()
+        ringed(at - 1)
+        page.keyboard.press("Tab")
+        ringed(at)
+        page.keyboard.press("a")
+        expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
+        self.wait_for(lambda: self.decision_status() == "accepted", "A to accept the decision with the ring", seconds=4)
+        self.assertEqual(sorted(self.kinds()), sorted(["question", "mention", "blocked"]), "only the ringed decision left the Inbox")
+        page.keyboard.press("z")
+        self.wait_for(lambda: self.decision_status() == "proposed", "Z to take the acceptance back")
+        expect(self.card(page, DECISION)).to_have_count(1)
+        # Enter on a ringed row opens that row's item, the same item A acted on.
+        page.wait_for_timeout(500)
+        rows.nth(at - 1).locator(".nyc__open").focus()
+        page.keyboard.press("Tab")
+        ringed(at)
+        page.keyboard.press("Enter")
+        expect(page.locator("#details")).to_contain_text(DECISION)
 
     def test_04_not_now_is_one_button_until_tomorrow_morning(self) -> None:
         page = self.page()
@@ -596,7 +684,8 @@ class InboxFinal(unittest.TestCase):
         seen(page, "writeHeld")
         page.keyboard.press("z")
         expect(original).to_have_attribute("aria-current", "true")
-        page.keyboard.press("e")
+        # A decision has Not now (S), never Done (#1424): the newer choice is a second Not now.
+        page.keyboard.press("s")
         seen(page, "writeHeld", 2)
         expect(original).to_have_count(0)
         older = held.pop(0)
@@ -605,65 +694,69 @@ class InboxFinal(unittest.TestCase):
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         settled(page)
         expect(original).to_have_count(0)
-        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         with page.expect_response(lambda response: response.ok and response.request.method == "POST" and "/api/v1/needs-you/" in response.url):
             held.pop().continue_()
         self.assertNotIn(f"decision:{self.decision['id']}", [item["key"] for item in self.queue(None)["items"]])
         page.keyboard.press("z")
         expect(original).to_have_count(1)
-        self.wait_for(lambda: any(item["key"] == f"decision:{self.decision['id']}" for item in self.queue(None)["items"]), "the latest Done to be undone")
+        self.wait_for(lambda: any(item["key"] == f"decision:{self.decision['id']}" for item in self.queue(None)["items"]), "the latest Not now to be undone")
 
-    # ---------------------------------------------------------------- Accept with Undo (AC-2, DA-3)
+    # ---------------------------------------------------------------- Accept with Undo (round 8, #1424)
 
-    def test_06_accept_is_delayed_so_undo_is_real(self) -> None:
+    def test_06_accept_works_at_once_and_undo_takes_it_back(self) -> None:
+        """Accept works at once with a 10 s Undo (founder decision, round 8, #1424): accepted for everyone the moment it is pressed, and Undo
+        takes the acceptance back for everyone, so the decision is a proposal again in the Inbox."""
         page = self.page()
         page.goto("/inbox")
         decision = self.card(page, DECISION)
+        count = page.get_by_role("navigation", name="Places").locator("a[href='/inbox'] .side__count").first
+        waiting = len(self.queue(None)["items"])
+        expect(count).to_have_text(str(waiting))
         self.item(page, DECISION).get_by_role("button", name=re.compile("^Accept")).click()
         toast = page.get_by_role("status").filter(has_text="Accepted")
         expect(toast).to_be_visible()
         expect(decision).to_have_count(0)
-        self.assertEqual(self.decision_status(), "proposed", "nothing was sent while Undo is offered")
+        expect(count).to_have_text(str(waiting - 1), timeout=2000)
+        # Accepted at once, while Undo is still offered: nothing waits for the toast to leave.
+        self.wait_for(lambda: self.decision_status() == "accepted", "the accept to be sent at once", seconds=4)
+        expect(toast).to_be_visible()
         page.keyboard.press("z")
         expect(decision).to_have_count(1)
-        time.sleep(7)
-        self.assertEqual(self.decision_status(), "proposed", "an undone accept is never sent")
+        expect(count).to_have_text(str(waiting), timeout=3000)
+        self.wait_for(lambda: self.decision_status() == "proposed", "Undo to take the acceptance back")
+        self.assertIsNone(self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["decidedBy"])
 
-        # A: accepted at once on the screen, and sent when the window ends.
+        # A on the decision that came back accepts it again, at once.
         page.keyboard.press("a")
         expect(decision).to_have_count(0)
         self.wait_for(lambda: self.decision_status() == "accepted", "the accept to be sent")
-        expect(page.get_by_role("status").filter(has_text="Accepted")).to_have_count(0)
         accepted = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()
         self.assertEqual(accepted["decidedBy"]["id"], self.ids["ada"])
         self.assertNotIn("decision", self.kinds())
 
-    def test_07_leaving_sends_the_accept(self) -> None:
+    def test_07_leaving_keeps_the_acceptance(self) -> None:
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Label every bed with a QR code", "rationale": "Volunteers scan, not guess."})
         self.wait_for(lambda: "decision" in self.kinds(), "the new decision")
         page = self.page()
         page.goto("/inbox")
         self.item(page, "Label every bed").get_by_role("button", name=re.compile("^Accept")).click()
-        # Going to Home inside the app sends it at once, with Undo still on screen.
+        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent at once")
+        # The Undo toast stays behind with the Inbox (#1424): Z on Home undoes nothing.
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
-        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent on leaving")
-        page.get_by_role("button", name="Undo").click()
-        expect(page.get_by_role("status").filter(has_text="already accepted")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text="Accepted")).to_have_count(0)
+        press_shortcut(page, "z")
+        page.wait_for_timeout(1000)
+        expect(page.locator(".ui-toast")).to_have_count(0)
+        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
 
     def test_07a_another_persons_item_shows_during_an_accept_window(self) -> None:
-        """An accept is not pending: while its Undo window is open, a new item from someone else shows at once (#519).
-
-        The page starts the read itself (focus), so the item must appear while the "Accepted" toast is still up.
-        It does not wait for the window to end, which a pending accept would make it do.
-        """
+        """While an acceptance's Undo is offered, a new item from someone else shows at once (#519)."""
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Sow the clover by the gate", "rationale": "It fixes nitrogen."})
         page = self.page()
         page.goto("/inbox")
         card = self.card(page, "Sow the clover")
         expect(card).to_have_count(1)
-        # Control the product's real Undo clock, independently of machine speed or toast hover.
-        page.clock.install(time=time.time())
-        page.clock.pause_at(time.time() + 1)
         self.item(page, "Sow the clover").get_by_role("button", name=re.compile("^Accept")).click()
         toast = page.get_by_role("status").filter(has_text="Accepted")
         expect(toast).to_be_visible()
@@ -671,11 +764,7 @@ class InboxFinal(unittest.TestCase):
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         expect(self.card(page, "Mulch the paths")).to_have_count(1)
         expect(card).to_have_count(0)
-        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "proposed", "the incoming item appears before Accept is sent")
-        page.mouse.move(0, 0)
-        page.clock.run_for(6001)
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to be sent")
-        expect(toast).to_have_count(0)
 
     def test_07b_accept_success_never_reveals_the_cached_proposal(self) -> None:
         self.accept_success_preserves_hidden_proposal(home=False)
@@ -684,27 +773,27 @@ class InboxFinal(unittest.TestCase):
         self.accept_success_preserves_hidden_proposal(home=True)
 
     def accept_success_preserves_hidden_proposal(self, *, home: bool) -> None:
-        """A read during Accept caches the proposal; success must hide it before a fresh read (#541)."""
+        """A read made while the accept is on its way still has the proposal; it stays hidden, and success hides it before a fresh read (#541)."""
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Cover the rain gauge", "rationale": "Keep leaves out."})
         page = self.page()
         page.goto("/inbox")
         card = self.card(page, "Cover the rain gauge")
         expect(card).to_have_count(1)
         self.watch_queue_reads(page)
-        page.clock.install(time=time.time())
-        page.clock.pause_at(time.time() + 1)
-        self.item(page, "Cover the rain gauge").get_by_role("button", name=re.compile("^Accept")).click()
-        held = []
-        state = {"hold": False}
         accepted = []
+
+        def on_accept(route):
+            accepted.append(route)
+            mark(page, "acceptHeld")
+
+        page.route(re.compile(r"/api/v1/decisions/[^/]+/accept$"), on_accept)
+        self.addCleanup(lambda: [route.abort() for route in accepted])
+        self.item(page, "Cover the rain gauge").get_by_role("button", name=re.compile("^Accept")).click()
+        seen(page, "acceptHeld")
         if home:
-            def on_accept(route):
-                accepted.append(route)
-                mark(page, "acceptHeld")
-            page.route(re.compile(r"/api/v1/decisions/[^/]+/accept$"), on_accept)
             page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
-            seen(page, "acceptHeld")
-            self.addCleanup(lambda: [route.abort() for route in accepted])
+        held = []
+        state = {"hold": False, "landed": False}
 
         def on_queue(route):
             answer = route.fetch()
@@ -712,7 +801,9 @@ class InboxFinal(unittest.TestCase):
                 held.append((route, answer))
                 mark(page, "heldRead")
             else:
-                self.assertIn(f"decision:{proposed['id']}", [item["key"] for item in answer.json()["items"]])
+                # Before the accept lands a read still has the proposal; a read after it (the stream's event, once the held reads go) has not.
+                if not state["landed"]:
+                    self.assertIn(f"decision:{proposed['id']}", [item["key"] for item in answer.json()["items"]])
                 route.fulfill(response=answer)
                 mark(page, "cachedRead")
 
@@ -727,7 +818,6 @@ class InboxFinal(unittest.TestCase):
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         seen(page, "cachedRead")
         page.wait_for_function("() => window.__needsYouPending === 0")
-        page.clock.run_for(1)
         expect(card).to_have_count(0)
         page.evaluate("""() => {
           window.__reappeared = false;
@@ -736,42 +826,75 @@ class InboxFinal(unittest.TestCase):
           }).observe(document.body, { childList: true, subtree: true, characterData: true });
         }""")
         state["hold"] = True
-        # Home navigation sends Accept; otherwise a real page-leave event sends it without advancing Undo.
-        if home:
-            accepted.pop().continue_()
-        else:
-            # The page is shown again at once (a restore from the back-forward cache): while it is left the web client
-            # starts no request (api/pageLeaving, #471), so the fresh queue read that follows Accept waits for this.
-            page.evaluate("() => { window.dispatchEvent(new Event('pagehide')); window.dispatchEvent(new Event('pageshow')); }")
+        accepted.pop().continue_()
         seen(page, "heldRead")
-        page.clock.run_for(1)
-        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
+        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to land")
+        state["landed"] = True
         expect(card).to_have_count(0)
         self.assertFalse(page.evaluate("() => window.__reappeared"), "the cached proposal never reappears after success")
         release()
-        page.clock.run_for(1)
+        page.wait_for_timeout(300)
         expect(card).to_have_count(0)
+        self.assertFalse(page.evaluate("() => window.__reappeared"))
 
     # ---------------------------------------------------------------- blocked tasks and mentions
 
     def test_08_unblock_with_undo(self) -> None:
         page = self.page()
         page.goto("/inbox")
-        card = self.card(page, "is blocked")
-        self.item(page, "is blocked").get_by_role("button", name="Unblock").click()
-        expect(page.get_by_role("status").filter(has_text="Blocker cleared")).to_be_visible()
+        card = self.card(page, "Design a weatherproof enclosure")
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Unblock").click()
+        # One toast for Unblock in the Inbox and in the task panel (personas-30 P3): "#N moved to Doing".
+        expect(page.get_by_role("status").filter(has_text=re.compile(r"^#\d+ moved to Doing"))).to_be_visible()
         expect(card).to_have_count(0)
         work = lambda: self.contexts["ada"].request.get(f"/api/v1/work/{self.blocked['id']}").json()  # noqa: E731
         self.wait_for(lambda: work()["status"] == "in_progress", "the task to be unblocked")
         page.keyboard.press("z")
-        expect(self.card(page, "is blocked")).to_have_count(1)
+        expect(self.card(page, "Design a weatherproof enclosure")).to_have_count(1)
         self.wait_for(lambda: work()["status"] == "blocked", "Undo to block it again")
         self.assertEqual(work()["blocker"], "waiting for the probe dimensions")
+
+    def test_08b_done_finishes_a_blocked_task_and_undo_puts_it_back(self) -> None:
+        """Done on your blocked task in the Inbox finishes it; Undo puts it back to Blocked with what it waited for (round 8, #1424)."""
+        page = self.page()
+        page.goto("/inbox")
+        card = self.card(page, "Design a weatherproof enclosure")
+        work = lambda: self.contexts["ada"].request.get(f"/api/v1/work/{self.blocked['id']}").json()  # noqa: E731
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Done").click()
+        # Said as every state change is: "#N moved to Done".
+        expect(page.get_by_role("status").filter(has_text=re.compile(r"^#\d+ moved to Done"))).to_be_visible()
+        expect(card).to_have_count(0)
+        self.wait_for(lambda: work()["status"] == "done", "the task to be finished")
+        self.assertNotIn("blocked", self.kinds())
+        page.keyboard.press("z")
+        expect(self.card(page, "Design a weatherproof enclosure")).to_have_count(1)
+        self.wait_for(lambda: work()["status"] == "blocked", "Undo to put it back to Blocked")
+        self.assertEqual(work()["blocker"], "waiting for the probe dimensions")
+        self.wait_for(lambda: "blocked" in self.kinds(), "the Blocked item to be back")
+        # E on it does the same, and the item's new version is used (not refused as stale).
+        item = self.card(page, "Design a weatherproof enclosure")
+        for _ in range(5):
+            if item.get_attribute("aria-current") == "true":
+                break
+            page.keyboard.press("j")
+        expect(item).to_have_attribute("aria-current", "true")
+        page.keyboard.press("e")
+        expect(item).to_have_count(0)
+        self.wait_for(lambda: work()["status"] == "done", "E to finish the task")
+        page.keyboard.press("z")
+        self.wait_for(lambda: work()["status"] == "blocked", "Undo to put it back again")
 
     def test_09_done_on_a_question_reads_it_and_nothing_is_lost(self) -> None:
         page = self.page()
         page.goto("/inbox")
         question = self.card(page, ASKED)
+        # The open item shows Not now and Done with their keys at all times, not only under the pointer: S and E work (release audit ffcb07c P3).
+        pane = self.item(page, ASKED)
+        page.mouse.move(2, 2)
+        for name, key in (("Not now", "S"), ("Done", "E")):
+            button = pane.get_by_role("button", name=re.compile(rf"^{name}"))
+            expect(button.locator("kbd")).to_have_text(key)
+            self.assertEqual(button.evaluate("el => getComputedStyle(el.closest('.nyc__quiet')).opacity"), "1", f"{name} shows without a hover")
         self.item(page, ASKED).get_by_role("button", name="Done").click()
         expect(question).to_have_count(0)
         def asked():
@@ -789,7 +912,7 @@ class InboxFinal(unittest.TestCase):
         page.goto("/inbox")
         expect(page.locator(".nyc", has_text="Keep the old rule")).to_be_visible()
         # A decision's own link still opens the decision, with its history in its details.
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{proposed['id']}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{proposed['id']}")
         expect(page.locator("#details")).to_contain_text("Keep the old rule for the shed")
         # The Tasks tab has no Decisions view or archive, and no pointer here either (#865).
         page.goto(f"/projects/{self.project_id}/tasks")
@@ -803,7 +926,7 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
-        expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
+        expect(page.get_by_text("When someone asks you something, it shows up here.")).to_be_visible()
         expect(page.get_by_text(re.compile(r"^\d+ done today$"))).to_be_visible()
         # #437 / E06: an empty Inbox is Kreska, one sentence and the settings link.
         expect(page.get_by_role("tab")).to_have_count(0)
@@ -847,6 +970,14 @@ class InboxFinal(unittest.TestCase):
         for name in (re.compile("^Accept"), "Not now"):
             self.assertGreaterEqual(box(page, decision.get_by_role("button", name=name))["height"], 44)
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
+        # It offers what the computer offers (personas-26 P2 #4): no Done behind a swipe, which would clear a decision still waiting,
+        # and Not now once, among its buttons.
+        row = self.card(page, "Mulch the north beds")
+        expect(row.get_by_role("button", name="Done")).to_have_count(0)
+        expect(row.locator("[aria-keyshortcuts='E']")).to_have_count(0)
+        expect(row.get_by_role("button", name="Not now")).to_have_count(1)
+        # A row says "Kind · who · space" on the phone as on the computer (personas-26: the phone dropped the space).
+        expect(self.card(page, GATE).locator(".nyc__eyebrow--row")).to_have_text("Question · Jonas Berg · Community garden sensors")
         # The title opens the item in the detail sheet, so it is a touch target too.
         self.assertGreaterEqual(box(page, decision.locator(".nyc__open"))["height"], 44)
         # #437: the tab labels meet the 12.5px phone meta minimum and the unread dot clears the Inbox icon.
@@ -864,8 +995,15 @@ class InboxFinal(unittest.TestCase):
         tray.get_by_role("button", name="Done").tap()
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
         expect(question).to_have_count(0)
+        # The card that took its place is the expanded one while it is gone (README §4).
+        expect(self.card(page, "Mulch the north beds")).to_have_attribute("aria-current", "true")
         page.get_by_role("button", name="Undo").tap()
         expect(self.card(page, GATE)).to_have_count(1)
+        # What came back is the open item, on the phone its expanded card (README §4; sweep 34 C6: the neighbour stayed expanded), and it has
+        # the focus (personas-35: focus stayed on the neighbour's title).
+        expect(self.card(page, GATE)).to_have_attribute("aria-current", "true")
+        expect(self.card(page, "Mulch the north beds")).not_to_have_attribute("aria-current", "true")
+        expect(self.card(page, GATE).locator(".nyc__open")).to_be_focused()
         # Not now in the tray is one button with no menu: it puts the item off until tomorrow morning (S11).
         question = self.card(page, GATE)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
@@ -876,11 +1014,60 @@ class InboxFinal(unittest.TestCase):
         expect(question).to_have_count(0)
         page.get_by_role("button", name="Undo").tap()
         expect(self.card(page, GATE)).to_have_count(1)
+        expect(self.card(page, GATE).locator(".nyc__open")).to_be_focused()
+        # Accept in the decision's sheet, then Undo: focus goes back to Accept, drawn again, never to the page (personas-33/34, F-026 §4).
+        self.card(page, "Mulch the north beds").locator(".nyc__open").tap()
+        sheet = page.locator("#details")
+        expect(sheet.get_by_role("button", name="Accept", exact=True)).to_be_visible()
+        sheet.get_by_role("button", name="Accept", exact=True).tap()
+        expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
+        page.get_by_role("button", name="Undo").tap()
+        expect(sheet.get_by_role("button", name="Accept", exact=True)).to_be_focused()
+        page.go_back()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        # Back in the Inbox, the open item has the focus, not the page (personas-33/34/35).
+        expect(page.locator(".nyq__list .nyc[aria-current='true'] .nyc__open")).to_be_focused()
         # One column on a phone, and no filters.
         expect(page.locator(".nyq--two")).to_have_count(0)
         expect(page.get_by_role("tablist", name="Show")).to_have_count(0)
         expect(page.locator(".nyc__chip")).to_have_count(0)
         self.assertEqual(proposed["status"], "proposed")
+
+    def test_12b_phone_tray_done_or_not_now_on_the_last_card_focuses_the_card_that_expands(self) -> None:
+        """personas-36 P3-N1 (40 sweep cells): a tap on the last card's words expands it and leaves the focus on the page's content; Done or
+        Not now in its tray then expanded the card above and left the focus there. The card that expands has it, on its title (F-026 §4)."""
+        stamp = uuid.uuid4().hex[:6]
+        lines = [f"@Ada Kowalska the hose by the shed leaks {stamp}", f"@Ada Kowalska the rain gauge is full {stamp}"]
+        for body in lines:
+            self.post("jonas", f"/api/v1/projects/{self.project_id}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
+            time.sleep(0.05)
+        self.wait_for(lambda: sum(stamp in str(item) for item in self.queue(None)["items"]) >= 2, "both mentions")
+        page = self.page(phone=True)
+        page.goto("/inbox")
+        for action in ("Done", "Not now"):
+            with self.subTest(action=action):
+                cards = page.locator(".nyq__list .nyc")
+                expect(cards.filter(has_text=stamp)).to_have_count(2)
+                # The lower of the two, so a card that is not the open one first.
+                key = cards.filter(has_text=stamp).last.get_attribute("data-key")
+                last = page.locator(f'.nyq__list .nyc[data-key="{key}"]')
+                # A tap on its words, not on its title, as a person reading it does.
+                last.locator(".nyc__eyebrow:visible").first.tap()
+                page.wait_for_timeout(300)
+                expect(last).to_have_attribute("aria-current", "true")
+                last.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
+                # As the sweep presses it: a click that moves no focus (a tap on a button keeps focus where it was in WebKit).
+                last.locator(".nyc__tray").get_by_role("button", name=action, exact=True).evaluate("button => button.click()")
+                expect(page.get_by_role("status").filter(has_text=re.compile("Marked done|Back tomorrow morning"))).to_be_visible()
+                expect(last).to_have_count(0)
+                # The card that expands in its place (the one below it, or above it when it was the last) has the focus on its title.
+                expect(page.locator(".nyq__list .nyc[aria-current='true'] .nyc__open")).to_be_focused()
+                page.get_by_role("button", name="Undo").tap()
+                expect(cards.filter(has_text=stamp)).to_have_count(2)
+                page.wait_for_timeout(600)
+        for item in self.queue(None)["items"]:
+            if stamp in str(item):
+                self.contexts["ada"].request.post(f"/api/v1/needs-you/{requests_quote(item['key'])}", data={"action": "done"}, headers={"origin": ORIGIN})
 
     def test_13_dark_inbox(self) -> None:
         page = self.page(dark=True)
@@ -919,8 +1106,9 @@ class InboxFinal(unittest.TestCase):
         card = self.card(page, title)
         self.item(page, title)
         expect(card).to_have_attribute("aria-current", "true")
-        page.keyboard.press("e")
-        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        # A decision has Not now (S), never Done (#1424).
+        page.keyboard.press("s")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         self.wait_for(lambda: not has_decision("ada"), "Ada's decision choice to be stored")
         self.assertTrue(has_decision("jonas"), "Ada’s decision must remain in Jonas’s queue")
 
@@ -945,10 +1133,10 @@ class InboxFinal(unittest.TestCase):
 
         # B makes and dismisses their own Done toast. If A's callback survived, Z now picks it
         # and sends its DELETE with B's cookie, incorrectly putting B's decision back in the queue.
-        page.keyboard.press("e")
-        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        page.keyboard.press("s")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         self.wait_for(lambda: not current_tab_has_decision(), "Jonas's decision choice to be stored")
-        own_toast = page.locator(".ui-toast").filter(has_text="Marked done").last
+        own_toast = page.locator(".ui-toast").filter(has_text="Back tomorrow morning").last
         own_toast.get_by_role("button", name="Dismiss notification").click()
         expect(page.locator(".ui-toast")).to_have_count(0)
         page.keyboard.press("z")

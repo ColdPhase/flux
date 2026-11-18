@@ -14,9 +14,9 @@ export interface AgentToolEntry {
   operation: AgentOperation | null;
 }
 
-const read = (name: string): AgentToolEntry => ({ id: `tool:${name}`, kind: 'tool', name, access: 'read', operation: null });
-const effect = (name: string, operation: AgentOperation | null): AgentToolEntry => ({ id: `tool:${name}`, kind: 'tool', name, access: 'write', operation });
-const alias = (kind: 'resource' | 'prompt', name: string): AgentToolEntry => ({ id: `${kind}:${name}`, kind, name, access: 'read', operation: null });
+const read = /* @__NO_SIDE_EFFECTS__ */ (name: string): AgentToolEntry => ({ id: `tool:${name}`, kind: 'tool', name, access: 'read', operation: null });
+const effect = /* @__NO_SIDE_EFFECTS__ */ (name: string, operation: AgentOperation | null): AgentToolEntry => ({ id: `tool:${name}`, kind: 'tool', name, access: 'write', operation });
+const alias = /* @__NO_SIDE_EFFECTS__ */ (kind: 'resource' | 'prompt', name: string): AgentToolEntry => ({ id: `${kind}:${name}`, kind, name, access: 'read', operation: null });
 
 export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   read('flux_list_contexts'),

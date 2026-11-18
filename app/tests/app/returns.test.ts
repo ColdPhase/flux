@@ -406,3 +406,37 @@ describe('return view: the rows a summary reads (#1178, #1191)', () => {
     assert.equal(await rows.audienceFloor(reader, inOtherTalk.seq, 100), inOtherTalk.seq);
   });
 });
+
+describe('return view: Home never reads a space for you (#1424 persona round, R1-2)', () => {
+  // A space never opened was read from Home's point, so visiting Home (its first visit saves that point) or following its Continue made
+  // every space not opened yet lose its bold name about a minute later, when the sidebar read it again.
+  test('a space never opened keeps what is new in it after Home is visited and after Continue is followed', async () => {
+    const [ari, nia] = await Promise.all(['Ari', 'Nia'].map(person));
+    const ws = await workspace(ari, 'Bakery');
+    await addMember(ari, ws.id, nia, 'member');
+    const market = await createProject(ari, ws.id, 'Spring market', 'workspace');
+    const talk = json<Conversation>(await post(ari, `/api/v1/projects/${market.id}/conversations`,
+      { body: 'Who brings the gazebo on Saturday?', clientMessageId: randomUUID() }), 201);
+    await say(ari, talk.id, 'The tables are in the van.');
+    const place = { type: 'project' as const, id: market.id };
+    const before = texts((await summary(nia, place)).items);
+    assert.ok(before.length > 0, 'the space has news for Nia before she goes anywhere');
+
+    // Home's first visit saves its point at the newest position.
+    const home = await view(nia, { type: 'home' });
+    assert.equal(home.point.savedAt, null, 'a first visit to Home');
+    assert.deepEqual(texts((await summary(nia, place)).items), before, 'visiting Home read nothing in the space');
+
+    // Following Continue saves Home's point at its mark too.
+    await say(ari, talk.id, 'And the float for the till.');
+    const again = await summary(nia, { type: 'home' });
+    await save(nia, { type: 'home' }, again.mark);
+    const after = await summary(nia, place);
+    assert.ok(after.items.length >= before.length, texts(after.items).join('\n'));
+    assert.equal(after.point.savedAt, null, 'the space is still not opened');
+
+    // Opening the space reads it.
+    await view(nia, place);
+    assert.deepEqual((await summary(nia, place)).items, []);
+  });
+});

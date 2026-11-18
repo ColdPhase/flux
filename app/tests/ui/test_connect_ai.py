@@ -218,6 +218,15 @@ class ConnectAiJourney(unittest.TestCase):
         for region in (connect, assistant):
             self.assertIsNone(FLUX_LIMITS.search(region.inner_text()), f"no Flux limit or switch: {region.inner_text()!r}")
         shot(page, "connect-ai-desktop-1440")
+        # One mark for the app everywhere (F-026 §7, v0.2.1 UI audit P3 5): the terminal, in this row and on its own page; it is not an agent,
+        # so never a Kreska or an agent's colour.
+        mark = app.first.locator(".sset-row__ic svg").inner_html()
+        expect(app.first.locator(".kreska")).to_have_count(0)
+        page.goto("/settings/agents/connect")
+        saved = page.locator(".connection__saved").filter(has_text=CONNECTION)
+        expect(saved).to_have_count(1)
+        expect(saved.locator(".kreska")).to_have_count(0)
+        self.assertEqual(saved.locator(".connection__mark svg").inner_html(), mark)
 
     def test_03_phone_width_keeps_every_section_readable(self) -> None:
         page = self.page("ines", phone=True)
@@ -425,8 +434,7 @@ class ConnectAiJourney(unittest.TestCase):
             self.assertLess(cancel["x"], primary["x"], "Cancel is left of Connect, as it is left of Continue")
             self.assertGreater(primary["x"] + primary["width"] / 2, frame["x"] + frame["width"] / 2, "the primary sits on the right, as Continue and Try again do")
             self.no_horizontal_scroll(page)
-            window.get_by_role("button", name="Cancel").click()
-            expect(window.locator("[data-choice=api_key]")).to_be_visible()
+            # B-6: Cancel closes the window on this step too, as it does on the first; it does not go back one step.
             window.get_by_role("button", name="Cancel").click()
             expect(window).to_have_count(0)
             page.context.close()

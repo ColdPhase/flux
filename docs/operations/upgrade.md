@@ -105,7 +105,13 @@ migrating.
   disagree. Polish, English and the common scripts are unaffected. Migration `0065` therefore recomputes what was derived from
   those functions under the old image: the stored search columns of the rows whose values differ, and every index built from an
   expression (such as `lower(email)`), a text-dependent condition or a method other than B-tree. Nothing to do by hand.
-- **Migration `0065`** also creates the extension and the search index. It took 28 s for 302,000 messages (2026-11-13, a busy 24-core host); API
+- **Migration `0065`** also creates the extension and the search index, and three later migrations rebuild it: `0085` (the joined-words
+  fields), `0088` (a name row for every file, which grows with the number of files) and `0093` (a REINDEX of `search_documents`).
+  Measured on a v0.2.0 installation with its test content and 302,000 more messages, upgraded to the train head `44947da84` by
+  `./flux upgrade -y` (2026-11-17, a busy 24-core host, so upper bounds). In the second of two runs, with the migrations' times taken as
+  the gaps between the ledger's `applied_at`, `0065` took 29 s, `0085` 5 s, `0093` 5 s and `0088` 0.03 s (that data has few files), and
+  migrations `0054` to `0094` together 40 s; the whole `./flux upgrade`, with its images already built, took 81 s in the first run and
+  107 s in the second. Expect more on a larger database. API
   and worker are stopped meanwhile, so count it in the downtime. On a
   database that is not running Flux's image (for example your own PostgreSQL), it stops with
   `FLUX_DATABASE_IMAGE Flux v0.2.1 needs its own database image …` before it changes anything; API and worker do not start.

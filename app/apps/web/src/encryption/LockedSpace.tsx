@@ -1,11 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate, useParams, useRevalidator } from 'react-router';
+import { Navigate, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Input } from '../ui';
 import { ApiError } from '../api/client';
 import { encryptionProblem, unlockWorkspace, type WorkspaceEncryption } from './api';
-import { isManagerOf, lockedLine, setLockedPlace, useLockedWorkspaces, useSpace } from './state';
+import { isManagerOf, setLockedPlace, useSpace } from './state';
 import './encryption.css';
 
 /**
@@ -100,8 +100,8 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
 
 /**
  * The unlock field (F-030): the person's own unlock password, or the recovery code swapped in place. Used by the locked panel
- * and, after Lock now, by People → Encryption in Lock now's slot (UI audit EN-1). Errors are shown below the buttons, so
- * they never move.
+ * and, after Lock now, by People → Encryption in Lock now's slot (UI audit EN-1). An error is said right under the field; in the
+ * centred card its lines are kept free, so the field and Unlock never move.
  */
 export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, onUnlocked, onCancel, more }: {
   workspaceId: string; name: string; encryption: WorkspaceEncryption | null; autoFocus?: boolean; onUnlocked?: () => void; onCancel?: () => void;
@@ -154,14 +154,14 @@ export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, o
           onChange={(event) => { setSecret(event.target.value); if (problem) setProblem(''); }} />
         <Button type="submit" variant="primary" busy={busy}>Unlock</Button>
       </div>
+      {/* Right under the field it is about, as every field's error (visual review 2026-11-17 V9: it was under two links at the card's foot). */}
+      <p className="locked__status" id={statusId} role="alert">{problem}</p>
       <div className="locked__actions">
         {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
         {onCancel ? <Button variant="secondary" onClick={onCancel}>Cancel</Button> : null}
       </div>
       {/* Its own row, so a longer "Use my unlock password" never wraps the row above and moves the field. */}
       {more ? <div className="locked__actions">{more}</div> : null}
-      {/* Below the buttons, so an error never moves them. */}
-      <p className="locked__status" id={statusId} role="alert">{problem}</p>
     </form>
   );
 }
@@ -178,42 +178,4 @@ export function LockedSpacePage() {
   // A space the person is not in (or that is gone) is not a locked one.
   if (!space && !open) return <Navigate to="/" replace />;
   return <LockedSpace workspaceId={workspaceId} />;
-}
-
-/**
- * Home's "Needs you" (F-030, #655): what needs the person in a space that waits to be unlocked is not known until it is unlocked, so the
- * queue says which spaces it could not look into, one quiet row each, instead of "Nothing needs you".
- */
-export function WaitingSpaces() {
-  const locked = useLockedWorkspaces();
-  if (!locked.length) return null;
-  return (
-    <ul className="waiting-spaces" aria-label="Waiting to be unlocked" data-waiting-spaces="">
-      {locked.map((space) => (
-        <li key={space.id}>
-          <Link to={`/spaces/${space.id}`} data-locked-space={space.id}>
-            <Icon name="lock" size={13} /><span className="waiting-spaces__name">{space.name}</span><span className="waiting-spaces__state">{lockedLine(space)}</span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * Search's line about an encrypted space the server cannot search in memory because it is too large (`sealedUnavailable`, F-030, #655). One
- * that waits to be unlocked is not named here: the sidebar and Home say it waits, and Search says nothing (#1419 item 16).
- */
-export function UnsearchedSpaces({ tooLarge }: { tooLarge: readonly string[] }) {
-  const { workspaces } = useShellData();
-  const large = tooLarge.map((id) => workspaces.find((space) => space.id === id)).filter((space): space is NonNullable<typeof space> => !!space);
-  if (!large.length) return null;
-  return (
-    <ul className="unsearched" aria-label="Not searched" data-unsearched="">
-      {large.map((space) => (
-        <li key={space.id} data-too-large={space.id}><Icon name="lock" size={13} />
-          <span>Search isn’t available in {space.name}: it is too large to search in memory.</span></li>
-      ))}
-    </ul>
-  );
 }

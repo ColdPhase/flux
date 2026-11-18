@@ -59,6 +59,21 @@ test('the rarer word ranks first, a word in a title above one in a body', () => 
   assert.ok(['Use a time-of-flight sensor', 'Sensor field notes'].includes(sensor[0]!), sensor[0]);
 });
 
+test('a document that holds all the words ranks above one that holds fewer, whatever its kind (personas-37)', () => {
+  // "Antenna log 30": a decision that holds only "30", in its title and rare, came before the message that holds all three.
+  const index = new SealedSearchIndex('w');
+  for (let i = 1; i <= 30; i += 1) index.put(doc('', `Antenna log ${i}`));
+  index.put(doc('Shop opens at 6:30 on fair day', 'The fair starts at 7.', 'project:p', 'decision'));
+  for (const q of ['Antenna log 30', 'antenna log 30 ', 'log 30 antenna']) {
+    const hits = find(index, q);
+    assert.equal(hits[0], 'Antenna log 30', q);
+    const decision = hits.indexOf('Shop opens at 6:30 on fair day');
+    assert.ok(decision > 0 && hits.slice(1, decision).every((hit) => hit.startsWith('Antenna log')), `${q}: two words before one`);
+  }
+  // Among documents that hold as many words, the rarer word and the title still decide.
+  assert.equal(find(index, '30')[0], 'Shop opens at 6:30 on fair day');
+});
+
 test('the word being typed is a prefix, a title tolerates a typo, and there are no stems', () => {
   const index = sample();
   assert.ok(find(index, 'sens').includes('Sensor field notes'));
@@ -94,4 +109,17 @@ test('the weight of a word is that of its own audience: documents of another aud
   const before = find(index, 'lamp sunlight');
   for (let i = 0; i < 50; i += 1) index.put(doc('', `lamp sunlight ${i}`, 'project:hidden'));
   assert.deepEqual(find(index, 'lamp sunlight'), before, 'same hits in the same order');
+});
+
+// v0.2.1 personas round: a hyphenated word is one word ("mockup" finds "mock-up"), and a typo is only a way to find what a word did not:
+// "price list" no longer lists "Kasia Lis" (one edit from "list") beside the price list, while "liss" alone still finds her.
+test('a hyphenated word is one word, and a typo finds only what no word found whole', () => {
+  const index = new SealedSearchIndex('w');
+  index.put(doc('', 'The mock-up of the shop window is ready.'));
+  index.put(doc('', 'The price list for Christmas.'));
+  index.put(doc('Kasia Lis', '', 'project:p', 'person'));
+  assert.deepEqual(find(index, 'mockup'), ['The mock-up of the shop window is ready.']);
+  assert.deepEqual(find(index, 'mockup', { prefix: null }), ['The mock-up of the shop window is ready.']);
+  assert.deepEqual(find(index, 'price list'), ['The price list for Christmas.']);
+  assert.deepEqual(find(index, 'liss'), ['Kasia Lis'], 'with nothing found whole, the typo still finds the name');
 });

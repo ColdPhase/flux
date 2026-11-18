@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { LiveSession, ProjectPerson } from '@flux/contracts';
-import { Avatar, Button, Spinner, useLoopPause } from '../ui';
+import { Avatar, Button, Icon, Spinner, useLoopPause } from '../ui';
 import { useProjectShell } from '../project/data';
 import { anchorLabel, anchorPath, KIND_WORD, sameContext, type LiveAnchor } from './anchors';
 import { sessionAt, useLive, useLiveHere, useProjectSessions } from './LiveProvider';
@@ -84,7 +84,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   // (#1378); it is the same quiet button and explains itself, so it starts nothing and the slot keeps its width.
   const dimmed = (reason: string, mark?: 'in' | 'connecting') => variant === 'more' ? (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow lv-now" data-more-row aria-disabled="true" aria-describedby={noteId}>
-      {mark ? mark === 'connecting' ? <Spinner /> : <LiveDot on /> : null}<span>{mark ? 'In call' : 'Call'}</span><span id={noteId} className="ui-vh">{reason}</span>
+      {mark ? mark === 'connecting' ? <Spinner /> : <LiveDot on /> : <Icon name="call" size={16} />}<span>{mark ? 'In call' : 'Call'}</span><span id={noteId} className="ui-vh">{reason}</span>
     </button>
   ) : variant === 'header' ? (
     <span className="lv-entry">
@@ -156,7 +156,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
 
   if (variant === 'more') return (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow lv-now" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); act(); }}>
-      {joinable ? <LiveDot on /> : null}<span className="lv-now__t">{joinable ? label : 'Call'}</span>
+      {joinable ? <LiveDot on /> : <Icon name="call" size={16} />}<span className="lv-now__t">{joinable ? label : 'Call'}</span>
       <span id={noteId} className="ui-vh">{joinable ? 'Microphone and camera stay off.' : `Call about this ${word}. ${audience}.`}</span>
     </button>
   );

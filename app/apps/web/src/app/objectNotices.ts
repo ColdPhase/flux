@@ -4,13 +4,9 @@ import { messageOf, noticeSource } from './conversationEvents';
 // What the conversation says about a decision (#694, F-026 P5). Pure functions: the stream and the
 // open thread render the same lines, and the thread picks out the ones that came from it.
 
-/** The words of one line after the name: "proposed a decision from", with the part that links, "Jonas’s message". */
-export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string) => string | null, inThread: boolean, actor?: { name: string; mine: boolean }, follows = false): { lead: string; link?: string; linkTo?: 'message' | 'thread' } {
-  // Right under its proposal's card (`followsProposal`): the card names the decision.
-  if (follows && notice.kind === 'decision.accepted') return { lead: 'accepted it' };
-  const what = notice.kind === 'decision.accepted' ? 'accepted a decision' : 'proposed a decision';
-  // Accepting is a person's step on the proposal, not a new origin: it names no source.
-  if (notice.kind === 'decision.accepted') return { lead: what };
+/** The words of the card's line after the name: "proposed a decision from", with the part that links, "Jonas’s message". */
+export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string) => string | null, inThread: boolean, actor?: { name: string; mine: boolean }): { lead: string; link?: string; linkTo?: 'message' | 'thread' | 'object' } {
+  const what = 'proposed a decision';
   const source = noticeSource(notice, authorOf);
   if (source.kind === 'message') {
     // In its own thread the line does not say where: it is already there.
@@ -21,14 +17,6 @@ export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string)
   if (source.kind === 'map') return { lead: `${what} from a thought` };
   if (source.kind === 'material') return { lead: `${what} from a source` };
   return { lead: what };
-}
-
-/**
- * Whether an acceptance line directly follows the proposal of the same decision, with nothing between (#763 H11-9): the
- * proposal's card already says "Accepted", so the acceptance is told as one line under it, with no second card.
- */
-export function followsProposal(notice: ObjectNotice, previous: ObjectNotice | null | undefined): boolean {
-  return notice.kind === 'decision.accepted' && previous?.kind === 'decision.proposed' && previous.decisionId === notice.decisionId;
 }
 
 /** The card's state word: where the decision stands now. */

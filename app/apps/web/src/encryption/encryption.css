@@ -16,7 +16,8 @@
 .newspace__phrase { min-height: 64px; padding: 10px 12px; resize: none; font-family: var(--mono); font-size: var(--fs-base); line-height: 1.5; overflow: hidden; }
 /* The download button, what it is for, and its refusal: one column with the same 8 px between a control and its hint as elsewhere in the window (#1216). */
 .newspace__download { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.newspace__quiet { display: flex; flex-wrap: wrap; gap: 0 4px; margin: 0 0 0 -8px; }
+/* The quiet button's words start on the column's edge: the margin is its own side padding (visual review 2026-11-17: 6 px off). */
+.newspace__quiet { display: flex; flex-wrap: wrap; gap: 0 4px; margin: 0 0 0 -14px; }
 .newspace__quiet .ui-btn { color: var(--t2); }
 .newspace__hint, .newspace__warning { margin: 0; font-size: var(--fs-md); color: var(--t2); line-height: 1.55; }
 .newspace__warning { color: var(--t1); }
@@ -24,17 +25,19 @@
 .newspace__meter { display: inline-flex; gap: 3px; flex: none; }
 .newspace__meter i { width: 16px; height: 4px; border-radius: 2px; background: var(--hov); }
 .newspace__meter i.is-on { background: var(--inv); }
+/* With nothing typed the bars say nothing, and read as stray lines (visual review 2026-11-17): the meter shows from its first bar. */
+.newspace__meter:not(:has(.is-on)) { display: none; }
 .newspace .details__actions { flex-wrap: wrap; }
 .newspace__protects { font-size: var(--fs-md); color: var(--t2); }
 .newspace__protects summary { display: inline-block; cursor: pointer; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; border-radius: var(--r-sm); }
-.newspace__protects summary:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.newspace__protects summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .newspace__protects p { margin: 10px 0 0; line-height: 1.55; }
 
 /* ---------- The recovery code (once) ---------- */
 .recovery__lead { margin: 0 0 14px; font-size: var(--fs-md); color: var(--t2); line-height: 1.6; }
 /* Two lines of four groups in reading order (UI audit RC-3): one reading only, at every width. */
 .newspace__code { display: grid; gap: 6px; margin: 0 0 8px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--el);
-  box-shadow: inset 0 0 0 1px var(--line2); font: 600 var(--fs-base)/1.4 var(--mono); letter-spacing: .04em; color: var(--t1); user-select: text; -webkit-user-select: text; }
+  box-shadow: inset 0 0 0 1px var(--line2); font: 600 var(--fs-base)/1.4 var(--mono); letter-spacing: var(--tracking-code); color: var(--t1); user-select: text; -webkit-user-select: text; }
 .newspace__code span { display: block; white-space: nowrap; }
 .recovery__apart { margin: 0 0 14px; font-size: var(--fs-sm); color: var(--t2); line-height: 1.5; }
 .recovery__ask { margin-top: 4px; }
@@ -51,7 +54,7 @@
   .recovery-sheet { display: block !important; padding: 24mm 20mm; background: #fff; color: #000; font: var(--fs-lg)/1.6 system-ui, sans-serif; } /* 16 px (12 pt) on paper */
   .recovery-sheet h1 { margin: 0 0 12mm; font-size: 1.5em; }
   .recovery-sheet__meta { font-size: .8333em; }
-  .recovery-sheet__code { display: grid; gap: 2mm; margin: 0 0 12mm; font: 600 1.6667em/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; }
+  .recovery-sheet__code { display: grid; gap: 2mm; margin: 0 0 12mm; font: 600 1.6667em/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: var(--tracking-code); }
 }
 
 /* ---------- The locked panel ---------- */
@@ -59,11 +62,11 @@
 .pane-scroll:has(> .pane-in.locked) { display: flex; }
 .pane-in.locked { flex: 1; display: grid; place-items: center; max-width: none; margin: 0; }
 .locked__card {
-  display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(100%, 420px); padding: 28px 28px 24px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(100%, 420px); padding: 28px; text-align: center;
   border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card);
 }
 .locked__icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 4px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); }
-.locked__title { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; color: var(--t1); }
+.locked__title { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); }
 .locked__text { margin: 0; font-size: var(--fs-md); line-height: 1.55; color: var(--t2); text-wrap: balance; }
 .locked__form { display: grid; gap: 8px; width: 100%; margin-top: 12px; text-align: left; }
 .locked__row { display: flex; align-items: flex-end; gap: 8px; }
@@ -71,29 +74,26 @@
 /* Unlock is as tall as its field, so the two share a centre line. */
 .locked__row > .ui-btn { min-height: var(--ctl-lg); }
 .locked__actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
-.locked__status { margin: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; text-align: center; }
+/* A refusal is said under the field, from its left edge, as a field's error (visual review 2026-11-17 V9). */
+.locked__status { margin: -2px 0 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; text-align: left; }
 .locked__status:empty { display: none; }
-/* In the centred card the lines a refusal appears in are reserved whether or not one is there, so the card never changes height and nothing in it
-   moves when one is said (the field and Unlock stay where they were): two lines, three on a phone, where the longer refusals wrap. */
+/* In the centred card its two lines are kept whether or not one is said, so the card never changes height and the field and Unlock stay where
+   they were. The phone's card keeps its top (below), so there only what is under the refusal moves. */
 .locked__card .locked__status, .locked__card .locked__status:empty { display: block; min-height: 2.9em; }
 @media (max-width: 640px) {
-  .locked__card .locked__status, .locked__card .locked__status:empty { min-height: 4.35em; }
+  .locked__card .locked__status { min-height: 0; }
+  .locked__card .locked__status:empty { display: none; }
   /* On the phone the pane grows when the tab bar steps aside for typing, so the card keeps its top and never follows the pane's middle. */
   .pane-in.locked { align-items: start; padding-top: clamp(24px, 10vh, 88px); }
 }
-
-/* A space that waits to be unlocked is one row in place of its projects: the lock where a project has its letter. */
-.side__pj--lock { color: var(--t2); }
-.side__locked { padding-block: 4px; }
-.side__locked .side__sub { color: var(--t3); }
-.side__rail-locked .side__pj--lock { color: var(--t2); }
 
 /* ---------- People → Encryption ---------- */
 .details__sec.people__enc { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .details__sec.people__enc h4 { margin-bottom: 8px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
 /* Two lines are always reserved, so the buttons under the line stay where they are when the line changes ("Unlocked by Ada at 09:12" / "Waiting to be unlocked"). */
 .people__enc-line { min-height: calc(2 * 1.6em); margin: 0; }
-.people__enc-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 8px 0 0 -8px; }
+/* One column, each action starting at one edge (round 15, look-3 P3-f): in the narrow panel a wrapped row left "New recovery code" alone and ragged. */
+.people__enc-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 8px 0 0 -8px; }
 .people__enc-button.ui-btn { color: var(--t2); }
 .people__enc-button.ui-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .people__enc-button.ui-btn.is-dim { opacity: .45; cursor: default; }
@@ -105,19 +105,6 @@
 .people__problem { margin: 0; font-size: var(--fs-sm) !important; font-weight: 500; color: var(--t1) !important; line-height: 1.45; }
 .people__problem:empty { display: none; }
 .people__enc .people__done { margin-top: 10px; }
-
-/* Home's "Needs you" and search: the spaces that could not be looked into, one quiet row each. */
-.waiting-spaces { list-style: none; margin: 8px 0 0; padding: 0; }
-.waiting-spaces a { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; min-height: 32px; padding: 4px 4px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--t2); text-decoration: none; }
-.waiting-spaces a:hover { color: var(--t1); background: var(--hov); }
-.waiting-spaces a:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
-.waiting-spaces__name { color: var(--t1); font-weight: 500; }
-.waiting-spaces__state { color: var(--t3); font-size: var(--fs-sm); white-space: nowrap; }
-@media (pointer: coarse) { .waiting-spaces a { min-height: 44px; } }
-.unsearched { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; }
-.unsearched li { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-sm); color: var(--t2); line-height: 1.5; }
-.unsearched li > svg { flex: none; align-self: center; color: var(--t3); }
-.unsearched a { color: var(--t1); }
 
 /* The Inbox's security notices (content-free titles, Inbox only): quiet rows, each with its own "Got it". */
 .security-notices { margin: 0 0 24px; }

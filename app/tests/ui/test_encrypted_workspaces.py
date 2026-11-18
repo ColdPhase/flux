@@ -40,7 +40,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from app_select import choose
 from light_motion_fixture import settled
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot as save_shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, press_shortcut, shot as save_shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -214,12 +214,13 @@ class Base(unittest.TestCase):
             page.goto(f"/projects/{self.world.a_project}/settings")
             expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
         page.locator("[data-encrypted-keys]").click()
+        # One title (round 14): the panel's header says "People and encryption"; its people's heading names the space.
         try:
-            expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+            expect(page.locator("#details").get_by_role("heading", name="People and encryption", exact=True)).to_be_visible()
         except AssertionError:
             print("DEBUG open_people:", page.url, page.locator("body").inner_text()[:1500].replace("\n", " | "))
             raise
-        expect(page.locator(".details__eyebrow", has_text=space)).to_be_visible()
+        expect(page.locator("#people-here")).to_contain_text(space)
         # The panel slides in (#593): positions are measured only once it has stopped.
         settled(page)
 
@@ -568,8 +569,9 @@ class EncryptedWorkspaces(Base):
         expect(page.get_by_text(B_ROOT).first).to_be_visible()
         page.emulate_media(media="screen")
 
-    def test_32_a_former_members_messages_say_former_member(self) -> None:
-        """UI audit XC-2: a removed person's messages are named "Former member", the same in the conversation and its notices."""
+    def test_32_a_removed_persons_messages_say_their_name_removed(self) -> None:
+        """UI audit XC-2 named a removed person's messages "Former member". Founder decision (Hubert, 2026-11-17, #1424; personas-37 P3-3):
+        they are "Ben Okafor (removed)", as the task that names them is, and Restore takes the mark off."""
         world = self.make_world()
         self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.b}/members", {"email": world.emails["ben"], "role": "member"}, 201)
         reply = "The new dock lights are in the shed"
@@ -579,8 +581,14 @@ class EncryptedWorkspaces(Base):
         page.goto(f"/projects/{world.b_project}/conversations/{world.b_conversation}")
         message = page.locator("[data-message-id]").filter(has_text=reply).last
         expect(message).to_be_visible()
-        expect(message).to_contain_text("Former member")
-        expect(message).to_have_attribute("aria-label", "Former member’s message")
+        expect(message).to_contain_text("Ben Okafor (removed)")
+        expect(message).to_have_attribute("aria-label", "Ben Okafor (removed)’s message")
+        expect(page.get_by_text("Former member")).to_have_count(0)
+        self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.b}/removed-people/{world.ids['ben']}/restore", {}, 201)
+        page.reload()
+        message = page.locator("[data-message-id]").filter(has_text=reply).last
+        expect(message).to_have_attribute("aria-label", "Ben Okafor’s message")
+        expect(page.get_by_text("Ben Okafor (removed)")).to_have_count(0)
 
     def test_20_the_encryption_section_sits_before_leave_in_every_state(self) -> None:
         for phone in (False, True):
@@ -637,8 +645,9 @@ class EncryptedWorkspaces(Base):
                 page.keyboard.press("Enter")
                 confirm = section.get_by_role("group", name=f"Lock {A_NAME}")
                 expect(confirm).to_contain_text(f"Everyone in {A_NAME} loses access until an owner or admin unlocks it again.")
-                expect(confirm.get_by_role("button", name=f"Lock {A_NAME}")).to_be_focused()
-                expect(confirm.get_by_role("button", name="Keep it unlocked")).to_be_visible()
+                # It opens on its safe answer, as every ask (round 15, daily P3-3).
+                expect(confirm.get_by_role("button", name="Keep it unlocked")).to_be_focused()
+                expect(confirm.get_by_role("button", name=f"Lock {A_NAME}")).to_be_visible()
                 for name in names:
                     self.same_place(before[name], self.place(section.get_by_role("button", name=name)), name)
                 self.same_place(before["heading"], self.place(section.get_by_role("heading", name="Encryption")), "heading")
@@ -648,7 +657,6 @@ class EncryptedWorkspaces(Base):
                 expect(confirm).to_have_count(0)
                 expect(lock).to_be_focused()
                 page.keyboard.press("Enter")
-                page.keyboard.press("Tab")
                 expect(confirm.get_by_role("button", name="Keep it unlocked")).to_be_focused()
                 page.keyboard.press("Enter")
                 expect(confirm).to_have_count(0)
@@ -824,20 +832,17 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "ada", phone=phone)
                 self.open_people(page)
                 row = page.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Ben Okafor")
-                row.get_by_role("button", name=re.compile("^Change")).click()
-                editor = row.get_by_role("group", name="Change Ben Okafor")
-                # Demotion asks first, with the same text.
-                choose(editor.get_by_label("Role"), value="member")
-                editor.get_by_role("button", name="Save role").click()
-                demote = editor.get_by_role("group", name="Make Ben a member")
+                # Round 15 (daily P2-2): the row's own role menu and Remove, as every list of people; demotion asks first, under the row.
+                choose(row.get_by_role("combobox", name="Role of Ben Okafor"), value="member")
+                demote = row.get_by_role("group", name="Make Ben a member")
                 expect(demote.get_by_text("Make Ben a member?", exact=True)).to_be_visible()
                 expect(demote.get_by_text(ROTATION, exact=True)).to_be_visible()
                 expect(demote.get_by_role("button", name="Make Ben a member")).to_be_visible()
+                expect(demote.get_by_role("button", name="Keep Ben an admin")).to_be_focused()
                 demote.get_by_role("button", name="Keep Ben an admin").click()
                 expect(demote).to_have_count(0)
-                choose(editor.get_by_label("Role"), value="admin")
-                editor.get_by_role("button", name=re.compile("^Remove from")).click()
-                confirm = editor.get_by_role("group", name="Remove Ben Okafor")
+                row.get_by_role("button", name=f"Remove Ben Okafor from {A_NAME}").click()
+                confirm = row.get_by_role("group", name="Remove Ben Okafor")
                 expect(confirm.get_by_text("Remove Ben from Garden club?", exact=True)).to_be_visible()
                 expect(confirm.get_by_text(ROTATION, exact=True)).to_be_visible()
                 expect(confirm.get_by_role("button", name="Remove Ben")).to_be_visible()
@@ -848,10 +853,10 @@ class EncryptedWorkspaces(Base):
                 self.assertEqual(members[world.ids["ben"]], "admin", "nothing changed")
                 # A member's removal changes no key: the usual short text.
                 member_row = page.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Cy Moreno")
-                member_row.get_by_role("button", name=re.compile("^Change")).click()
-                member_row.get_by_role("button", name=re.compile("^Remove from")).click()
-                expect(member_row.get_by_role("group", name="Remove Cy Moreno")).to_contain_text("Cy loses access to Garden club at once")
-                expect(member_row.get_by_role("group", name="Remove Cy Moreno")).not_to_contain_text("new key")
+                member_row.get_by_role("button", name=f"Remove Cy Moreno from {A_NAME}").click()
+                expect(member_row.get_by_role("group", name="Remove Cy Moreno").get_by_role("button", name="Keep")).to_be_focused()
+                expect(member_row.locator(".people__removing")).to_contain_text("Cy loses access to Garden club and its spaces at once.")
+                expect(member_row).not_to_contain_text("new key")
 
     def test_26_demoting_an_admin_really_ends_their_unlock_password_and_leaving_says_the_key_changes(self) -> None:
         for phone in (False, True):
@@ -864,11 +869,8 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "ada", phone=phone)
                 self.open_people(page)
                 row = page.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Ben Okafor")
-                row.get_by_role("button", name=re.compile("^Change")).click()
-                editor = row.get_by_role("group", name="Change Ben Okafor")
-                choose(editor.get_by_label("Role"), value="member")
-                editor.get_by_role("button", name="Save role").click()
-                editor.get_by_role("button", name="Make Ben a member").click()
+                choose(row.get_by_role("combobox", name="Role of Ben Okafor"), value="member")
+                row.get_by_role("group", name="Make Ben a member").get_by_role("button", name="Make Ben a member").click()
                 expect(page.get_by_text("Ben Okafor is now a member.")).to_be_visible()
                 self.assertFalse(self.holders(world, "ben"), "the unlock password went with the role")
                 # An admin who leaves is told the key changes (Cy, made an admin here); a member who leaves is not (Ben, a member now).
@@ -945,12 +947,12 @@ class EncryptedWorkspaces(Base):
         heading, mark = self.on_page(title.get_by_role("heading", level=1)), self.on_page(title.locator("[data-encrypted-mark]"))
         self.assertGreaterEqual(mark["x"], heading["x"] + heading["width"] - 0.5, "the header's lock is after the name")
         shot(page, "lock-sidebar-computer")
-        # The rail: icons only, and the tile's name says it.
-        page.keyboard.press("[")
+        # The rail: icons only, and the tile's name says it. "[" is a shortcut, pressed outside the composer the arrival may have focused.
+        press_shortcut(page, "[")
         rail = page.locator(".side--rail").get_by_role("navigation", name="Spaces")
         expect(rail.get_by_role("link", name=f"{A_PROJECT}, encrypted", exact=True)).to_be_visible()
         expect(rail.get_by_role("link", name=B_PROJECT, exact=True)).to_be_visible()
-        page.keyboard.press("[")
+        press_shortcut(page, "[")
         page.goto(f"/projects/{world.b_project}")
         expect(page.get_by_text(B_ROOT).first).to_be_visible()
         expect(page.locator("[data-encrypted-mark]")).to_have_count(0)
@@ -1139,9 +1141,8 @@ class KeyRotation(Base):
                 section = self.section(ada)
                 expect(section.locator("[data-no-recovery-code]")).to_have_count(0)
                 row = ada.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Eli Dahl")
-                row.get_by_role("button", name=re.compile("^Change")).click()
-                row.get_by_role("button", name=re.compile("^Remove from")).click()
-                row.get_by_role("button", name="Remove Eli").click()
+                row.get_by_role("button", name=f"Remove Eli Dahl from {A_NAME}").click()
+                row.get_by_role("button", name="Remove Eli", exact=True).click()
                 expect(ada.get_by_text(f"Eli Dahl is no longer in {A_NAME}.")).to_be_visible()
                 # The group that makes a new recovery code opens in place, and focus is in it.
                 group = section.get_by_role("group", name="New recovery code")

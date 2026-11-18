@@ -208,6 +208,11 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
   };
 }
 
+/** Set by a surface that closes to go somewhere (Search's Enter): the place it goes gives the focus, not the opener (F-026 §4). */
+let destinationTakesFocus = false;
+/** The next overlay to close leaves focus to the place it leads to (a Search target, a place, Go to Inbox), never back to its opener. */
+export function leaveFocusToDestination() { destinationTakesFocus = true; }
+
 /**
  * Modal surface in a portal: scrim, focus moved in and trapped, Esc and scrim close,
  * the rest of the app inert, focus returned to the opener. Slides from its edge.
@@ -238,7 +243,10 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     return () => {
       setAppInert(false, !!keepLiveStrip);
       // Focus returns first and at once: the exit below never delays it, the next action or the next open.
-      const target = returnRef.current;
+      // Closed to go somewhere: the destination puts the focus (the message a Search result names, the composer of a place), never the
+      // opener, whose composer would take the next keys (persona round 29 P2 5).
+      const target = destinationTakesFocus ? null : returnRef.current;
+      destinationTakesFocus = false;
       returnRef.current = null;
       if (target?.isConnected) {
         target.focus({ preventScroll: true });

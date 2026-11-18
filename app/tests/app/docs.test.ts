@@ -43,6 +43,11 @@ describe('project docs with immutable versions, links and backlinks', () => {
       { body: 'The PIR sensor misses slow hand movements.', clientMessageId: randomUUID() }), 201);
   });
 
+  test('a line written on its own line reads on its own line in every saved version (round 15 new P3-e)', async () => {
+    const doc = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Opening checklist', body: 'Turn on oven 1 and oven 2.\nPut the bread on the shelves.\n' }), 201);
+    assert.match(doc.html, /^<p>Turn on oven 1 and oven 2\.<br ?\/?>\n?Put the bread on the shelves\.<\/p>\n$/);
+  });
+
   test('a doc keeps immutable versions with author, time and reason; old citations stay', async () => {
     const created = await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'How the lamp senses gestures', body: 'We use a **PIR** sensor.' });
     const doc = json<Doc>(created, 201);
@@ -210,6 +215,8 @@ describe('project docs with immutable versions, links and backlinks', () => {
     const mentions = doc.links.filter((link) => link.role === 'mentions').map((link) => `${link.to.type}:${link.toTitle}`).sort();
     assert.deepEqual(mentions, ['decision:Use ToF for gestures', 'doc:Sensor comparison', `message:${message.body}`, 'sketch:Sensor options', 'work:Test the ToF sensor']);
     assert.equal(doc.mentions.filter((item) => item.path === null).length, 3);
+    // A decision's reference opens it where it opens from everywhere: over its space's conversation (contracts `decisionAppPath`).
+    assert.equal(doc.mentions.find((item) => item.type === 'decision')?.path, `/projects/${lamp.id}?open=decision:${decision.id}`);
     assert.ok(!doc.html.includes('Secret plan') && !doc.html.includes('Hidden elsewhere'), 'nothing of other audiences is shown');
     assert.ok(doc.html.includes(`href="/projects/${lamp.id}/conversations/${conversation.id}#message-${message.id}"`));
     assert.ok(doc.html.includes(`href="/projects/${lamp.id}/docs/${target.id}" class="doc-ref" data-ref-type="doc"`));

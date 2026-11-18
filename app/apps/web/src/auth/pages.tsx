@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
+import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useRevalidator, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
-import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, startSso } from '../api/auth';
+import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, getResetLinkAccount, startSso } from '../api/auth';
 import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
-import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
-import { safeNext, signedOauthQuery, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
+import { Button, ErrorState, FluxLogo, Icon, Input } from '../ui';
+import { safeNext, signedOauthQuery, takePasswordChangedFor, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
 
 /** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
 function Brand() {
@@ -143,7 +143,6 @@ export function SignInPage() {
   const formRef = useFocusFirstInvalid(result);
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const toast = useToast();
   const notice = params.get('notice');
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
@@ -164,15 +163,20 @@ export function SignInPage() {
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
-  // One-time notices arrive as a query flag; show them once and drop the flag from the address.
+  // One-time notices arrive as a query flag and drop it from the address. What they say stays on the page until the person signs in (#1424):
+  // "Your password was changed" is the answer to the reset just made, not a toast that may pass unseen.
+  const [said, setSaid] = useState<string | null>(() => (notice && NOTICES[notice]) || null);
+  // After a reset the address it was for is filled in (personas-35), so only the new password is left to type.
+  const [changedFor] = useState(() => (notice === 'password-changed' ? takePasswordChangedFor() : null));
   useEffect(() => {
     if (!notice || !NOTICES[notice] || shownRef.current === notice) return;
     shownRef.current = notice;
-    toast({ message: NOTICES[notice], tone: 'success' });
+    setSaid(NOTICES[notice]);
     const rest = new URLSearchParams(params);
     rest.delete('notice');
     navigate({ search: rest.toString() ? `?${rest}` : '' }, { replace: true });
-  }, [notice, params, navigate, toast]);
+  }, [notice, params, navigate]);
+  const saidLine = said ? <p className="auth__notice" role="status"><Icon name="check" size={14} />{said}</p> : null;
 
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
   // With the sole provider in SSO-only mode, single sign-on is the only way in: no password form (F-024 S5a/S5b).
@@ -180,6 +184,7 @@ export function SignInPage() {
     return (
       <>
         <Heading title="Sign in" company={capabilities?.company}>One place for your company’s people and their agents.</Heading>
+        {saidLine}
         <div className="auth__card">
           <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} />
           <FormError message={ssoFailed ? ssoMessage : undefined} />
@@ -190,13 +195,14 @@ export function SignInPage() {
   return (
     <>
       <Heading title="Sign in" company={capabilities?.company}>One place for your company’s people and their agents.</Heading>
+      {saidLine}
       <div className="auth__card">
         <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
           <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
           <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-            defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
+            defaultValue={result?.values?.email ?? changedFor ?? undefined} error={result?.fieldErrors?.email} autoFocus={!changedFor || !!result} />
           <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
-            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
+            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} autoFocus={!!changedFor && !result} />
           <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
         </Form>
       </div>
@@ -222,6 +228,14 @@ export function SignUpPage() {
   const [passwordLength, setPasswordLength] = useState(0);
   const [editedAfter, setEditedAfter] = useState<typeof result>(undefined);
   const passwordError = editedAfter === result && passwordLength >= PASSWORD_MIN_LENGTH ? undefined : result?.fieldErrors?.password;
+  // A setup link pasted into a /setup tab that is already open changes only the fragment, which reads no loader again (personas-30): its
+  // token is read the moment it arrives, as when the link opens a new tab.
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    const arrived = () => { if (window.location.pathname === '/setup' && window.location.hash.length > 1) void revalidator.revalidate(); };
+    window.addEventListener('hashchange', arrived);
+    return () => window.removeEventListener('hashchange', arrived);
+  }, [revalidator]);
   if (mode.kind === 'closed') {
     return (
       <>
@@ -234,7 +248,8 @@ export function SignUpPage() {
     return (
       <>
         <Heading title="This Flux is set up">Its owner’s account exists. Sign in, or ask an owner or admin for an invite link.</Heading>
-        <div className="auth__card"><Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in</Link></div>
+        {/* One button needs no card around it (visual review 2026-11-17, core 25): it stands as wide as a form, where a form's would. */}
+        <Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in</Link>
       </>
     );
   }
@@ -257,11 +272,11 @@ export function SignUpPage() {
         <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name}
           hint="Shown to people you work with." autoFocus />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          readOnly={locked !== null} hint={locked !== null ? 'This invite is for this address.' : undefined}
+          readOnly={locked !== null} hint={locked !== null ? 'You join with this email.' : undefined}
           defaultValue={locked ?? result?.values?.email ?? params.get('email') ?? undefined} error={result?.fieldErrors?.email} />
         <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
           onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
-          hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
+          hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : setup ? 'Create owner account' : 'Create account'}</Button>
       </Form>
       {setup ? null : <p className="auth__alt">Already have an account? <Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>}
@@ -305,7 +320,7 @@ export function ClaimPage() {
   if (claim === null) {
     return (
       <ErrorState level={1} title="There is nothing to claim here"
-        actions={<Link className="ui-btn ui-btn--primary ui-btn--lg" to={back}>Back to sign in</Link>}>
+        actions={<Link className="ui-btn ui-btn--secondary ui-btn--lg" to={back}>Back to sign in</Link>}>
         <p>This page works only right after single sign-on finds your address on an unverified account, and only for 15 minutes.</p>
       </ErrorState>
     );
@@ -393,24 +408,34 @@ export function ResetPasswordPage() {
   }, []);
   const token = params.get('token') || fromHash || null;
   const linkError = params.get('error');
+  // Whose password it is: the address of the account the link is for, once the server says (a link that no longer works is told on Save, as before).
+  const [account, setAccount] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token || linkError) return;
+    const controller = new AbortController();
+    getResetLinkAccount(token, controller.signal).then(setAccount, () => undefined);
+    return () => controller.abort();
+  }, [token, linkError]);
 
-  if (!token || linkError) {
+  // A link the server refused on Save is the same dead link: the page says so, without the filled form under it (visual review
+  // 2026-11-17, core 25).
+  if (!token || linkError || result?.invalidToken) {
     return (
       <ErrorState level={1} title="This reset link no longer works"
         actions={<><Link className="ui-btn ui-btn--primary ui-btn--lg" to="/forgot-password">Request a new link</Link><Link className="ui-btn ui-btn--secondary ui-btn--lg" to="/sign-in">Back to sign in</Link></>}>
-        <p>Reset links work once and expire. Request a new one and use the latest email.</p>
+        <p>{result?.invalidToken && result.formError ? `${result.formError} ` : ''}Reset links work once and expire. Request a new one and use the latest email.</p>
       </ErrorState>
     );
   }
 
   return (
     <>
-      <Heading title="Choose a new password">After this, you’ll be signed out everywhere and can sign in with the new password.</Heading>
+      <Heading title="Choose a new password">{account ? `Reset the password for ${account}. ` : ''}After this, you’ll be signed out everywhere and can sign in with the new password.</Heading>
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Choose a new password">
-        <FormError message={result?.formError}>
-          {result?.invalidToken ? <p><Link className="ui-link" to="/forgot-password">Request a new link</Link></p> : null}
-        </FormError>
+        <FormError message={result?.formError} />
         <input type="hidden" name="token" value={token} />
+        {/* The address named above goes with the form, not in a link: the sign-in page after it fills Email with it (personas-35). */}
+        {account ? <input type="hidden" name="account" value={account} /> : null}
         <Input label="New password" name="password" type="password" autoComplete="new-password" error={result?.fieldErrors?.password}
           hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} autoFocus />
         <Input label="Repeat new password" name="confirm" type="password" autoComplete="new-password" error={result?.fieldErrors?.confirm} />

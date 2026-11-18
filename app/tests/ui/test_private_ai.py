@@ -245,26 +245,91 @@ class PrivateAiJourney(unittest.TestCase):
         The key's hosted search (#954) is Flux's `flux_web_search`, which this stack cannot run: the API's searcher opens the key of a stored connection and
         the fixture key is none, so a search would end "not available for this key". Its offer is checked here; the search itself and its listing are in
         tests/app/agent-runtime-pi-search.test.ts."""
-        page = "http://public.test/ferry"
+        page = "http://public.test/wiki/Winter_ferry_timetable"
+        missing = "http://public.test/wiki/Category:Winter_ferry_timetables"
         mock("/__script", {"reset": True, "text": "The winter timetable starts on 3 November.",
-                           "tool": [{"name": "flux_read_web", "input": {"url": page}}]})
+                           "tool": [{"name": "flux_read_web", "input": {"url": page}}, {"name": "flux_read_web", "input": {"url": missing}}]})
         jo = self.space("jo")
         self.ask_in(jo, "#project-composer", "when does the winter ferry timetable start?")
         card = self.asked_card(jo, "when does the winter ferry timetable start?")
         expect(card).to_be_visible(timeout=20000)
         expect(card).to_contain_text("The winter timetable starts on 3 November.")
-        expect(card).to_contain_text("Read on the web:")
-        expect(card).to_contain_text("public.test/ferry")
-        expect(card).not_to_contain_text("Requested, not read:")
-        expect(card).not_to_contain_text("Searched the web for:")
+        # Founder check (Hubert 2026-11-17): the sources are one quiet, closed "Sources (2)" line, never raw addresses under four headings.
+        sources = card.locator("[data-web-sources]")
+        toggle = sources.get_by_role("button", name="Sources (2)")
+        expect(toggle).to_have_attribute("aria-expanded", "false")
+        for heading in ("Read on the web:", "Requested, not read:", "Searched the web for:", page, missing):
+            expect(card).not_to_contain_text(heading)
         shot(jo, "private-ai-1440-web-sources")
+        toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        # Open: each address once, as its site and the last words of its path, a link on one line; the one not read says why, short.
+        read = sources.get_by_role("link", name="public.test › Winter ferry timetable", exact=True)
+        expect(read).to_have_attribute("href", page)
+        expect(read).to_have_attribute("target", "_blank")
+        unread = sources.locator("li").filter(has_text="Winter ferry timetables")
+        expect(unread.get_by_role("link")).to_have_attribute("href", missing)
+        expect(unread).to_contain_text("not read · site error")
+        expect(sources).not_to_contain_text("http://")
+        for line in sources.locator(".web-sources__link").all():
+            box = line.bounding_box()
+            self.assertLess(box["height"], 26, "a source is one line, never an address wrapping")
+        shot(jo, "private-ai-1440-web-sources-open")
         sent = self.messages_sent()
-        self.assertEqual(len(sent), 2, "the tool call, then the answer")
+        self.assertEqual(len(sent), 3, "two tool calls, then the answer")
         # The server, not pi, read the page; pi was offered Flux's search and read tools, and no search of its own.
         self.assertTrue({"flux_read_web", "flux_web_search"} <= self.flux_tools(sent[0]), self.flux_tools(sent[0]))
         self.assertNotIn("web_search", {tool["name"] for tool in sent[0]["body"].get("tools", [])})
         card.get_by_role("button", name="Dismiss").click()
         expect(card).to_have_count(0)
+
+    def test_02c_an_empty_space_stops_asking_where_to_start_once_the_assistant_is_at_work_or_answered(self) -> None:
+        """Founder check, Hubert 2026-11-17: in a new, empty space the private answer card showed and "Where do we start?" with Kreska stayed right
+        under it, touching it. Anything in the conversation is a start: the agent at work, its private answer, a message being sent. The empty
+        state comes back only when the conversation is empty again (the answer dismissed). On the computer and the phone, in both themes."""
+        jo = self.page("jo")
+        empty = self.api(jo, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Seed swap", "visibility": "restricted"}, status=201)["id"]
+        jo.close()
+        mock("/__script", {"reset": True, "delay": 2, "text": "Nothing has been written here yet, so there is nothing to catch up on."})
+        page = self.page("jo", dark=True)
+        page.goto(f"/projects/{empty}")
+        start = page.get_by_role("heading", name="Where do we start?")
+        expect(start).to_be_visible()  # an empty space asks where to start
+        self.ask_in(page, "#project-composer", "catch me up")
+        expect(page.locator(".assistant-working")).to_be_visible()
+        expect(start).to_have_count(0)
+        card = self.asked_card(page, "catch me up")
+        expect(card).to_be_visible(timeout=20000)
+        expect(start).to_have_count(0)
+        shot(page, "private-ai-1440-empty-space-answer-dark")
+        for phone, dark in ((True, True), (False, False), (True, False)):
+            with self.subTest(phone=phone, dark=dark):
+                other = self.page("jo", phone=phone, dark=dark)
+                other.goto(f"/projects/{empty}")
+                expect(self.asked_card(other, "catch me up")).to_be_visible()
+                expect(other.get_by_role("heading", name="Where do we start?")).to_have_count(0)
+                self.no_horizontal_scroll(other)
+                shot(other, f"private-ai-{'390' if phone else '1440'}-empty-space-answer-{'dark' if dark else 'light'}")
+                other.close()
+        # Dismissed, the conversation is empty again and asks where to start.
+        card.get_by_role("button", name="Dismiss").click()
+        expect(card).to_have_count(0)
+        expect(start).to_be_visible()
+        # A message being sent is a start too, before the server stores it.
+        held = []
+        page.route("**/api/v1/projects/*/conversations", lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+        page.locator("#project-composer").fill("Seeds from last year: tomatoes and beans")
+        page.locator("#project-composer").press("Enter")
+        expect(page.locator("[data-client-message-id]")).to_have_count(1)
+        expect(start).to_have_count(0)
+        for _ in range(50):
+            if held:
+                break
+            page.wait_for_timeout(100)
+        held[0].continue_()
+        page.unroute("**/api/v1/projects/*/conversations")
+        expect(page.locator(".project-convo__message").filter(has_text="Seeds from last year")).to_be_visible()
+        expect(start).to_have_count(0)
 
     # ---------------------------------------------------------------- a thread
 
@@ -555,6 +620,10 @@ class PrivateAiJourney(unittest.TestCase):
         jo.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
         box = jo.locator("#details .wd-composer textarea")
         expect(box).to_be_visible()
+        # Send asks only once the assistant's status is read (before that it says "Checking your assistant…"): the suggestions join `/ai`
+        # in the `/` menu when it is, so the question is written then, as a person who sees them would.
+        box.fill("/")
+        expect(jo.get_by_role("listbox", name="Actions").locator(".cmenu__o--ask")).to_have_count(2)
         box.fill("/ai where is this task?")
         expect(jo.locator("#details .wd-foot__line")).to_contain_text("Only you see the answer")
         jo.get_by_role("button", name="Send to task").click()

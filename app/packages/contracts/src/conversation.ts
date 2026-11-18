@@ -1,3 +1,4 @@
+import { ownerInLabel } from './names.js';
 import type { SearchTarget } from './search.js';
 import type { AgentColour } from './agents.js';
 
@@ -50,6 +51,12 @@ export interface ConversationMessageFields {
    * message with it is read as that agent's answer, "Hubert's Assistant", shown by the person who is its author.
    */
   viaColour?: AgentColour;
+  /**
+   * Present only on a person's message whose author left the company or was removed from it, and has not come back (founder decision,
+   * Hubert, 2026-11-17, #1424): their name, which every reader of the space shows as "Stefan Kowal (removed)" (`removedName`). It is
+   * already in the space's history; Restore takes it off, and then they are named as everyone is.
+   */
+  removedAuthorName?: string;
   /** Present only for a saved blocker, a "what came of it" line or an explicit public handoff. */
   contribution?: MessageContribution;
   /**
@@ -76,7 +83,8 @@ export interface MessageReference { kind: MessageReferenceKind; id: string }
  */
 export function viaName(author: string, via?: string | null, viaAgent = false): string {
   if (!via) return author;
-  return viaAgent ? `${author.trim().split(/\s+/)[0] || author}'s ${via}` : `${author} · via ${via}`;
+  // The person as an agent's label names its owner: first name, or the whole marked name of someone removed (C-56, #1424, train 37 row 33).
+  return viaAgent ? `${ownerInLabel(author)}'s ${via}` : `${author} · via ${via}`;
 }
 
 export const MESSAGE_REFERENCE_LIMIT = 4;
@@ -112,6 +120,83 @@ export function webSourcesStart(text: string): number {
       .every((line) => line.startsWith('- ') || (WEB_SOURCES_HEADINGS as readonly string[]).includes(line))) at = start;
   }
   return at;
+}
+
+/**
+ * Why an address the server asked for a run was not read, as the block says it (`webSourcesLine`) and as the reader's list of sources says
+ * it, short (founder check, Hubert 2026-11-17). `redirected`: the site sent the request on to the next address, which is listed too, so
+ * it is no failure and says only that.
+ */
+export const WEB_NOT_READ = {
+  asked: { says: 'the request was sent; no answer was recorded', short: 'not read · no answer' },
+  redirected: { says: 'it sent the request on to another address', short: 'redirected' },
+  blocked: { says: 'refused: not a public address', short: 'not read · not public' },
+  unreachable: { says: 'not reached', short: 'not read · not reached' },
+  timeout: { says: 'took too long', short: 'not read · too slow' },
+  status: { says: 'the site answered with an error', short: 'not read · site error' },
+  type: { says: 'not a web page or a text page', short: 'not read · not a page' },
+  redirects: { says: 'too many redirects', short: 'not read · too many redirects' },
+  invalid: { says: 'not a web address', short: 'not read · not an address' },
+  empty: { says: 'no text on the page', short: 'not read · empty page' },
+} as const;
+
+/** One address of the block: `read` came back, `found` an answer cited it, `asked` was sent and not read (with its short reason). */
+export interface WebSourceItem { address: string; state: 'read' | 'found' | 'asked'; reason: string | null }
+export interface WebSourceList { queries: string[]; items: WebSourceItem[]; more: number }
+
+/**
+ * The block Flux appended to a text (`webSourcesStart`), as the list a reader is shown (founder check, Hubert 2026-11-17): what was
+ * searched for, and each address once, in the block's order. A page read wins over the same address cited or asked for; "- and 3 more"
+ * lines are counted.
+ */
+export function webSourceList(block: string): WebSourceList {
+  const queries: string[] = [];
+  const items = new Map<string, WebSourceItem>();
+  let more = 0;
+  let section = -1;
+  const rank = { read: 2, found: 1, asked: 0 } as const;
+  for (const line of block.split('\n')) {
+    const heading = (WEB_SOURCES_HEADINGS as readonly string[]).indexOf(line.trim());
+    if (heading >= 0) { section = heading; continue; }
+    if (!line.startsWith('- ') || section < 0) continue;
+    const value = line.slice(2).trim();
+    const counted = /^and (\d+) more$/.exec(value);
+    if (counted) { more += Number(counted[1]); continue; }
+    if (section === 0) { queries.push(value); continue; }
+    let address = value;
+    let reason: string | null = null;
+    if (section === 3) {
+      const said = /^(.*\S) \(([^()]*)\)$/.exec(value);
+      if (said) {
+        address = said[1]!;
+        reason = Object.values(WEB_NOT_READ).find((item) => item.says === said[2])?.short ?? 'not read';
+      }
+    }
+    const state = section === 2 ? 'read' : section === 1 ? 'found' : 'asked';
+    const before = items.get(address);
+    if (!before || rank[state] > rank[before.state]) items.set(address, { address, state, reason: state === 'asked' ? reason : null });
+  }
+  return { queries, items: [...items.values()], more };
+}
+
+/**
+ * An address as a short line of the list of sources: its site and the last words of its path ("commons.wikimedia.org › Coffee mugs"),
+ * decoded, with `_`, `-` and `+` as spaces, without a file's extension and a wiki's `Category:`-style prefix. Null when it is not a web
+ * address (a defanged one, `hxxps://…`, stays as written and is never a link).
+ */
+export function webSourceLabel(address: string): { site: string; page: string | null } | null {
+  let url: URL;
+  try { url = new URL(address); } catch { return null; }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  const site = url.hostname.replace(/^www\./, '');
+  const segments = url.pathname.split('/').filter(Boolean);
+  let segment = segments.pop() ?? '';
+  // `index.php?title=Special:Redirect/file/X`, `/view?id=`: a generic last segment says nothing; a `title` query does.
+  if (/^(index|default|view|show|redirect)(\.[a-z]{2,5})?$/i.test(segment)) segment = url.searchParams.get('title')?.split('/').pop() ?? segments.pop() ?? '';
+  let page: string;
+  try { page = decodeURIComponent(segment); } catch { page = segment; }
+  page = page.replace(/^[A-Z][A-Za-z]{2,15}:(?=\S)/, '').replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[-_+]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return { site, page: page || null };
 }
 
 /**
@@ -159,12 +244,16 @@ export interface MessageLinkPreviews { status: 'ready' | 'off' | 'sealed' | 'bus
 export const messageLinkPreviewsPath = (projectId: string, messageId: string) => `/api/v1/projects/${projectId}/messages/${messageId}/link-previews`;
 
 /** Optional current-project display metadata; never changes a stored author or grants access. */
-/** The person an agent belongs to (F-036: every agent has one owner). */
-export type AgentProjectOwner = { kind: 'human'; id: string };
+/**
+ * The person an agent belongs to (F-036: every agent has one owner). `removedName` is their name when they left the space's company or were
+ * removed from it and have not come back: the agent is then "Planner · Stefan Kowal (removed)'s agent" (`removedName`, `ownerInLabel`;
+ * founder decision, Hubert, 2026-11-17, #1424), as their own messages name them.
+ */
+export type AgentProjectOwner = { kind: 'human'; id: string; removedName?: string };
 
 export type MessageIdentity =
   | { authorId: string; author?: never }
-  | { authorId: null; author: { kind: 'agent'; id: string; name?: string; projectOwner?: AgentProjectOwner } };
+  | { authorId: null; author: { kind: 'agent'; id: string; name?: string; projectOwner?: AgentProjectOwner; colour?: AgentColour } };
 /** Existing human JSON is unchanged; agents never occupy a human account field. */
 export type ConversationMessage = ConversationMessageFields & MessageIdentity;
 export type HumanConversationMessage = ConversationMessageFields & { authorId: string; author?: never };
@@ -176,7 +265,7 @@ export type HumanConversationMessage = ConversationMessageFields & { authorId: s
 export type SentConversationMessage = ConversationMessage & { answered?: string[] };
 export type ConversationIdentity =
   | { createdBy: string; createdByActor?: never }
-  | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string } };
+  | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string; colour?: AgentColour } };
 
 export interface ConversationFields {
   id: string;
@@ -186,8 +275,10 @@ export interface ConversationFields {
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
-  /** The current canonical task binding, including windows that do not contain its root (#154). */
-  task?: { workId: string; title: string };
+  /** The current canonical task binding, including windows that do not contain its root (#154), with its number ("#3") so a thread names it. */
+  task?: { workId: string; number: number; title: string };
+  /** The decision this conversation is the one discussion of (#1424): the thread on its card. */
+  decision?: { decisionId: string; title: string };
   messages: ConversationMessage[];
   messagePage: {
     /** True when messages with a lower sequence can be fetched. */

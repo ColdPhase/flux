@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  NEEDS_YOU_ASIDE_PATH,
   NEEDS_YOU_PATH,
   needsYouItemPath,
+  type NeedsYouAsideResponse,
   type NeedsYouItem,
   type NeedsYouResolved,
   type NeedsYouResponse,
   type ResolveNeedsYouCommand,
+  agentWords,
 } from '@flux/contracts';
 import { KEEP_MS, request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
@@ -17,10 +20,22 @@ import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
 /** `fresh`: a refresh (focus, an event, a change of the Inbox, a poll). The sidebar's count and the page's queue share one read per page (#862). */
+/**
+ * Who an item comes from in words: a person's name, or an agent's one label, "Assistant · Ola's agent", for every reader (v0.2.1 release gate).
+ * An agent whose owner the read does not name (no space, or an owner who can no longer read it) keeps its name and the Agent tag.
+ */
+export const fromWords = (from: NonNullable<NeedsYouItem['from']>): string => (from.kind === 'agent' && from.owner ? agentWords(from.name, from.owner.name) : from.name);
+/** Whether the item's agent is named without its owner, so its name keeps the Agent tag (as `AgentIdentity` does). */
+export const bareAgent = (from: NeedsYouItem['from']): boolean => from?.kind === 'agent' && !from.owner;
+
 export const getNeedsYou = (signal?: AbortSignal, fresh = false) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal, share: true, keep: KEEP_MS, onePage: true, fresh }).then(noteLockedWorkspaces);
 export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });
-/** Undo of `resolveNeedsYou`: the item is back as it was. */
+/** The lists behind "2 for later" and "4 done today" (#1424 E). */
+export const getNeedsYouAside = (signal?: AbortSignal) => request<NeedsYouAsideResponse>(NEEDS_YOU_ASIDE_PATH, { signal });
+/** The same lists for a reader that only looks something up in them: shared and kept like the queue, so opening task after task reads them once. */
+export const lookInNeedsYouAside = () => request<NeedsYouAsideResponse>(NEEDS_YOU_ASIDE_PATH, { share: true, keep: KEEP_MS });
+/** Undo of `resolveNeedsYou`: the item is back as it was. Also Bring back now and Put back (#1424 E). */
 export const restoreNeedsYou = (key: string) => request<void>(needsYouItemPath(key), { method: 'DELETE' });
 
 export interface LocalQueueChange { isCurrent: () => boolean }
@@ -116,7 +131,8 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
       setState({ userId, response: lastRead.response, failed: false });
     }, (error: unknown) => {
       if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
-      setState((previous) => ({ userId, response: previous.userId === userId ? previous.response : null, failed: true }));
+      // The last good answer stays, this tab's included when this view is new (offline Home shows what it last loaded, round 15).
+      setState((previous) => ({ userId, response: (previous.userId === userId ? previous.response : null) ?? (lastRead?.userId === userId ? lastRead.response : null), failed: true }));
     });
     return () => controller.abort();
   }, [userId, version]);
@@ -133,8 +149,11 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
     window.addEventListener(NEEDS_YOU_ACCEPTED, onAccepted);
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', reload);
+    // Back online, what waits is read again at once (round 14, look-a A7: nothing recovered 15 s after the connection came back).
+    window.addEventListener('online', reload);
     window.addEventListener(INBOX_CHANGED, reload);
     return () => {
+      window.removeEventListener('online', reload);
       window.removeEventListener(NEEDS_YOU_ACCEPTED, onAccepted);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', reload);
@@ -145,7 +164,7 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
   useStreamEvents(userId, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, reload);
 
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
-  // A decision this person just accepted is not shown while the accept is waiting or on its way.
+  // A decision this person is accepting, or a question they just answered, is not shown while it is on its way.
   const accepting = acceptingIds();
   const answering = answeringIds();
   // F-029 (#614): what an agent or assistant asks in a workspace whose AI is off is not shown, even from a read made before it was turned off.

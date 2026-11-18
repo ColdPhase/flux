@@ -245,16 +245,49 @@ export function parseMessage(body: string): MessageBlock[] {
 const inlineText = (nodes: MessageInline[]): string => nodes.map((node) => (node.kind === 'text' || node.kind === 'code' ? node.text : inlineText(node.children))).join('');
 
 /**
+ * A Flux cite mark as an agent copies it from a tool result (C-62): `[doc:ID]`, `[doc:ID#2]`, `[task:ID]`, `[decision:ID]`, `[message:ID]`. Group 1 is its
+ * kind, 2 its id, 3 a page's section. No nested or repeated quantifier: a mark is read in one step.
+ */
+export const CITE_MARK_SOURCE = String.raw`\[(doc|task|decision|message):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:#([1-9][0-9]{0,2}))?\]`;
+
+/** The text without its cite marks, the space before each going with it: an id is never words for a reader (v0.2.1 real-model gate). */
+export function withoutCiteMarks(text: string): string {
+  return text.includes('[') ? text.replace(new RegExp(String.raw`[ \t]?${CITE_MARK_SOURCE}`, 'gu'), '') : text;
+}
+
+/**
+ * Words for a plain place (Copy text, a preview): what `plainMessageText` gives, a Wiki page `[[Title]]` as its title, and no cite mark.
+ */
+export function plainPreviewText(body: string): string {
+  return plainMessageText(withoutCiteMarks(body)).replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').trim();
+}
+
+/**
+ * Words for a one-line place (an Inbox row, a message preview, a notification, a change line): `plainPreviewText` on one line, where a list
+ * reads as words, not marks (train 37 row 22: "Reasons: - Setup time…"): its items one after another, "; " between two where the first ends
+ * without its own stop.
+ */
+export function oneLinePreviewText(body: string): string {
+  return parseMessage(withoutCiteMarks(body)).map((block) => (block.kind !== 'list' ? blockText(block)
+    : block.items.map((item) => inlineText(item).trim()).filter(Boolean)
+      .reduce((line, item) => (!line ? item : `${line}${/[.!?;:…]$/.test(line) ? ' ' : '; '}${item}`), '')))
+    .join(' ').replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').replace(/\s+/g, ' ').trim();
+}
+
+/**
  * What a reader sees, as plain text and with none of the marks: `**bold**` is bold, a fence is its code, a quote has no `>` and keeps
  * its attribution line, a list keeps "- " and "1. ". Previews, notifications and Copy text use it; nothing is added to the words.
  */
 export function plainMessageText(body: string): string {
-  return parseMessage(body).map((block) => {
-    switch (block.kind) {
-      case 'text': return inlineText(block.inline);
-      case 'quote': return [block.author === null ? null : `${block.author}:`, inlineText(block.inline)].filter((line) => line !== null).join('\n');
-      case 'list': return block.items.map((entry, index) => `${block.ordered ? `${block.start + index}.` : '-'} ${inlineText(entry)}`).join('\n');
-      case 'code': return block.text;
-    }
-  }).join('\n');
+  return parseMessage(body).map(blockText).join('\n');
+}
+
+/** One block as plain text, its list marks kept. */
+function blockText(block: MessageBlock): string {
+  switch (block.kind) {
+    case 'text': return inlineText(block.inline);
+    case 'quote': return [block.author === null ? null : `${block.author}:`, inlineText(block.inline)].filter((line) => line !== null).join('\n');
+    case 'list': return block.items.map((entry, index) => `${block.ordered ? `${block.start + index}.` : '-'} ${inlineText(entry)}`).join('\n');
+    case 'code': return block.text;
+  }
 }

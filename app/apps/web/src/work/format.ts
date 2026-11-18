@@ -1,4 +1,5 @@
-import { waitingPhrase, type Decision, type ObjectLink, type WaitingOn, type WorkItem, type WorkStatus } from '@flux/contracts';
+import { blockedWords, type Decision, type ObjectLink, type WorkItem, type WorkStatus } from '@flux/contracts';
+import { named } from '../docs/youLabel';
 
 /**
  * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped is Done with a "dropped" note
@@ -20,7 +21,11 @@ export const dueLabel = (day: string) => dueFormat.format(new Date(Number(day.sl
 export const taskNumber = (item: { number: number }) => `#${item.number}`;
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-export const shortDate = (iso: string) => day.format(new Date(iso));
+/** A day as a task or a decision says it: "today" for today (never today's date, personas-27), else "14 Nov". */
+export const shortDate = (iso: string) => {
+  const date = new Date(iso);
+  return date.toDateString() === new Date().toDateString() ? 'today' : day.format(date);
+};
 
 export function isFinished(item: Pick<WorkItem, 'status'>) {
   return item.status === 'done';
@@ -34,51 +39,48 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 export type StatePiece = { text: string; extra?: boolean };
 export const stateText = (pieces: StatePiece[]) => pieces.map((piece) => piece.text).join('');
 
-export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'> & { dropped?: boolean }): StatePiece[] {
-  if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'creation undone' }];
-  return [{ text: statusPhrase(item) }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : [])];
+export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'> & { dropped?: boolean }, meId: string): StatePiece[] {
+  if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'undone' }];
+  return [{ text: statusPhrase(item) }, ...(item.owner?.name ? [{ text: ` · ${named(item.owner, meId)}`, extra: true }] : [])];
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
-  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · replaces an earlier decision', extra: true }] : [{ text: 'Proposed decision' }];
-  if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
-  return [{ text: 'Decision · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
+  // One state, one word (#1424, L1061): "Proposed", as the conversation's card and Search say it; the kind is the flag and "Decision".
+  if (decision.status === 'proposed') return [{ text: 'Decision · ', extra: true }, { text: 'Proposed' }, ...(decision.supersedes ? [{ text: ' · replaces an earlier decision', extra: true }] : [])];
+  if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `Accepted ${shortDate(decision.decidedAt!)}` }];
+  return [{ text: 'Decision · ', extra: true }, { text: `Replaced ${shortDate(decision.supersededAt!)}` }];
 }
 
 export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) => stateText(decisionPieces(decision));
 
 /**
- * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for
- * <person> · <reason>". A reason alone reads as written when it is a sentence ("Needs the gateway first."), and after
- * "Waiting for" when it is the thing waited for ("the sensor delivery"); never "Waiting for Needs …".
+ * The state alone, where the kind is already said (the panel's head says "Decision", #1424 P3-17): "Proposed", "Accepted 14 Nov",
+ * "Replaced 3 Dec", and "· replaces an earlier decision" while a proposal names none below.
  */
-export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }) {
-  const reason = item.blocker?.trim() || null;
-  const thing = !!reason && /^\p{Ll}/u.test(reason);
-  return { person: item.waitingFor?.name ?? null, on: item.waitingOn ? waitingPhrase(item.waitingOn) : null, reason, thing };
+export function decisionState(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): string {
+  return decisionPieces(decision).filter((piece) => !piece.text.startsWith('Decision')).map((piece) => piece.text).join('');
 }
 
 /**
- * What a blocked task waits for, as the one line of its card (#868): "Waiting for Jonas", "Waiting for the decision Use LoRa for the far
- * beds" or "Waiting for #7" (what it waits for, one thing), else its reason.
+ * What a blocked task waits for, said one way on the board, the panel, the List, Home and the Inbox (personas-28): see `blockedWords`. The
+ * person waited for is named as every list names people (round 14 look-a A4): "Waiting for Ada Kowalska (you)" to Ada herself.
  */
-export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }) {
-  const { person, on, reason, thing } = blockedParts(item);
-  if (person) return `Waiting for ${person}`;
-  if (on) return `Waiting for ${on}`;
-  return reason && thing ? `Waiting for ${reason}` : reason;
-}
+export const blockedLine = (item: Parameters<typeof blockedWords>[0] & { waitingFor?: { kind?: string; id: string; name: string } | null }, meId: string) =>
+  blockedWords({ ...item, waitingFor: item.waitingFor ? { name: named(item.waitingFor, meId) } : item.waitingFor });
 
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-/** A due day on a card: "Due Fri" within the coming week, else "Due 12 Nov"; "Due today" and "Overdue" say so. */
+/**
+ * A due day on a card, in the panel's words for the day (round 14 look-b P10: the panel said "21 Nov 2026", the card "Due Sat"): "Due 21 Nov",
+ * with the year only when it is not this year ("Due 14 Nov 2027"); "Due today" and "Overdue · 12 Nov" say so.
+ */
 export function dueShort(day: string) {
   const date = new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-  if (days < 0) return `Overdue · ${monthDay.format(date)}`;
+  const words = date.getFullYear() === today.getFullYear() ? monthDay.format(date) : dueLabel(day);
+  if (days < 0) return `Overdue · ${words}`;
   if (days === 0) return 'Due today';
-  return `Due ${days < 7 ? weekday.format(date) : monthDay.format(date)}`;
+  return `Due ${words}`;
 }
 
 /** The first line of a message, for prefilled titles. */

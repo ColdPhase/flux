@@ -2,22 +2,26 @@
    screen on --el with --sh-card; the selected card is ringed, not tinted; no accent colour. */
 .pane-in.nyq { max-width: 808px; }
 .nyq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.nyq__clear { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 72px 16px 48px; text-align: center; color: var(--t1); }
-.nyq__clear h2 { margin: 18px 0 0; font-size: var(--fs-xl); letter-spacing: -.02em; }
-.nyq__clear p { margin: 0; max-width: 420px; font-size: var(--fs-base); color: var(--t2); }
+.nyq__clear { padding: 72px 16px 48px; }
 .nyq__clear-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 12px; }
-.nyq__done { display: inline-flex; align-items: center; min-height: 34px; padding: 0 6px; font-size: var(--fs-md); font-weight: 500; color: var(--t2); }
 
 /* One item */
 .nyc { position: relative; list-style: none; }
 .nyc__scroll { border-radius: var(--r-card); }
 .nyc__card { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 16px 20px; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); }
-/* The selected card is the one that is open; it is not ringed (#763 IN-3, Spokój rule 6). Keyboard focus keeps an outline. */
-.nyc__card:has(:focus-visible) { box-shadow: var(--sh-card), 0 0 0 2px var(--line2); }
+/* The selected card is the one that is open; it is not ringed (#763 IN-3, Spokój rule 6). Keyboard focus on its title is one ring, the
+   card's: 2 px of --ring out from the card, never a second ring round the title's words (round 14, look-a A10: two rings at 200 %). A
+   button inside the card draws its own ring and nothing else. */
+.nyc:has(.nyc__open:focus-visible) .nyc__card { outline: 2px solid var(--ring); outline-offset: 2px; }
+.nyc .nyc__open:focus-visible { outline: none; }
+/* A phone's card lies in its swipe scroller, which would cut a ring outside it: the ring is drawn just inside the card's edge. */
+@media (hover: none) { .nyc--card:has(.nyc__open:focus-visible) .nyc__card { outline-offset: -2px; } }
 .nyc__face { display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
 .nyc__face .ui-avatar { width: 32px; height: 32px; }
 .nyc__face--glyph, .nyc__face--icon { border-radius: 50%; color: var(--t2); }
-.nyc__face--icon { background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); }
+/* A blocked task or a task with nobody behind it has its glyph in the same round tile as a note's icon, never a bare glyph where a face
+   stands (visual review 2026-11-17, core 16). */
+.nyc__face--icon, .nyc__face--glyph { background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); }
 .nyc__body { display: flex; flex-direction: column; gap: 8px; min-width: 0; grid-column: 2; }
 .nyc__head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .nyc__who { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; flex: 1; font-size: var(--fs-base); }
@@ -25,11 +29,10 @@
 .nyc__meta { font-size: var(--fs-xs); color: var(--t3); }
 .nyc__eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .nyc__eyebrow b { color: var(--t1); font-size: var(--fs-base); }
-.nyc__title { margin: 0; font-size: var(--fs-lg); line-height: 1.35; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.nyc__title { margin: 0; font-size: var(--fs-lg); line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
 .nyc--note .nyc__title, .nyc--blocked .nyc__title, .nyc--mention .nyc__title, .nyc--question .nyc__title { font-size: var(--fs-lg); }
 .nyc__open { padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
 .nyc__open:hover { text-decoration: underline; text-underline-offset: 3px; }
-.nyc__open:focus-visible { outline: 2px solid var(--t1); outline-offset: 3px; border-radius: 4px; }
 .nyc__reason { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
 .nyc__based { margin: 0; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .nyc__based span { color: var(--t3); margin-right: 4px; }
@@ -37,22 +40,20 @@
 .nyc__proposal { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
 .nyc__proposal dt { color: var(--t3); font-size: var(--fs-sm); }
 .nyc__proposal dd { margin: 0; }
-.nyc__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* A decision's answer row has no rule above it: no other item has one, and the items read alike (visual review 2026-11-17, core 16). */
+.nyc__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding-top: 4px; }
 .nyc__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nyc__quiet { display: inline-flex; gap: 2px; }
-.nyc__accept kbd { margin-left: 8px; background: color-mix(in srgb, var(--oninv) 16%, transparent); box-shadow: none; color: inherit; }
+.nyc__actions kbd { margin-left: 8px; }
+.nyc__accept kbd { background: color-mix(in srgb, var(--oninv) 16%, transparent); box-shadow: none; color: inherit; }
 .nyc__waiting { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .nyc__waiting b { font-weight: 600; color: var(--t1); }
 .nyc__waiting > span { min-width: 0; overflow-wrap: anywhere; }
-.nyc__waiting-you { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.nyc__waiting-you { white-space: nowrap; }
 .nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-face); }
 .nyc--note .nyc__actions, .nyc--blocked .nyc__actions, .nyc--mention .nyc__actions, .nyc--question .nyc__actions { margin-top: 2px; }
-@media (pointer: fine) {
-  /* A quiet item shows its small buttons when it is the one you are on. */
-  .nyc--blocked:not(.is-selected, :hover, :focus-within) .nyc__quiet,
-  .nyc--mention:not(.is-selected, :hover, :focus-within) .nyc__quiet,
-  .nyc--question:not(.is-selected, :hover, :focus-within) .nyc__quiet { opacity: 0; }
-}
+/* The open item shows Not now and Done with their keys, S and E, at all times: a key that works is never behind a hover (L539, release
+   audit ffcb07c). Only the open item has them; a row of the list has none. */
 
 .nyc__rowactions { display: flex; align-items: center; gap: 8px; }
 /* An agent's ready answers wrap inside their button, and the row of them wraps, so a long answer never runs into the next
@@ -63,11 +64,18 @@
 /* The others are one line: who and what, the title and their one action (#763 LD-1, desktop-inbox). */
 .nyc--compact .nyc__card { align-items: center; padding: 12px 20px; cursor: pointer; }
 .nyc--compact .nyc__body { gap: 2px; }
-.nyc--compact .nyc__title { font-size: var(--fs-base); line-height: 1.35; }
-.nyc--compact .nyc__open { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A row's title is 500, as every list row's title (the Inbox aside, notices); 600 stays for headings, names and the open item (#1424). */
+.nyc--compact .nyc__title { font-size: var(--fs-base); line-height: 1.35; font-weight: 500; }
+/* The title's words are a span inside the button: WebKit lays a button out as its own box, so a clamp or an ellipsis on the button itself
+   never cuts it there (Safari showed every line of a row's title, #1424). The span is what is cut, on both engines. */
+.nyc--compact .nyc__open, .nyc--list .nyc__open { display: block; max-width: 100%; }
+/* Only a card of the one-column Inbox on a computer keeps its title to one line. Every clamp below wraps: `nowrap` under a `-webkit-box`
+   clamp made WebKit cut a title mid-letter with no "…" and kept every engine at one line (round 14, new P2-2, daily P2-1, look-a A2). */
+.nyc--compact .nyc__open-t { display: block; overflow: hidden; }
+@media (min-width: 641px) { .nyc--compact:not(.nyc--list) .nyc__open-t { text-overflow: ellipsis; white-space: nowrap; } }
 .nyc--compact .nyc__eyebrow { flex-wrap: nowrap; min-width: 0; white-space: nowrap; }
 .nyc--compact .nyc__eyebrow .nyc__meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.nyc--compact .nyc__card:hover { background: color-mix(in srgb, var(--hov) 40%, var(--el)); }
+@media (hover: hover) { .nyc--compact .nyc__card:hover { background: color-mix(in srgb, var(--hov) 40%, var(--el)); } }
 
 @media (hover: none) {
   /* A swipe left slides the card over its tray: Not now and Done (S9). */
@@ -82,7 +90,7 @@
   .nyc__foot { flex-direction: column; align-items: stretch; }
   .nyc__foot .nyc__actions .ui-btn { flex: 1; }
   /* Touch has no keys to press, and Accept · Not now · Discuss stay on one row (#763 IN-6). */
-  .nyc__accept kbd { display: none; }
+  .nyc__actions kbd { display: none; }
   .nyc__foot .nyc__actions { flex-wrap: nowrap; }
   /* The row never sets the card's width: its buttons share what is there (#763 P2-4). */
   .nyc__foot, .nyc__foot > *, .nyc__foot .nyc__actions > * { min-width: 0; }
@@ -95,7 +103,9 @@
    third takes the whole second line, inside the card (#763 P2-4). */
 /* A phone's compact card: the title takes up to two lines beside its one action, instead of "Water bed 3 at 6 a…" (#763). */
 @media (max-width: 640px) {
-  .nyc--compact .nyc__open { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  /* The clamp is on the title's own span: WebKit does not clamp a <button> (it showed three whole lines, visual review 2026-11-17, core 18). */
+  .nyc--compact .nyc__open { white-space: normal; overflow-wrap: anywhere; }
+  .nyc--compact .nyc__open-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   .nyc--compact .nyc__rowactions { align-self: center; }
 }
 @media (max-width: 374px) {
@@ -114,7 +124,8 @@
 @media (max-width: 640px) { .nyc__waits li > span.nyc__waits-words { flex-basis: 100%; } }
 
 /* Two columns where there is room (README §7 Inbox, #1367): the list on the left, the open item on the right and in view while the list scrolls. */
-.pane-in.nyq.nyq--two { max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: clamp(300px, 30%, 380px) minmax(0, 1fr); align-items: stretch; }
+/* The two columns fill the pane, so the line between them runs to its foot, not to where the list ends (round 14, daily P3-1, look-a B3). */
+.pane-in.nyq.nyq--two { min-height: 100%; box-sizing: border-box; max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: clamp(300px, 30%, 380px) minmax(0, 1fr); align-items: stretch; }
 .nyq__col { min-width: 0; }
 .nyq__col--list { padding: 16px 12px 28px 16px; }
 .nyq__col--open { border-left: 1px solid var(--line); padding: 0 clamp(20px, 3vw, 40px); }
@@ -124,12 +135,15 @@
 /* A row of the list: no box until it is the open one, then the raised row. No button: the open item has them. */
 .nyc--list .nyc__card { padding: 12px 16px; }
 .nyc--list:not(.is-selected) .nyc__card { background: transparent; box-shadow: none; }
-.nyc--list:not(.is-selected) .nyc__card:hover { background: var(--hov); }
-.nyc--list .nyc__title { font-size: var(--fs-base); }
-.nyc--list .nyc__open { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+@media (hover: hover) { .nyc--list:not(.is-selected) .nyc__card:hover { background: var(--hov); } }
+.nyc--list .nyc__title { font-size: var(--fs-base); font-weight: 500; }
+.nyc--list .nyc__open { white-space: normal; overflow-wrap: anywhere; }
+.nyc--list .nyc__open-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .nyc--list .nyc__open:hover { text-decoration: none; }
+/* The row is what is focused (L931: arriving at the Inbox, the open item's row takes the focus): its ring is the card's, above, 2 px out
+   from the row and following its radius, so it stands apart from the open row's raised fill (release audit ffcb07c, #1424). */
 .nyc__snippet { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--t3); }
 /* The open item is its card with no box around it, in its own column. */
 .nyc--open .nyc__card--pane { max-width: 680px; padding: 0; background: none; box-shadow: none; }
-.nyc--open .nyc__title { font-size: var(--fs-xl); line-height: 1.3; letter-spacing: -.015em; }
+.nyc--open .nyc__title { font-size: var(--fs-xl); line-height: 1.3; letter-spacing: var(--tracking-title); }
 .nyc--open .nyc__body { gap: 12px; }

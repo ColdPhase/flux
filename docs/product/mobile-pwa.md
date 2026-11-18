@@ -221,7 +221,7 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   the favicon a dot (`/icons/icon-dot.svg`) while unread notifications wait that would
   notify you under your level (direct messages, mentions, questions, tasks, call
   invitations… at Only what needs me; every reason at Everything; none at Nothing),
-  counted among your newest 100 Inbox items (`notifying` on `GET /api/v1/needs-you`, read
+  counted among your newest 100 unread Inbox items (`notifying` on `GET /api/v1/needs-you`, read
   with the sidebar's count, so no new request). The installed app shows the same number
   with `navigator.setAppBadge` where the engine supports it. Reading the items clears it.
 - **Asking for push.** After the first direct message, mention or question to you
@@ -247,12 +247,13 @@ hold the notice, the sound and push alike; the Inbox always keeps the row.
 | --- | --- | --- |
 | A direct message to me | `dm` | Only what needs me |
 | A mention of me | `mention` | Only what needs me |
+| An answer to a question I asked (#1424 decision 1) | `mention` ("Ada answered you in Tool library") | Only what needs me |
 | A question to me (`@me …?`, or an agent's question card) | `question` | Only what needs me |
 | A task assigned to me, waiting for me, or able to continue | `assigned` | Only what needs me |
 | A task of mine reaching its due date (`dueOn`) | not yet a notification: the date shows on the task and in My tasks | Only what needs me, once it is one |
 | A decision about my work, or one my agent proposed | `review` | Only what needs me |
 | My agent waiting for my OK | `approval` | Only what needs me |
-| My agent finished a task ("Done: #4 …" in its chat) | not yet a notification: the chat's unread dot | Everything, once it is one |
+| My agent finished a task ("Done: #4 …" in its chat) | not yet a notification: the chat is unread (its name is bold in Messages) | Everything, once it is one |
 | A reply in a conversation I am part of | `reply` | Everything |
 | A call started in my space ([F-039](live-collaboration.md), #1223) | the call's notice | Notice at Only what needs me; push at Everything |
 | An invitation to a call | `invitation` | Only what needs me (with the chime) |
@@ -564,7 +565,7 @@ person, and holds on every device they receive push on.
   | Notice | Reason | With Hide previews on |
   | --- | --- | --- |
   | A direct message | `dm` | "Ada sent you a message" (in a group: "Ada sent you a message in “Lunch crew”", or "in a group" when it has no name) |
-  | A mention of you | `mention` | "Ada mentioned you in Tool library" |
+  | A mention of you, or an answer to your question | `mention` | "Ada mentioned you in Tool library" |
   | A question to you | `question` | "Ada asked you in Tool library" |
   | A reply in a conversation you are part of | `reply` | "Ada replied in Tool library" |
   | A task for you, waiting for you, or able to continue | `assigned` | "Ada assigned you a task in Tool library" |

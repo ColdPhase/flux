@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import { AI_PROVIDERS, assistantModelName, type BackgroundComputeConnection } from '@flux/contracts';
+import { AI_PROVIDERS, type BackgroundComputeConnection } from '@flux/contracts';
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
 import { refreshAssistantModel } from '../assistant/model';
@@ -9,7 +9,7 @@ import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { BUDGET_PROBLEM, budgetCents, keyFailure, money } from './AddKeyForm';
 import { ConnectAiWindow } from './ConnectAiWindow';
-import { priceSourceText, priceText } from './ConnectionFields';
+import { plainPrice, priceSourceText } from './ConnectionFields';
 import './background.css';
 
 /** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget. A key is added in the Connect AI window, the one way (#1438 point 9). */
@@ -101,7 +101,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
     <SettingsBack />
     <header className="background-settings__head">
       <h2>Your API keys</h2>
-      <p>Your own keys from AI providers. Each has one daily budget, the only limit on what runs on it. Only you can see or change them.</p>
+      {/* One short line (v0.2.1 UI audit): each key says its own budget below. */}
+      <p>Only you can see or change your keys.</p>
     </header>
     <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
     <section className="background-settings__section" aria-labelledby="background-current">
@@ -119,10 +120,11 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           <p className="background-settings__usage" data-testid="key-usage">{keyUsageLine(item)}</p>
           <dl className="background-settings__metadata">
             <div><dt>Provider</dt><dd>{AI_PROVIDERS[item.provider].label}</dd></div>
-            <div><dt>Model</dt><dd>{assistantModelName(item.model)}</dd></div>
+            {/* The model's one name, as Connect AI said it (the provider's "Claude Sonnet 5.7"; release audit ffcb07c: this page said "Sonnet 5"). */}
+            <div><dt>Model</dt><dd>{item.modelName}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
-              ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>
+              ? <>{plainPrice(item.price)} · {priceSourceText(item.price, item.provider)}</>
               : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
           </dl>
@@ -132,7 +134,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
               aria-describedby={`connection-${item.id}-budget`} />
             <Button type="submit" disabled={busy}>Save budget</Button>
           </form>
-          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything on this key counts against it: your agents. At the budget they pause until the next day, from midnight in {item.timeZone}. Flux prices each request before sending it; the provider’s invoice may still differ slightly.</p>
+          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything your agents do on this key counts against this budget. At the budget they pause until midnight in {item.timeZone}. The provider’s invoice may differ slightly from Flux’s count.</p>
           <div className="background-settings__actions">
             {removing === item.id ? (
               <div className="background-settings__confirm" role="group" aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}
@@ -143,7 +145,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
                   <Button variant="secondary" size="sm" autoFocus disabled={busy} onClick={() => keepKey(item.id)}>Keep it</Button>
                 </div>
               </div>
-            ) : <Button id={`remove-${item.id}`} variant="quiet" size="sm" disabled={busy} onClick={() => setRemoving(item.id)}
+            ) : <Button id={`remove-${item.id}`} variant="quiet" size="sm" className="background-settings__remove" disabled={busy} onClick={() => setRemoving(item.id)}
               aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}>Remove</Button>}
           </div>
           <p className="background-settings__help">Removing deletes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>

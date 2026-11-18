@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { and, asc, count, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
-import { AGENT_SEARCH_LIMITS } from '@flux/contracts';
+import { AGENT_SEARCH_LIMITS, removedName } from '@flux/contracts';
 import { agentHit, agentSearchAudiences, agentSearchPlan, AGENT_SEARCH_KINDS, authorLabel, authorsNamed, DomainError, evaluateProject, InvalidInputError, isAuthorName,
   NotFoundError, type AgentHit, type AgentSearchPlan, type AuthorCandidate, type SearchAudience } from '@flux/core';
-import { accessReader, fileTextRows, schema, searchRows, visibleFilter, type Database, type QueryVectors, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
+import { accessReader, dmAuthorName, fileTextRows, removedInDm, schema, searchRows, visibleFilter, type Database, type QueryVectors, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
 import { conversationStore } from '../conversation/store.js';
 import { policySearchAccess } from '../search/adapters.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
-import { messagesForAgents, spaceReadersNamed, withAgentLabels } from './authors.js';
+import { messagesForAgents, spaceAuthorsNamed, withAgentLabels } from './authors.js';
 import { textPageEnd } from './domain-reads.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -106,11 +106,13 @@ async function told(ctx: FluxAgentReadContext, rows: readonly SearchRowRecord[])
   rows.forEach((row, index) => {
     if (row.kind === 'dm_message' || !row.projectId) {
       // The people of a direct message all see each other's names; its messages are the only ones that are not a space's.
-      hits[index] = agentHit(row, row.author ? { kind: 'human', id: row.author.id, name: authorLabel({ kind: 'human', name: row.authorName, via: row.via ?? null, viaAgent: row.viaAgent }) } : null);
+      // One who left the company or was removed is "Stefan Kowal (removed)", as its people see them (#1424, 2026-11-17).
+      const name = row.authorRemoved && row.authorName ? removedName(row.authorName) : row.authorName;
+      hits[index] = agentHit(row, row.author ? { kind: 'human', id: row.author.id, name: authorLabel({ kind: 'human', name, via: row.via ?? null, viaAgent: row.viaAgent }) } : null);
     } else bySpace.set(row.projectId, [...(bySpace.get(row.projectId) ?? []), index]);
   });
   for (const [projectId, indexes] of bySpace) {
-    const names = await spaceReadersNamed(ctx.tx, projectId, indexes.flatMap((index) => rows[index]!.author?.kind === 'human' ? [rows[index]!.author!.id] : []));
+    const names = await spaceAuthorsNamed(ctx.tx, projectId, indexes.flatMap((index) => rows[index]!.author?.kind === 'human' ? [rows[index]!.author!.id] : []));
     const labelled = indexes.map((index) => {
       const row = rows[index]!;
       const author = row.author?.kind === 'human' ? { kind: 'human' as const, id: row.author.id, name: authorLabel({ kind: 'human', name: names.get(row.author.id) ?? null, via: row.via ?? null, viaAgent: row.viaAgent }) }
@@ -247,9 +249,10 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
     .where(and(eq(m.dmId, found.dmId), eq(m.kind, 'text'), isNull(m.removedAt), gte(m.sequence, from), lte(m.sequence, to))).orderBy(asc(m.sequence));
   const [dm] = await tx.select({ next: schema.dms.nextSequence }).from(schema.dms).where(eq(schema.dms.id, found.dmId));
   claims.dispatch?.dm(found.dmId);
+  const removed = await removedInDm(tx, found.dmId, rows.map((row) => row.authorId));
   return { aroundMessageId: input.messageId, dmId: found.dmId,
     messages: rows.map((row) => ({ id: row.id, sequence: row.sequence, createdAt: row.createdAt.toISOString(),
-      author: { kind: 'human' as const, id: row.authorId, name: authorLabel({ kind: 'human', name: row.authorName, via: row.via, viaAgent: !!row.viaColour }) }, body: row.body,
+      author: { kind: 'human' as const, id: row.authorId, name: authorLabel({ kind: 'human', name: dmAuthorName(row.authorName, removed, row.authorId), via: row.via, viaAgent: !!row.viaColour }) }, body: row.body,
       ...(row.editedAt ? { editedAt: row.editedAt.toISOString() } : {}) })),
     hasMoreBefore: from > 1, hasMoreAfter: to < (dm?.next ?? 1) - 1 };
 }
@@ -276,7 +279,7 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
   claims.dispatch?.project(file.projectId, 'project.read');
   const where = { fileId: file.fileId, name: file.name, projectId: file.projectId, conversationId: file.conversationId, messageId: file.messageId, ...(file.pages !== null ? { pages: file.pages } : {}) };
   if (!parts) return { ...where, totalLength: 0, body: '', nextOffset: null,
-    note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan or an unreadable file).' };
+    note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
   const offset = Math.min(input.offset, text.length);
   const end = textPageEnd(text, offset, claims.run !== undefined);
   return { ...where, offset, totalLength: text.length, body: text.slice(offset, end), nextOffset: end < text.length ? end : null };

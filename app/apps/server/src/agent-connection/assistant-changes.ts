@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
+import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, plainPreviewText, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
   type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
 import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, eventRepository, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, principalKey, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError, WAITING_CHANGE_EVENT } from '@flux/core';
@@ -63,6 +63,11 @@ export function redactCall<T>(value: T): T {
 const created = (title: string): UndoRecord => ({ plan: { kind: 'created' }, before: null, after: title || null });
 /** A map, a decision, a message or a page the assistant made, which only the assistant's Undo can take back (a page also by its owner's delete) while nobody used it (#68, #1021). */
 const removal = (title: string, plan: Omit<Extract<UndoRecord['plan'], { kind: 'removal' }>, 'kind'> = {}): UndoRecord => ({ plan: { kind: 'removal', ...plan }, before: null, after: title || null });
+/** A message's words in its change line: its plain text on one line, never a cut-off "**W" of its formatting (v0.2.1 release gate, row 23). */
+const plainExcerpt = (body: string) => {
+  const plain = plainPreviewText(body).replace(/\s+/g, ' ').trim();
+  return plain.length > 80 ? `${plain.slice(0, 79).trimEnd()}…` : plain;
+};
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
 /**
  * What an applied or skipped change keeps of its call: the tool and which fields it changed (a status value only),
@@ -280,7 +285,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       return { ...base, objectId: String(payload.linkId), mine: ours(link), maker: otherPerson(link), removal: true };
     }
     case 'conversation.create': case 'conversation.reply':
-      return { ...base, objectId: null, title: text((payload as { body?: unknown }).body).slice(0, 80) };
+      return { ...base, objectId: null, title: plainExcerpt(text((payload as { body?: unknown }).body)) };
     case 'answer.picture.attach': {
       // A picture for the run's own answer (#1217, C-59): the asker's alone until their Show everyone, so it is theirs; Undo removes it.
       // Its words name the address it comes from, host, path and query, so an OK under Ask me first is an informed one (the review of #1288).
@@ -519,7 +524,7 @@ export async function recordDiscussionLine(tx: Transaction, claims: FluxMcpClaim
     return;
   }
   const { conversationId, messageId } = produced.value;
-  const title = redactCall(typeof call.args.body === 'string' ? call.args.body : '').slice(0, 80);
+  const title = plainExcerpt(redactCall(typeof call.args.body === 'string' ? call.args.body : ''));
   const removals = assistantRemovalRows(tx as DbExecutor);
   const undo = await removals.messageIsUndoable(messageId, runtime.agentId) && await removals.messageIsInTaskThread(messageId) ? removal(title, { thread: true }) : null;
   const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approved ? 'owner_approval' : 'owner_request', runId: null,

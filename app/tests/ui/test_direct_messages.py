@@ -27,6 +27,8 @@ PEOPLE = {
     "ada": ("Ada Kowalska", f"ada.k+{STAMP}@example.test"),
     "kai": ("Kai Tanaka", f"kai.t+{STAMP}@example.test"),
     "lee": ("Lee Moreno", f"lee.m+{STAMP}@example.test"),
+    # Joins the company only in test_10, and is removed from it there.
+    "rhea": ("Rhea Stone", f"rhea.s+{STAMP}@example.test"),
 }
 
 
@@ -155,6 +157,33 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertEqual(dm["kind"], "pair")
         self.assertEqual(sorted(dm["audience"]["participantIds"]), sorted([self.ids["ada"], self.ids["kai"]]))
         self.assertEqual([m["sequence"] for m in dm["messages"]], [1, 2])
+
+    def test_01b_back_from_a_new_conversation_goes_where_the_person_started(self) -> None:
+        """personas-34 P3: on the phone, Back from a conversation just made with New message landed on the New message picker. The
+        conversation takes the picker's place, so Back goes to Spaces, where the person started."""
+        # Someone of their own, with no conversation yet: Lee stays without one for test_04, and Kai's with Ada opens at once.
+        email = f"oli.dm+{uuid.uuid4().hex[:8]}@example.test"
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN)
+        self.addCleanup(context.close)
+        signed = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "Oli Brandt"}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        type(self).states["oli"] = context.storage_state()
+        ada = self.context("ada")
+        added = ada.request.post(f"/api/v1/workspaces/{self.workspace_id}/members", data={"email": email, "role": "member"}, headers={"origin": ORIGIN})
+        self.assertEqual(added.status, 201, added.text())
+        page = self.page("oli", phone=True)
+        page.goto("/projects")
+        page.get_by_role("link", name="New message").first.tap()
+        expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
+        page.get_by_role("list", name="People").get_by_text("Ada Kowalska").tap()
+        page.get_by_role("button", name="Message Ada").tap()
+        expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        page.locator("header.phead").get_by_role("button", name="Back").tap()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", level=1, name="New message")).to_have_count(0)
+        # A page arrived at with nothing to focus gives the focus to its content, on the phone too (personas-36: it stayed on the page body).
+        page.wait_for_timeout(800)
+        self.assertEqual(page.evaluate("() => document.activeElement?.id || document.activeElement?.tagName"), "content", "the Spaces page's content has the focus")
 
     def test_02_reply_from_a_second_browser_arrives_live(self) -> None:
         ada = self.page("ada")
@@ -397,6 +426,76 @@ class DirectMessageJourney(unittest.TestCase):
         expect(ada.locator(".dm-msg__body", has_text=first)).to_be_visible(timeout=15000)
         expect(ada.locator(".dm-msg__body", has_text=second)).to_be_visible(timeout=15000)
 
+
+    def call(self, who: str, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
+        # No content type without a body: the server refuses an empty JSON body (a DELETE).
+        headers = {"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {})}
+        response = self.context(who).request.fetch(f"{ORIGIN}{path}", method=method, headers=headers, data=json.dumps(body) if body is not None else None)
+        if status is not None:
+            self.assertEqual(response.status, status, f"{method} {path}: {response.text()}")
+        return json.loads(response.text()) if response.text() else {}
+
+    def test_10_someone_removed_from_the_company_is_full_name_removed(self) -> None:
+        """Founder decision (Hubert, 2026-11-17, #1424): someone removed from the company is "Full Name (removed)" wherever their name is already
+        in a conversation's history: the Messages list, the conversation's header, their messages, a thread and the Inbox, and their agent is
+        "Planner · Rhea Stone (removed)'s agent". Restore takes the mark off. Before it a 1:1 and its messages said "Rhea Stone", and her agent
+        "Planner" with the Agent tag."""
+        removed = "Rhea Stone (removed)"
+        self.call("ada", "POST", f"/api/v1/workspaces/{self.workspace_id}/members", {"email": PEOPLE["rhea"][1], "role": "member"}, status=201)
+        pair = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["kai"]]}, status=201)["id"]
+        asked = "Can you glaze the bowls on Friday?"
+        self.call("rhea", "POST", f"/api/v1/dms/{pair}/messages", {"body": asked, "clientMessageId": str(uuid.uuid4())}, status=201)
+        group = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["kai"], self.ids["lee"]], "title": "Kiln rota"}, status=201)["id"]
+        root = self.call("rhea", "POST", f"/api/v1/dms/{group}/messages", {"body": "The kiln rota is pinned in the shed.", "clientMessageId": str(uuid.uuid4())}, status=201)["id"]
+        self.call("rhea", "POST", f"/api/v1/dms/{group}/threads/{root}/replies", {"body": "The key is under the blue pot.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        agent = self.call("rhea", "POST", f"/api/v1/workspaces/{self.workspace_id}/agents", {"name": "Planner", "owner": "self"}, status=201)["id"]
+        self.call("rhea", "POST", "/api/v1/integration/agent-connections", {"agentId": agent, "name": "Rhea's laptop", "clientDesignation": "claude_code"}, status=201)
+        task = self.call("rhea", "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Sort the glaze buckets", "owner": {"kind": "agent", "id": agent}}, status=201)["id"]
+        said = "The bisque kiln is free on Thursday."
+        self.call("rhea", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": said, "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.call("ada", "DELETE", f"/api/v1/workspaces/{self.workspace_id}/members/{self.ids['rhea']}", status=204)
+
+        kai = self.page("kai")
+        kai.goto("/dm")
+        expect(kai.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile(re.escape(removed)))).to_be_visible()
+        kai.goto(f"/dm/{pair}")
+        expect(kai.get_by_role("heading", level=1, name=removed)).to_be_visible()
+        expect(kai.locator(".dm-msg__meta b").first).to_have_text(removed)
+        expect(kai.locator(".dm__notice")).to_have_text("Rhea is no longer in the company, so this conversation has nobody to send to.")
+        expect(kai.get_by_text("Former participant")).to_have_count(0)
+        shot(kai, "dm-desktop-1440-removed-person")
+        kai.goto(f"/dm/{group}?thread={root}")
+        thread = kai.locator("[data-dm-thread]")
+        expect(thread.get_by_text("The key is under the blue pot.")).to_be_visible()
+        expect(thread.locator(".dm-msg__meta b").first).to_have_text(removed)
+        self.assertEqual(set(thread.locator(".dm-msg__meta b").all_inner_texts()), {removed}, "her reply too")
+        expect(kai.locator(".dm-msg", has_text="The kiln rota is pinned").first.locator(".dm-msg__meta b")).to_have_text(removed)
+
+        # Her message in a space names her so too, and the name offers no direct message: it could only fail (P3 of the pre-review).
+        kai.goto(f"/projects/{self.project_id}")
+        said_by = kai.locator(".project-convo__message", has_text=said).locator(".project-convo__message-meta strong").first
+        expect(said_by).to_have_text(removed)
+        expect(said_by.locator("a")).to_have_count(0)
+
+        kai.goto("/inbox")
+        card = kai.locator(".nyc", has_text=asked)
+        expect(card).to_be_visible(timeout=20000)
+        expect(card).to_contain_text(removed)
+
+        kai.goto(f"/projects/{self.project_id}/tasks?view=list")
+        row = kai.locator(f'.ws-task[data-work-id="{task}"]')
+        expect(row.locator(".agent-id__label")).to_have_text("Rhea Stone (removed)'s Planner")
+        expect(row.locator(".agent-tag")).to_have_count(0)
+
+        self.call("ada", "POST", f"/api/v1/workspaces/{self.workspace_id}/removed-people/{self.ids['rhea']}/restore", {}, status=201)
+        kai.goto(f"/dm/{pair}")
+        expect(kai.get_by_role("heading", level=1, name="Rhea Stone")).to_be_visible()
+        expect(kai.get_by_text(removed)).to_have_count(0)
+        kai.goto(f"/projects/{self.project_id}")
+        back = kai.locator(".project-convo__message", has_text=said).locator(".project-convo__message-meta strong").first
+        expect(back.get_by_role("link", name="Rhea Stone")).to_have_attribute("title", "Message Rhea Stone directly")
+        kai.goto(f"/projects/{self.project_id}/tasks?view=list")
+        expect(kai.locator(f'.ws-task[data-work-id="{task}"] .agent-id__label')).to_have_text("Rhea's Planner")
 
 if __name__ == "__main__":
     unittest.main()

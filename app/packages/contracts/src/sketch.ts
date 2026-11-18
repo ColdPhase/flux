@@ -53,6 +53,8 @@ export interface PersonRef {
   name: string;
   /** Agents in the project list only (#339 AC-2); see `NamedPrincipal.projectOwner`. */
   projectOwner?: AgentProjectOwner;
+  /** Agents only: the agent's own colour (final design §2), the same for every reader everywhere; absent for an agent with none (a local client's), which is ink. */
+  colour?: import('./agents.js').AgentColour;
 }
 
 export interface Sketch {

@@ -129,7 +129,7 @@ export function projectRepository(db: DbExecutor) {
 
     /** The workspace's people, for the audience of a project. */
     members(workspaceId: string) {
-      return db.select({ id: schema.workspaceMembers.userId, name: schema.authUsers.name, lastActiveAt: schema.authUsers.lastActiveAt, showLastActive: schema.authUsers.showLastActive })
+      return db.select({ id: schema.workspaceMembers.userId, name: schema.authUsers.name, role: schema.workspaceMembers.role, lastActiveAt: schema.authUsers.lastActiveAt, showLastActive: schema.authUsers.showLastActive })
         .from(schema.workspaceMembers)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
         .where(eq(schema.workspaceMembers.workspaceId, workspaceId));
@@ -161,8 +161,9 @@ export function projectRepository(db: DbExecutor) {
       return grant ?? null;
     },
 
+    /** A role set on purpose replaces a held space admin role (migration 0095): becoming a member again does not undo a space admin's choice. */
     updateGrant(grantId: string, role: GrantRow['role'], createdBy: string): Promise<GrantWrite> {
-      return writeGrant(async () => (await db.update(schema.projectGrants).set({ role, createdBy, updatedAt: new Date() })
+      return writeGrant(async () => (await db.update(schema.projectGrants).set({ role, createdBy, adminHeld: false, updatedAt: new Date() })
         .where(eq(schema.projectGrants.id, grantId)).returning())[0]);
     },
 

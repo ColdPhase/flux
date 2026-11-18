@@ -5,7 +5,7 @@ import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
 import { ConflictError, InvalidInputError, RuleViolationError } from './errors.js';
 import { roundedLastActive, type LastActiveOptions } from './last-active.js';
-import { enforce, evaluateProject, evaluateWorkspace, accessName, LEVEL } from './policy.js';
+import { enforce, evaluateProject, evaluateWorkspace, accessName, isUuid, LEVEL } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 import type { ProjectRecord } from './records.js';
 import { oneOf, name, parsePage, PROJECT_VISIBILITIES } from './validation.js';
@@ -13,7 +13,7 @@ import { oneOf, name, parsePage, PROJECT_VISIBILITIES } from './validation.js';
 // Projects, which people call spaces (F-037, #874): create, list, read and the audience (issues #46, #91).
 // A space's people are its grants (./grants.ts): `manager` is a space admin, `contributor` a space member.
 
-type ProjectPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events'>;
+type ProjectPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events' | 'invites'>;
 
 /** `ai` is the space's switch; a missing row reads as off (fail closed). `icon` is its emoji or picture (F-040), null for its letter. */
 export function toProject(row: ProjectRecord, level: number, ai: SpaceAiState | null, icon: SpaceIcon | null = null): Project {
@@ -46,6 +46,8 @@ export async function insertSpace(tx: Executor, ports: Pick<AccessPorts, 'projec
 
 /** The people a new space starts with, besides its creator: distinct ids, at most this many. */
 const NEW_SPACE_PEOPLE_MAX = 200;
+/** Links made in one New space window: the company's limit of links waiting at once. */
+const NEW_SPACE_INVITES_MAX = 50;
 
 /**
  * Creates a space; only people who are not guests create spaces. Its creator is its first space admin (F-037); the people named
@@ -59,6 +61,11 @@ export async function createProject(principal: Principal, workspaceId: string, c
     throw new InvalidInputError(`people must be a list of at most ${NEW_SPACE_PEOPLE_MAX} account ids`);
   }
   const people = [...new Set(command.people ?? [])].filter((id) => id !== principal.id);
+  if (command.invites !== undefined && (!Array.isArray(command.invites) || command.invites.some((id) => typeof id !== 'string' || !isUuid(id))
+    || command.invites.length > NEW_SPACE_INVITES_MAX)) {
+    throw new InvalidInputError(`invites must be a list of at most ${NEW_SPACE_INVITES_MAX} invite ids`);
+  }
+  const invites = [...new Set(command.invites ?? [])];
   return db.transaction(async (tx) => {
     const { actor } = enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     // F-037: only Everyone holds the whole company, and setup makes it; any other space holds the people added to it.
@@ -81,6 +88,17 @@ export async function createProject(principal: Principal, workspaceId: string, c
       const grant = await projects.insertGrant({ id: randomUUID(), workspaceId, projectId: row.id, role: 'contributor', createdBy: principal.id, userId });
       if ('conflict' in grant) throw new ConflictError('This person is no longer in the company', 'GRANTEE_REMOVED');
       added.push({ grantId: grant.grant.id, userId });
+    }
+    // #1424: links made in the New space window are tied to the new space, so whoever joins with one is in it too (as a link made from
+    // its Add people). Only a pending link of this company that the creator made and that names no space; a link used, revoked or expired
+    // since the window made it has nothing left to tie, and stays as it is.
+    if (invites.length && await ports.workspaces(tx).companyOf(workspaceId)) throw new InvalidInputError('People join an encrypted space only by being added from the company');
+    for (const inviteId of invites) {
+      const found = await ports.invites(tx).get(inviteId, { lock: true });
+      if (!found || found.invite.workspaceId !== workspaceId || found.invite.createdBy !== principal.id) throw new InvalidInputError('invites must be links you made in this company');
+      const { invite } = found;
+      if (invite.acceptedAt || invite.revokedAt || invite.expiresAt <= new Date() || invite.spaceId !== null) continue;
+      await ports.invites(tx).setSpace(inviteId, row.id);
     }
     // The switch starts on (the row exists from the moment the space does); an encrypted space is already off.
     if (command.ai === false) {
@@ -142,16 +160,16 @@ export async function listProjectPeople(principal: Principal, projectId: string,
     return at ? [[row.id, at] as const] : [];
   }) : []);
   const candidates = [
-    ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name })),
-    ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name })),
+    ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name, guest: row.role === 'guest', owner: row.role === 'owner' })),
+    ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name, guest: false, owner: false })),
   ];
   const people: ProjectPerson[] = [];
-  for (const candidate of candidates) {
+  for (const { guest, owner, ...candidate } of candidates) {
     const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, ports.access(db));
     const access = decision.allowed ? accessName(decision.level) : null;
     if (!access) continue;
     const at = candidate.kind === 'human' ? lastActive.get(candidate.id) : undefined;
-    people.push({ ...candidate, access, ...(at ? { lastActiveAt: at } : {}) });
+    people.push({ ...candidate, access, ...(at ? { lastActiveAt: at } : {}), ...(guest ? { guest: true as const } : {}), ...(owner ? { owner: true as const } : {}) });
   }
   // Owner names reuse the authorized audience, never the workspace candidate roster.
   const visibleHumans = new Map(people.filter((person) => person.kind === 'human').map((person) => [person.id, person.name]));

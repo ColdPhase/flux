@@ -16,6 +16,7 @@ import { eventPorts } from '../events.js';
 import { projectAuthorOwners } from './author-owners.js';
 import { messageReferences } from './references.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
+import type { DecisionDiscussion } from '@flux/contracts';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Executor = Database | Tx;
@@ -24,11 +25,11 @@ type MessageRow = typeof schema.projectMessages.$inferSelect;
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
 type Actor = { kind: 'human' | 'agent'; id: string };
-type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1' | 'project.message_edited.v1' | 'project.message_removed.v1';
+type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1' | 'project.message_edited.v1' | 'project.message_removed.v1' | 'project.decision_discussed.v1';
 /** Where a committed start or reply records its one event. */
 export interface ConversationEventLog {
   record(principal: Principal, workspaceId: string, kind: MessageEventKind, projectId: string,
-    data: { conversationId: string; messageId: string }): Promise<void>;
+    data: { conversationId: string; messageId: string } | { decisionId: string }): Promise<void>;
 }
 export interface ConversationStoreOptions {
   storage?: FileStorage;
@@ -55,9 +56,22 @@ function creator(row: ConversationRow, names: Map<string, string>) {
   return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
+/**
+ * The names a page of messages needs: its agents', and its people who left the space's company or were removed (`removed:<id>`), whom every
+ * reader names "Stefan Kowal (removed)" (#1424, 2026-11-17). One statement, as the agents' names alone were read.
+ */
+async function authorNames(db: Executor, workspaceId: string, rows: readonly { authorId: string | null; authorAgentId: string | null }[], more: readonly string[] = []) {
+  const refs = [...rows.flatMap((row): Actor[] => row.authorId !== null ? [{ kind: 'human', id: row.authorId }] : row.authorAgentId !== null ? [{ kind: 'agent', id: row.authorAgentId }] : []),
+    ...more.map((id): Actor => ({ kind: 'agent', id }))];
+  if (!refs.length) return new Map<string, string>();
+  const { names, gone } = await workRows(db).namesIn(refs, workspaceId);
+  for (const key of gone) if (names.has(key)) names.set(`removed:${key.slice('human:'.length)}`, names.get(key)!);
+  return names;
+}
 function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[]; references?: MessageReferenceCard[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
   const contribution = messageContribution(row.contributionKind);
-  return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
+  const removedAuthorName = row.authorId !== null ? names.get(`removed:${row.authorId}`) : undefined;
+  return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId, ...(removedAuthorName ? { removedAuthorName } : {}) } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
@@ -106,7 +120,7 @@ async function requireProject(principal: Principal, projectId: string, db: Execu
  * here (#534), or the first reply of all when they observed none. The opening message is the thread's header, never the divider's place.
  * Only a person has a read of their own.
  */
-async function unreadFrom(db: Executor, principal: Principal, projectId: string, conversationId: string): Promise<{ unreadFrom?: string | null }> {
+async function unreadFrom(db: Executor, principal: Principal, projectId: string, conversationId: string, opening = true): Promise<{ unreadFrom?: string | null }> {
   if (principal.kind !== 'human') return {};
   const o = schema.projectMessageObservations;
   const m = schema.projectMessages;
@@ -114,7 +128,7 @@ async function unreadFrom(db: Executor, principal: Principal, projectId: string,
   const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(o).innerJoin(m, eq(m.id, o.messageId))
     .where(and(eq(o.projectId, projectId), eq(o.viewerId, principal.id), eq(m.conversationId, conversationId)));
   const [next] = await db.select({ id: m.id }).from(m)
-    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, 1)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
+    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, opening ? 1 : 0)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
     .orderBy(asc(m.sequence)).limit(1);
   return { unreadFrom: next?.id ?? null };
 }
@@ -218,6 +232,29 @@ async function retriesSend(tx: Tx, stored: { requestFingerprint: string; removed
   return (await taskDiscussionRows(tx).taskOf(stored.conversationId)) === null;
 }
 
+/** The decision whose one discussion this conversation is (#1424), or null for any other conversation of the space. */
+async function decisionOf(db: Executor, conversationId: string): Promise<string | null> {
+  const [row] = await db.select({ decisionId: schema.projectDecisionDiscussions.decisionId }).from(schema.projectDecisionDiscussions)
+    .where(eq(schema.projectDecisionDiscussions.conversationId, conversationId));
+  return row?.decisionId ?? null;
+}
+
+/** A decision a caller may act on: unknown, or in a space they cannot read (or write, for `write`), is the same 404. */
+async function locateDecision(principal: Principal, decisionId: string, db: Executor, write = false, lock = false) {
+  uuid(decisionId, 'decisionId');
+  const [row] = await db.select({ id: schema.projectDecisions.id, workspaceId: schema.projectDecisions.workspaceId, projectId: schema.projectDecisions.projectId,
+    proposedByKind: schema.projectDecisions.proposedByKind, proposedById: schema.projectDecisions.proposedById })
+    .from(schema.projectDecisions).where(eq(schema.projectDecisions.id, decisionId.toLowerCase()));
+  if (!row) throw new NotFoundError('Decision', 'DECISION_NOT_FOUND');
+  try {
+    await requireProject(principal, row.projectId, db, write, lock);
+  } catch (error) {
+    if (error instanceof NotFoundError) throw new NotFoundError('Decision', 'DECISION_NOT_FOUND');
+    throw error;
+  }
+  return row;
+}
+
 async function lockIdempotency(tx: Tx, projectId: string, author: Actor, clientId: string) {
   // Serializes same-key first sends before a thread is created. The uniqueness constraint
   // remains the final guard; hash collisions only serialize unrelated sends. Same namespace
@@ -281,8 +318,53 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const result = message({ ...row!, files: files.get(found.id), references: cards.get(found.id) });
       // Last: recording an event takes the stream's sequence lock. The ids, and in its kind what was done, never the words (an encrypted space allows no more).
       if (op) await eventLog(tx).record(principal, conversation.workspaceId, op === 'edited' ? 'project.message_edited.v1' : 'project.message_removed.v1', conversation.projectId, { conversationId: conversation.id, messageId: found.id });
+      // In a decision's discussion, its panel reads again too (#1424), as for a new message there.
+      const decisionId = op ? await decisionOf(tx, conversation.id) : null;
+      if (decisionId) await eventLog(tx).record(principal, conversation.workspaceId, 'project.decision_discussed.v1', conversation.projectId, { decisionId });
       return result;
     });
+  }
+  /** One conversation with its newest messages (a thread, a task's or a decision's discussion), as `getConversation` answers it. */
+  async function readConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
+    const row = await locateConversation(principal, conversationId, db);
+    const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
+      .where(and(eq(schema.projectMessages.conversationId, row.id),
+        window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
+      .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1));
+    const hasMoreBefore = rows.length > window.limit;
+    const names = await authorNames(db, row.workspaceId, rows, row.createdByAgentId !== null ? [row.createdByAgentId] : []);
+    const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
+    const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
+    const selected = rows.slice(0, window.limit).reverse();
+    const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, selected.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
+    const messages = selected.map((item) => message({ ...item, files: files.get(item.id), references: cited.get(item.id) }, names, owners));
+    const openingInWindow = messages.find((item) => item.sequence === 1);
+    const [opening] = openingInWindow ? [] : await openRows(db as unknown as DbExecutor, 'project_messages', await db.select({ id: schema.projectMessages.id,
+      workspaceId: schema.projectMessages.workspaceId, body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
+      .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1));
+    const [task] = await openAliased(db as unknown as DbExecutor, await db.select({ workId: schema.projectTaskDiscussions.workId, number: schema.projectWorkItems.number, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
+      .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
+        eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
+      .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),
+        eq(schema.projectMessages.conversationId, row.id), eq(schema.projectMessages.projectId, row.projectId),
+        eq(schema.projectMessages.workspaceId, row.workspaceId), eq(schema.projectMessages.sequence, 1)))
+      .where(and(eq(schema.projectTaskDiscussions.conversationId, row.id), eq(schema.projectTaskDiscussions.projectId, row.projectId),
+        eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId))), { table: 'project_work_items', column: 'title', key: 'title',
+      workspace: () => row.workspaceId, identity: (found) => [found.workId] });
+    // The decision this thread is the one discussion of (#1424): the thread on its card.
+    const [decision] = await openAliased(db as unknown as DbExecutor, await db.select({ decisionId: schema.projectDecisionDiscussions.decisionId, title: schema.projectDecisions.title })
+      .from(schema.projectDecisionDiscussions)
+      .innerJoin(schema.projectDecisions, and(eq(schema.projectDecisions.id, schema.projectDecisionDiscussions.decisionId),
+        eq(schema.projectDecisions.projectId, row.projectId), eq(schema.projectDecisions.workspaceId, row.workspaceId)))
+      .where(eq(schema.projectDecisionDiscussions.conversationId, row.id)), { table: 'project_decisions', column: 'title', key: 'title',
+      workspace: () => row.workspaceId, identity: (found) => [found.decisionId] });
+    return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
+      audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
+      ...(task ? { task } : {}), ...(decision ? { decision } : {}),
+      createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
+      messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit },
+      // A decision's discussion has no opening message (#1424): its head is the decision, so its first message is new like any reply.
+      ...(await unreadFrom(db, principal, row.projectId, row.id, !decision)) };
   }
   return {
     async listConversations(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<ConversationSummary>> {
@@ -336,15 +418,16 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           // A task's discussion is a conversation of the same project, but not a root of the space's conversation (#868): the stream
           // shows one line for each task event and the discussion itself lives in the task.
           .leftJoin(discussions, eq(discussions.conversationId, conversations.id))
-          .where(and(eq(conversations.projectId, projectId), isNull(discussions.workId), before))
+          // Nor is a decision's discussion (#1424): its place is the decision's card, which carries its count.
+          .leftJoin(schema.projectDecisionDiscussions, eq(schema.projectDecisionDiscussions.conversationId, conversations.id))
+          .where(and(eq(conversations.projectId, projectId), isNull(discussions.workId), isNull(schema.projectDecisionDiscussions.decisionId), before))
           .orderBy(desc(conversations.createdAt), desc(conversations.id))
           .limit(window.limit + 1);
         const hasMoreBefore = rows.length > window.limit;
         const cut = rows.slice(0, window.limit).reverse();
         const openedRoots = await openRows(tx as unknown as DbExecutor, 'project_messages', cut.map((row) => row.root));
         const page = cut.map((row, index) => ({ ...row, root: openedRoots[index]! }));
-        const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
-          .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
+        const names = await authorNames(tx, authorizedProject.workspaceId, page.map((row) => row.root));
         const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
         const cited = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: authorizedProject.workspaceId }, page.map((row) => row.root.id));
         const owners = await projectAuthorOwners(tx, projectId, authorizedProject.workspaceId, page.flatMap((row) => row.root.authorAgentId ? [row.root.authorAgentId] : []));
@@ -354,40 +437,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
 
-    async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
-      const row = await locateConversation(principal, conversationId, db);
-      const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
-        .where(and(eq(schema.projectMessages.conversationId, row.id),
-          window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
-        .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1));
-      const hasMoreBefore = rows.length > window.limit;
-      const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
-        .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
-      const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
-      const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
-      const selected = rows.slice(0, window.limit).reverse();
-      const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, selected.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
-      const messages = selected.map((item) => message({ ...item, files: files.get(item.id), references: cited.get(item.id) }, names, owners));
-      const openingInWindow = messages.find((item) => item.sequence === 1);
-      const [opening] = openingInWindow ? [] : await openRows(db as unknown as DbExecutor, 'project_messages', await db.select({ id: schema.projectMessages.id,
-        workspaceId: schema.projectMessages.workspaceId, body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
-        .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1));
-      const [task] = await openAliased(db as unknown as DbExecutor, await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
-        .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
-          eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
-        .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),
-          eq(schema.projectMessages.conversationId, row.id), eq(schema.projectMessages.projectId, row.projectId),
-          eq(schema.projectMessages.workspaceId, row.workspaceId), eq(schema.projectMessages.sequence, 1)))
-        .where(and(eq(schema.projectTaskDiscussions.conversationId, row.id), eq(schema.projectTaskDiscussions.projectId, row.projectId),
-          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId))), { table: 'project_work_items', column: 'title', key: 'title',
-        workspace: () => row.workspaceId, identity: (found) => [found.workId] });
-      return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
-        audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
-        ...(task ? { task } : {}),
-        createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
-        messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit },
-        ...(await unreadFrom(db, principal, row.projectId, row.id)) };
-    },
+    getConversation: (principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]) => readConversation(principal, conversationId, window),
 
     /**
      * The messages of a conversation around one of them (#1290, `flux_read_around`): up to `before` and `after` neighbours by sequence, oldest first, each as
@@ -398,8 +448,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
         .where(and(eq(schema.projectMessages.conversationId, row.id), gte(schema.projectMessages.sequence, sequence - before), lte(schema.projectMessages.sequence, sequence + after)))
         .orderBy(asc(schema.projectMessages.sequence)));
-      const names = await workRows(db).names(rows.map((item) => item.authorAgentId).filter((actorId): actorId is string => actorId !== null)
-        .map((actorId) => ({ kind: 'agent' as const, id: actorId })));
+      const names = await authorNames(db, row.workspaceId, rows);
       const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
       const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
       const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, rows.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
@@ -459,8 +508,77 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         await eventLog(tx).record(principal, row.workspaceId,
           'project.message_sent.v1', row.projectId,
           { conversationId: row.id, messageId: sent.message.id });
+        // A reply in a decision's discussion, however it was written, also tells its card and its panel to read again (#1424).
+        const decisionId = await decisionOf(tx, row.id);
+        if (decisionId) await eventLog(tx).record(principal, row.workspaceId, 'project.decision_discussed.v1', row.projectId, { decisionId });
         // A person's reply answers what they were asked or mentioned in this conversation: it leaves their Inbox as Done takes it (#1170).
         const answered = author.kind === 'human' ? await needsYouRows(tx as unknown as DbExecutor).answerIn(author.id, row.projectId, row.id) : [];
+        return answered.length ? { ...sent.message, answered } : sent.message;
+      });
+    },
+
+    /**
+     * A decision's one discussion (#1424): its newest messages, as the thread on its card reads them, or none before anyone has written.
+     * Reading the space is enough; a decision the caller cannot see is a 404 like a missing one.
+     */
+    async decisionDiscussion(principal: Principal, decisionId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<DecisionDiscussion> {
+      const decision = await locateDecision(principal, decisionId, db);
+      const [binding] = await db.select({ conversationId: schema.projectDecisionDiscussions.conversationId }).from(schema.projectDecisionDiscussions)
+        .where(eq(schema.projectDecisionDiscussions.decisionId, decision.id));
+      const base = { decisionId: decision.id, workspaceId: decision.workspaceId, projectId: decision.projectId };
+      if (!binding) return { ...base, conversationId: null, messages: [], messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: window.limit } };
+      const thread = await readConversation(principal, binding.conversationId, window);
+      return { ...base, conversationId: thread.id, messages: thread.messages, messagePage: thread.messagePage };
+    },
+
+    /**
+     * A message written about a decision (#1424), from its panel or from the thread on its card. The first one starts the thread: one
+     * conversation of the space, bound to the decision with its root in the same transaction, which its proposer then follows; every
+     * later one is a reply in it, exactly as `sendMessage` writes one. Under the space's access rows and the send's identity lock it locks
+     * the decision's row, so two first messages at once make one thread (the second is its first reply) and a withdrawal waits for it.
+     */
+    async discussDecision(principal: Principal, decisionId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<SentConversationMessage> {
+      const author = authorOf(principal, agentAuthors);
+      await verifyBytes(author, input.attachmentIds);
+      return db.transaction(async (tx) => {
+        const decision = await locateDecision(principal, decisionId, tx, true, true);
+        await lockIdempotency(tx, decision.projectId, author, input.clientMessageId);
+        await tx.select({ id: schema.projectDecisions.id }).from(schema.projectDecisions).where(eq(schema.projectDecisions.id, decision.id)).for('update');
+        const d = schema.projectDecisionDiscussions;
+        const [binding] = await tx.select({ conversationId: d.conversationId }).from(d).where(eq(d.decisionId, decision.id));
+        const existing = await existingMessage(decision.projectId, author, input.clientMessageId, tx);
+        if (existing && existing.conversationId !== binding?.conversationId)
+          throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
+        const files = existing ? undefined : await attachments(tx, decision.projectId, author, input.attachmentIds);
+        let conversation: ConversationRow;
+        if (binding) {
+          conversation = (await tx.select().from(schema.projectConversations).where(eq(schema.projectConversations.id, binding.conversationId)))[0]!;
+        } else {
+          [conversation] = await tx.insert(schema.projectConversations).values({
+            id: randomUUID(), workspaceId: decision.workspaceId, projectId: decision.projectId,
+            createdBy: author.kind === 'human' ? author.id : null, createdByAgentId: author.kind === 'agent' ? author.id : null,
+          }).returning() as [ConversationRow];
+        }
+        const sent = await sendInTransaction(tx, principal, conversation, author, input, files);
+        if (!sent.inserted) return sent.message;
+        if (!binding) {
+          await tx.insert(d).values({ decisionId: decision.id, workspaceId: decision.workspaceId, projectId: decision.projectId,
+            conversationId: conversation.id, rootMessageId: sent.message.id });
+          // Whoever proposed it follows its discussion from the start (#1424), unless they chose otherwise.
+          // An agent's proposal is its owner's: the owner follows it (#1424), as a person follows their own.
+          const follower = decision.proposedByKind === 'human' ? decision.proposedById
+            : (await tx.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, decision.proposedById)))[0]?.owner ?? null;
+          // The generator applies a choice to the messages written at or after it, comparing with the message's time in milliseconds, so the
+          // follow is stamped at this transaction's millisecond: it applies to the first message too.
+          if (follower)
+            await tx.insert(schema.notificationFollows).values({ userId: follower, conversationId: conversation.id, following: true,
+              createdAt: sql`date_trunc('milliseconds', now())`, updatedAt: sql`date_trunc('milliseconds', now())` }).onConflictDoNothing();
+        }
+        await eventLog(tx).record(principal, decision.workspaceId, binding ? 'project.message_sent.v1' : 'project.conversation_created.v1', decision.projectId,
+          { conversationId: conversation.id, messageId: sent.message.id });
+        await eventLog(tx).record(principal, decision.workspaceId, 'project.decision_discussed.v1', decision.projectId, { decisionId: decision.id });
+        // A person's message answers what they were asked or mentioned in this thread, as a reply does (#1170).
+        const answered = binding && author.kind === 'human' ? await needsYouRows(tx as unknown as DbExecutor).answerIn(author.id, decision.projectId, conversation.id) : [];
         return answered.length ? { ...sent.message, answered } : sent.message;
       });
     },

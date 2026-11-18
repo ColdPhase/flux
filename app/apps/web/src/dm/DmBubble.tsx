@@ -3,7 +3,7 @@ import { Avatar, Icon, Kreska } from '../ui';
 import { MessageContent } from '../composer/Files';
 import { OutboxStatus, PendingFiles } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
-import { MessageDay, MessageTime, ShownAnswerName, shownAnswer, shownLabel } from '../app/messageParts';
+import { MessageDay, MessageTime, ShownAnswerName, clock, day as dayOf, shownAnswer, shownLabel } from '../app/messageParts';
 import type { Receipt } from '../app/receipts';
 import { MessageText } from '../app/MessageText';
 import { useAddToMyMap } from '../sketch/myMap';
@@ -108,13 +108,14 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
           <MessageContent body={own.slot ?? (message.body ? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div> : null)}
             files={message.files} references={message.references}
             context={{ author: name, at: message.createdAt, caption: message.body, onReply: writable ? onReply : undefined, onCreateTask: writable ? () => onCreateTask(message, undefined) : undefined }} />
+          {groupLast ? <MessageTime at={message.createdAt} receipt={receipt} edited={message.editedAt} /> : null}
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}
               onClick={(event) => onOpenThread?.(message, event.currentTarget)}>
-              <Icon name="reply" size={13} />{message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
+              <Icon name="chat" size={13} />{message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
+              {message.lastReplyAt ? <span className="convo-replies__when">· last {dayOf(message.lastReplyAt) === 'Today' ? clock(message.lastReplyAt) : dayOf(message.lastReplyAt)}</span> : null}
             </button>
           ) : null}
-          {groupLast ? <MessageTime at={message.createdAt} receipt={receipt} edited={message.editedAt} /> : null}
           {actions ? <MessageActions {...actions} /> : null}
           {touch.dots}
         </div>

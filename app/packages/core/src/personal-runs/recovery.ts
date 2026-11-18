@@ -6,7 +6,7 @@ import { STALE_AFTER_SECONDS } from './service.js';
 /** A run this long past its last change, and not in the runtime's report, has lost its worker (#860). */
 const LOST_AFTER_SECONDS = 120;
 
-/** Ends the runs the runtime no longer has, so a lost run does not hold a place on the server for everyone (#860). */
+/** Ends the runs the runtime no longer has, a plan's or an API key's (#1441), so a lost run does not hold a place on the server for everyone (#860). */
 export async function recoverLostRuntimeRuns(uow: PersonalRunUnitOfWork, running: readonly string[], limit = 100): Promise<number> {
   return uow.run(async (ports) => {
     const ended = await ports.runs.endLostRuntime(running, LOST_AFTER_SECONDS, limit);

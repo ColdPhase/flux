@@ -7,13 +7,14 @@ import { getAssistantStatus } from '../assistant/api';
 import { listBackgroundConnections } from '../ai/api';
 import { getPreferences } from '../notifications/api';
 import { notificationSummary } from '../notifications/levels';
-import { SERVER_AI_OFF_LINE } from '../assistant/format';
+import { GUEST_AI_LINE, SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentsList } from '../my-agents/AgentsList';
 import { Avatar, Button, Icon, Kreska, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { ConnectAi } from '../ai/ConnectAi';
 import { ClientRows } from '../agent-connection/ClientRows';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import { AccountEditing, LastActiveSwitch } from './AccountEditing';
+import { NoLongerIn } from './NotAvailable';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
@@ -22,9 +23,9 @@ import './settings.css';
 import { SwitchRow } from '../ui/SwitchRow';
 
 // Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, AI, Company (F-037,
-// #874) and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
+// #874) and Keyboard shortcuts, in that order on every device. On the computer and the tablet the section list sits beside the
 // page; on the phone Settings is that list (the account card, then the sections) and each section is a page.
-// Keyboard shortcuts appear only where there is a keyboard, so not on touch-only phones and tablets.
+// A tablet lists Shortcuts too: a keyboard can be attached to it (README §7 Settings). The phone has no keyboard to attach.
 
 const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/account', label: 'Account', match: /^\/settings\/account$/ },
@@ -39,25 +40,35 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
 /** A guest has no agents and no AI (F-036 AG-2), so Settings shows them no AI section. */
 const isGuest = (workspace: { role?: string | null } | null | undefined) => workspace?.role === 'guest';
 
+/**
+ * The company someone is no longer in (they left or were removed, and have none now), or null. Their Settings offer no AI and no Notifications:
+ * there is nothing of the company to connect AI to or to hear about (round 14: both still offered their choices). Company says where they stand.
+ */
+const goneFrom = ({ workspace, removedFrom }: { workspace: unknown; removedFrom: string | null }) => (!workspace && removedFrom ? removedFrom : null);
+// Company too (round 15, daily P3-6): it said so in a small grey line while every other page shows the heading and Go to Home.
+const COMPANY_ONLY = /^\/settings\/(notifications|agents|assistant|background-compute|ai-connections|company)(\/|$)/;
+
 /** The section list beside every Settings page on the computer; the phone leads from the Settings page instead. */
 export function SettingsLayout() {
   const { pathname } = useLocation();
-  const { workspace } = useShellData();
+  const shell = useShellData();
+  const { workspace } = shell;
+  const gone = goneFrom(shell);
   const phone = useMediaQuery(MEDIA.phone);
-  // A touch-only tablet has no keyboard to use shortcuts with (AC-1).
-  const touch = useMediaQuery(MEDIA.touch);
+  const offered = SECTIONS.filter((section) => !(section.to === '/settings/agents' && (isGuest(workspace) || gone)) && !(section.to === '/settings/notifications' && gone));
   return (
     <div className="sset">
       {phone ? null : (
         <nav className="sset__nav" aria-label="Settings sections">
-          {SECTIONS.filter((section) => (!touch || section.to !== '/settings/shortcuts') && (section.to !== '/settings/agents' || !isGuest(workspace))).map((section) => (
+          {offered.map((section) => (
             <Link key={section.to} to={section.to} className="sset__link" aria-current={section.match.test(pathname) ? 'page' : undefined}>
               {section.label}
             </Link>
           ))}
         </nav>
       )}
-      <div className="sset__page"><Outlet /></div>
+      {/* Someone no longer in the company reaching Company, AI or Notifications is told what Home tells them, in its one look (rounds 14 and 15). */}
+      <div className="sset__page">{gone && COMPANY_ONLY.test(pathname) ? <NoLongerIn company={gone} /> : <Outlet />}</div>
     </div>
   );
 }
@@ -175,7 +186,7 @@ function AgentsAndAi() {
         </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected apps couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
-        <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
+        <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents start when it is turned on.</p>
       </div>
     );
   }
@@ -209,11 +220,13 @@ export function SettingsAppearance() {
 }
 
 /**
- * Settings on the phone (Spokój E04p): the account, the same sections in the same order as the computer's
- * list (Keyboard shortcuts only with a keyboard, so not here), and Sign out.
+ * Settings on the phone (Spokój E04p): the account and the same sections in the same order as the computer's list (Keyboard shortcuts
+ * only with a keyboard, so not here). Sign out is in Account alone, where the design draws it (README §4, §7).
  */
 function PhoneSettings() {
-  const { me, workspace, agents } = useShellData();
+  const shell = useShellData();
+  const { me, workspace, agents } = shell;
+  const gone = goneFrom(shell);
   const theme = useTheme();
   // What the person hears about, said as it is now: quiet hours are named only while they are on (#1424). Until it is read the line keeps its height.
   const [heard, setHeard] = useState<string | null>(null);
@@ -233,16 +246,11 @@ function PhoneSettings() {
         </Link>
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
-          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail={heard ?? '\u00a0'} />
-          {isGuest(workspace) ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
-          <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
+          {gone ? null : <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail={heard ?? '\u00a0'} />}
+          {isGuest(workspace) || gone ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
+          <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company"
+            detail={workspace ? `${workspace.name} · its people and their roles` : gone ? `No longer in ${gone}` : 'Its people and their roles'} />
         </ul>
-        <Form method="post" action="/sign-out" className="sset-card sset-gap">
-          <button type="submit" className="sset-row sset-row--link">
-            <span className="sset-row__ic" aria-hidden="true"><Icon name="sign-out" size={16} /></span>
-            <span className="sset-row__b"><span className="sset-row__t">Sign out</span></span>
-          </button>
-        </Form>
       </div>
     </div>
   );
@@ -263,7 +271,7 @@ export function SettingsAgents() {
       <div className="pane-scroll">
         <div className="pane-in sset-in">
           <PageHead title="AI" />
-          <p className="sset-note" data-ai-settings="guest">Guests don’t have AI. An admin can make you a member.</p>
+          <p className="sset-note" data-ai-settings="guest">{GUEST_AI_LINE}</p>
         </div>
       </div>
     );
@@ -284,14 +292,17 @@ export function SettingsAgents() {
  * AI is switched per space.
  */
 export function SettingsCompany() {
-  const { workspace } = useShellData();
-  const phone = useMediaQuery(MEDIA.phone);
+  const shell = useShellData();
+  const { workspace } = shell;
+  const gone = goneFrom(shell);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        {phone ? null : <PageHead title="Company" />}
+        <PageHead title="Company" />
+        {/* Someone removed (or who left) reads what Home says, not that they were never in one (round 14). */}
         {workspace ? <WorkspacePeople key={workspace.id} workspaceId={workspace.id} page onBack={() => undefined} />
-          : <p className="sset-note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
+          : <p className="sset-note" data-no-longer-in={gone ? '' : undefined}>{gone ? `You’re no longer in ${gone}. Ask an owner or admin of the company for an invite link to come back.`
+            : 'You’re not in a company on this Flux yet. Ask an admin for an invite link.'}</p>}
       </div>
     </div>
   );
@@ -356,7 +367,7 @@ function SingleSignOnLink() {
 }
 
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** Settings → Account: who is signed in, their name, address and password, where they are signed in, and Sign out (#763 SG-1). */
 export function SettingsAccount() {
@@ -390,17 +401,20 @@ export function SettingsAccount() {
   );
 }
 
-/** The keyboard shortcuts of guide §4, as one list. */
+/** ⌘ on a Mac, Ctrl elsewhere: the key the sidebar's Search names in its title ("Search (Ctrl K)"). */
+const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** The keyboard shortcuts of guide §4, as one list, in the guide's words ("Search"). */
 export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['C'], action: 'New (task by default)' },
-  { keys: ['⌘', 'K'], action: 'Search or run' },
+  { keys: [mac ? '⌘' : 'Ctrl', 'K'], action: 'Search' },
   { keys: ['G', 'I'], action: 'Go to Inbox' },
   { keys: ['J', '/', 'K'], action: 'Move in a list' },
   { keys: ['E'], action: 'Done' },
   { keys: ['S'], action: 'Not now' },
   { keys: ['A'], action: 'Accept' },
   { keys: ['Z'], action: 'Undo' },
-  { keys: ['R'], action: 'Reply in thread' },
+  { keys: ['R'], action: 'Reply, or write about an Inbox item' },
   { keys: ['T'], action: 'Create a task from a message' },
   { keys: ['1', '–', '4'], action: 'Task state' },
   { keys: ['['], action: 'Collapse the sidebar' },
@@ -411,7 +425,7 @@ export function KeyboardShortcuts() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
+        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus. J, K, E, S, A and R work in the Inbox." />
         <table className="sset-card sset-keys">
           <caption className="ui-vh">Shortcuts</caption>
           <thead className="ui-vh"><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>

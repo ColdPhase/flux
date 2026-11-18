@@ -286,15 +286,16 @@ class UpdatePromptReach(unittest.TestCase):
                 self.prompt_actions_are_targets(page)
                 shot(page, f"update-prompt-phone-{width_name}-large-text")
 
-    def test_05b_the_title_menu_opens_under_the_header_not_over_it(self) -> None:
-        """A direct message's title menu is a card under the header; with the prompt above, it follows the header down."""
+    def test_05b_the_more_menu_opens_under_the_header_not_over_it(self) -> None:
+        """A direct message's header is Back, the name and More, with Search in More (#1374); its More menu is a card under the header,
+        and with the prompt above, it follows the header down."""
         page = self.page()
         page.goto(self.dm_path)
-        expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_be_visible()
+        expect(page.locator("header").get_by_role("heading", level=1, name="Kai Tanaka")).to_be_visible()
         self.offer_update(page)
-        page.get_by_role("heading", level=1).get_by_role("button").tap(timeout=5000)
-        menu = page.get_by_role("dialog", name=re.compile("Kai Tanaka"))
-        expect(menu).to_be_visible()
+        page.locator("header").get_by_role("button", name="More", exact=True).tap(timeout=5000)
+        menu = page.get_by_role("menu", name="More")
+        expect(menu.get_by_role("menuitem", name="Search", exact=True)).to_be_visible()
         page.wait_for_function("document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).every((a) => a.playState !== 'running')")
         header, card = page.locator("header.phead").bounding_box(), menu.bounding_box()
         self.assertIsNotNone(header)

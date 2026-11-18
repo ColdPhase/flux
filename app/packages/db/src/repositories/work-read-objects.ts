@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef, WorkDetailObject, WorkRowProjection } from '@flux/contracts';
+import { removedName, withoutCiteMarks, type DecisionRowProjection, type NamedPrincipal, type NativeWorkRow, type PrincipalRef, type WorkDetailObject, type WorkRowProjection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
@@ -20,7 +20,8 @@ const actorKey = (ref: PrincipalRef) => `${ref.kind}:${ref.id}`;
 /** F-034: a decision's short reason for its card, the first sentence of the rationale as plain words. */
 export function shortReason(rationale: string, max = 160): string {
   // A rationale may be 20,000 characters and the link pattern is quadratic in what it reads (v0.2.1 audit #1270): the first sentence needs far fewer.
-  const flat = rationale.slice(0, 2_000).replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
+  // No cite mark (an id is never words) and a Wiki page `[[Title]]` as its title.
+  const flat = withoutCiteMarks(rationale.slice(0, 2_000)).replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
   const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;
   return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}…` : sentence;
 }
@@ -29,9 +30,18 @@ export function shortReason(rationale: string, max = 160): string {
 /** The composing adapter adds a task's "Let linked PRs move this task" rule (#74 G-1a), presented by core. */
 export type NativeWorkDetailObject = Exclude<WorkDetailObject, { kind: 'work' }> | Omit<Extract<WorkDetailObject, { kind: 'work' }>, 'githubRule'>;
 export function nativeWorkObjectRows(db: DbExecutor) {
-  async function names(refs: PrincipalRef[]) {
-    const found = await workRows(db).names(refs);
-    return (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+  /**
+   * Names `refs` for a reader. With the company of the rows (`workspaceId`), a person who left the company or was removed, and has not come
+   * back, is "Tomek Nowak (removed)" (`removedName`): a task's owner or the person it waits for (personas-33), and who made, proposed, decided
+   * or undid something (founder decision, Hubert, 2026-11-17, #1424: everywhere), as the full work presenter does (core `work/service.ts`).
+   */
+  async function names(refs: PrincipalRef[], workspaceId: string | null = null) {
+    const found = await workRows(db).namesIn(refs, workspaceId);
+    const plain = (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.names.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+    return (ref: PrincipalRef): NamedPrincipal => {
+      const person = plain(ref);
+      return found.gone.has(actorKey(ref)) ? { ...person, name: removedName(person.name) } : person;
+    };
   }
   /** The tasks that are part of this one (#841), by number; a task whose creation was undone is no longer one. At most 50. */
   async function subtasks(projectId: string, parentId: string) {
@@ -40,7 +50,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId }).from(l).innerJoin(w, eq(w.id, l.fromId))
       .where(and(eq(l.projectId, projectId), eq(l.role, 'part_of'), eq(l.toType, 'work'), eq(l.toId, parentId), isNull(w.creationRevertedAt))).orderBy(asc(w.number)).limit(50));
     const owners = children.flatMap((child): PrincipalRef[] => child.ownerUserId ? [{ kind: 'human' as const, id: child.ownerUserId }] : child.ownerAgentId ? [{ kind: 'agent' as const, id: child.ownerAgentId }] : []);
-    const named = await names(owners);
+    const named = await names(owners, children[0]?.workspaceId ?? null);
     return children.map((child) => ({ id: child.id, number: child.number, title: child.title, status: child.status,
       owner: child.ownerUserId ? named({ kind: 'human', id: child.ownerUserId }) : child.ownerAgentId ? named({ kind: 'agent', id: child.ownerAgentId }) : null }));
   }
@@ -65,7 +75,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       actors.push({ kind: decision.proposedByKind, id: decision.proposedById });
       if (decision.decidedBy) actors.push({ kind: 'human', id: decision.decidedBy });
     }
-    const named = await names(actors);
+    const named = await names(actors, works[0]?.workspaceId ?? decisions[0]?.workspaceId ?? null);
     const facts = new Map((await nativeWorkVisibilityRows(db).relations(projectId, requested)).map((fact) => [`${fact.kind}:${fact.id}`, fact]));
     const waitingOn = await workRows(db).waitingTargets(works.flatMap((work): { kind: 'decision' | 'task'; id: string }[] => work.waitingForDecisionId ? [{ kind: 'decision' as const, id: work.waitingForDecisionId }]
       : work.waitingForWorkId ? [{ kind: 'task' as const, id: work.waitingForWorkId }] : []));
@@ -125,7 +135,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       if (row.kind === 'work') {
         const [own] = await openRows(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, outcome: w.outcome, criteria: w.criteria, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(and(eq(w.projectId, projectId), eq(w.id, row.id))));
         if (!own) throw new Error('Missing native work detail');
-        const named = await names([{ kind: own.createdByKind, id: own.createdById }]);
+        const named = await names([{ kind: own.createdByKind, id: own.createdById }], own.workspaceId);
         const plan = (await taskGraphRows(db).taskPlans([row.id])).get(row.id) ?? { prerequisites: [], planIntent: null };
         const prerequisites = plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' }));
         if (prerequisites.length !== row.prerequisiteCounts.total || prerequisites.filter((item) => !item.met).length !== row.prerequisiteCounts.unmet)

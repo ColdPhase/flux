@@ -20,6 +20,7 @@ import { pushRoutes } from './push/index.js';
 import { staticHeaders } from './pwa/static-headers.js';
 import { loadDocumentPolicies } from './http/content-security-policy.js';
 import { CSP_REPORT_PATH, cspReportRoutes } from './http/csp-reports.js';
+import { useAgentColours } from './http/agent-colours.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { linkPreviewRoutes } from './link-previews/routes.js';
@@ -64,7 +65,7 @@ import { searchQueryVectors } from './search/vectors.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { keyToolChecking } from './ai-keys/tool-checking.js';
-import { agentsSettler, firstAgentMaker } from './personal-runs/make-agent.js';
+import { agentsSettler, budgetWaitsResumer, firstAgentMaker } from './personal-runs/make-agent.js';
 import { pgBossPersonalRunQueue } from './personal-runs/adapters.js';
 import { registerPersonalRunTokenRoute } from './personal-runs/run-tokens.js';
 import { personalRuntimeAvailability } from './personal-runs/runtime.js';
@@ -167,6 +168,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   let gateSessions: Awaited<ReturnType<typeof startIdentity>> | null = null;
   registerLockGate(app, { db, keys: encryptionKeys,
     sessions: { resolveSession: (headers) => gateSessions!.resolveSession(headers), requirePrincipal: (request) => gateSessions!.requirePrincipal(request) } });
+  // Every agent an answer names carries its own colour (#1528), registered before any route so every route has it.
+  useAgentColours(app, db);
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
   // The API only enqueues. The worker owns scheduling and maintenance, so this instance runs neither of their timers (#862).
@@ -335,6 +338,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const firstAgent = firstAgentMaker(db, agentComposition, app.log);
   await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent,
     afterRemove: agentsSettler(db, agentComposition, app.log),
+    afterBudget: budgetWaitsResumer(db, agentComposition, app.log),
     refresh: modelListRefresh(db, boss) });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
   const webReader = createWebReader({ enabled: config.webReads.enabled, pictures, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
@@ -357,7 +361,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // flux_web_search only where the route registers it: the web on and a searcher here (#1452 review).
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, webReader.enabled && !!keySearcher?.compute.enabled);
   await app.register(returnRoutes, { db, sessions: identity });
-  await app.register(firstStepRoutes, { db, sessions: identity });
+  await app.register(firstStepRoutes, { db, sessions: identity, runtime: config.agentRuntime });
   await app.register(needsYouRoutes, { db, sessions: identity, github: githubReadProvider });
   await app.register(sidebarRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });

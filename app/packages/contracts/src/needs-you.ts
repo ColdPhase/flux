@@ -5,13 +5,15 @@ import type { LockedWorkspaceRef } from './encryption.js';
 import type { AssistantWaitReason } from './assistant.js';
 
 export const NEEDS_YOU_PATH = '/api/v1/needs-you';
+/** `GET`: the items put off for later and those done today, the two lists the Inbox's "2 for later · 4 done today" open (#1424 E). */
+export const NEEDS_YOU_ASIDE_PATH = `${NEEDS_YOU_PATH}/aside`;
 export const needsYouItemPath = (key: string) => `${NEEDS_YOU_PATH}/${encodeURIComponent(key)}`;
 
 /**
  * What kind of need an item is. `question` is a notification asking the person to respond, and an agent's open question with ready-made answers
  * (`question:<id>`, F-026 S14): it is read from the question itself, so it leaves the queue once it is answered anywhere.
  */
-export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention'] as const;
+export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention', 'task'] as const;
 export type NeedsYouKind = typeof NEEDS_YOU_KINDS[number];
 
 /** A task a "when it is done" snooze can wait for. */
@@ -34,7 +36,8 @@ export interface NeedsYouAccepter {
 export interface NeedsYouDecision {
   id: string;
   version: number;
-  proposedBy: { kind: 'human' | 'agent'; id: string; name: string };
+  /** An agent carries its colour (`AgentColour`, #1528). */
+  proposedBy: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour };
   /** What it is based on: the titles of its sources, in order. */
   basedOn: string[];
   /** Work it affects. */
@@ -98,8 +101,11 @@ export interface NeedsYouItem {
   /** The reason or message, one or two lines. */
   detail: string;
   project: { id: string; name: string } | null;
-  /** Who it comes from: an agent or a person; null for a blocked task of yours. */
-  from: { kind: 'human' | 'agent'; id: string; name: string } | null;
+  /**
+   * Who it comes from: an agent or a person; null for a blocked task of yours. An agent carries its owner (`owner`, by name) while that person
+   * can read the item's space (#339 AC-2), so every reader sees its one label, "Planner · Ada's agent" (v0.2.1 release gate).
+   */
+  from: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour; owner?: { id: string; name: string } } | null;
   at: string;
   /** Where it opens in full (a same-origin path). */
   url: string;
@@ -111,6 +117,23 @@ export interface NeedsYouItem {
   proposal?: NeedsYouProposal | null;
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
   reason: 'mention' | 'question' | 'invitation' | null;
+  /**
+   * Set on an item that answers a question you asked (#1424 decision 1: an answer to your question reaches you), a `mention` (a `question`
+   * when the answer asks back). Its kind word is "Reply", in a plain and an encrypted space alike: it is the notification's own `answer`
+   * flag, which the generator sets from the answer it found, never from the words.
+   */
+  answer?: boolean;
+  /**
+   * Set on a question or a mention written in a decision's one discussion (#1424, persona round 8): the decision it is about, so its line
+   * reads "Question · Jonas · about “Stand closes at 15:00”".
+   */
+  about?: { decisionId: string; title: string } | null;
+  /**
+   * Set for a `task` item (#1424 C): a task someone else or an agent gave you, which you have not opened, started or finished yet. Its key is
+   * the `note:<id>` of the notification that gave it to you; opening the task reads that notification. `version` is the task's, so Done can
+   * finish it (founder decision 2026-11-15): Done on a Task item is the task's own change to Done.
+   */
+  task?: { workId: string; number: number; version: number } | null;
   /** Set for a call started in your space or an invitation to one (F-041): the call to Join. Listed only while someone is in it. */
   call?: { projectId: string; sessionId: string } | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */
@@ -148,10 +171,33 @@ export interface NeedsYouResponse {
   doneToday: number;
   /**
    * Unread notifications that would notify you under your level (#1243): direct messages, mentions, questions, tasks, call invitations…
-   * at "Only what needs me", every reason at "Everything", none at "Nothing"; counted among your newest 100 Inbox items. The tab's
+   * at "Only what needs me", every reason at "Everything", none at "Nothing"; counted among your newest 100 unread Inbox items, however many
+   * read ones are newer. The tab's
    * title "(N)", its favicon dot and the installed app's badge show it.
    */
   notifying: number;
+}
+
+/** One row of the lists behind "2 for later" and "4 done today" (#1424 E). `DELETE /api/v1/needs-you/:key` brings it back. */
+export interface NeedsYouAsideEntry {
+  item: NeedsYouItem;
+  state: 'done' | 'declined' | 'snoozed';
+  /** When a snoozed item comes back by itself; null when it waits for a task (`untilTask`) or is done. */
+  until: string | null;
+  /** The task a snoozed item waits for, when it waits for one. */
+  untilTask: NeedsYouTaskRef | null;
+  /** When the person put it off or marked it done. */
+  at: string;
+}
+
+/** `GET /api/v1/needs-you/aside`: exactly what `later` and `doneToday` count. */
+export interface NeedsYouAsideResponse {
+  /** Snoozed, soonest back first. */
+  later: NeedsYouAsideEntry[];
+  /** Marked done or declined in the last 24 hours, newest first. */
+  done: NeedsYouAsideEntry[];
+  /** F-030: the caller's encrypted workspaces locked here, whose items both lists leave out; absent when none is (a cross-workspace read). */
+  lockedWorkspaces?: LockedWorkspaceRef[];
 }
 
 /**

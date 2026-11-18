@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import time
 import unittest
 import uuid
 
@@ -13,6 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, shot, show_map_as, start_forwarder
 from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
+from inbox_items import open_item
 
 PASSWORD = "One panel for every object"
 # Every finite animation (a sheet arriving) has finished; endless indicators are ignored.
@@ -65,8 +67,8 @@ class UnifiedPanel(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, phone=False, scheme="light"):
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.ada_ctx.storage_state(), color_scheme=scheme,
+    def page(self, phone=False, scheme="light", who="ada"):
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=(self.jonas_ctx if who == "jonas" else self.ada_ctx).storage_state(), color_scheme=scheme,
             viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900},
             device_scale_factor=2 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB", service_workers="block")
         self.addCleanup(ctx.close)
@@ -101,7 +103,7 @@ class UnifiedPanel(unittest.TestCase):
         page = self.page()
         for label, url, ready in (
             ("task", f"/projects/{self.project}/tasks?open=work:{self.task['id']}", ".wd[data-detail-kind='work']"),
-            ("decision", f"/projects/{self.project}/tasks?open=decision:{self.decision['id']}", ".wd[data-detail-kind='decision']"),
+            ("decision", f"/projects/{self.project}?open=decision:{self.decision['id']}", ".wd[data-detail-kind='decision']"),
             ("thread", f"/projects/{self.project}/conversations/{self.thread['id']}", ".thread"),
         ):
             with self.subTest(object=label):
@@ -210,7 +212,7 @@ class UnifiedPanel(unittest.TestCase):
                 expect(card).to_contain_text("Waiting for the probe dimensions")
                 expect(card.get_by_role("combobox", name="Waiting for", exact=True)).to_have_count(0)  # the field shows only while editing
                 actions = panel.get_by_role("group", name="Task actions")
-                for name in ("Link thought",):
+                for name in ("Add to a thought",):
                     box = actions.get_by_role("button", name=name).bounding_box()
                     self.assertAlmostEqual(box["height"], 32, delta=1, msg=f"{name} is a small action at the 32 px control height (#789)")
                 # Empty sections are not shown, a single page has no pagination, and nothing is a select.
@@ -220,7 +222,7 @@ class UnifiedPanel(unittest.TestCase):
                 expect(panel.locator("select, .ui-select")).to_have_count(0)
                 self.assertEqual(page.evaluate("[...document.querySelectorAll('#details select, #details .ui-select')].length"), 0)
                 # Activity above the composer, which sits at the bottom of the panel with its audience line.
-                composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+                composer = panel.get_by_placeholder("Write about this task…")
                 expect(composer).to_be_visible()
                 bounds, composer_box, activity = panel.bounding_box(), composer.bounding_box(), panel.get_by_role("region", name="Discussion").bounding_box()
                 self.assertGreater(composer_box["y"], activity["y"], "the composer is below the discussion")
@@ -234,13 +236,13 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Calibrate the probes at two soil depths")
         page = self.page()
         panel = self.open_task(page, task)
-        names = ["Status", "Owner", "Link thought", "Close details"]
+        names = ["Status", "Owner", "Add to a thought", "Close details"]
         before = self.positions(page, names)
         # Owner: a menu of people and agents, no select; the choice is stored.
         owner = panel.get_by_role("button", name="Owner", exact=True)
         owner.click()
         menu = page.get_by_role("menu", name="Owner")
-        expect(menu.get_by_role("menuitemradio")).to_have_count(3)  # Nobody yet, Ada, Jonas
+        expect(menu.get_by_role("menuitemradio")).to_have_count(3)  # No owner, Ada, Jonas
         menu.get_by_role("menuitemradio", name="Jonas Berg").click()
         expect(owner).to_contain_text("Jonas Berg")
         expect(panel.get_by_role("list", name="Task activity")).to_contain_text("reassigned it to Jonas Berg")
@@ -258,14 +260,14 @@ class UnifiedPanel(unittest.TestCase):
         page.keyboard.press("4")
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
-        # Activity: every change with its real author and time, newest first.
+        # Activity: every change with its real author and time, oldest first with the newest at the bottom (round 8, #1424).
         activity = panel.get_by_role("list", name="Task activity")
         expect(activity.locator("li")).to_have_count(4)
         lines = activity.locator("li").all_inner_texts()
-        self.assertIn("Ada marked it done", lines[0])
-        self.assertIn("set it due", lines[1])
-        self.assertIn("reassigned it to Jonas Berg", lines[2])
-        self.assertIn("Ada created it from a message", lines[3])
+        self.assertIn("Ada Kowalska (you) created it from a message", lines[0])
+        self.assertIn("reassigned it to Jonas Berg", lines[1])
+        self.assertIn("set it due", lines[2])
+        self.assertIn("Ada Kowalska (you) marked it done", lines[3])
         for line in activity.locator("time").all():
             expect(line).to_have_attribute("datetime", re.compile(r"^\d{4}-\d\d-\d\dT"))
         stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")
@@ -277,6 +279,11 @@ class UnifiedPanel(unittest.TestCase):
         page.get_by_role("dialog", name="Due date").get_by_role("button", name="Clear", exact=True).click()
         expect(panel.get_by_role("button", name="Due, add a date")).to_be_visible()
         self.assertIsNone(self.stored(task)["dueOn"])
+        # Taking it yourself is "took it", never "Ada assigned it to Ada Kowalska" (personas-26).
+        owner.click()
+        page.get_by_role("menu", name="Owner").get_by_role("menuitemradio", name=re.compile(r"^Ada Kowalska")).click()
+        expect(activity.locator("li").last).to_contain_text("Ada Kowalska (you) took it from Jonas Berg")
+        expect(activity).not_to_contain_text("to Ada Kowalska")
 
     def test_07_the_blocker_is_a_card_edited_in_place_and_resolve_undoes(self):
         task = self.new_task("Label the cables", blocker="Waiting for the printer")
@@ -291,7 +298,7 @@ class UnifiedPanel(unittest.TestCase):
         expect(card.get_by_role("combobox", name="Waiting for", exact=True)).to_have_count(0)
         expect(card).to_contain_text("Waiting for the label printer to arrive")
         self.assertEqual(self.stored(task)["blocker"], "Waiting for the label printer to arrive")
-        card.get_by_role("button", name="Resolve").click()
+        card.get_by_role("button", name="Unblock").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         page.get_by_role("status").get_by_role("button", name="Undo").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Blocked")
@@ -313,7 +320,7 @@ class UnifiedPanel(unittest.TestCase):
         reason = activity.locator("li[data-message-id]")
         expect(reason).to_have_count(1)
         expect(reason).to_contain_text("Waiting for the replacement hinge")
-        expect(reason.locator("[data-contribution='blocker']")).to_have_text("Saved as the task blocker")
+        expect(reason.locator("[data-contribution='blocker']")).to_have_text("Saved as why it’s blocked")
         expect(activity).to_contain_text("marked it blocked")
         items = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")["items"]
         self.assertEqual([(item["status"]["to"], item["status"]["blocker"]) for item in items if item["kind"] == "status"], [("blocked", None)])
@@ -324,16 +331,31 @@ class UnifiedPanel(unittest.TestCase):
         expect(panel.get_by_role("list", name="Task activity")).to_contain_text("marked it blocked: Waiting for the supplier")
         expect(panel.get_by_role("list", name="Task activity").locator("li[data-message-id]")).to_have_count(0)
 
+    def test_07c_a_blocked_task_with_no_reason_says_it_one_way_in_the_card_and_its_form(self):
+        # personas-33: Status › Blocked said "No reason was recorded." and the form then said "Now: No blocker written.": one phrasing.
+        task = self.new_task("Oil the gate hinge")
+        page = self.page()
+        panel = self.open_task(page, task)
+        panel.get_by_role("button", name="Status", exact=True).click()
+        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Blocked").click()
+        card = panel.get_by_role("region", name="Blocker")
+        expect(card).to_contain_text("No reason was recorded.")
+        card.get_by_role("button", name="Edit", exact=True).click()
+        card.get_by_role("combobox", name="Waiting for", exact=True).fill("Waiting for the oil")
+        expect(card.locator(".wd-blocker-form > .wd-muted")).to_have_text("Now: No reason was recorded.")
+        expect(panel).not_to_contain_text("No blocker written")
+
     def test_08_the_composer_writes_to_the_activity_with_its_author_and_time(self):
         task = self.new_task("Choose the mast height")
         page = self.page()
         panel = self.open_task(page, task)
-        composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+        composer = panel.get_by_placeholder("Write about this task…")
         composer.fill("Did the supplier send the sizes?")
         panel.get_by_role("button", name=re.compile("^Send to task$")).click()
         item = panel.get_by_role("list", name="Task activity").locator("li[data-message-id]")
         expect(item).to_have_count(1)
-        expect(item.locator(".wd-act__who b")).to_have_text("Ada")
+        # The task panel names people as the decision panel and the thread do (personas-33): the full name, "(you)" for the reader.
+        expect(item.locator(".wd-act__who b")).to_have_text("Ada Kowalska (you)")
         expect(item).to_contain_text("Did the supplier send the sizes?")
         expect(item.locator("time")).to_have_attribute("datetime", re.compile(r"^\d{4}-"))
         stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/discussion")
@@ -348,7 +370,7 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Write the wiring notes")
         page = self.page()
         panel = self.open_task(page, task)
-        panel.get_by_role("button", name="Link thought").click()
+        panel.get_by_role("button", name="Add to a thought").click()
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_be_visible()
         page.keyboard.press("Escape")
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_have_count(0)
@@ -474,10 +496,182 @@ class UnifiedPanel(unittest.TestCase):
                         panel.get_by_role("link", name=re.compile("Message: Should the first sensors")).click()
                         expect(panel.locator(".thread")).to_be_visible()
                         shot(page, f"unified-panel-thread-{device}-{scheme}")
-                    page.goto(f"/projects/{self.project}/tasks?open=decision:{self.decision['id']}")
+                    page.goto(f"/projects/{self.project}?open=decision:{self.decision['id']}")
                     expect(page.locator("#details .wd[data-detail-kind='decision']")).to_be_visible()
                     page.wait_for_function(SETTLED)
                     shot(page, f"unified-panel-decision-{device}-{scheme}")
+
+    def task_panel(self, page, task):
+        """The task's panel on the computer or its sheet on the phone, once its rows and discussion are read."""
+        page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
+        panel = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{task['id']}']")
+        expect(panel).to_be_visible()
+        expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
+        expect(panel.get_by_role("list", name="Task activity")).to_be_visible()
+        return panel
+
+    @staticmethod
+    def wait_until(read, done, message, seconds=10.0):
+        deadline = time.time() + seconds
+        value = read()
+        while not done(value) and time.time() < deadline:
+            time.sleep(0.25)
+            value = read()
+        return value
+
+    def test_14_another_persons_message_shows_live_in_the_open_task_panel(self):
+        """Persona round 10 P2 1 (S23): the task's discussion is live as the decision's and a thread are. Two people, two browser pages: a
+        message Jonas writes shows in Ada's open panel without a reload; at the end she sees it arrive, above it she is not moved and
+        "↓ 1 new" takes her there."""
+        task = self.new_task("Seal the barrel lids before the rain")
+        for index in range(24):
+            api(self.ada_ctx if index % 2 else self.jonas_ctx, "POST", f"/api/v1/work/{task['id']}/discussion",
+                {"body": f"Lid note {index + 1:02}: which seal fits the old barrels, and who has the drill.", "clientMessageId": str(uuid.uuid4())}, 201)
+        ada = self.page()
+        panel = self.task_panel(ada, task)
+        activity = panel.get_by_role("list", name="Task activity")
+        expect(activity).to_contain_text("Lid note 24")
+        scroller = panel.locator(".wd__scroll")
+        jonas = self.page(who="jonas")
+        theirs = self.task_panel(jonas, task)
+
+        def send(words):
+            theirs.get_by_placeholder("Write about this task…").fill(words)
+            theirs.get_by_role("button", name=re.compile("^Send to task$")).click()
+            expect(theirs.get_by_role("list", name="Task activity")).to_contain_text(words)
+
+        # At the end of the panel: Jonas's message arrives in view, with nothing to count.
+        scroller.evaluate("element => { element.scrollTop = element.scrollHeight; }")
+        send("The seals came today, I will fit them on Saturday.")
+        arrived = activity.locator("li[data-message-id]").filter(has_text="The seals came today")
+        expect(arrived).to_have_count(1)
+        expect(arrived).to_be_in_viewport()
+        expect(panel.locator(".convo-newbelow__b")).to_have_count(0)
+        # Above the end (the panel's top, on the task's rows): nothing moves, and the arrival is counted.
+        scroller.evaluate("element => { element.scrollTop = 0; }")
+        ada.wait_for_timeout(300)
+        send("Saturday works, the drill is in the shed.")
+        later = activity.locator("li[data-message-id]").filter(has_text="Saturday works")
+        expect(later).to_have_count(1)
+        pill = ada.locator(".convo-newbelow__b")
+        expect(pill).to_have_text(re.compile("1 new"))
+        self.assertEqual(scroller.evaluate("element => element.scrollTop"), 0, "a reader above the end is not moved")
+        self.assert_band_flush(panel, "computer light")
+        shot(ada, "unified-panel-task-live-new-below")
+        pill.click()
+        expect(later).to_be_in_viewport()
+        expect(ada.locator(".convo-newbelow__b")).to_have_count(0)
+        # Round 15 confirm S1: the band sits flush on the panel's edge with nothing of the next message under it, and never over the task's
+        # fields above the discussion (on the phone's sheet it covered Due), on the computer and the phone's sheet, light and dark.
+        for phone, scheme in ((False, "dark"), (True, "light"), (True, "dark")):
+            with self.subTest(phone=phone, scheme=scheme):
+                tag = f"{'phone' if phone else 'computer'} {scheme}"
+                reader = self.page(phone=phone, scheme=scheme)
+                open_panel = self.task_panel(reader, task)
+                rows = open_panel.locator(".wd__scroll")
+                rows.evaluate("element => { element.scrollTop = 0; }")
+                reader.wait_for_timeout(300)
+                send(f"One more seal note for the {tag} reader.")
+                expect(reader.locator(".convo-newbelow__b")).to_have_text(re.compile("1 new"))
+                self.assert_band_flush(open_panel, f"{tag} at the top")
+                # With the discussion's start half way up the panel, the band shows, flush on the edge.
+                rows.evaluate("""element => { const top = element.querySelector('.wd-activity').getBoundingClientRect().top - element.getBoundingClientRect().top;
+                  element.scrollTop += top - element.clientHeight / 2; }""")
+                reader.wait_for_timeout(300)
+                expect(reader.locator(".convo-newbelow__b")).to_be_in_viewport()
+                self.assertTrue(self.assert_band_flush(open_panel, f"{tag} in the discussion"), "the band shows over the discussion")
+                shot(reader, f"unified-panel-task-new-band-{'phone' if phone else 'computer'}-{scheme}")
+
+    def assert_band_flush(self, panel, where):
+        """The "↓ N new" band: its top never above the discussion's start, and when it shows, its bottom on the panel's edge. Returns whether it shows."""
+        band = panel.evaluate("""root => { const scroll = root.querySelector('.wd__scroll'), band = root.querySelector('.wd-newbelow'), talk = root.querySelector('.wd-activity');
+          const s = scroll.getBoundingClientRect(), b = band.getBoundingClientRect(), t = talk.getBoundingClientRect();
+          return { gap: s.bottom - b.bottom, above: t.top - b.top, shown: b.top < s.bottom - 1 }; }""")
+        self.assertLessEqual(band["above"], 0.5, f"{where}: the band never covers the task's fields above the discussion {band}")
+        if band["shown"]:
+            self.assertLessEqual(abs(band["gap"]), 1, f"{where}: the band sits flush on the panel's edge {band}")
+        return band["shown"]
+
+    def test_15_done_in_the_panel_by_the_person_waited_for_is_the_inboxs_done(self):
+        """Persona round 10 P2 2: the person a task waits for says Done in its panel (on the phone a tap on the Inbox row opens it) with
+        the result of the Inbox's Done: "#N can continue" with Undo (Z), the item in done today, and Undo or Put back make the task Blocked
+        again for them with the same reason, without the owner's "can continue" notice."""
+        queue = lambda: api(self.jonas_ctx, "GET", "/api/v1/needs-you")  # noqa: E731
+        notices = lambda task: [item for item in api(self.ada_ctx, "GET", "/api/v1/inbox?limit=100")["items"] if item["title"].startswith(f"#{task['number']} can continue")]  # noqa: E731
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                task = self.new_task(f"Fit the new lid seals ({tag})", blocker="The new seals")
+                key = f"blocked:{task['id']}"
+                before = queue()["doneToday"]
+                page = self.page(phone=phone, who="jonas")
+                panel = self.task_panel(page, task)
+                card = panel.get_by_role("region", name="Blocker")
+                expect(card).to_contain_text("Waiting for Jonas Berg (you) · The new seals")  # Jonas reads himself as "(you)" (round 14 look-a A4)
+                card.get_by_role("button", name="Done", exact=True).click()
+                expect(page.get_by_role("status").filter(has_text=f"#{task['number']} can continue")).to_be_visible()
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] != "blocked", "the task resumes")
+                self.assertEqual((stored["status"], stored["waitingFor"], stored["blocker"]), ("in_progress", None, None))
+                expect(card).to_have_count(0)
+                # The same Done as the Inbox's: the choice is kept, so it is in done today and can be put back from there.
+                self.assertEqual(queue()["doneToday"], before + 1, "Done in the panel is in done today")
+                self.assertIn(key, [entry["item"]["key"] for entry in api(self.jonas_ctx, "GET", "/api/v1/needs-you/aside")["done"]])
+                self.wait_until(lambda: notices(task), bool, "Ada hears it can continue", seconds=15)
+                self.assertTrue(notices(task), "the owner hears the task can continue")
+                shot(page, f"unified-panel-waiter-done-{tag}")
+                # Undo (Z on the computer, the toast's button on the phone): Blocked again, for Jonas, with the same reason; the owner's
+                # notice goes with it.
+                if phone:
+                    page.get_by_role("status").filter(has_text=f"#{task['number']} can continue").get_by_role("button", name="Undo").click()
+                else:
+                    page.keyboard.press("z")
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] == "blocked", "Undo puts the wait back")
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The new seals"))
+                expect(panel.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Jonas Berg (you) · The new seals")
+                self.assertEqual(queue()["doneToday"], before, "Undo takes it out of done today")
+                self.wait_until(lambda: notices(task), lambda value: not value, "the notice goes", seconds=15)
+                self.assertEqual(notices(task), [], "the owner's can continue notice is gone")
+                # Done again, then Put back from done today (the same DELETE): the same wait comes back.
+                panel.get_by_role("region", name="Blocker").get_by_role("button", name="Done", exact=True).click()
+                self.wait_until(lambda: self.stored(task), lambda value: value["status"] != "blocked", "the task resumes again")
+                put_back = self.jonas_ctx.request.fetch(ORIGIN + f"/api/v1/needs-you/{key}", method="DELETE", headers={"origin": ORIGIN})
+                self.assertEqual(put_back.status, 204, put_back.text())
+                stored = self.stored(task)
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The new seals"))
+
+    def test_16_status_done_on_your_own_blocked_task_in_the_panel_is_the_inboxs_done(self):
+        """Sweep-34 C9: the owner opens their blocked task from the Inbox and chooses Status › Done in the panel: the result is the Inbox's
+        Done, "#N moved to Done" with Undo, the item in done today, and Undo puts it back Blocked with what it waited for and why."""
+        queue = lambda: api(self.ada_ctx, "GET", "/api/v1/needs-you")  # noqa: E731
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                title = f"Drill the overflow holes ({tag})"
+                task = self.new_task(title, blocker="The step drill")
+                key = f"blocked:{task['id']}"
+                before = queue()["doneToday"]
+                page = self.page(phone=phone)
+                if phone:
+                    panel = self.task_panel(page, task)
+                else:
+                    page.goto("/inbox")
+                    row = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=re.compile(rf"^#{task['number']} ")))
+                    open_item(row.first).get_by_role("button", name="Open", exact=True).click()
+                    panel = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{task['id']}']")
+                    expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
+                panel.get_by_role("button", name="Status", exact=True).click()
+                page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Done").click()
+                toast = page.get_by_role("status").filter(has_text=f"#{task['number']} moved to Done")
+                expect(toast).to_be_visible()
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] == "done", "the task is done")
+                self.assertEqual(stored["status"], "done")
+                self.assertEqual(queue()["doneToday"], before + 1, "Status › Done on your blocked task is in done today, as the Inbox's Done")
+                self.assertIn(key, [entry["item"]["key"] for entry in api(self.ada_ctx, "GET", "/api/v1/needs-you/aside")["done"]])
+                toast.get_by_role("button", name="Undo").click()
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] == "blocked", "Undo puts it back")
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The step drill"))
+                expect(panel.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Jonas Berg · The step drill")
+                self.assertEqual(queue()["doneToday"], before, "Undo takes it out of done today")
 
 
 if __name__ == "__main__":

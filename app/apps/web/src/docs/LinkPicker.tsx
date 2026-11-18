@@ -6,7 +6,8 @@ import { listProjectSketches } from '../project/data';
 import { useWorkChoices } from '../work/useDetailReads';
 import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
-import { Icon, Select, Option } from '../ui';
+import { Icon } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { getConversation, listConversations } from '../conversations/api';
 import { listProjectDocs } from './api';
 import { kindLabel } from './format';
@@ -37,7 +38,7 @@ const TYPES = ['all', 'doc', 'decision', 'work', 'sketch', 'message'] as const;
 type ReferenceType = typeof TYPES[number];
 function nativeCandidate(item: NativeWorkRow): Candidate {
   return { type: item.kind, id: item.id, title: item.title,
-    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision' : 'Task' };
+    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Decision · Accepted' : item.status === 'proposed' ? 'Decision · Proposed' : 'Decision · Replaced' : 'Task' };
 }
 
 export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: {

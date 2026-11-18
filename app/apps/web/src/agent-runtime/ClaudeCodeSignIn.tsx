@@ -55,7 +55,14 @@ export function ClaudeCodeSignIn() {
   if (!status) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading" /></p></div></div>;
   if (!status.enabled || status.clients.claude_code !== 'available') {
     // The hosted sign-in is the Claude plan (F-026 §7); "Claude Code" is the client on a person's own computer, which this page says nothing about (#1363).
-    return <div className="pane-scroll"><div className="pane-in nset rt-page"><SettingsBack /><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Signing in with a Claude plan isn’t offered on this Flux server.</b> The person who runs this server decides that.</span></p></div></div>;
+    // The page keeps its title and gives the next step, never a lone notice (visual review 2026-11-17 V15).
+    return <div className="pane-scroll"><div className="pane-in nset rt-page"><SettingsBack />
+      <div className="sset-head"><h2>Sign in to Claude</h2></div>
+      <div className="sset-off">
+        <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Signing in with a Claude plan isn’t offered on this Flux server.</b> The person who runs this server decides that.</span></p>
+        <Link className="ui-btn ui-btn--primary" to="/settings/ai-connections?new=1">Use an API key instead</Link>
+      </div>
+    </div></div>;
   }
 
   const pending = status.binding?.state === 'releasing' || Boolean(status.auth?.claude_code);

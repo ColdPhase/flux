@@ -42,7 +42,9 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
    word. The only colours are user content (photos) and each agent's own colour on its Kreska.
 5. **Agents are recognisable, never mistaken for people.** People are grey circles with initials,
    or with the photo they chose (F-039). Agents are Kreska and carry one label everywhere:
-   "Planner · Ada's agent", and never have a photo.
+   "Ada's Planner" (the owner's first name and the agent's own name, the name an answer Ada showed everyone has too, #1232), and never
+   have a photo. One agent never has two names on one screen (v0.2.1 release gate round 15, ai P2-5, which replaced "Planner · Ada's
+   agent").
 6. **Undo instead of confirmations.** Quick actions apply at once and offer Undo. Deleting and
    other people's things always wait for an OK.
 7. **One plain word per thing, and controls stay put.** Space, Task, Thought, Map, Decision, Page:
@@ -69,6 +71,9 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--t3` | `#636363` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg`, `--el`, `--side`, `--sub` and `--hov`; APCA Lc at least 45) |
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
+| `--ring` | `--t3` (`#636363`) | `--t3` (`#A1A1A1`) | The keyboard focus ring, everywhere (founder direction, Hubert 2026-11-17, #1424) |
+| `--face` | `--el` (`#FFFFFF`) | `#2C2C2C` | A person's face (the avatar circle), with a 1 px `--line2` hairline: a disc on the sidebar, the page and a card in both themes (visual review 2026-11-17) |
+| `--selection` | `--t3` at 34 % | `--t3` at 34 % | Selected text everywhere: fields, the Wiki's editor, the map; the text keeps its own colour (founder direction 2026-11-17 visual review) |
 | `--seg` / `--seg-on` / `--seg-off` | `--act` / `--el` / `--t2` | `--sub` / `--pick` / `--t3` | A segmented control: its track, the selected option's pill and an unselected label (#1238). Roles over existing colours, no new colour |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
@@ -78,13 +83,213 @@ Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for re
 **Shadows**
 - Card: `0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12)`.
 - Pop-over: `0 1px 2px rgba(0,0,0,.06), 0 12px 30px -10px rgba(0,0,0,.22)`.
-- Field: `inset 0 0 0 1px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -8px rgba(0,0,0,.12)`.
+- Field: `inset 0 0 0 1px rgba(0,0,0,.14), 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -8px rgba(0,0,0,.12)`; dark `inset 0 0 0 1px rgba(255,255,255,.16), 0 1px 2px rgba(0,0,0,.4)`.
+  Its edge is `--line2`, as a select's, so a resting field is visible on a white card and a form's select and field share one edge and the
+  same 14 px inset (founder direction 2026-11-17 visual review, V7 and V14: the old .05 edge left a field invisible on `--el`).
 - Dark mode uses inset 1 px light outlines plus deeper shadows. Layers get lighter as they rise.
 
 **Gradients**
-- Own bubbles, toasts and inverted chips: `linear-gradient(#3B3B3F, #18181B)`. In dark mode it is
-  `linear-gradient(#FFFFFF, #D9D9D9)` with dark text.
+- `--grad-inv`: `linear-gradient(#3B3B3F, #18181B)`, in dark mode `linear-gradient(#FFFFFF, #D9D9D9)` with dark
+  text. Own bubbles are `--own` (Spokój) and inverted chips are flat `--inv`, so nothing on screen draws it now.
+  **A toast is never an inverted bar** (founder direction, Hubert 2026-11-17,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424): "Tragicznie źle i brzydko wygląda na białym"): it is a raised
+  card like a notice or a menu, `--el` with `--t1` text, a 1 px `--line2` hairline and the pop-over shadow (`--sh-pop`),
+  in both themes (in dark mode `--el` is the raised dark surface and `--sh-pop` carries its light inset edge). Its
+  actions keep the toast's own quiet style: Undo, Another task and × in `--t1`/`--t2` with a `--hov` fill on hover, the
+  key cap `Z` on `--sub` in `--t2`, the divider `--line2`, the Wink in `--t1`. Everything else about a toast stays: where
+  it stands, the safe area, never over the open panel, wrapping at 200 %, its times.
 - Buttons have no gradient (amendment 2026-10-31 below).
+
+**The focus ring** (founder direction, Hubert 2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a
+heavy black frame around an Inbox title on the phone, after a tap, is not a focus ring anyone asked for. One rule for
+every ring in the app:
+- It is drawn only for **keyboard focus**: `:focus-visible`, and only while the last input was a key. A tap or a
+  click, and the focus a script moves after one (the phone Inbox's expanded title, a window's first field), draws no
+  ring; the next key brings it back where the focus is. A text field keeps its ring when it is tapped or clicked: the
+  caret is going there.
+- It is 2 px of `--ring`, the mid-grey `--t3` in both themes (light `#636363`: 5.5:1 on `--bg`, 5.0:1 on `--sub`, 4.7:1
+  on `--hov`; dark `#A1A1A1`: 7.3:1 on `--bg`; at least 3:1 on every surface, WCAG 2.4.7 and 2.4.11), with an offset
+  (2 px unless a component has no room outside), and follows the rounded shape of what it surrounds. It never reads as a
+  black frame, and stays distinct from the selection, which is a fill and never an outline.
+- Components take the colour from `--ring` and never set their own; only the offset is theirs. The ui-wide switch is
+  `data-input` on `<html>` (`pointer`, `field` or `keys`), set by the first pointer or key event: `field` is a tap or a click in a
+  text field (its label or the box drawn round it), so that field shows its ring; a field the app focuses after a tap elsewhere
+  (a conversation's composer as it opens, a window's first field) is `pointer` and shows none until a key or a click in it
+  (visual review 2026-11-17: every conversation and every Create window opened framed). The composer is a text field: its ring is
+  this ring on its edge (offset −1 px over its hairline, as every field's), never a second outline with a gap round its card (round 14)
+  and never a dark inset frame.
+
+**Raised, never inverted** (visual review 2026-11-17, after the toast rule above): a tooltip is a small raised card, `--el` with
+`--t1` words, the pop-over shadow and a `--line2` hairline, in both themes; a message toolbar's tooltip is centred on its
+button. A primary button that waits (`disabled`) keeps a 1 px `--line2` edge, so it never melts into a dark sheet.
+
+**The caret is the text's colour** (founder check, Hubert 2026-11-17: in dark mode the Wiki's caret was black on the black page): every
+place a person types (the Wiki's editor, the composer, every field, a map's thought, a task's title) shows its caret in `--t1`, in both
+themes. A native field takes it from `caret-color`; the Wiki's editor draws its own caret and gives it the same `--t1`.
+
+**One look for one element** (founder direction, Hubert 2026-11-17, the fresh-eyes visual review of v0.2.1: "a UI check must catch what
+looks ugly"). The same element looks the same on every screen, in light and dark, on the computer and the phone:
+- **Empty states** are one component (`EmptyState`): centred in their place, Kreska (a small moment, 80 px) or a 40 px icon tile, a title
+  at `--fs-xl`, one line in `--t2` and the action. The Inbox, Search's "Nothing matches", My tasks and every space view use it. A list's
+  own empty row inside a card (Home's "Nothing is waiting for you.") stays a row of that card. **An empty state stands only while its place is
+  empty** (founder check, Hubert 2026-11-17: "Where do we start?" stood under the assistant's private answer and touched it): a conversation
+  with anything in it, the person's own agent at work or its private answer, a message being sent, a task or a decision card, has none; it
+  comes back when the place is empty again (the answer dismissed).
+- **An error state** (`ErrorState`) has the same parts at the start of its column, and its "Try again" is the secondary button with the
+  refresh icon everywhere. A message never says "Try again." beside a Try again button.
+- **Faces** are `--face` with a `--line2` hairline; two initials in a 20 px face are scaled like the 16 px face's, so a row of faces never
+  reads as one word.
+- **A tooltip** is a raised card (`--el`, `--t1`, `--line2` hairline, the pop-over shadow), like a menu or a toast, never an inverted block,
+  and it is not drawn while its control's menu is open.
+- **Hover is for a pointer that hovers** (`@media (hover: hover)`): after a tap a touch screen keeps `:hover`, which left a primary button in
+  its hover grey (it read as disabled) and a task's Status in a grey pill.
+- **A key hint** (`C`, `S`, `E`) is one style: a 1 px `--line2` outline on the surface it stands on (the toast's key cap keeps its own).
+- **A text button that starts a row of actions under text** ("Reply", "Try again") takes its padding back, so its word starts where the text
+  above it starts, as a filled button's edge does.
+- **A hovered tab** is `--t2` with the neutral mark; only the current tab is `--t1`.
+- **A text field's ring is its edge** (offset −1 px over its hairline), so focus never draws a second outline or makes the field look wider.
+  A field that is invalid has the strong `--t1` edge; while the person types in it, the focus ring is its only frame.
+- **Search** marks a match by weight (600), never a fill that can land on the "…" of a cut row; every row is 48 px with its icon in the
+  28 px tile (places and actions too); the dialog has one height whatever it lists; the hint never leaves one word on a line.
+- **Sign-in, invite, reset and setup pages** start at one height (pinned to the top, not centred), so the logo and the title never move from one
+  to the next. A form is a card; a page with one button has no card around it; a reset link the server refused shows only the dead-link page.
+- **The phone's "+"** stands at one height on every screen: in a space, without the capsule, it stands where it stands above the capsule.
+- **A panel that scrolls** (the task and decision panels, their phone sheets) fades at its lower edge into the field under it **only while
+  there is more below** (`useScrollEdges`, as the sidebar): at the end nothing fades, so the newest message is never washed out, and a proposed
+  decision's Accept, Not now and Discuss stand over the fade, never under it (round 14 look-b B1, look-a A5); a pinned
+  decision title fades what passes under it once the panel is scrolled; a window's list that is longer than the window fades at its end.
+- **The rail** pins the Inbox count to the Inbox button's corner, and a space's tile has the list's dot for what needs you on its corner.
+- **A clamped title wraps** (round 14 of the release gate, 2026-11-17): a title cut to two lines (an Inbox row on the phone and in the list) is
+  a `-webkit-box` clamp with no `white-space: nowrap` under it, so every engine shows its two lines and ends in "…"; `nowrap` there cut it
+  mid-letter in WebKit. Only a one-column Inbox card on a computer keeps one line with "…".
+- **One ring for a card**: a card whose title is its control (an Inbox card) is ringed as a card, 2 px of `--ring` out from it (just inside
+  it where it lies in a scroller that would cut it), never a second ring round the title's words.
+- **A toast that says what was done** has no mark beside its words (no ✓): Done in the Inbox and a role change look the same. Only Kreska's
+  Wink for a closed task and the alert of what failed stand there.
+- **The end of Search's list**: the lower fade lies on the list's 20 px bottom padding at the end (`position: sticky; bottom: -20px`), so a
+  row is never cut hard at the footer and the last row is never washed out.
+- **A field that is wrong keeps its strong edge** while no ring is drawn (the focus a click on Sign in moved to it); the ring replaces the
+  edge only while it shows.
+- **Offline**, a page without a composer says so in the busy line's place ("You’re offline. Flux shows what it last loaded and catches up
+  when you’re back."); a composer's own line says it where there is one. Back online, Home and the Inbox read again at once, and a read that
+  failed says so with Try again, never "Looking…" for ever. **What the line promises is kept** (round 15 new P2-2, look-1 P2-5): offline, Home
+  shows what this tab last read (what waits, Continue, First steps, "My tasks (N)"), never "This couldn’t be loaded" over what was loaded a
+  moment ago and never "My tasks (0)" for tasks it could not read; the shell (the sidebar, the header) is the same on every page and never
+  leaves for "Flux can’t be reached"; a place read before in this tab (the newest twelve of each read) opens with what it showed then. Only a
+  place never read says it couldn’t be loaded, inside the shell. The line is a pill where a toast stands: above the phone's "+", capsule and
+  map toolbar as measured, and on the computer 24 px up, inside the panel (look-1 P2-4, P3-5).
+- **The phone's header** meets a scrolled page at a `--line` hairline. A place that is not available keeps the phone's tab bar, and its tile
+  is the alert icon, not a magnifier.
+- **The sidebar and the rail**: the rail's places, its Search and both toggles name themselves in the one tooltip (`data-tip`, the item's
+  own name: "Home", "My map", "Search · ⌘K"), drawn beside the rail and the toggle so it never covers New or Search; New and Search have the hover fill of the rows.
+- **No orphan word**: every text of the app wraps with `text-wrap-style: pretty`; titles of the sign-in pages also balance, and so do an
+  empty state's centred title and line ("the map." alone under a full line, round 15).
+- **Round 15** (release gate, 2026-11-17):
+  - **A read-only field** (the address an emailed invite fills in) keeps the field's `--line2` hairline on its `--sub` fill: on the phone's
+    sign-in page `--sub` is the page's own colour, and the address floated with no box.
+  - **The rail's Inbox count** is as narrow as its figures (2 px each side) and stays inside the rail at every zoom; the rail's tooltips start
+    past the rail's own edge, so "Inbox" never touches the count.
+  - **A sidebar row's ⋯**: while it shows (pointer over the row, its keyboard focus, its menu open) the name ends before it, so the name's
+    "…" and the ⋯'s ring never overlap.
+  - **Menus**: the header's and the sidebar's ⋯ menus (Move up and down, Mark all as read, Settings, Search, Mute, People) have the message
+    menu's 14 px words and lead each row with its icon in `--t2`, as "A menu's rows lead with their icon" says.
+  - **Toasts in the two-column Inbox** stand centred under the open item's column (`data-toast-home`), never across the line between the
+    columns or over the list's last card.
+  - **Home's rows** cut a long title to two lines with "…", as the Inbox's rows do; the open item reads it whole. A question or a mention
+    is kept whole up to 600 characters by the server (it was cut at 140, so its end could be read nowhere).
+  - **The empty Inbox's** Notification settings is an outline button, never bare text beside the underlined "1 for later".
+  - **For later's day** is its parts set apart by spaces ("Back Thu 19 Nov at 14:34") in every engine.
+  - **Search's failure** has Try again (the secondary button with the refresh icon), unless the server refused the search itself.
+  - **A task made on My tasks is yours**, as one made from your own message: it shows on the list it was made from.
+  - **A panel opened from the Inbox** opens as every panel does (Tasks below: a short panel and the phone's sheet open at the top, never
+    past the title), so a blocked task's sheet and a discussed decision at 200 % show what they are first.
+- **Lists of rows are cards**: My tasks' spaces are cards of rows like Home's, the glyph, the word and the chevron on the first line's middle.
+  The phone's Spaces list ends a row in its dot and its ⋯, with no chevron.
+
+**One look for the same element** (founder direction, Hubert 2026-11-17, visual review of the work screens: "a UI check must catch what
+looks ugly"):
+- **Fields.** Every text field (a thought being written or edited on the map or in its List, a map's or a task's title being renamed, What came
+  of it, the date field, a picker) has the field hairline (`--line2` or the field shadow) on `--el`, and while it is written in the one
+  2 px `--ring`, over its edge (offset −1 px) as "A text field's ring is its edge" above. None draws its own black frame.
+- **Selected text** is `--selection` behind the text's own colour, in both themes; never the browser's blue or CodeMirror's lavender.
+- **A state in a pill** is its glyph and word on a 1 px `--line2` hairline in `--t1`, never an inverted slab. A state is said once per panel:
+  the task panel's Status row says Blocked, so its "Waiting for" card has no second pill (round 14 look-b P8).
+- **A text button that starts a line** in a panel (Add to a thought, Add to a Wiki page) hangs its padding outside, so its icon stands on
+  the edge of the labels above it: the same rule as "A text button that starts a row of actions under text" above, one rule in `ui.css`.
+- **Hover fills need a hovering pointer** (`@media (hover: hover)`): a tap on a phone leaves no fill on whatever lies under the finger.
+- **A menu's rows lead with their icon**, and a line sets the destructive row apart (the Wiki's ⋯, as the maps' switcher).
+- **The Wiki's prose is one prose:** the editor, the history and an old version hang a list's "•" (`--t1`) at the column's edge with the
+  words 1.5em in, in `--t2`; the line under a heading is a short step, not a whole empty line. A version's banner puts its links in a row
+  of their own under the sentence. The title's chevron follows its last word. **A line is a line** (round 15 new P3-e): the page is written
+  line by line where it is read, so a saved version, History's comparison and an old version's reader keep each line on its own line (the
+  server renders a line break as a break), never "Turn on oven 2. Put the bread…" run together.
+- **The map:** a label sits on a free part of its own line, never on another label or under a thought; a line with no free part (two
+  thoughts side by side) keeps its label at its middle, raised over the thoughts' edges, never hidden; the selection's actions never lie
+  over another thought (they slide beside it, or rise above it) and never under the map's floating header: where they would lie under it
+  (a thought near the top at 200 %), they stand under their own thought (round 15 look-3 F4) where that place is free, never over
+  another thought or a connection label (#481); an edit's **Save** and **Cancel** are that toolbar beside the thought
+  (in the phone's bottom row), and a circle's text field stays inside the circle; the editor of a draft stands against the draft's box,
+  with one hint for its keys (none on a phone). The "+" of the selection is an icon, the resize grip shows under the pointer, the
+  minimap's frame is a hairline, and the zoom reads in Geist with tabular figures and keeps its corner where the minimap is hidden, down to
+  a 640 px pane (200 % text on a 1440 px window). In the map's List the canvas tools (Select, Move around) are not drawn and keep their room,
+  so Thought and Undo stay where they are, never two greyed tools that do nothing (round 14 look-b P13). The phone's map has one bottom row:
+  the selection's Thought actions (or an edit's Save and Cancel), Undo and **Thought** side by side, with the once-said computer line above
+  it (round 14 look-b P14); Undo there is its icon, as on the computer's toolbar, so the three fit one row of a 390 px phone (round 15
+  look-3 b). The map's status line ("Added … · Saved") is a small raised pill on the computer as on the phone, never words printed over a
+  thought; what is selected is said to a screen reader only, as the outline shows it (round 15 look-3 F4). A thought's byline is one line,
+  "From Ada Kowal… (you) · 14:22": the name gives way with "…", its mark and the time stay whole (`PersonName`; round 15 look-3 a). A connection's label tries every point of its line, nearest the middle first, before it gives way (P11). A
+  thought's tasks show once, as its quiet count (UI116-4); the line that repeated its first task beside the count is gone. The phone's
+  **Thought** is the soft fill of the phone's floating "+". In the map's List a connection's label stays the tag before the title (#510),
+  in a slot of one width right against the title, so labelled siblings' titles start at one edge; the tree's ticks reach their rows.
+- **The map's dock and notices** (founder check, Hubert 2026-11-17): the dock is a pill, so every tool in it is concentric with it: one
+  5 px inset all round, the icon tools circles and a tool with its word (**Thought**, Select several) a pill, so a hover or pressed fill
+  follows the dock's curve and never draws a 10 px box inside the round bar. These are map tools (`sk-tool sk-tool--word`), not system
+  buttons, whose radius stays 10. A notice under the map's header (a kept private movement, the read-only line, a kept edit) takes its own
+  room and never lies on what it is about: in the List it opens the list's column, in its flow above the first row; on the Map it is a
+  raised card under the header and the plane starts under it (the computer's canvas inset and the phone's projection), so it covers no
+  thought; with no notice the plane starts under the header, as before.
+- **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
+  an ellipsis); where the number, a due day and the owner's face, mark and a few letters do not fit one line (a column beside the open
+  panel), the owner takes the line under them, at the right, never shrinking to "AK (you)" with "(you)" past the card (round 15 look-3 F1);
+  a List row's line says its due day as the card does ("Due 25 Nov"), and the row of the task open in the panel is marked as its card is
+  (round 15 look-3 e); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
+  in a 10 px gutter of `--bg`; the blocked card's words take the card's whole width and Edit and Unblock (or Done) take the line under
+  them, starting where the words start, on the computer and the phone; a multi-line
+  value keeps its label on its first line; the thought chooser scrolls into view when it opens. **A name keeps its mark:** where a row is
+  short (a card beside the open panel, 160 px columns), the name gives way with "…" and "(you)" or "(removed)" stays whole after it,
+  "Ola Now… (you)" (`PersonName`; round 14 daily P2-3). The person a blocked task waits for is named as every list names people: "Waiting for
+  Ada Kowalska (you)" to Ada (round 14 look-a A4). A card's due day is the panel's words for it without this year: the panel's "21 Nov 2026"
+  is "Due 21 Nov" on the card, never a weekday the panel does not say (round 14 look-b P10). The phone's List has each state's heading over
+  its card, as the computer's has (round 14 look-b P16).
+- A heading that takes the focus from a script (a page opened like a panel, as Space settings, or an emptied list) draws
+  no ring: it is where reading starts, not a control (visual review 2026-11-17 V1).
+- A radio is drawn by the app at 16 px in every engine: a 1.5 px `--t3` ring, chosen a `--t1` ring and dot (V22).
+
+**The conversation and Create, one look** (release gate round 15, 2026-11-17, the last fix wave of v0.2.1):
+- **A chip in text** (`#4`, a Wiki page, a person) is a pill with the code span's 1 px `--line` hairline, so its padding reads as the pill and
+  never as a space before "." or after "("; on your own bubble (`--own`) the pill is `--el`. A chip or a code span and the punctuation that
+  touches it ("(#2", "rota;") never part at a line's edge. `#1–#5` and `#1/#2` are two chips. A `#N` chip of the space being read opens the
+  task in the panel beside the conversation, as its card does; a task of another place opens where it lives.
+- **A photo and its words are one message, one unit** (founder check, Hubert 2026-11-17, replacing round 15's line under the photo: with the
+  name between them the words read as a second message). The words' bubble hangs from the photo's lower edge with nothing between them, as wide
+  as the photo (340 px, or the column), square where the two meet and with the photo's 16 px corners at the unit's own four; its file rows and
+  cards are in that bubble. The same for one's own and someone else's message, a reply in a thread, a direct message, a task's discussion and a
+  message still being sent. **A single photo's name and size** ("IMG_2042.png · 39.8 KB") sit on the photo's lower edge, 8 px in, as white
+  words on a dark chip (black at 62 %, readable on the lightest picture) that a press goes through to the photo; several photos have none.
+- **Send keeps the field.** Pressing Send (a tap on a phone) never takes the focus from the field, so a phone's keyboard stays up for the next
+  message, in a space, a thread, a direct message and a task.
+- **Composers side by side end at one height** on a computer: a stream's composer box ends 31 px above its pane's foot (a direct message's typing line is
+  inside those 31 px), a panel's 21 px above the panel's foot, which floats 10 px in. A direct message's composer has no rule above it, as a space's.
+- **A stream keeps its end:** a reader at the end stays at the end when the composer grows (two lines, staged files). Coming back to a
+  conversation whose place was a task card, a decision or a fold reads back to the message above it, so the place returns.
+- **The phone's staged tiles** stand one under the other at one width, so their × form one column.
+- **A task's "↓ N new"** in its panel stands on a band of the panel's colour at the scroll's foot, never on the words of a line.
+- **Task updates** give their numbers one width (4ch), so the titles of #8 and #10 start at one edge.
+- **A direct message's start** names nobody again: the header says who is in it, the start says "Only the people in it can read this
+  conversation. It stays outside every space." Its faces stand side by side, 4 px apart, never overlapped into one word.
+- **An empty state's lines are balanced** (`text-wrap: balance`), so two words never stand alone under three long lines.
+- **⋯ menus** have the message menu's rows: 14 px words and 40 px rows; a space row's (Move up, Move down) and the Spaces heading's (Mark all
+  as read) lead with their icon in `--t2`.
 
 **Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
 chips, avatars). The phone sheet top corners are 26.
@@ -109,7 +314,8 @@ buttons above, which read as too strong:
 - Buttons are 32 px high in rows and toolbars and 36 px in dialogs; a primary button and the
   button beside it have the same height. Touch targets stay at least 44 px (the system below).
 - Counts are quiet mono numbers ("Waiting for you 5", "Inbox 5"), never pills.
-- A composer's Send is a soft fill (`--own`) with the arrow icon.
+- A composer's Send is a soft fill (`--own`) with the arrow icon, a circle concentric with the round composer; on touch its fill
+  keeps a 4 px inset inside the 44 px target (visual review 2026-11-17).
 - The phone's floating "+" is a soft fill like Send (`--own`, `--t1` icon, 56 px, no shadow), so each
   phone screen has at most one dark button (founder decision, 2026-10-31, follow-up on #763).
 `tests/test_ui_tokens.py` (`QuietButtons`) guards the flat buttons, the radius and the retired tokens.
@@ -224,7 +430,26 @@ labels. A time is Geist with tabular figures, as the line under a message alread
 - Section: 16–17 / 600.
 - Body: 14 / 20 on the computer, 15–16 on the phone.
 - Meta: 12, and at least 12.5 on the phone.
+- **Letter spacing is one rule, set by tokens** (founder direction, Hubert 2026-11-17, #1424: in the Inbox list the bold titles ran
+  together, "…" touched the "y" of "Saturday" and the space in "probe closer" almost vanished). Text at `--fs-lg` (16) and below,
+  regular or bold, is `--tracking`: 0. Only display sizes, `--fs-xl` (20) and up (a title inside a page or panel, the greeting, sign
+  in), take `--tracking-title`, -.02em. A component never sets its own value, and no text gets a `word-spacing`. The two marks
+  that are not text keep their own token: the "flux" wordmark (`--tracking-wordmark`, -.04em) and a code read one character
+  at a time, such as the device code (`--tracking-code`, .06em). Source, read 2026-11-17: Vercel's own Geist type scale
+  (vercel.com/geist/typography, its stylesheet) gives every Copy, Label and Button style, 12 to 24 px, no letter spacing,
+  and tightens only its Heading styles. Geist is already tight at text sizes, so Flux tightens only what is set as a heading
+  at 20 px and above.
+  - A row's title in a list (the Inbox list, the phone Inbox's cards, Home's rows) is 500 at `--fs-base`, as the Inbox aside's
+    rows and the notices already were; 600 stays for headings, names, unread spaces and the open item's title. At 600 and
+    14 px the words of a two-line title closed up and the "…" met the last letter.
+  - A title cut to lines or to one line with "…" is cut on a span inside its button, never on the button: WebKit lays a button
+    out as its own box and ignores the cut there (Safari showed every line of an Inbox row's title, with no "…").
 - Every device follows the system's text size: the type tokens are rem, so the root size the browser or the phone sets scales every size, and Settings has no text-size control ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 17, founder decision, Hubert, 2026-11-13).
+- **A menu always fits the window, at any text size** (v0.2.1 personas round: at 200 % text the task panel's Status menu showed To do and
+  Doing only, cut under the panel's composer). A menu or list opens under its control, or over it when there is no room below, never
+  past the window's edge, and scrolls inside itself when it is taller than the room. The task panel's Status and Owner
+  menus are a layer over the page, as a Select's list is, so the panel around them never cuts them; on a phone they are the bottom sheet.
+  An empty date field's hint is "Add a date", the word of the Due row that opens it, never a made-up date.
 - Every size is a `--fs-*` token. The initials of a 16 px face (the `Avatar` `xs`, the faces under a message, the face in a
   mention chip) are `--fs-face` (px, #1370) scaled by .72 with a transform, so the type stays a token and two letters never run wider than the circle.
   The initials of the 32 px face are `--fs-face-lg`: 12 px, and 12.5 px on the phone like Meta (px as well, #1424).
@@ -269,7 +494,7 @@ The palette is muted OKLCH with equal lightness: L 0.55 light, 0.80 dark. Each a
 calm Kreska face colour from it, either chosen when the agent is created or assigned automatically
 (Hubert, 2026-11-03), in the order Teal, Indigo, Ochre, Rose, Sage, Plum, Clay, the colours furthest
 apart first, so a person's first agents differ at the size of a sidebar row (#1377). The colour shows everywhere the agent appears: Messages, the Owner picker, a
-task's owner and discussion, Home, the Inbox and Settings › AI. It replaces "agent colours only in
+task's owner and discussion, Home, the Inbox and Settings › AI. It is the same for every reader: the owner's teammates see the agent in the colour its owner sees, because every read that names an agent carries it (#1528). It replaces "agent colours only in
 the Agents section" of the first Prostota canvas. The v0.2 screens draw Assistant in ink (`--inv`)
 and Planner, Reviewer and Jonas's Fieldbot in Teal, Indigo and Ochre. Kreska's lines take the
 colour, and the face fill is the same colour at 12%. Everything else is monochrome.
@@ -370,7 +595,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - moment 7, "No match in this project" with its "Search all projects" button (one search covers
   everything you can see, S16; no results show the Looking face);
 - "project" as a word for a place (it is a Space), and agent labels such as "Claude Code for Ada"
-  (an agent carries one label, "Planner · Ada's agent").
+  (an agent carries one label, "Ada's Planner").
 
 ## 4. Structure and navigation
 
@@ -379,7 +604,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Sidebar (248 px)**, the same on every screen:
   - the logo, and a button to collapse the sidebar (`[`);
   - **New** (`C`) and Search (`⌘K`);
-  - Home, Inbox (with its count), My tasks, My map;
+  - Home, Inbox (with its count), My tasks, My map (one name each wherever the place is named: My tasks is "My tasks" in its header,
+    in the way back to it, "‹ My tasks", and in Search, never "Tasks" or "Your tasks");
   - **Spaces**: one flat list with no group headers. Everyone, the space that holds the whole
     company, comes first and never moves; you order the rest yourself
     ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)). A space with unread messages
@@ -387,7 +613,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     you muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
     You see only the spaces you were added to;
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
-    people. A dot marks an unread report or message. With no agent and no message yet, the heading has the phone's "+" (**New message**),
+    people. A conversation with something unread for you (a person's message, your agent's answer or report) has its name in `--t1`
+    and semibold, as an unread space ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read), #1424 decision 10); a muted one shows
+    the quiet count instead. With no agent and no message yet, the heading has the phone's "+" (**New message**),
     so it is never a heading over nothing (#1424);
   - your name at the bottom, with your face. It opens Settings, the one way in, as your face does on the phone
     (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). There is no gear beside it and no
@@ -399,6 +627,13 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
   width smoothly, and the content beside it adapts during the fold. This is the one named exception
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
+  **Home, Inbox, My tasks and My map stay pinned under Search** while the window has room for them and a few tiles (round 14, 200 % zoom
+  on a 900 px screen, 450 px: the band scrolled the open space into view and took Home off the top); then only the spaces and messages
+  scroll, and they open with the current place in view, a locked space's tile too (it is the current place on its project's address). Only
+  a window under 420 px (a phone on its side) scrolls the places and the lists as one band under Search (#727);
+  **nothing in it is ever half out of view under Search** (personas-36): the band scrolls a whole place or tile at a time and rests with a
+  whole one at its top, which is not faded; a hairline at its top says there is more above, and its lower edge fades as any list's does.
+  Without New (an account in no company) Search is the row's one button and says "Search", never a lone square (round 14).
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
@@ -422,11 +657,20 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki alike,
   and it never covers the header or a call's strip, so the name, the views, the faces, Call and ⋯ stay in
   view and live. It is never modal: no scrim, the work beside it stays usable, `Esc` in it closes it and
-  focus goes back to what opened it. Above 1000 px it docks beside the work, which narrows (the Tasks
+  focus goes back to what opened it; a panel opened by Create (a new task) has no opener left, since the window closed to go to it, so
+  focus goes to the new task's card, what stands for it, never to the control the window was opened over (personas-36). Above 1000 px it docks beside the work, which narrows (the Tasks
   board then scrolls its columns sideways inside itself, with a thin bar); from 641 to 1000 px the same
   card lies over the work's right edge; on the phone it is the sheet below.
   A reply the person has just sent stays whole above the field in a thread, also in the phone's sheet, whatever the
   engine does with the list as the reply is stored ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  **A toast never stands on the open panel** (personas-33/34, 200 %): one that would is centred over the work beside the panel instead, as
+  narrow as that work, its actions on a second line where needed. **A proposed decision's answer stays in view:** Accept, Not now and
+  Discuss stick under the decision's pinned title while its discussion scrolls, so R or Discuss, which bring the newest message into view
+  above the field, never hide them (personas-35, 200 %). **The discussion keeps its room** (personas-36, 200 %: the title and the answer
+  filled the panel and no message showed): the title and the whole answer stick only while together they take at most two fifths of the
+  panel's scrolling room. Where they would take more (200 %, large text, a phone's half sheet), the title scrolls with the rest and the
+  answer sticks as a bar of its three buttons, its "Waiting for you" line set before them so that it goes out of view above; where even
+  that bar would take more than two fifths, nothing sticks.
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -434,7 +678,11 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 ### Phone
 
 - **Tab bar.** Home · Spaces (the four-square grid, the same glyph as Create's Space) · Inbox, in a floating capsule, with a separate round **Search**
-  button. Spaces lists your spaces and then Messages, with Assistant pinned first.
+  button. Spaces lists your spaces and then Messages, with Assistant pinned first; an unread space or conversation has its name
+  in bold, the same in both parts ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)). A space's row is the way in and
+  ends with the dot (what needs you) and its ⋯, with no chevron between them (round 14: three marks for two things). In the sidebar a
+  conversation's face and name start where a space's tile and name start, and a long name ends in "…" before "(removed)", which
+  stays whole.
 - **Home** adds rows under the waiting items, because the phone has no sidebar: "My tasks (N)"
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
@@ -445,6 +693,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   lose their gaps and side room and keep 44 px targets, #1424); only large text scrolls the tabs sideways. There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
   Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
+  The Messages page and the Spaces tab's Messages are one list, in the Spaces list's card and rows, with **+ New message** under the card
+  and the line "Only the people in each conversation can read it." beside it, on the computer and the phone (visual review 2026-11-17).
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
   v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
   - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
@@ -477,7 +727,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **No swipe-left actions on messages.** Messages have no done or snooze state.
   - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
     swipe action has a visible button or menu alternative, because a gesture is never the only
-    way to an action. On the computer, hover actions are unchanged.
+    way to an action: the phone's expanded Inbox card shows Not now and Done as its quiet buttons, as the computer's open item
+    does, and the swipe is a shortcut to them (round 15 daily P2-3). On the computer, hover actions are unchanged.
   - **The visible alternative to long press is a quiet ⋯ on every message** (#763 FT-4, #1357, v0.2.1). It is a
     44 × 44 px target at the bubble's top, **beside the bubble on the side away from its author** (right of other people's
     messages, left of your own), the touch twin of the computer's pill. The layout keeps a 32 px lane free beside the bubble
@@ -523,13 +774,96 @@ inside a screen (the Create window), not for the views of a space.
 | `S` | Not now |
 | `A` | Accept |
 | `Z` | Undo |
-| `R` | Reply in thread |
+| `R` | Reply, or write about an Inbox item |
 | `T` | Create a task from a message |
 | `1`–`4` | Task state |
 | `[` | Collapse the sidebar |
 | `Esc` | Close a panel or menu |
 
-The keys show next to their actions in menus.
+The keys show next to their actions in menus. In the Inbox, `R` on a decision opens Discuss (the decision's panel with the cursor in its "Write about this decision…", [A decision's discussion](#a-space-header-conversation-and-message-actions)) and on a blocked task its "Write to this task" (persona round 6: Shortcuts says so).
+
+**Where focus goes (computer)** (persona rounds 26 to 31, 2026-11-15; one rule per situation, the same in every place):
+
+- **Arriving in a conversation** (a space, a direct message, a thread, an agent's chat), by any means: a click, Enter on a sidebar
+  or direct-message row, New message, Say hello, Create space, Back. The cursor is in its composer, at the end of any kept draft.
+  Tab and the arrow keys still move along the sidebar's rows; only Enter or a click arrives. A view tab chosen with the keyboard
+  keeps its focus ([Underline tabs](#underline-tabs-the-views-switch)).
+- **Arriving to open one thing** (`?open=` a task or a decision, a message link or Copy link, a Search, Inbox or notification
+  target). That thing has the focus: its panel, or the message, marked. A link to a message that has no replies marks it in the
+  conversation and opens no thread panel. **An Inbox question, mention or reply opens where it is answered, the same way however it is opened**
+  (Enter, `R`, Reply, a tap on its title; personas-34): its thread, also before anyone has replied, or in a direct message the conversation
+  itself, with the cursor in the field there on a computer (on a touch screen only Reply focuses it). Esc, × and the phone sheet's × go back to
+  the Inbox with the item open and focused; in a direct message, which has no panel, Esc in its empty field (or with focus outside a field) goes
+  back, and Esc in a field with words leaves the field first, keeping them. A link followed from inside an open panel (a task's "From: Message") keeps that panel and
+  its way back ("‹ Task #4").
+- **A task or a decision in the panel or sheet has its own address, `?open=`,** however it was opened: a card on the board or in the
+  conversation or a thread, Create, Search, Home, the Inbox (Open, Enter, Discuss or R), a link. A reload opens it again, over the thread
+  it was opened from, which stays its way back. Opened in its space, it is its own history entry:
+  Back closes it first, and closing it goes Back. Followed from a link, it takes the link's entry: Back leaves with it, and closing it
+  takes `?open=` off the address. Discuss on the decision already open (in its space or over a thread) adds no entry and only puts the
+  cursor in "Write about this decision…".
+- **A page opened like a panel** (Space settings, from the header's faces or ⋯ › Settings) takes the focus on its heading, as any opened
+  panel does; focus is never left on the button that opened it (personas-33).
+- **New message is a step, not a place:** the conversation it opens takes its place in the history, so Back goes to where the person
+  started, never to the picker (personas-34, the phone's Back).
+- **A picker or a form** (New message's Find people, Invite, Add people with its filter) opens with its first field focused, in view;
+  letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. **In every person
+  picker, Enter with exactly one person found picks that person** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  New message's Find people (also the down arrow), Add people's filter and a blocked task's "Waiting for" (where the words typed found one
+  row and it is a person, and no row was chosen with the arrows). In New message a second Enter opens the conversation, however fast it is typed.
+- **The Inbox's open item is chosen, never implied:** from the moment the Inbox opens, the item with the ring is the open one (the top
+  one at first), on the phone the expanded card too. **The ring and the open item move together, whatever moves the focus**
+  (personas-37 P2: Tab put the ring on the next row while the right column still showed the first, and A accepted the first for
+  everyone): Tab, Shift+Tab, J, K, a click or a script that puts the focus on a row makes that row's item the open one at once, so
+  A, E, S, R and Enter always act on the item with the ring. In one column only a keyboard's focus opens a card; a tap opens it by its
+  own action. An item that arrives live never takes its place, so E acts only on what has the
+  ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox. What Put back
+  or Bring back now returns is the open item as it takes the ring, whether the window was closed with Esc or closed by itself (personas-34).
+  **The same on a touch screen** (coordinator decision, sweep 34 C6 and C7, 2026-11-16): what Undo, `Z`, Put back or Bring back now
+  returns is the expanded card, and a card opened from the list (a tap on its title, its Reply or Open) is the open item, so ×, ‹ Inbox or
+  Back return with that card expanded, or, when it left meanwhile (a task given to you, Done or Accept in its sheet), with its neighbour
+  at its place expanded, never the card that was expanded before. **That card has the focus too** (founder direction, Hubert, 2026-11-16,
+  personas-33 to 35): its title, which raises no keyboard, never the page or the neighbour that stood in for it. So does the card that
+  expands when the open one leaves by the tray's Done or Not now, also when a tap on the card's words had left the focus on the page's
+  content (personas-36, the last card). Reply puts the cursor in
+  the reply field at once and it stays there while the sheet settles around it, the first time too; Undo of Accept in a decision's sheet
+  gives the focus back to Accept.
+- **One press, one action in the Inbox** (personas-34): the open item's neighbour swaps in the moment an action takes it out, so for
+  450 ms after Accept, Done, Not now, Approve all, an answer, Unblock, Put back or Bring back now, every action of the Inbox (its buttons
+  on the computer and in the phone's tray, Join, Open, Reply, Discuss, the rows' Put back and Bring back now, and the keys A, E, S, R and
+  Enter) does nothing (the next row of "done today" or "for later" slides up under the pointer as one leaves, sweep 34 C4). The second click of a double-click, a double tap
+  or a key pressed twice lands on nothing. Choosing an item (J, K, a click on a row) or Undo ends the pause at once. 450 ms is shorter than
+  anyone needs to read the card that came in, and it follows the toast's own guard against a tap aimed at what was there (600 ms).
+  Nothing moves for it: no animation is added or held back ([motion](../motion.md)).
+- **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
+  letters typed with R are held for half a second, never run as A, E or S, and then the keys are the Inbox's again.
+- **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
+  whatever had focus, also from inside the Inbox. Every arrival at the Inbox (G I, Back or Esc from an item opened from it) puts the
+  focus on its open item, also when the panel left behind still holds the cursor in its field as it closes (R or Discuss, then Back, sweep 34 C10). After **Z** or Undo in the Inbox, the item that came back has the focus.
+- **After Propose:** a `/decide` from the composer leaves the cursor in the composer, as `/task` does; Propose through New focuses the
+  new decision's card once it is in the conversation.
+- **`/decide` with its words opens the window with the cursor in Why** (personas-36: after `/decide Bake rye on Tuesdays`, Tab to Send
+  and "Fewer orders on Monday.", the Space on Send opened the window, the rest of the sentence went into the title and Enter proposed it,
+  with no Why, to everyone). The words are the whole title, and a decision reaches everyone at once, so what is typed on is its reason:
+  Enter in Why starts a new line, and only ⌘↵ / Ctrl+↵ or Propose decision proposes it. **Tab from a `/decide` with its words does what
+  Enter does** (personas-37 P3-1: Tab put the focus on Send, the first word typed was lost and the next Space sent it): the window opens
+  with the cursor in Why, the next field, and every key typed on, from the moment of Tab or Enter, goes into Why, none into the composer
+  that is being left and none lost. Tab never leaves a `/decide` draft on Send. `/task` keeps the cursor in its title, where Enter
+  creates the task, which is only the person's own. A decision made from a message starts on its title, selected, as before.
+- **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
+- **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself. The same
+  on a touch screen, where the content raises no keyboard (personas-36: Back from a new conversation left the phone's Spaces page with none).
+- **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
+  newest message the reader can see (else the newest message, brought into view) and keeps the draft; the single keys work
+  from there. A window that is closing (Create after `/task`) no longer holds Esc. New shows its `C`, and a toast its `Z`, only while the key
+  works (no field has focus).
+- **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the
+  focused control used Esc (a title being edited, a search holding words, a page being written). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
+  arrives in it, leaves the cursor there, never on the thread's replies.
+- **After an action removes what had focus** (Add people, Undo, `Z`, Esc from a panel opened with the mouse, Propose decision,
+  New map, Invite, Accept in the panel, by key or with the mouse), focus goes to the next control where it was, else the previous one,
+  never to the page itself. Unblock gives the focus to Status, which says what changed; Z leaves it there. Undo in a toast,
+  by key or with the mouse, gives focus back to the control that made the change; undoing a new task closes its panel.
 
 Settings has one address per section, and no earlier address is kept: nothing is kept
 compatible before the first public release (founder direction, 2026-11-09, #1096). Preserve
@@ -545,9 +879,9 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. A command is the draft's start: `/` after other words is text, and the `/` menu opens only there. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
-| S8 | Several task updates in a row fold into one expandable line. |
+| S8 | Several task updates in a row fold into one expandable line. It names people as the cards inside it do: the full name, and "(you)" for the reader ("Ada Kowalska (you) created 3 tasks", audit 3274a05), each person once ("Stefan Nowak created 2 tasks and updated a task", persona round 6). |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
 | S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu: it puts the item off until tomorrow morning, with Undo ([Inbox](#inbox)). |
@@ -562,11 +896,11 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S20 | **A new space is one window:** name, people, AI (on) and Encrypted (off). No template and no goal. |
 | S21 | Every space shows Conversation, Tasks, Map and Wiki from the start. |
 | S22 | Notifications are one level (Only what needs me, Everything, Nothing), Email me too to one or more confirmed addresses, this device, and Quiet hours as one row. |
-| S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. Coming back to a place you left (Back, the way back) is coming back to a screen you have seen: a New divider that would stand inside that screen is not drawn, because it would push down what you were reading ([#1335](https://github.com/ColdPhase/flux/issues/1335)); above the screen or below it, it stays. |
+| S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (what left again, such as a task whose creation was undone, is no longer counted) (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field, and in the conversation's own composer while it is empty, where it opens: personas-36; with words in it End stays the field's), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"; a task's discussion read in its panel is viewed there, so the same discussion opened as a thread shows New only above what the panel did not show, personas-36); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. Coming back to a place you left (Back, the way back) is coming back to a screen you have seen: a New divider that would stand inside that screen is not drawn, because it would push down what you were reading ([#1335](https://github.com/ColdPhase/flux/issues/1335)); above the screen or below it, it stays. |
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
-| P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "Ada created #1 …", "created a task from Jonas's message", "Planner · Ada's agent is on it". A new task is **created** everywhere it is said: the line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision" (or "accepted a decision"; a message has no Propose a decision, #867), then the decision as one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel. The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
+| P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Discuss writes in the decision's one discussion, a thread on its card that its panel also shows (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)). Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Ada's Planner is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); accepting it changes that card in place, with who accepted it and when on the card, and adds no line (founder decision D, #1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |
@@ -585,6 +919,31 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   Bubbles, attachments and actions stay together, with a 12 px author gap on the computer,
   10 on the phone. Neutral event rows retain their readable author column on the left.
 - Small 20 px avatars appear only as owners inside task rows.
+
+**Naming people** (personas-33, one rule for every view)
+- A person is named by their **full name** wherever they are named as the author or owner of something: a message or a line in a
+  conversation, a thread, a task's or a decision's discussion, a card on the Board or in a conversation, a List row, a panel's Owner,
+  a thought's "From …" on the map, a Wiki version and a call's line. The task panel and the decision panel name the same person the
+  same way, as the thread does.
+- **The reader** is "Ada Kowalska (you)" in every one of those places: on a Board card, in a panel, in a fold (S8), on the map ("From
+  Ada Kowalska (you) · 13:05"), never "You" alone, "From you" or a first name. A sentence spoken to the reader still says "you"
+  ("Jonas asked you", "Only you are in this space").
+- **Someone who left the company or was removed** is "Stefan Kowal (removed)" in every one of those places, and in Search and in what
+  agents read (founder decision, Hubert, 2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a message, a thread, a
+  decision's discussion, a task, its history, a Wiki version, a notice in the conversation, a Search result, a direct message (its row in
+  Messages, its header, its messages and threads) and the Inbox line that says who an item is from. Their agents are "Stefan Kowal
+  (removed)'s Planner" (to agents, "Planner (Stefan Kowal (removed)'s agent)"). "Former member" is never used for them; Restore takes
+  the mark off. Their name is shown only where it is already in a space's or a conversation's history, to the people who read it; someone
+  who was never in the company or the space is never named. "Former member" stays only for someone who left a space and is still in the
+  company, where the reader cannot be told their name: a guest's view of the space and an agent's read of it ("Former member", and "Planner
+  (a former member's agent)" for their agent). The company's members still see their full name; someone who left a direct message keeps
+  their name there.
+- In Search the reader is named the same way: "Kasia Wójcik (you) · Bakery floor · 22:51" on their own message or file, and "Ana Costa
+  (you)" among People (personas-37).
+- First names stay only in the short summaries drawn with them: a notice's preview ("Maja: I moved…"), "Seen by Maurycy", a finished
+  call's list of who was in it, Home's "since you were away" lines ("Ari and Kai replied in …", [return view](../../development/return-view.md))
+  and an agent's one label ("Ada's Planner", "Hubert's Assistant"; an owner who left the company or was removed keeps the whole
+  marked name, "Stefan Kowal (removed)'s Planner").
 
 **Connection labels on the map (#481, 2026-10-11)**
 
@@ -632,7 +991,8 @@ Field (32 px, 44 on touch)          Date picker, a popover under the field      
   stored as `YYYY-MM-DD` and `HH:MM`.
 - **Typed entry** takes what people say. A date: "14 Nov", "14 November 2026", "Nov 14", "14.11", "2026-11-14", "today",
   "tomorrow" (no year means the next time that day comes, so "5 Jan" typed in December is next January). An empty date
-  field shows how a day is written ("14 Nov 2026") in `--t3`. A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
+  field reads "Add a date" in `--t3` (founder decision I, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424): the
+  word of the Due row that opens it, never a made-up date). A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
   leaving the field, commits it and shows it in the field's own form; Esc puts the last value back. Enter in a field
   that holds no change is left to the form around it. Text that is not a date or a time keeps what was typed, marks the
   field invalid (the 1.5 px `--t1` inset ring of the other invalid fields) and says why in a live region ("Not a date.
@@ -723,11 +1083,16 @@ These functional rules from UI116-4 remain required:
   with "+N" on the last one.
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're
     back", Retry.
-  - Before sending, thumbnails with × sit in the composer.
+  - Before sending, thumbnails with × sit in the composer: one tile per file, a photo and any other file alike, 56 px tall on
+    `--sub` with a 44 px face (the photo cropped, or the page icon), the name and its line ("Image · 230.6 KB · Ready to send"),
+    × at the tile's top corner, and on a touch screen a small order number before the name, off the photo; the tray stands on the
+    pane's `--bg` (visual review 2026-11-17). A tile is as wide as its words, 200 to 360 px (or the tray): its line is never cut,
+    only a long name ends in "…", and where the line has no room it wraps between its parts (round 14).
   - On the phone the system's own picker numbers your choices as you make them and hands them back in that
     order. Flux adds no picker of its own (founder review 2026-11-13, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
     the files arrive in the draft at once, each with its name, numbered "Sends 1", "Sends 2" on its thumbnail. The
-    full-screen viewer is always dark, with Reply, Create task, Save and Share.
+    full-screen viewer is always dark, with Reply, Create task, Save and Share (kept together in at most 600 px under the
+    photo, and the caption centred under it, visual review 2026-11-17).
 - **A file preview** (founder decisions 2026-11-10 and 2026-11-12, [#1252](https://github.com/ColdPhase/flux/issues/1252),
   [C-60](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
   CSV/TSV and PDF open in the photo viewer's frame. Pressing the row's name opens the preview; the
@@ -777,11 +1142,11 @@ These functional rules from UI116-4 remain required:
     page icon a 72 × 40 poster (the first frame the sender's browser drew), radius `--r-sm`, cropped
     to fill, with the play glyph (the voice note's icon) centred on it over the same dark scrim as a
     photo grid's "+N", no other colour. The
-    name, "Video · 0:42 · 14.2 MiB" (the playing time only when the file says it) and the download
+    name, "Video · 0:42 · 14.2 MB" (the playing time only when the file says it) and the download
     button follow as in any file row. Pressing the poster or the name opens the viewer; the download
     button downloads. A video without a poster (the sender's browser could not draw one, or an
     encrypted space) keeps the page icon with its video pictogram and the same row. The phone draws
-    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MiB"
+    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MB"
     keep their room.
   - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
     "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
@@ -796,17 +1161,18 @@ These functional rules from UI116-4 remain required:
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
-  - **The limits line** ("Private until sent · 5 MiB each, videos 200 MiB · 10 files / 20 MiB per message") is not under
+  - **The limits line** ("Only you see these files until you send · 5 MB each, videos 200 MB · 10 files / 20 MB per message") is not under
     the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
-    says "Ready, private". It shows below the files only when a file or the draft was refused, or when the draft is
+    says **"Ready to send"**, and the paperclip's tip "Attach files · only you see them until you send" (personas-33: "Ready, private"
+    and "private until sent" were read as "this file stays private"; the words say what happens). It shows below the files only when a file or the draft was refused, or when the draft is
     within two files of the count or at four fifths of the message's bytes (the videos together against their own cap).
     After the picker the focus is back in the message field on a computer (on a phone the field is tapped, so no keyboard
     rises over the files), and no single-key shortcut (`C`, `G` `I`, `[`, the Inbox's and a task's keys, `End`) fires anywhere
     inside a composer, its paperclip, Send and a file's × included.
   - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
     icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
-    limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
-    video is an ordinary file ("A file can be at most 5 MiB.") and downloads.
+    limit it says "A video can be at most 200 MB." (the operator's number); in an encrypted space a
+    video is an ordinary file ("A file can be at most 5 MB.") and downloads.
 
 | | |
 | --- | --- |
@@ -859,11 +1225,15 @@ Community garden sensors, Rain barrel monitor and Tool library.
 
 - The date, "Good morning, Ada", then two cards. **Waiting for you** (the count, and "Open Inbox"
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
-  without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you".
+  without Accept; an agent run is one row, "Ada's Planner · 3 things wait for you". A blocked task's row keeps
+  what it waits for under its title, as the Inbox does ("Waiting for Basia Wrona · the new seals", persona round 6).
 - **Continue where you left off** holds what you last worked on, such as a task with its state
-  ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what "Waiting for you"
-  already shows (the decision, the task or the question of one of its rows, a decision inside "2 decisions waiting") is not offered
-  again here; the row is the next thing that is not there, and the section is gone when there is none.
+  ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what waits in your Inbox
+  (the count of "Waiting for you", its three rows and the items beyond them: a decision, a task, a question) is not offered again
+  here; the row is the next thing that is not there, and the section is gone when there is none. One rule for questions and tasks
+  (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424) C): a task someone gave you that you
+  have not opened is a **Task** in the Inbox and so in "Waiting for you", never "Pick up “…” · Jonas added it for you" here; once you
+  open it, start it or finish it, it leaves the Inbox, and Continue may offer it then.
 - On the phone, "My tasks (4)" is a row under the waiting items, with "My map" next to it. The
   render draws "My tasks" only; the "My map" row follows this text. Home has nothing else: no
   spaces card, footer links, keyboard hints or assistant banner, except the first-steps card below.
@@ -884,11 +1254,12 @@ Community garden sensors, Rain barrel monitor and Tool library.
     founder's "the inviter learns when the person joins", [#1438](https://github.com/ColdPhase/flux/issues/1438) point 3). The Inbox stays one list of what needs
     you, so it has no "joined" item: the person who made the link is told by push (at their level, "<name> joined <company>") and, while their card is
     shown, by a row in the place of **Invite people**, which is done once a link was made: the title **Nia joined** and the quiet line **Say hello** (a
-    Home row like the others, the `chat` icon; the full name when two share a first name). There is one row for each person who used one of their links
-    and is still in the company, newest first, and none for someone they already have a direct message with. The steps keep their rows first, so
-    together there are at most three. Tapping the row opens the direct message with that person (made if there is none), which is what takes
-    the row away. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
-  - **A member:** **Write your first message** (the person has written none; opens Everyone with the composer ready), **Add your
+    Home row like the others, the `chat` icon; the full name when two share a first name). People who used one of their links and are still in the
+    company, newest first, and none they already have a direct message with, are **one row** (round 14, new P3-g: a batch of five read as two
+    different rows): **Ana, Leo and 3 more joined** with the quiet line **Say hello to Ana**. The steps keep their rows first, so together there are
+    at most three. Tapping the row opens the direct message with the first person named (made if there is none); the row then greets the next,
+    and leaves once everyone was greeted. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
+  - **A member:** **Write your first message** (the person has written none; opens the space their invite link added them to while they are in it, else Everyone, with the composer ready, and names it: "Say hello in Seed swap"), **Add your
     photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
     where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show
     separately).
@@ -902,7 +1273,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
 
 - The list on the left, the open item on the right, with no filters. Each item names its kind,
   who it is from and its space: "Decision · Maja · Community garden sensors", "Question · Jonas",
-  "Blocked · waits for you".
+  "Task · Jonas · Rain barrel monitor", "Blocked · waits for you".
 - **No filters, and no pill** (founder decision, Hubert, 2026-11-13, #1367). The Inbox is one list of what needs you (S1), **newest first**,
   so there is no "All · Decisions · Questions" row and no "6 need you · all spaces" line, and nothing is grouped by kind: the count is the quiet mono number
   after the title ("Inbox 5", never a pill) and the sidebar's. How much reaches a person is the notification level, which is set in Settings and not
@@ -917,21 +1288,76 @@ Community garden sensors, Rain barrel monitor and Tool library.
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
   expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
-  `J` and `K` move between items, and `A`, `E` and `S` act on the open one. The keys are shown in menus and on their buttons
-  (Accept's `A`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
+  `J` and `K` move between items, and `A`, `R`, `E` and `S` act on the open one, each only where it shows that button (Accept, Reply,
+  Done, Not now; a decision has no Done, #1424). `R` puts focus in the reply field, and what is typed from then on is the reply, never
+  Inbox keys. Enter on a question, a mention or a reply does what `R` and Reply do (§4, personas-34). **Two actions in a row share one
+  Undo:** an action taken while the toast of the one before is still on screen says so ("Accepted, and 1 more · Undo"), and its Undo
+  (`Z`) takes all of them back, newest first, so a second toast never takes away the Undo of the first. Arriving at the Inbox with focus nowhere (`G` `I`), the open item's row takes it. The keys are shown in menus and on their buttons
+  (Accept's `A`, Reply's `R`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
-  "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
-  ("2 for later"). The one dark primary of the open item is its first action (Accept, Approve all, Join).
+  "Decline for good" on a decision: a decision waits until someone accepts it. The one dark primary of the open item is its first
+  action (Accept, Approve all, Join, and Open on a Task or a Blocked item, one word for both, personas-30).
+- **"2 for later" and "4 done today" open their lists** (founder decision, Hubert, 2026-11-15,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424) E). One quiet line under the list, the same in a full and an empty Inbox,
+  says how many are put off and how many were marked done in the last 24 hours ("2 for later · 4 done today", each part only when it
+  is not 0). Each part is a quiet text button that opens a small window (a sheet on the phone) with its list, newest first, every
+  row as an Inbox row (kind · who · space, the title) with one quiet button:
+  - **For later**: when it comes back ("Back tomorrow at 08:00", "Back when #4 is done") and **Bring back now**, which puts it in
+    the Inbox at once.
+  - **Done today**: when it was done ("Done at 14:20") and **Put back**, which returns it to the Inbox as it was, as Undo does.
+  Keyboard (§4): the window opens with its first row's button focused; Tab and the arrow keys move between the rows' buttons; when a
+  row leaves, focus goes to the next row's button, else the previous one; Esc closes the window and gives focus back to the line's
+  button. When the last row leaves, the window closes. Whenever the window closes after something was put back, what came back is in
+  the list at its place and the last of it has focus there and is the open item (on the phone the expanded card), so `E` acts on it
+  (personas-34). Each row says what its Inbox row says: a blocked task you are waited on is "Blocked · waits for you", your own "Blocked · your task". Inbox keys (J, K, A, E, S, R) do nothing while the window is open.
+- **A task given to you** (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424) C). When
+  someone else or an agent makes a task with you as its Owner, or changes its Owner to you, it is an item of your Inbox:
+  **"Task · Jonas · Rain barrel monitor"**, titled by the task ("#12 Seal the lids"), with **Open** (it opens the task in the one
+  panel), Not now and Done like the other items. **Done finishes the task** (founder decision, Hubert, 2026-11-15, #1424): it moves to
+  Done for everyone, the toast says "#12 moved to Done · Undo", and Undo puts it back to To do and in your Inbox. It leaves the Inbox when you open the task (from here, from Tasks, from Search, a
+  notice or a push), when you start it or finish it, and when it is given to someone else. Giving a task to yourself tells nobody and
+  is no item. It reaches you by notice, push and email at your notification level, as a task always did; a task given to you that
+  is blocked is the one Blocked item, not a Task too.
+- **Done on your blocked task finishes it** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
+  as on a task given to you: the Blocked item's Done (the button, `E`, the phone's swipe) moves the task to Done for everyone, the toast says
+  "#6 moved to Done · Undo", and Undo puts it back to Blocked with what it waited for (the person, decision or task and the reason) and in
+  your Inbox. For the person a task waits for, its Done stays theirs: they are done, and the task can continue; the toast says "#6 can
+  continue · Undo", and Undo puts it back to Blocked, waiting for them with its reason (personas-33). Every Done here, on a task given to
+  you and on a blocked item alike, is in "done today", where Put back does what Undo does.
+- **Accept works at once, with Undo** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  in the Inbox (the button, `A`) and in the decision's panel alike, Accept accepts the decision at once, for everyone: its card reads
+  Accepted, it leaves every Inbox, a decision it replaces is marked replaced and the tasks that waited for it continue. The toast says
+  "Accepted · Undo" for its 10 s. Undo takes the acceptance back for everyone: the decision is Proposed again, in the Inbox of those who
+  can accept it, a decision it replaced is the current one again, and the tasks that continued because of it wait for it again, as they
+  were. Only the person who accepted can undo, and only while nothing rests on the acceptance yet (a task it let continue was changed
+  since, or a newer proposal replaces it); then it stays and the toast says "It is in use now, so it stays accepted".
+- **An answer to your question reaches you** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)
+  decision 1). When you ask someone something (a message that names them and asks, which reached their Inbox as a Question) and they
+  answer in that thread (Inbox › Reply, or in the thread itself) or, in a direct message, in that conversation, the answer is an item of
+  your Inbox: **"Reply · Marta · Product"**, titled by what she wrote ("Sent a file" for a photo alone), with Reply and Done as a mention
+  has, and it reaches you by notice, push and email as a mention does at your level. It is the mention rule and not a new kind: an answer
+  addresses the person who asked, as a name does. It is a Reply in an encrypted space too, where the notice says only who and where. Only the
+  person's first message after the question answers it, and your own reply in the
+  thread takes the item out as any reply does (#1170). An agent's question card is answered with its buttons and tells nobody.
+- **Who a question asks is one rule** (personas-27, 2026-11-15; contract in [needs-you](../../development/needs-you.md#whom-a-question-asks-personas-27-one-rule)).
+  A message that names you and asks is a Question for you. In a direct message between the two of you, every question is a Question for
+  you, with or without your name (founder decision 2026-11-15, #1424 A). A question in a thread you started that names nobody is a Question for you too:
+  it is in your Inbox and on Home's Waiting for you, never only in Continue where you left off, so Home and the Inbox give one answer to "is
+  something waiting for me?". Nobody else in the thread is asked. Someone who joins a space later gets the newest still-open question there
+  that names them, as if they had been there.
 - **A call is a Call, never a Question** (F-041, #1368). An invitation to a call or a call started in your space is one item,
   "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while
   someone is in the call and you are not. It leaves when you join (from here, from the notice, from the space's Join or from the
   call line) and when the call ends.
-- **One item per agent run:** "Planner · Ada's agent · Rain barrel monitor", "3 things wait for
+- **One item per agent run:** "Ada's Planner · Rain barrel monitor", "3 things wait for
   you", what they are (Delete the page “Old notes” · a task for Jonas · a task for Maja), then
   Approve all and Open. The phone lists the three things and the line "Deleting and other
   people's things always wait for your OK." The same requests also show in the task's discussion.
-- A decision opens as its card (P4). An empty Inbox is a small moment.
+- A decision opens as its card (P4). Its Discuss and `R` open the decision's panel with the cursor in "Write about this decision…" (its
+  one discussion, [A space](#a-space-header-conversation-and-message-actions)). Opened from there, it opens where it opens from everywhere (Search, a notification, a link, its
+  card): in the one panel over its space's conversation, with its card there marked as the open one (the founder's bar that the same
+  object opens in the same place). An empty Inbox is a small moment.
 
 ### Notices
 
@@ -946,11 +1372,31 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **A notice is its own card**, not a toast. Undo toasts stay at the bottom centre, one at a time
   (#1206); a notice never replaces a toast and a toast never replaces a notice. An Undo toast stands 8 px above the highest composer drawn, so it
   never covers its hint or Send (#1424).
+- **An Undo toast lasts 10 s, and only where you are** (founder decision, Hubert, 2026-11-14,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424); it replaces "Undo stays until it is used or closed", #347 N1). One rule for
+  every toast that offers Undo or takes a step back (Hand back): it leaves on its own after 10 s, and at once when you go to another
+  place (the address changes: another space, view, page or thread, Back). The 10 s pause while the pointer is over it or focus is in
+  it, as a notice's do, so Undo can always be reached with Tab or a screen reader; they run on when the pointer or focus leaves.
+  `Z` undoes only the Undo toast on screen: once it has left, `Z` does nothing, and an action done in another place is never undone
+  from here. A change held for Undo (an agent's question answered with its buttons) is sent the moment its toast leaves, for whichever
+  reason (its 10 s, ×, a newer toast, another place, the page closing): an answer is never unsaid, so it waits. **Accept is not held**
+  (founder decision, Hubert, 2026-11-15, round 8, #1424): it applies at once and its Undo takes the acceptance back
+  ([Inbox](#inbox)). **A proposed decision is not held** (founder decision L, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  like a new task, it reaches everyone at once, and its Undo withdraws it, so it disappears for everyone, with its notifications and
+  Inbox items. Its proposer withdraws it while it is still proposed and nothing else names it (a task that waits for it, a link to it);
+  accepted or used by then, it stays, and the toast says so. A toast without Undo keeps its own short time (about 5 s, 8 s with
+  Open); an error stays until it is closed.
+- **It never covers the newest thing.** While a toast shows, a conversation (a space's, a thread's, a direct message's) keeps its
+  end clear of it: the end of the list moves up by the part of the toast over it, so the new task's card, the last message and an
+  inline Delete / Keep row stay readable and reachable above the toast. A reader at the end stays at the end; one reading higher up
+  is not moved. When the toast goes, nothing moves: the room is given back once the reader scrolls up from the end.
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
   it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
-  covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
+  covers the composer or Send. It floats over the work, never over a docked panel: while a panel is docked (from 1001 px) it stands at the bottom right
+  of the work column, 20 px left of the panel, so the panel's composer and controls stay clear (audit P3 17). On the phone it is at the top, 8 px under the safe area, 16 px from
   each side, on a band of the page's ground (`--bg`) from the screen's top edge to 8 px under the card, so
-  nothing of the header shows at its corners. While a dialog or a sheet is open, it waits and shows when that closes.
+  nothing of the header shows at its corners. While a dialog, a sheet or a menu is open, it waits and shows when that closes (it never
+  covers a menu, v0.2.1 audit).
 - **The card.** `--el`, `--sh-pop` (the dark theme's inset outline comes with it) and `--r-card`.
   The sender's face on the left: `Avatar` 32 for a person, Kreska 32 for an agent. Then two lines:
   the title in 14 / 20, 500, `--t1` ("Jonas Berg sent you a message"), and the preview in 14 / 20
@@ -968,7 +1414,9 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **How long.** About 6 s, paused while the pointer is over it or focus is in it. A call notice
   stays until the call ends or the person closes it.
 - **Calm.** Nothing for your own actions, and nothing for the place you are looking at (the space
-  or the direct message on screen). It follows your level and quiet hours; Nothing shows none. It
+  or the direct message on screen). On the Inbox, nothing for what the Inbox lists as an item (a question, a mention or an answer,
+  a task given to you, a decision, a call to join, an agent's run): it arrives in the list in front of you (personas-33); a plain
+  direct message or a reply in a thread still shows its notice there. It follows your level and quiet hours; Nothing shows none. It
   is announced politely (`role=status`) and never takes focus. Tab reaches its buttons (the actions, then
   Close), and Escape inside it closes it and gives focus back to where it came from.
 - **Motion** is the surfaces' ([motion](../motion.md#how-the-rules-apply-to-existing-motion)): it
@@ -1013,11 +1461,82 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   Call and ⋯.
 - The right-hand drawing's list of types under the phone's "+" is replaced: the "+" opens the Create
   window on Task (#1438 point 8, [Phone](#phone)); the message actions beside it are as drawn.
-- The reading column is at most 760 px. A task event is one line: "Ada created #1 Calibrate the
-  soil moisture probes · 8:05".
+- The reading column is at most 760 px. A task or a decision shows **once** in a conversation, as
+  **one card** where and when it was made (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
+  in the author column with its maker's face. Its first line, quiet and beside the face, says who
+  made it, from what and when ("Ada Kowalska created a task from Jonas’s message · 8:05"); under it, in the same card, the row is the
+  object (the task's state glyph, `#1`, its title, its owner or "No owner", and its state word; a decision's flag, its title and its state word),
+  which opens it in the one panel. A card's row is read when the card comes near the screen; **until then it states no
+  state and no owner** (the glyph's and the word's places stay empty), never a wrong "To do" with no owner that changes as it
+  scrolls into view (personas-33). "Jonas’s message" is a link that brings
+  that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
+  card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
+  replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices).
+  **Accepting a decision changes its card in place** (founder decision D, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  the state word reads **Accepted** and one quiet line inside the card, under its row, says who accepted it and when ("Accepted by
+  Kasia Wrona · 9:12", the day when it was not the day it was proposed). The conversation gets no line of its own for it, neither
+  "Ada accepted it" nor "Ada accepted the decision …"; the decision's panel keeps the record in the same words (its "Accepted by Kasia Wrona · today" row, personas-30). A task's later step (blocked, can
+  continue) is one line, never a second card. One state has one word: a
+  decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
+  eyebrow is the state alone ("Proposed", "Accepted 14 Nov"), and the panel shows no row version ("Version 2" on a decision nobody edited
+  said nothing). The card's title always keeps room: a long title wraps instead of being cut, whole on a computer (also at 200 % text) and in
+  at most two lines on a phone (whole when the text is large); where the card is narrow for its
+  text (beside a docked panel at 1024 px, a phone, 200 % text) the owner's name gives way first (the face alone), and the state word
+  stays whole inside the card.
+- **A decision's discussion** (founder decision, Hubert, 2026-11-15, recorded on [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  a decision has **one** discussion, a thread on its card, and its panel shows the same thread, so nobody looks for it (as a task's
+  discussion is one, P10). **Discuss** (in the decision's panel, on its Inbox card, and `R` in the Inbox) opens the decision in the one
+  panel (the sheet on the phone) with the cursor in the field at the panel's foot, **"Write about this decision…"**; Discuss on the
+  decision already open only puts the cursor there. Under the decision, the panel lists what was written about it, oldest first, the
+  newest at the bottom just above the field. The first message starts the thread: from then on the decision's card in the conversation
+  (in the stream and in the thread it came from) carries **"2 replies · last 9:40"** under its row, as a root does, and that opens the
+  same thread in the panel: the decision's row at its top (it opens the decision), then every message about it, then the thread's
+  composer. A message written in either place is the same message and shows in both at once, for everyone reading. The thread follows a
+  thread's rules for notifications: the people who wrote in it and the people who follow it get its replies, and whoever proposed the
+  decision follows it from its first message, an agent's owner for an agent's proposal (their Unfollow still wins). Its first message is a
+  reply like the others, so the **New** divider (S23) can stand above it, and an edit or a delete shows in the panel as in the thread. It is not a root of the stream (its place is the card), it is
+  read and written by everyone who reads and writes the space, a guest included, and an encrypted space seals its messages as it seals
+  any thread's. Before anyone writes there is no thread and the card has no count. Words typed after Discuss never go to the space's
+  own composer: that sent them as a plain message with no link to the decision (persona round 7, founder question 4).
+  **Who it asks** (persona round 8 P2 3, recommended to the founder and applied, 2026-11-15): the thread's starter, for a question that
+  names nobody, is the person who proposed the decision (an agent's owner for an agent's proposal), never whoever wrote in it first; the
+  question reaches them as "Question · Jonas · about “Stand closes at 15:00”" in the Inbox, and its notice says "Jonas asked you about
+  “Stand closes at 15:00”" (an encrypted space keeps its fixed words, "Jonas asked you in Garden club"). **One discussion reads the same
+  in both places** (round 8): the panel names people as the thread does, by their full name (and "Ola Nowicka (you)" for you); a message
+  read in the panel is read in the thread too, so no New divider stands above it there; and the thread's composer says what it is about,
+  **About “Stand closes at 15:00”**, where a message's thread says "Replying to · …".
+- **A task's discussion opened as a thread** (from Search, a notice or a link) says whose it is (personas-34): above its first
+  message, the task's row, "#3" and its title, which opens the task in the one panel, as a decision's discussion has the decision's
+  row at its top.
 - The message toolbar sits at the bubble's top corner, as
-  [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
-  divides Add to map, Copy link and Copy text from Edit and Delete.
+  [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. **It is in reach from anywhere on its message** (founder check, Hubert
+  2026-11-17: from the middle of a photo the pointer left the message on its way to the toolbar, and the toolbar went before it got there): the
+  room beside the bubble, the whole height of the message, belongs to that message, and when the pointer leaves the message the toolbar stays
+  300 ms. Another message under the pointer takes the toolbar at once, so two never show; the keyboard reaches it as before. A line in the ⋯ menu
+  divides Add to map, Copy link and Copy text from Edit and Delete. **The menu opens away from its message** (visual review
+  2026-11-17): from the toolbar's far edge, to the right of someone else's message and to the left of one's own, so it never
+  covers the words it acts on. In a narrow thread pane the toolbar keeps its raised container in the bubble's corner.
+- **One look for a conversation's pieces** (visual review 2026-11-17):
+  - One divider: its words in the middle and a hairline to each edge, for the day ("Today"), **New** (stronger words and line)
+    and a thread's "2 replies · Today" (in a space's thread and a direct message's alike). Two never stack (round 14): where what is
+    new starts a day it is one divider, **New · Today**, and where it starts at a thread's first reply that divider stands alone
+    (the panel's head keeps the count).
+  - Under a message, its own time comes first, then the thread's line ("4 replies · last 7:47", the speech-bubble icon and the
+    last reply's time in a space and in a direct message alike), so the two times never read as one said twice.
+  - A direct message reads in a space's reading column and composer width, so the composer never jumps between the two (round 14).
+  - The `@` and `/` lists stand on the pane's `--bg` down to the composer: no strip of the conversation shows between them.
+  - A message toolbar's tooltip is centred on its button; only at the pill's outer end (the last button beside someone else's
+    message, the first beside one's own) does it end with its button, so it never runs past the pane.
+  - The task card of a task just created comes into view whole, above the composer and the toast, also when the conversation
+    opened at **New** and was at its end without the person scrolling (round 14).
+  - A person's face beside a message is the same grey face in a space and in a direct message.
+  - A long address in a message, and the address line of a link card (up to its three lines, #348), breaks after `/`, `_`, `#`,
+    `?`, `&`, `=`, `.` or `-`, never inside a word.
+  - Editing one's message in place: the message takes its column's full width and the field grows with its words (to 40 % of
+    the window), with no resize grip.
+  - The `@` and `/` lists keep the ↵ badge's slot on every row, so the right column never moves with the highlight.
+  - On the phone, a thread's "Replying to · …" stands above the field.
+  - A photo in a message has a `--line2` hairline, so a light picture keeps its edge, and its toolbar stands beside the photo.
 - The composer has the paperclip, the hint and Send. A conversation with its usual audience shows
   no "who can see this" text.
 
@@ -1296,23 +1815,40 @@ Live strip, someone shares a screen
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,
-Decision, Page (a Wiki page) and Space, as tabs of one window that opens on Task. "Message" is not a
+Decision, Page (a Wiki page) and Space, as tabs of one window that opens on Task. Space opens the New space window, its own
+window without the tabs ([Spaces](#spaces), founder decision K, #1424). "Message" is not a
 type, because a message is written in the composer. The phone's "+" opens that window as its bottom
 sheet at once: it has no list of the types before the tabs (founder direction, Hubert, 2026-11-13,
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
+- **The window's fields and lists** (round 14, replacing the visual review of 2026-11-17): **one inset** — the words of a field without a
+  frame (the title, the details, Why) start on the content's edge, where the space chip and the property chips start, on the computer and
+  the phone; the field's box reaches 8 px out round its words, so its ring (only while it is written in) stands round them with room for
+  the caret. The window is 384 px tall and grows (to 78vh) only when what it holds needs more, so a long message's chip and
+  **+ From a message or thought** are never cut by the footer's line; past 78vh its list fades at its end. On the phone Close is the
+  sheets' plain 44 px ×, the five kinds share the rest of the row, and a list chosen in its own sheet (Space, Owner) rises up to the
+  Create sheet's tabs, so no row of the sheet below shows cut in half above it.
+  **+ From a message or thought** grows the window to show the search and its results above the footer ("Search messages and
+  thoughts"). The Space list shows each space's tile and the Owner list each person's face (an agent's Kreska), as the chips do.
+  In the New space window, Add people open is one box (chosen people, a hairline, the search and the list, then Someone new?) that
+  scrolls with the window, never a second scrolling box; its head has a hairline like its foot; Invite stands on its field's middle.
+- **Plain words in the Task tab** (persona round 30): the details field reads "Add details…", and the link to where it came from is
+  **+ From a message or thought**; the task panel's own action is **Add to a thought**.
 - **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,
-  2026-11-12, #1235). The footer has the hint line and the one primary button, "Create task", and
+  2026-11-12, #1235). The footer has the hint line, which says what happens ("It goes to Tasks and the conversation", plain words since persona round 6,
+  the one card of P5), and the one primary button, "Create task", and
   nothing else: there is no "Create another" switch, on the computer or on the phone, and nothing is
   remembered between openings. After Create the window closes and the task opens in the panel as
-  before. The toast reads "Task #12 created · Undo · Add another" (Undo first, as everywhere).
+  before. The toast reads "Task #12 created · Undo · Another task" (Undo first, as everywhere; plain words, persona round 6).
 - **A decision is one form** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). New ›
   Decision and `/decide …` in a conversation open the same Create window on Decision, in the same words: "What is being decided?" with
-  what was typed after `/decide`, "Why this is the right call (optional)", the message it came from quoted as "From the message" (a
-  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an accepted
-  decision…** that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
-  are more than one page of them. The footer says "Goes to the Inbox of those who can accept it" and the one primary is **Propose
-  decision**; then the toast "Decision proposed · Undo". There is no second form in the side panel: the words "A person with write
+  what was typed after `/decide`, "Why (optional)", the message it came from quoted as "From the message" (a
+  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **This replaces an older
+  decision…** (plain words, persona rounds 6 and 30) that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
+  are more than one page of them. The footer says "Everyone else in the space sees it in their Inbox" (plain words, persona rounds 28 and 6), and, when you are the
+  space's only member, the true thing: "Only you are in this space: it stays on its card until you accept it" (persona round 8) and the one primary is **Propose
+  decision**; then the toast "Decision proposed · Undo". It reaches everyone at once, and Undo withdraws it for everyone
+  ("Not proposed"; [Notices](#notices), founder decision L, #1424). There is no second form in the side panel: the words "A person with write
   access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.
 - **The space is the one you are in, else the one you used last** (#1438 point 6). Opened inside a space (any of its views), the
   window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
@@ -1326,7 +1862,26 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   keeps the field a line of words. One of the two makes a blocked task. The field is the app's own input with a listbox under it (the
   composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no native picker. The task panel's Edit on a
   blocked task opens the same one field.
-- **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
+- **A task made from your own message is yours** (founder decision M, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  Create task on your own message, `T` on it, the same action in a thread opened from the Inbox, and your own `/task` words open the
+  window with you as its Owner, so the task is in My tasks at once; the Owner chip still changes it, and No owner is kept as chosen. A
+  task made from someone else's message starts with No owner, as before, even when the message names you or someone else in the space.
+  A task made from **My tasks** (New, `C` or the phone's "+" there) is yours as well, so it is on the list it was made from (round 15).
+- **The title wraps** (round 15): a task's and a decision's title is a field whose words go on to the next line, on the computer and the
+  phone, never out of sight sideways; Enter still makes it, as in a one-line field. **+ From a message or thought** keeps the window's
+  height until a word is typed ("Type a few words of the message or the thought."), then grows for the results. In the Owner list, "No
+  owner" has the person glyph in the face's place. In the New space window "Name" is a heading like "People", 16 px under the head's line,
+  and the AI row leads with its icon as Encrypted does.
+- **A guest has no Space tab** (persona round, 2026-11-15, on the founder's "nothing appears that the user cannot use", [#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  A guest does not start spaces, so New shows them Task, Thought, Decision and Page only, and nothing in Flux offers them New space
+  (Home, the Spaces list, My tasks). With no space yet a guest's New has Thought alone (it goes on My map; a task, a decision and a
+  page each need a space, persona round 26); Home's line is only "When someone adds you to a space, it appears under Spaces at once."
+  (the sidebar's heading and the phone's tab alike). Nor does a guest start a conversation: no New message (the Messages "+", the
+  Messages page, the phone's Spaces), and a person's name over a message is only their name for a guest, not a way to `/dm/new`.
+  With no conversation and no agent, a guest's sidebar and phone Spaces tab have no Messages heading over nothing (it comes with the first
+  conversation someone starts with them; persona round 6), and the Messages page, when opened, says one line under "No messages yet": "When someone writes to you, it appears here."
+  (audit 3274a05).
+- **Batch entry is one step, and the space is kept.** **Another task** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
 
@@ -1348,17 +1903,42 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   are only Previous and Next when there is another page ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
-  tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
+  tag ("Ada's Planner") or "No owner". **"No owner" is the one word for a task nobody owns** (v0.2.1 personas round): Create's
+  Owner, the Board's card, the List row (the same "No owner" inside its line), the conversation's card and the task panel's Owner row and menu
+  all say it; the control's label stays "Owner", and nothing says "Assign" or "Nobody yet". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
   whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
-  for the far beds", "Waiting for Jonas" or "Waiting for #7". When that resolves, the task returns
+  for the far beds", "Waiting for Jonas" or "Waiting for #7", with the reason after " · " when one was written too ("Waiting for
+  Basia · the new seals"). A blocked task is said in these same words everywhere (persona round 28): the card, the panel, the List,
+  Home's My tasks and the Inbox, where the task is the title ("#6 Seal the lids") and these words are the line under it. When that resolves, the task returns
   to Doing by itself.
-- **An agent's label** is one line, "Planner · Ada's agent", on a card, in a List row, in the panel's
-  Owner row and in its discussion (#1364). The word "agent" is in the label, so it has no separate "Agent"
-  tag and no "for <owner>"; only while the owner is not known does the name carry the "Agent" tag.
+- **My tasks** lists a task as every other list does (personas-33): its state glyph with its word, then its number and title
+  ("Doing · #8 Order two frost sensors"), and a blocked task's line under it.
+- **An agent's label** is one line, "Ada's Planner", on a card, in a List row, in the panel's
+  Owner row, in its discussion and its history ("Kai stopped Ada's Planner"), and on a conversation's task card, never the bare "Planner"
+  (round 15 ai P3). Kreska beside it
+  says it is an agent, so a row, a card and a sentence ("Ada's Planner proposed a decision") carry no "Agent" tag; a message's name line
+  does, as an answer shown to everyone does (#1232), so an agent's own message and a shown answer look the same (round 15 ai P2-5). Only
+  while the owner is not known does the bare name carry the tag everywhere. The label sets its line's baseline: words after it in the same
+  line ("Proposed · Ada's Planner · today") sit on it, not on Kreska's foot (round 15 ai P3).
 - **The task panel**: "#4 · Rain barrel monitor", the title, then Status, Owner (people, then
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
-  done"), the one discussion and "Write about this task…". The discussion has no heading ("Activity" is
+  done"), the one discussion and "Write about this task…". **Every discussion lists oldest first**, the newest at the bottom just
+  above the field, a task's as a decision's and as a conversation (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  "Show earlier" is at its top, and the newest stays in view as it arrives or is sent. **Both panels open the same way**
+  (personas-34): a task's panel opens as a decision's does, with the discussion's newest line in view just above the field, as
+  every conversation opens at its end (S23; a short discussion moves nothing, its rows stay at the top), with the newest line whole above
+  the field, the panel's bottom padding included, so no fade lies on it. **The phone's sheet opens at its top** (round 14 new P2-3, look-b B3,
+  look-a A3: its half height opened on the newest lines, with no title, no Why and no state, and Marta saw only Accept): what the task or
+  the decision is comes first, scrolled only as far as needed to show whole what it asks of the reader (a proposed decision's Accept row, a
+  blocked task's "Waiting for" card), never past its title. **A short panel opens the same way** (round 15 look-1 P2-2, look-3 F3): a panel
+  with less than 25 rem of scrolling room (200 % text on a computer) would leave the title out of view at the newest line, so it opens at
+  its top too. **A blocked task's "Waiting for" card stands under its title**, as a decision's answer
+  stands under its reason, so the half sheet shows what the task is and what it waits for without scrolling the title under its header
+  (round 15 look-1 P2-1, look-3 F2). A decision's reason starts a step (12 px) under the title's hairline, and its "Proposed" row keeps
+  "· today" on the line of an agent's label (round 15 daily P3-8, ai). A task's "↓ N new" stands at the scroll's foot on a band of the panel's
+  surface, so it never lies over a card's words (round 15 ai). The cursor put in its field (Discuss, `R`, a tap) brings the newest line into
+  view, as a conversation's composer does; what arrives or is sent after that stays in view as everywhere. The discussion has no heading ("Activity" is
   removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
@@ -1369,7 +1949,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Done button in the Inbox and in the panel, and the stream says "#4 can continue: the decision was
   accepted" when it resumes.
 - **The link buttons stay** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 13): the panel's
-  **Link thought** and Create's **+ Link a message or thought** are the only way to make those links from a task, so they are not
+  **Add to a thought** and Create's **+ From a message or thought** are the only way to make those links from a task, so they are not
   removed or merged into another control, and no other place offers them.
 
 ### Wiki
@@ -1389,33 +1969,68 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   switcher.
 - You edit on the rendered page, and versions save by themselves. Live co-editing shows the other
   person's cursor and name.
+- **The save line is calm** (founder check, Hubert 2026-11-17: it flickered and jumped at every key). What is typed is kept
+  in the tab from the first key, so while the person writes the line keeps "Saved · just now" (its time moving on quietly) and
+  never swaps to "Saving…" at a key. "Saving…" shows only once text has waited about a second with no save finished; a problem
+  ("Not saved yet", "Reconnecting · your text is kept", a conflict) shows at once. The line is one row in its place: it never
+  changes height or moves the title.
+- **History** (⋯ › History) lists the versions on the left as a timeline: one continuous mid-grey line from dot to dot,
+  the chosen version's dot filled. The chosen row says in words what can be done with it, under its line: **Read this version** (**Open
+  the page** for the current one) and Restore this version; the other rows are only chosen (round 14 daily 9: a "Read" on every row was
+  unclear). The heading's count is the words the comparison marks, "v2 → v3 · 1 word added" or "· 4 words added, 2 removed", never a count of
+  lines that says "−1" over nothing struck (round 15 daily P3-7). **The current version by its address** (`/versions/N` of the page's own
+  version, as Search links a match) opens the page itself, never "You are reading a saved version" (round 15 new P2-4); only an earlier
+  version has the reader. **The first version** has nothing before it: "Version 1, the first" with no "+N −M", the page as it was written with nothing
+  underlined, or "The page started with no text." (round 14 new d). In the comparison, added text is underlined only (no fill, no grey bar under a
+  heading) and removed text is struck through in `--t3`. **Restore lives in one place** (founder question and coordinator decision, Hubert
+  2026-11-17, [#1424](https://github.com/ColdPhase/flux/issues/1424)): the chosen version's row in that list carries
+  **Restore this version**, only when it is not the current version. There is no separate Restore button at the top
+  right. Restore opens the page and makes that version the page again as the next version, with the toast "Version N
+  is the page again." (a restore is itself a version, so it is undone by restoring the one before). The same history
+  serves every Wiki page, the former materials included.
 
 ### Search
 
 ![One search](screens/desktop-search.webp)
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
-- Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
-  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. **A saved source is a Wiki page**
+- Results are grouped by kind (Tasks, Decisions, Messages, Wiki, Files, Thoughts, Spaces, People), with the
+  match marked; maps and drafts are listed with Thoughts. **A decision is listed as a decision** (v0.2.1 personas round, the founder's
+  bar that one object looks and is named the same everywhere): its own Decisions group with its flag, and `↵` opens it as a decision, in
+  the one panel over its space's conversation, where its card is (P4), never over a Tasks view that does not list it. **A saved source is a Wiki page**
   (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 20): what was once a
   "material" is listed in Wiki as a page (the Wiki page's tile, "Wiki page" for its kind, and it opens at the version that
   matched), and Search has no "Material" kind or word. The server ranks the
   results and the groups follow it: **the group of the best match comes first**, then the one that holds the next best, so a
   task that shares a word with a plain question never stands above the message that answers it
-  ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands. **A result that matches all the
+  words, or the exact phrase, ranks above one that matches fewer, whatever its kind** (persona round 37: "Antenna log 30" selected a
+  decision that holds only "30" before the message itself); among results that match as many, the rarer words decide, and the little
+  words of a longer search are not counted ([search](../../development/search.md)).
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
-  no second page.
+  no second page. **A match with a typo shows only when nothing matches a searched word exactly** (founder decision H, Hubert,
+  2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424); F-042): "price list" lists the price list, not a person named "Lis".
+  "Exactly" is as the search counts it ([search](../../development/search.md)): a searched word found in any form the index finds it (its
+  stem, without accents), a little word such as "the" included, in any result, even one the rule below leaves out. A result that holds only the common words of a longer search ("the", "by" in "barrel by the shed") is not
+  listed (persona round 6; the rule is in [search](../../development/search.md)).
 - **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
   group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
   its mono label (the one the message shows, 20 px) in the tile, the file's name as the title with
-  its matched words marked, and one line under it with what the file says where it matched, in
-  quotes with the match marked, led by "Page 3" for a PDF. A file found only by its name says
-  where it lives, who sent it and when, as a message row does. `↵` opens the file's message in its
+  its matched words marked, and one line under it: who sent it, where it lives and when, as a file found by its name says, then
+  what the file says where it matched, in quotes with the match marked, led by "Page 3" for a PDF (round 15 new P2-3: the same file
+  sent twice gave two identical rows). A file found only by its name says
+  where it lives, who sent it and when, as a message row does. A message's or a thought's matching words read as the message does: a
+  Wiki page named in it, `[[Opening checklist]]`, is its title, never the raw brackets (round 15 new k). A direct message is named as the
+  sidebar names it, "With Piotr Lis (removed)" (look-1 P3-10). A Wiki page matched in the page as it is now opens the page itself, where
+  it is read and edited; only a match in an earlier version opens that saved version (round 15 new P2-4: Search opened `/versions/4`,
+  "You are reading a saved version", on the current page). `↵` opens the file's message in its
   conversation with the file's preview open (the photo viewer's frame, F-026 §6), at the page that
-  matched for a PDF; closing it leaves the message in place and takes the preview out of the
-  address. The text of a PDF, a Word document, Markdown, plain text and CSV/TSV is found; images,
-  audio, video and anything in an encrypted space are not. A file counts once however many of its
+  matched for a PDF (a photo opens in the photo viewer, a video in its player); closing it leaves the message in place and takes
+  the preview out of the address. **Every file is found by its name** (founder decision, Hubert, 2026-11-15,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424) B): a photo, a video, a recording, a spreadsheet, any kind, so "IMG_2041"
+  finds IMG_2041.jpg under Files. What a file **says** is found only for the text of a PDF, a Word document, Markdown, plain text and
+  CSV/TSV; an encrypted space's files are found by their names only, never by what they say. A file counts once however many of its
   parts match.
 - **Opening a result** puts the person at the thing itself and adds nothing to the screen
   ([#1424](https://github.com/ColdPhase/flux/issues/1424)). A message opens in its conversation, scrolled to the middle and
@@ -1424,7 +2039,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   panel. A result carries no "‹ where I came from" control: the header's name and tabs never move for it, and the phone's
   round back stays the plain chevron. The browser's Back (and the phone's gesture) returns to where Search was opened,
   as it restores any entry.
-- The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
+- The hint is one plain sentence that names what is searched: "Finds spaces, people, messages, tasks, decisions, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
 - With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks"), **one row per place**: a space is one
@@ -1432,14 +2047,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   title), and the space in view is not listed ([#1424](https://github.com/ColdPhase/flux/issues/1424)); and one action, **Go to
   Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
   no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
-  the field's row carries the 2 px `--t1` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
+  the field's row carries the 2 px `--ring` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
 
 ### My map
 
 ![My map](screens/desktop-mymap.webp)
 
 - The former Sketchbook: a private map of thoughts. "Only you" is shown once, beside the title,
-  because its audience differs from the default.
+  because its audience differs from the default (on the phone, whose map has no head of its own, under the title in the header).
+  An empty My map is drawn like a space's empty map: **Thought** alone, with no Select, Move around, Undo or zoom until there is a thought
+  for them to act on (its Map | List switch stays, so the header keeps its shape).
 - A selected thought offers Move to a space map and Copy link. The tools are Select, Move the
   map, + Thought and Undo, with zoom at the bottom right.
   - **Move to a space map** (#948) opens a small window: choose the space (any space you are in), then its map. A
@@ -1468,7 +2085,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   and the toolbar with **Thought** alone (the phone's one **Thought**, the same word on every device (principle 7), with no floating "+" beside it: a "+" never means two things on one screen); Select, Move around, Undo and the zoom are not drawn
   until there is something for them to act on. **The map is made, silently, on the first thought**: Thought (or a double click on the
   canvas) makes it with the name "Untitled map" and opens it on a draft thought ready to type, with nothing to name first, so a visit
-  that adds nothing leaves no map. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one
+  that adds nothing leaves no map. **A new thought lands in plain view** (persona round 37): the first one of an empty map at the top left
+  of what is shown, under the header, where Fit frames a map, so the view does not move to find it; a later one with no parent in free
+  space in the view; never under the minimap, the zoom, the dock or its "Added … · Saved" line, on the computer at any zoom and on the phone. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one
   hint at a time:** the "Drag empty space to move around · Drag a dot to connect…" line waits until there is a thought to drag, so
   it never stands beside the empty map's own hint. My map is one map: its header names it and has no switcher.
 - A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
@@ -1521,12 +2140,13 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     soft chime of a call invitation and the short tone of a direct message, a mention or a question while Flux is open. At Nothing it
     says "Not used while you hear about Nothing". It shows on every server, with or without calls. (The API keeps its two stored
     fields, `sound.messages` and `sound.calls`; the switch writes both together and the page reads `calls`.)
-  - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
+  - **Muted spaces and messages** sit behind Change. They are the same mutes as the ⋯ menus' Mute
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
   - The company name, shown on the sign-in page and in emails.
-  - The people, with their role (Owner, Admin, Member), when each was last active ([Last active](#last-active)) and a line about guests: they see only the
+  - The people, with their role (Owner, Admin, Member, Guest), when each was last active ([Last active](#last-active)) and a line about guests: they see only the
     spaces they are added to and never have AI.
+    Every list of people (here and Space settings) has one order: you first, then Owner, Admin, Member, Guest, then by name (audit 3274a05).
   - With SSO, "Everyone who signs in with Riverside SSO joins automatically", and there is no
     Invite. Without SSO, Invite makes a one-time link that the admin sends (F-035); Flux sends no
     invitation email.
@@ -1534,23 +2154,119 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     link** (`primary`). **More** (a quiet disclosure under the field) holds **Joins as** (Member by default; Guest; Admin for an
     owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
     ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
-    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form, each with Copy and
-    Revoke. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
+    "Only for", "Add someone" and the second role picker go. **Links waiting to be used are always listed** (#1424, persona B-5), under
+    the people as "Waiting to be used · N", each with **Copy link** and **Revoke**, whether or not Invite is open (the same list, words and
+    insets as Space settings', round 14: one said "Copy", the other "Copy link"; Revoke's ask opens with the focus on Keep it, as Remove's on Keep). **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
     the hint "It works once…", not in a card of its own above a row that says the same; the row's Copy is the only Copy, and where the
-    browser refuses to copy, the link is shown in the row it belongs to.
+    browser refuses to copy, the link is shown in the row it belongs to. The form ends with **Create invite link** and **Close**
+    (`secondary`), as Invite toggles it (persona round, 2026-11-15, #1424); closing it takes the new link's sentence with it, and a link
+    that was used leaves the list with its sentence, so no line is left about a link that is no longer listed.
+  - **Reset link and Remove are on the person's row** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+    after the role button, as quiet buttons, the same way Space settings shows Remove. Remove asks in place, **Remove** (danger) and
+    **Keep**, with the line of what it ends under the row; the role "Member ▾" is the menu of roles it looks like, as in Space settings:
+    the role chosen is the role at once, and only an owner or admin of an encrypted company who stops being one is asked first, under
+    the row (persona round 26: the look matches what it does). A link locked to an address that is in the company already is not
+    "Waiting to be used".
+  - **A role change has a 10 s Undo** (coordinator decision, personas-35, 2026-11-16), the app's pattern for an action taken at once,
+    not a confirmation: someone else's new role is said by a toast, "Tomek is a guest now · Undo" (`Z`), and not again in the status
+    line. Undo gives the role back and everything the change took away, as Restore brings a person back as they were: a member who
+    becomes a guest stops being an admin of their spaces, and those admin roles are held and come back whenever they are a member (or
+    more) again, as their agents and keys do (AG-2, C-50). An encrypted space's places stay with its admins, as for Restore. Your own
+    role and the asked-first change of an encrypted company keep their line in the status line and have no Undo: after them you may
+    not be allowed to change the role back. Space settings' Admin / Member menu does the same: "Lee is an admin of Kiln firmware now · Undo".
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
-    Without SSO, the person's editor (the role button "Member ▾" opens it under their row) ends with one more group, after Remove:
+    Without SSO, the row's quiet **Reset link** opens one group under the row:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
-    `secondary` **Make reset link** (icon link). The link then shows exactly as a new invite link does, a read-only
-    field "Reset link for {name}" with the hint "It works once. Flux doesn't send it: paste it into your message to them." and
-    **Copy link** under it; the status line says "Reset link made and copied. It stops working when it is used or in 1 hour." (the
-    server's link lifetime).
+    `secondary` **Make reset link** (icon link) with a quiet **Cancel**. The link then shows exactly as a new invite link does, a read-only
+    field "Reset link for {name}" with **Copy link** and a quiet **Close** under it, and what happened is said once, in the status line:
+    "Reset link made and copied: paste it into your message to Rosa. It works once, for 1 hour." (the server's link lifetime; persona
+    round, 2026-11-15, #1424: the field has no second hint saying it again).
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
+  - **Remove** asks on the row in plain words for that person (personas-33/34): "Tomek loses access to Riverside and its spaces at once.
+    Tasks given to Tomek stay; you can give them to someone else. Restore brings everything back." Their tasks keep them as owner or as the
+    person waited for, and every place that names them there (the panel, the board, a card, a row, the task's history) says "Tomek Wiśniewski (removed)" until
+    Restore or until the task is given to someone else (personas-33). So does every other place their name is already in: their messages,
+    threads and a decision's discussion, Search and what agents read ([Naming people](#5-behaviour), founder decision 2026-11-17, #1424).
+    A removed person's Home makes no offer to turn notifications on (personas-34). Every other page of the company they can still reach
+    (the Inbox, My tasks, My map, a conversation's address) says what Home says, "You’re no longer in Riverside Bakery" and how to come
+    back, never an empty Inbox (personas-37 P3-4). A role chosen on a row moves no row while the page is open (personas-33: Admin sorted the row up under the pointer); the
+    next visit sorts by role again.
+  - **Removed · N** (owners and admins; under the links waiting to be used): the people who left or were removed, each row a face, the
+    name and one line, "maja@example.org · Admin · 3 spaces" (the role they had and the spaces they were in, Everyone counted, as the sidebar counts
+    them, personas-30), with a quiet **Restore**. **Restore brings a person back as they were** (founder decision, Hubert, 2026-11-15,
+    [#1424](https://github.com/ColdPhase/flux/issues/1424) F): the same role (an Admin comes back an Admin), the same spaces with the
+    same role in each (a space deleted since is skipped), and their direct messages, so neither side reads "Maja left this
+    conversation". Their Inbox choices are kept through it too: what they put off for later or marked done is where they left it
+    (personas-35: 26 items put off came back into the Inbox). The status line says so, as Remove says its own: "Maja Wiśniewska is back in Riverside as Admin, in 3 spaces." The note under the list is one line,
+    "Restore brings someone back with the role, spaces and direct messages they had." An encrypted space's people stay with its own
+    admins, who add them there again. A former owner's row has no Restore for an admin (only an owner gives the owner role) and reads
+    "An owner can restore them" in its place.
   - **Spaces** (owners and admins; the list under People): each space opens, and one the admin is not in has
     **Add me**. **No row has a Delete** (#1424): a space is deleted in its own settings, **Space settings › Delete space…**, the one way.
     The only row with a Delete is an encrypted space the admin cannot open (a company admin may delete it, never read it), which has no
     settings to reach.
+
+#### One look for every Settings page
+
+Founder direction 2026-11-17 (visual review: "a UI check must catch what looks ugly"). Settings, Space settings and the pages
+under them read as one set:
+- **One section heading**: 14 px semibold `--t1` on the computer, the phone's grouped-list label (13 px, 500, `--t3`) on the
+  phone (`.sset-sec`; `.sset-sub` and the company's headings are the same).
+- **A sub-page** (Sign in to ChatGPT or Claude, Your API keys, Claude Code or Codex on your computer, a space's GitHub) has its
+  way back above the title in one style ("‹ AI", "‹ Space settings"), the title and its line as every Settings title, and
+  its sections as white cards (`--el`, the card shadow) with 16 px between their blocks; never a grey card or a bare divider
+  list. A page with nothing to offer on this server keeps its title and gives the next step ("Use an API key instead").
+- **A window that asks something** (Connect AI, Delete space, New space) opens with its top at 8vh on the computer and is a
+  bottom sheet as tall as its content on the phone (`ui-dialog-sheet`). Its fields are the app's 44 px fields.
+- **An edit in a row** (a space's name) puts Save and Cancel under the field, as the company name does. A row that asks
+  (Remove / Keep) keeps its buttons 8 px apart in a column as wide as both, so the role beside it never moves.
+- **A role menu** ("Member ▾") has its chevron 4 px after the word; the column is right-aligned, so chevrons stay in line.
+- **The section list** is a row above the page in a window of 900 px or less (and at 200 % zoom), not a column beside it.
+- **The current place** in the sidebar is the raised white pill in both themes, the profile row in Settings included.
+- **Appearance's tiles** have a 1 px `--line2` edge, the chosen one a 2 px `--t2` frame, and in dark the Light tile is dimmed.
+- **An unlock refusal** is said right under the field, as a field's error.
+- **Round 14** (persona round and second fresh-eyes review, 2026-11-17; "anything that looks ugly counts"):
+  - **A row that asks** keeps the role where it was: on Settings › Company, while Remove asks (Remove / Keep), Reset link steps aside and
+    the two answers take the actions' column alone. What Remove ends is said **under that person's row, starting under the name**, on
+    Settings › Company and in Space settings alike (it stood under the face, and in Space settings at the card's foot).
+  - **One role column** (round 15, replacing round 14's word-end rule, which two personas still read as ragged): the column is
+    right-aligned and its edge is the chevrons, so a role that cannot be changed ("Owner", "Admin", "Guest") ends where a menu's chevron
+    ends, as every role of Settings › Company's column does. A section heading with a button beside it (People and Add people) starts
+    where the other headings start.
+  - **Add people and Invite are one control**: the quiet "+ Add people" of Space settings is the "+ Invite" of the company, 14 px.
+  - **The company's invite form is a card of its own**, 16 px above the people's card; a form drawn as a card has no hairline between
+    its parts. Add people open in Space settings is one card: its search field is the only frame inside it.
+  - **A text button that starts a line takes its padding back** in Settings too, by the same one rule in `ui.css`: More under the invite
+    field, Close under Someone new?, Leave space and Sign out all other devices start where the field or card above them starts.
+  - **A person's second line** keeps "· Active …" together: a line never ends on the dot (the narrow People and encryption panel).
+  - **People and encryption** has one title, the panel's header: no "‹ Back" that only closed it, no second "People" under it.
+  - **Delete space** opens as every window that asks: its title with × in its head, and on the phone the sheet's grabber.
+  - **Company › Spaces** lists every space of the company: an encrypted space the admin is in is a row that opens it, with its lock.
+  - **Settings › AI's sections** have Settings' one heading, with their line under it, not beside it.
+  - **Someone no longer in the company** (left or removed) reads it in Settings too: Company, AI and Notifications say what Home says, in its
+    one look (the heading "You’re no longer in Riverside Bakery", the line "Ask an owner or admin of the company for an invite link to come
+    back." and Go to Home; round 15: Company was a small grey line). AI and Notifications are not in the section list (there is nothing to
+    connect AI to or to hear about).
+- **Round 15** (persona round and atlas-39, 2026-11-17, the last round of v0.2.1):
+  - **An ask in place is one look**: Remove (a company row, a space row, an encrypted space's row), Revoke, Lock now and a key holder's
+    demotion ask with their action first (`danger` where it ends someone's access: Remove, Revoke link, Lock) and the safe answer after it,
+    `secondary` and focused when the ask opens (Keep, Keep it, Keep it unlocked, Keep Ben an admin), never a grey quiet word.
+  - **A line about a link stands in its row**: "Invite link created and copied…" and "Link copied." are said under that link in Waiting to be
+    used, so they come into view with it and go with the row when the link is used, revoked or expires; only a line about no listed link
+    (a revoke) stays at the list's foot. On Settings › Company the new link's row, its field and that line come into view together; in Space
+    settings the cursor stays in Someone new? for the next address and the new link's row is brought into view (typing brings the field back).
+  - **Links waiting to be used are newest first** on both pages.
+  - **A person new to an open list** (restored, joined, added) takes their sorted place among the rows already drawn, not the end; the rows
+    already drawn still never move.
+  - **A status line holds in its state**: People and encryption's "Board minutes is locked." is shown only while the space is locked, so it
+    goes when the space is unlocked from its centre card (and "is unlocked." when it is locked again).
+  - **An encrypted space's people are listed once**, in People and encryption, in the rows of every list of people: the role menu acts at
+    once with Undo (a key holder's demotion asks first under the row), Remove is on the row, and "+ Add people" opens Space settings' list
+    of the company's people (no link, C-24). Space settings has the People heading and the People and encryption row, no second card of
+    the same people. The panel's rows stack as the company's page does under 37.5 rem; its encryption actions stand in one column.
+  - **A person's second line** keeps "· • Active now" and "Active 8 min ago" in one unbroken box (an inline-block), so it never splits.
+
 
 #### Hide previews
 
@@ -1571,6 +2287,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   standard switch row (36 × 22, `--t1` when on) like Email me too, with the label **Hide previews** and, under it in the
   row's second line (`--t3`, `--fs-xs`), "Notifications show who and where, never the message". It is **off** by default and
   saves at once like every row on the page.
+- **Plain words, short sentences** (persona round 30, Ana): the empty Inbox says "When someone asks you something, it shows up here.";
+  the AI switch of a space, "Let AI agents help in this space"; a proposed decision's Wiki row, "Only an accepted decision can be
+  added."; a reason saved from a message, "Saved as why it’s blocked"; the notification settings' row, "Muted spaces and messages";
+  a server without AI, "AI is off on this server. Your agents start when it is turned on."
 - **Plain words, no jargon.** Not "payload", "preview mode" or "privacy level". At the level Nothing the second line reads
   "Not used while you hear about Nothing", like the two sound switches. A Flux server that cannot push shows no row at all
   (as it shows no On this device).
@@ -1596,7 +2316,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 - **AI works right after install** (founder decision, Hubert, 2026-11-13, #1438): `./flux up` turns agents on API keys on with
   their key file, so an owner's first step is Connect AI in the app (Home's first-steps row leads there), never a settings file.
   Only an operator who chose `FLUX_PERSONAL_RUNS=off` makes Settings › AI the person's own Claude Code or Codex and one line,
-  "Off on this Flux server. Your agents wait until it is on." Nobody, owner or member, is told to ask an admin. The agent runtime
+  "AI is off on this server. Your agents start when it is turned on." Nobody, owner or member, is told to ask an admin. The agent runtime
   is on after install too where the host can run it (#1441). **No dead controls:** Connect AI leaves out a plan this server does
   not run (a plan waits as "Not ready yet" only while the runtime starts), and on a host that cannot run the runtime the company's
   owners and admins read one quiet line under Connect AI, "Claude and ChatGPT plans can't run on this Flux server: <why>."
@@ -1743,16 +2463,20 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 - **Messages:** each agent is a private conversation ("Only you talk to Planner. Others reach it
   by giving you a task.").
   - "Remembered · See what Planner remembers" confirms a memory.
-  - Reports arrive here: "Done: #4 Calibrate soil sensors · 3 changes · Undo", with a dot in the
-    sidebar until read.
+  - Reports arrive here: "Done: #4 Calibrate soil sensors · 3 changes · Undo", and the agent's name is
+    bold in Messages until read, as every unread conversation (#1424 decision 10).
   - Schedules are listed in the conversation's header and confirmed in the agent's reply, with
     Turned on and Change. This is the only place they are listed and changed (founder decision,
-    Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9).
+    Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9). The open list ends the header at a `--line`
+    hairline, so the history scrolls under the header and no day line seems to lie under the list; a row's last run is its first
+    sentence, or whole words ending in "…", never cut mid-sentence (round 15 ai P3).
   - **The morning summary is offered once, by Assistant.** While Assistant (the agent that answers
     `/ai`) has no schedule, its chat shows, in the place of the schedule line, one row: the `clock`
     icon, "Morning summary · Every weekday at 9:00" and an outline Turn on. Turned on, it is an ordinary
     schedule in that line. No other agent offers it, and no page does.
-- **In a task** the agent writes in the one discussion, under its label.
+- **In a task** the agent writes in the one discussion, under its label. "In this task" names the people, then whose agents are there:
+  "Basia and Ola, with Ola's agent", or "with their agents" when several people have one, never "Basia and Ola and their agent"
+  (round 15 ai P3).
   - An agent may ask another person's agent, and both owners must be in the task.
   - A message that changed something ends with its change line and Undo; after Undo the line is
     struck through and ends "Undone by Ada".
@@ -1763,8 +2487,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - "Claude limit reached, resumes at 14:00", with no switch to another provider;
   - "Couldn't finish" with Try again / Take it back;
   - "Stopped by you · the task is back with you";
-  - "Marked done · you were told" with Undo (Ask me first off), or "Back with you to check" with
-    Mark done (Ask me first on).
+  - done (Ask me first off): no state line; the task's history line "Planner marked it done" says it once, the
+    same for every reader, and carries Undo for the agent's owner alone (personas-26, #856); or "Back with
+    you to check" with Mark done (Ask me first on).
 - **Waiting for your OK:**
   - A deletion is a card, "Planner wants to delete the page Old notes", with Delete / Keep.
   - A task for another person is a proposal with Approve / Edit / Skip. Several from one run form
@@ -1778,6 +2503,14 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   as an ordinary photo of the message. Under Ask me first it waits in the card like any change,
   with Approve / Skip, and the picture appears once approved. In the agent's private chat a picture it
   attached sits above its answer the same way. No new control.
+  **`/ai` without an assistant opens Connect AI** (persona round, 2026-11-15, on the founder's "the same name does the same thing",
+  [#1424](https://github.com/ColdPhase/flux/issues/1424)). Choosing `/ai` in the `/` menu (in a space, a thread, a task or a direct
+  message) while the person has connected no AI opens the one **Connect AI** window in place, the same window as Settings › AI and
+  Home's Connect AI; the ask bar keeps "Your assistant · Not set up yet. **Connect your AI**" on one line also on a 390 px phone (round 14:
+  the longer "You haven't set up your assistant." left "Connect your AI" alone on a second line), which opens the same window. There is no
+  side panel of its own (the MCP explainer panel is gone). `/ai` is listed whenever it can do something, to ask or to connect: a server that
+  runs no AI (Settings › AI's "AI is off on this server") does not offer it, and typed anyway the bar says "AI is off on this server." with nothing
+  to press. A guest is never offered it; typed, it says who can change that: "Guests don't have AI. An admin can make you a member."
   In a space with AI off, `/ai` shows one line, "AI is off in this space",
   and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
 - **The assistant's suggestions are in the `/` menu, under `/ai`** (founder decision, Hubert,
@@ -1823,6 +2556,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     the message formatting, with a thin caret (a 2 px `--t1` bar, `--dur-loop` opacity blink) at its end; a web
     address in it is plain words until the answer is done. Its one control is **Stop**, the `outline`
     Button, in the card's own line under the text. Nobody else sees any of it.
+  - **Only the answer is written there** (founder check, Hubert 2026-11-17: "Need a direct image |" stood in the card while the
+    agent went to fetch a picture). The words a model writes in a message that then calls a tool are a working note, not the
+    answer: they are dropped from the card the moment the call starts (most never reach it), and the working line says the step
+    ("Searching…", "Reading a web page…"). Every engine says the same (pi, Claude Code, Codex): a message that calls a tool is a step.
   - **When it is done** it is the answer card (or bubble) as drawn, with one quiet line under the text: **Copy**
     (quiet small buttons with the `copy` icon; "Copied" with `check` for two seconds; it copies the answer's plain
     words) and **Try again** (a new run of the same request; the answer stays until it is put away). Dismiss and
@@ -1857,6 +2594,17 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses
   Flux lists, and citation marks that point at nothing Flux supplied (`[8]`, `[S2]`, `【3†source】`). A link
   card is drawn only for an address the list does not already hold, so each address shows once.
+- **The sources are one quiet line** (founder check, Hubert 2026-11-17: the full addresses under "Searched the web for", "Found on
+  the web", "Read on the web" and "Requested, not read" spilled down the message). Under the answer's words Flux's list is one
+  closed disclosure, **Sources (N)** (the quiet small `Button` with `chevron-right` / `chevron-down` and `aria-expanded`, its padding
+  taken back so its icon stands on the words' edge), N the addresses. Open, in `--fs-md`: "Searched for “…”" in `--t3`, then each
+  address once, read, cited or only asked, as **its site › the last words of its path** ("commons.wikimedia.org › Coffee mugs":
+  decoded, `_` and `-` as spaces, no extension, no wiki `Category:` prefix), the site in `--t1`, the rest in `--t2`, a link that
+  opens in a new tab with the full address as its title, on one line cut with an ellipsis, never a raw address wrapping over lines.
+  An address asked for and not read stays in the same list with "not read · site error" (or "not read · not public", "· too
+  slow", "· not a page") in `--t3`; a hop that sent the request on to the next listed address says only "redirected". A defanged address stays as written and is no link. It is the same in the private answer, an
+  answer shown to everyone, the agent's chat, a task's report and the end line of a run without an answer; the stored text keeps
+  the full list for Copy, notifications and what an agent reads.
 - **An answer cites what it used from Flux as the same numbered chips** (#1381, [C-62](../../product/decisions.md), founder decision, Hubert, 2026-11-13). A Wiki page,
   a section of a page, a task, a decision or a message the agent read with its tools is the small `[n]` chip of any other source, in the one list, in the order the answer
   cites them, each object once; nothing new is drawn. The chip's label says what it opens ("Source 2: Wiki page “Calibration”, section “Install”"), and it opens exactly that:
@@ -1872,10 +2620,13 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 
 - **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row, no lock line and no tab bar.
 - **The computer says the name once too** ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 14): the window's header is the agent's
-  title row, with its Kreska (24 px, in its colour) before the name, and Settings is a row of the header's ⋯, as on the phone. There is no
-  second bar with the name, "Your agent" and Settings above the schedule line; the conversation's first line, "Only you talk to Planner.
-  Reports of its work arrive here.", stays.
-  Back returns to where the person came from (the Spaces list, Home, the Inbox). The agent's Settings are the one row of a ⋯ at the right of the title row, the ⋯ a space has, so the function is the same on the phone as the computer's "Settings" link and the drawing stays as drawn.
+  title row, with its Kreska (24 px, in its colour) before the name, and nothing else: **on the computer an agent's chat has no ⋯**
+  (founder decision J, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424): the text follows what is built, and
+  "⋯ is there only where it has rows", #1460, [A space](#a-space-header-conversation-and-message-actions)); the agent's settings are its
+  page in Settings › AI. There is no second bar with the name, "Your agent" and Settings above the schedule line; the conversation's
+  first line, "Only you talk to Planner. Reports of its work arrive here.", stays.
+  On the phone, Back returns to where the person came from (the Spaces list, Home, the Inbox), and the agent's Settings are the one row
+  of a ⋯ at the right of the title row, the ⋯ a space has, as drawn.
 
 ### Spaces
 
@@ -1886,9 +2637,22 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 
 ![Locked space, space admin](screens/desktop-space-locked-admin.webp)
 
-- **New space** (New › Space) is one window. It has a Name, and People as one-line chips with Add
-  people (chosen from the company); "You're the admin of this space". AI is a switch, on by
-  default, and Encrypted a switch, off by default ("Can't be turned off later"). Cancel and
+- **New space** (New › Space) is one window, its own and without Create's tabs: choosing Space in Create opens it in their place, as
+  drawn (founder decision K, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)). It has a Name, and People as one-line chips with Add
+  people (chosen from the company); "You're in it as its admin." (you have no chip; it says the word every list of people then gives
+  you, "You're in it as the owner." for the company's owner, persona round 28). **Someone new? is there too** (founder decision, Hubert,
+  2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): for a company owner or admin the open Add people ends with the
+  same Someone new? row as Space settings, the same component and flow (the link is made, copied and shown in place), and Create space
+  ties each link made in the window to the new space. **A window closed without Create revokes the links it made** (Cancel, ×,
+  Escape, a tab closed or reloaded; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
+  company link nobody asked for (persona round, 2026-11-15, #1424). **Several links live side by side and the window says what Cancel does
+  before it is pressed** (personas-33 to 35, 2026-11-16): each Someone new? link stays listed with its own "Link for …" and Copy link (a new
+  one never hides an earlier one, which still works), and under People, also with Add people folded, one quiet line lists who is waiting:
+  "Invited with a link: ana@…, leo@…. The links add them to Bakery floor once you create it; Cancel turns them off." After Invite the
+  cursor is back in the Email field for the next address, as it is when the address is missing or wrong; the link is one Tab further, and
+  Enter in its read-only field never submits the window (personas-36: the next address was lost and Enter created the space early). AI is a switch, on by
+  default, and Encrypted a switch, off by default ("Can't be turned off later"); as drawn, neither row has an icon, so their words start at
+  one edge, and Name is a heading of the window as People is, 16 px under the head's hairline (round 15). Cancel and
   Create space have the same height.
 - **With Encrypted on,** the AI row is dimmed ("No AI in encrypted spaces"). The window adds the
   unlock password and Repeat side by side, a strength hint and Download recovery code. Create space
@@ -1905,13 +2669,26 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
+    **A guest's row says Guest** (persona round, 2026-11-15, #1424), to everyone who reads the page, the guest too, as Settings › Company
+    and the people picker ("tomasz@… · Guest", one word for a guest everywhere, release audit ffcb07c) say: a guest is never a space's admin, so their row has the word, not a choice of one. The list is
+    live: someone who joins with a link made here, or is added or removed elsewhere, appears or goes without a reload. With nobody left
+    to add, Add people says the true thing: "Everyone in Nowak Bakery is already in Shop floor." (or, with nobody else in the company,
+    "There is nobody else in the company yet.").
   - **Add people also takes a new person's email** (founder decision, 2026-11-13, #1438). Under the company's people, the open
     Add people has one more row for a company owner or admin: **Someone new?** an Email field and **Invite** (`secondary`). It
     makes the company's invite link (Member, 7 days, locked to that address) that also adds the person to this space when they
-    join; the link is copied at once and shown in place with Copy link. An address that already has an account in the company is
+    join; the link is copied at once, under one sentence, "Invite link created and copied. It works once, for 7 days: paste it into your
+    message to them." (#1424, persona B-4), and the cursor is back in the Email field for the next address (also when the field is empty
+    or wrong, with what to fix). **Every live link of the space is listed under its people, "Waiting to be used · N"** (personas-36; round 14: the
+    company's list and this one are one list, the same heading, row inset and buttons),
+    read from the server, so the links made in New space are there too and none goes when Add people folds or the page is reloaded: each
+    row the address, "Member · until 23 Nov · by Ada Kowalska (you)", **Copy link** and **Revoke** (asked once in place, as in Settings ›
+    Company); the link just made shows once in its row in a read-only field. A link used, revoked or expired leaves the list. The panel shows no dead control: **Add n people**
+    and Cancel while someone is ticked, otherwise one **Close**. An address that already has an account in the company is
     simply ticked in the list instead. The inviter gets "<name> joined <company>" naming the space when they join. A space admin
     who is not a company admin has no such row. About 6 clicks instead of 13.
-  - The AI switch.
+  - The AI switch, under the section's "AI": its row says **Let AI agents help in this space**, not "AI" a second time (round 14). A guest,
+    who has no AI, has no AI row (#1424).
   - **GitHub**, for the space's admins: one row, **GitHub repositories**, that leads to the GitHub page (where repositories are connected and
     managed), which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
     settings, so the panel is gone and GitHub is a setting of the space like the others (founder decision, Hubert, 2026-11-13,
@@ -1920,7 +2697,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - **GitHub repositories** is offered to a space's manager only on a server where GitHub is set up. A server without it shows no row, no link and no
     "ask whoever runs Flux" (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424): what a server cannot do is not shown.
   - An encrypted space shows its lock in place of the AI switch, and only its own admins change its
-    people.
+    people, in People and encryption, where they are listed once with the rows of every list of people (round 15).
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card
   in place of the content. A member sees "Payroll is locked" and the admins who can unlock it, with
   no buttons. A space admin sees the unlock password field, Unlock and Use recovery code. The rest
@@ -1996,9 +2773,17 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
   assistive technology ends ", new activity", as before, and a space that holds an Inbox item ends ", needs you" (the dot has the
   same words for assistive technology). Opening a space reads it, as today. The Spaces tab on the phone draws
   the same: bold when unread, `--t2` when read, the dot for what needs you.
+- **Direct messages have the same unread state** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)
+  decision 10). A direct message with a message from someone else that you have not read has its name in `--t1` and semibold in the sidebar's
+  Messages, on the Messages page and in the phone's Spaces tab, and its name for assistive technology ends ", new messages"; read, it keeps
+  `--t2` and 500. What you have read is what you saw: the messages up to the newest one you viewed (the same viewing as "Seen by" and the New
+  divider, S23), or up to your own last message there. It is kept on the server, so a direct message read on the phone is read on the computer
+  too, and the open one is read while it is open. A muted one is never bold and shows the quiet count, as a muted space. A conversation with
+  your agent follows the same rule (bold until you read its answer or report); only the 64 px rail, which has no names, marks an unread
+  conversation with the dot on its face.
 - **Mark all as read** is one row, in the Spaces heading's ⋯ on the computer and the tablet's drawer, in the Inbox's ⋯ (More) on
-  the computer and in the phone's More on the Inbox and on the Spaces tab. It clears the unread of every space and of the
-  conversations with your agents (people's direct messages carry no unread state yet; they are cleared here when they do). It does
+  the computer and in the phone's More on the Inbox and on the Spaces tab. It clears the unread of every space, of every direct
+  message and of the conversations with your agents. It does
   not clear the Inbox's items that need an action: a question, a decision, a blocked task and a mention still wait. The toast says
   "Marked all as read" with **Undo**, which brings back what was unread, except for what you opened since. Another open tab reads a
   space's news again when its open space changes and keeps what it read for 60 seconds: not live, and no timer.
@@ -2009,21 +2794,30 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 | --- | --- | --- |
 | ![Sign in](screens/desktop-signin.webp) Sign in | ![Sign in on the phone](screens/phone-signin.webp) Sign in, phone | ![Splash](screens/phone-splash.webp) Splash |
 
+After a password reset, Sign in says "Your password was changed. Sign in with the new one." with Email already filled with the address the
+reset page named, and the cursor in Password (personas-35). The address goes with the reset form and is kept in the tab's memory only, never
+in an address that could be logged.
+
 ### The invite page
 
 Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/issues/1438)); composed from the sign-in pages.
 
-- An invite link opens **the create-account form first**: "Join Riverside Makers", one line "Ada Kowalska invited you.", then
+- An invite link opens **the create-account form first**: "Join Riverside Makers", one line "Ada Kowalska invited you." (a link made
+  from a space's Add people or New space names it: "Ada Kowalska invited you to Tool library.", persona round 2026-11-15, #1424), then
   Name, Email and Password and **Create account and join** (`primary`, large). Under the card, "Already have an account? **Sign in
   to join**". With sign-up closed or single sign-on only, the page says how to get in instead, as before.
-- **No "You joined" step.** Creating the account (or Join, when signed in already) lands in **Everyone with the composer ready**; a
-  guest, who is not in Everyone, lands in the space the link was made from, or on Home. The one exception is an admin joining an
+- **No "You joined" step.** Creating the account (or Join, when signed in already) lands **in the space the link was made from, with
+  the composer ready** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a link from a
+  space's Add people or from New space opens that space; only a link made for the company (Settings › Company › Invite) opens
+  Everyone; a guest whose link names no space opens Home. The landing replaces `/join` in the tab's history, so a reload, a restored
+  tab or Back opens Flux, never the invite page again (#1424, persona A-2). The one exception is an admin joining an
   encrypted space who has no unlock password yet: one page says so, with Open <space>, as before.
 - **No jargon:** no role explanation (a member is the ordinary case; only Guest and Admin get one plain line), no "work and
   handoffs", no "invite link has nothing more to do". A link already used by this account opens Flux.
-- **A link for one address** ([#1424](https://github.com/ColdPhase/flux/issues/1424)) says "This link works only for ben@…" and fills the
-  Email field in with that address, read-only (a fixed field in the surface's quieter fill, not one that looks editable and ignores typing),
-  with the hint "This invite is for this address.": a different address cannot be sent. Signed in as another account, the page does not
+- **A link for one address** ([#1424](https://github.com/ColdPhase/flux/issues/1424)) fills the Email field in with that address,
+  read-only (a fixed field in the surface's quieter fill, not one that looks editable and ignores typing), with the hint "You join with
+  this email.": a different address cannot be sent. The address is said once, in that field (persona round 6); only a page with no form
+  (signed in as another account) says "This link works only for ben@…" above it. Signed in as another account, the page does not
   offer Join, which could only be refused: it says who the person is signed in as and gives one **Sign out to use this link**
   (`primary`), which signs out and opens this page again, signed out, with the form and the address in place (for someone who has an
   account, "Already have an account? Sign in to join" is under it). The Join button of the right account always joins.
@@ -2043,9 +2837,16 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
   sentence** as the heading ("This conversation isn't available", "This agent isn't here", "This page doesn't exist") and **one way back** as a `secondary` button
   ("Back to Messages", "Back to the Inbox", "Back to the space", "Go to Home"), under the shell's header, on the page's own column. It never says why (a place nobody
   may open is not told apart from one that is gone) and has no Try again, which could not succeed.
+- **A person who is no longer in the company** (they left it or were removed, and are still signed in) is told so in the places that would
+  otherwise say they have no spaces: Home's one card and the Spaces page say "You’re no longer in {company}" and "Ask an owner or admin of
+  the company for an invite link to come back.", with no Create. Anyone else without a company (nobody has invited them yet) keeps "You’re
+  not in a company here yet" (persona walkthrough finding D-7, v0.2.1). Without a company there is nothing to make, so neither has New
+  (nor `C`), the phone's "+" or Messages' "+" (persona round 30). The other person of their direct message reads "Ola is no longer in
+  the company, so this conversation has nobody to send to.", with no offer to reopen it.
 - **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
   is only Home's own, and Home has no header row on the computer.
-- **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
+- **A Wiki page by its address** (the old "material") is a card on the page: its back link, its space's Wiki as a link with "Version 1"
+  ("Community garden sensors · Wiki · Version 1", round 15 look-3 F5), and the space's Wiki page switcher lists it with the space's pages, the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
 - **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
 
 ### Setup and accounts from a link
@@ -2055,16 +2856,17 @@ link, an invite link or single sign-on. Nothing new is drawn: these are the sign
 
 - **Setup** (`/setup#<token>`, printed by the first `./flux up`). While no company exists every signed-out page opens here. The
   heading is "Set up Flux" and the lead "Create the owner's account. You name the company next."; the form is the sign-up form
-  (Name, Email, Password) with the primary **Create owner account**. Opened without its token: "Open the setup link", "Use the
+  (Name, Email, Password) with the primary **Create owner account**. The owner then lands in Settings › Company with the company's name
+  field open and focused ("You name the company next"), as Home's "Name your company" opens it. Opened without its token: "Open the setup link", "Use the
   whole link that ./flux up printed on the server. Running ./flux up again prints it." and no form. Once the company exists:
   "This Flux is set up" and **Sign in**.
 - **Create an account from an invite.** The sign-up form under "Join {company}"; an invite for one address fills the Email
-  field in and makes it read-only, with the hint "This invite is for this address."
+  field in and makes it read-only, with the hint "You join with this email."
 - **Sign-up without a link** is no form: the heading "Ask for an invite link", the line "Accounts on this Flux are made from an
   invite link. Ask an owner or admin of your company for one." and the link line "Sign in" under it. The sign-in page's last line
   is "New here? Open the invite link you were sent." with no link.
 - **Choose a new password** opens from a reset link of any kind (mailed, made in Settings › Company or by `./flux reset-link`),
-  as it is drawn now.
+  as it is drawn now, with its lead naming the account: "Reset the password for ada@…. After this, you’ll be signed out everywhere…".
 
 ### Not drawn yet
 

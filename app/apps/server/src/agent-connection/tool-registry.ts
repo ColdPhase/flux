@@ -5,6 +5,7 @@ import type { Database } from '@flux/db';
 import type { FluxMcpClaims, VerifiedFluxMcpClaims } from './context.js';
 import type { McpManifest } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
+import { readableMarks } from './readable-marks.js';
 import { refusedPrivateAddress } from './run-private-text.js';
 import { refusedCredential } from './run-credentials.js';
 import { boundRunResult } from './run-token.js';
@@ -147,7 +148,10 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
           handler = async (args, call) => {
             const place = call.claims.run;
             // AIM-3 redaction before anything is prepared, stored or written (AST-9.2): the call a waiting change keeps is the redacted one.
-            const redacted = redactCall({ ...args, ...(place ? { projectId: args.projectId ?? place.projectId } : {}), ...(place && !private_ ? { sources: [] } : {}) });
+            // A cite mark the agent copied from a tool result names its object in words the space reads (`#12`, `[[Page]]`), never an id (C-62,
+            // v0.2.1 real-model gate): before anything is prepared, so a change that waits keeps the readable words. A file's content is the agent's own.
+            const placed = { ...args, ...(place ? { projectId: args.projectId ?? place.projectId } : {}), ...(place && !private_ ? { sources: [] } : {}) };
+            const redacted = redactCall(name.startsWith('flux_attach_') ? placed : await readableMarks(db, placed.projectId, placed));
             // A run's change may not write a web address that carries private text the run read (#1138, C-30): read back, it would pass as
             // a link a person wrote. Refused before anything is prepared or stored; a link a person wrote, copied as it is, passes.
             // A picture's address is checked by its own tool, hop by hop, and refused in its own plain words (#1217).

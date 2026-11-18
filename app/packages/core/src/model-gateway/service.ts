@@ -201,20 +201,28 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
 
     /**
      * Charges a request: its reported usage (`null`: none that can be used, so all it held), or nothing for an answer the provider
-     * refused as a whole (`not_billed`: an HTTP error status, or nothing was sent). The rest of the hold is released.
+     * refused as a whole (`not_billed`: an HTTP error status, or nothing was sent). `{ cut }`: the answer was cut before its end; when its
+     * run was stopped (by its owner, an admin or Flux), it is charged what it can have used so far (`UsageMeter.cut`), what a stop actually
+     * spent (train 37 row 20); otherwise, or with nothing known, all it held, as for a lost answer (#854). The rest of the hold is released.
      */
-    async settle(ticket: GatewayTicket, usage: GatewayUsage | null | 'not_billed'): Promise<GatewayCharge> {
-      const charge: GatewayCharge = usage === 'not_billed' ? { micros: 0, known: true }
-        : gatewayChargeMicros(ticket.connection.price!, ticket.provider, ticket.request, ticket.holdMicros, usage);
+    async settle(ticket: GatewayTicket, usage: GatewayUsage | null | 'not_billed' | { cut: GatewayUsage | null }): Promise<GatewayCharge> {
+      const priced = (used: GatewayUsage | null | 'not_billed'): GatewayCharge => used === 'not_billed' ? { micros: 0, known: true }
+        : gatewayChargeMicros(ticket.connection.price!, ticket.provider, ticket.request, ticket.holdMicros, used);
+      let used: GatewayUsage | null | 'not_billed' = usage !== null && typeof usage === 'object' && 'cut' in usage ? null : usage;
+      let charge = priced(used);
       try {
         await uow.run(async (ports) => {
           const run = await ports.runs.findRun(ticket.runId, { lock: true });
           if (!run) return;
-          const counted = usage !== 'not_billed' && usage !== null && charge.known;
+          if (usage !== null && typeof usage === 'object' && 'cut' in usage && usage.cut && run.stopRequestedAt) {
+            used = { ...usage.cut, outputTokens: Math.min(usage.cut.outputTokens, ticket.request.maxOutputTokens) };
+            charge = priced(used);
+          }
+          const tokens = used !== 'not_billed' && used !== null && charge.known ? used : null;
           await ports.runs.updateRun(run.id, {
             chargedMicros: run.chargedMicros + charge.micros,
             reservedMicros: Math.max(run.chargedMicros + charge.micros, run.reservedMicros - ticket.holdMicros + charge.micros),
-            ...(counted ? { inputTokens: (run.inputTokens ?? 0) + usage.inputTokens, outputTokens: (run.outputTokens ?? 0) + usage.outputTokens } : {}),
+            ...(tokens ? { inputTokens: (run.inputTokens ?? 0) + tokens.inputTokens, outputTokens: (run.outputTokens ?? 0) + tokens.outputTokens } : {}),
           });
         });
       } finally {
@@ -223,7 +231,7 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
       // A request that ends after its run's token closed is on the run row only: its account was already given to the engine.
       const account = accounts.get(ticket.runId);
       if (account) {
-        if (usage !== 'not_billed') account.requests += 1;
+        if (used !== 'not_billed') account.requests += 1;
         account.chargedMicros += charge.micros;
         if (!charge.known) account.unknown += 1;
       }

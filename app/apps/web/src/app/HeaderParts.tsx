@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
-import { Avatar, IconButton, Kreska, usePop } from '../ui';
+import { Avatar, Icon, IconButton, Kreska, usePop, type IconName } from '../ui';
 import { activeFirst } from '../people/lastActive';
+import { useFitInWindow } from '../ui/pickerPlace';
 import { useAgentWorkingIn } from './WorkingAgent';
 
 /**
@@ -34,11 +35,12 @@ export function HeaderFaces({ people, meId, audience, projectId, onOpen }: { peo
 }
 
 /**
+ * `icon`: the row's icon, which leads it (a menu's rows lead with their icon, design §5).
  * `narrow`: offered here only when the header has no room for it (Spokój rule 3). `hint`: one small line under the label that says what the row
  * does (Mute: what still arrives, #1249). `node` is a row that keeps its own
  * state (the header's Call); a click on its enabled `[data-more-row]` closes the menu.
  */
-export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean | 'people'; hint?: string }
+export type MoreItem = { label: string; run: () => void; icon?: IconName; keys?: string; checked?: boolean; narrow?: boolean | 'people'; hint?: string }
   | { label: string; node: ReactNode };
 
 /** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
@@ -53,6 +55,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
   const buttonId = useId();
   const cueId = useId();
   const pop = usePop(open);
+  useFitInWindow(open, menu, button);
   useEffect(() => {
     if (!open) return undefined;
     shownRows(menu.current)[0]?.focus();
@@ -85,7 +88,21 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
           onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>
           {items.map((item) => 'node' in item ? <Fragment key={item.label}>{item.node}</Fragment> : (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
-              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}${item.narrow === 'people' ? ' top__more-people' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
+              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}${item.narrow === 'people' ? ' top__more-people' : ''}`} aria-keyshortcuts={item.keys} onClick={() => {
+                button.current?.focus(); setOpen(false);
+                // An item that leads to another page (Settings) leaves the focus to that page, never on this ⋯ (F-026 §4, persona round 30).
+                const from = window.location.pathname;
+                item.run();
+                const trigger = button.current;
+                let frames = 60;
+                const leave = () => {
+                  if (window.location.pathname !== from) { if (document.activeElement === trigger || document.activeElement === button.current) (document.activeElement as HTMLElement).blur(); return; }
+                  if (frames-- > 0) requestAnimationFrame(leave);
+                };
+                requestAnimationFrame(leave);
+              }}>
+              {/* A menu's rows lead with their icon, as the message menu's (round 15 look-2 P3-6). */}
+              {item.icon ? <Icon name={item.icon} size={16} /> : null}
               {item.hint ? <span className="top__more-text"><span>{item.label}</span><small>{item.hint}</small></span> : <span>{item.label}</span>}
               {item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}
             </button>

@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import type { ConversationMessage } from '@flux/contracts';
 import { useLoaderData } from 'react-router';
 import { outboxView } from '../composer/draft';
@@ -12,10 +11,10 @@ import { useSpaceAi } from '../ai/spaceAi';
 import { useProjectQuestions } from '../agents/questions';
 import { useAgentOwners } from '../agents/owners';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
-import { PrivateAiLines } from '../assistant/PrivateAiLines';
+import { PrivateAiLines, hasPrivateAiLines } from '../assistant/PrivateAiLines';
 import { useFollowEnd } from '../assistant/useFollowEnd';
 import { useAssistantChanges } from '../assistant/WaitingChanges';
-import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
+import { agentAuthorLabel, personName } from '../docs/format';
 import { useTyping } from '../typing/useTyping';
 import { useCreateWorkFromMessage } from '../work/inline';
 import { MessageWorkPages } from '../work/MessageWorkPages';
@@ -52,7 +51,7 @@ export function ProjectConversation() {
  * (`useComposerDrafts`, `useComposerMenu`, `useComposerSend`), the assistant (`useAssistantAsk`, `useAskBar`)
  * and the views (`ThreadFeed`, `PaneComposer`).
  */
-function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, onOpenDiscussion }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const core = usePaneCore(data, variant);
@@ -61,6 +60,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { accessLost, hideIfDenied } = usePaneAccess(core);
   const drafts = useComposerDrafts(core);
   const { asking, publicComposer } = drafts;
+  // Whether a reply is written: only then do the lines about linked work say it is kept (round 15 confirm S4).
+  const typed = !!publicComposer.draft.body.trim() || publicComposer.draft.files.length > 0;
   const thread = useThreadReplies(core, { sent: publicComposer.sent, hideIfDenied, onThreadSize });
   const { messages } = thread;
   // The signed-in person's own assistant (#68, #842): ask mode, their working line and their private answers, here or in the space's main conversation.
@@ -82,38 +83,33 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
-  const author = (id: string) => id === me.user.id ? me.user.name : data.members.find((member) => member.userId === id)?.name ?? FORMER_MEMBER;
+  // A person who left the company or was removed is "Stefan Kowal (removed)", by the name the server gives their messages (#1424, 2026-11-17).
+  const removedNames = new Map(messages.flatMap((item) => (item.authorId !== null && item.removedAuthorName ? [[item.authorId, item.removedAuthorName] as const] : [])));
+  const author = (id: string) => personName(id, { id: me.user.id, name: me.user.name }, data.members, core.people, removedNames.get(id));
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
   // The owner's waiting changes (F-027 A3): refreshed when their run moves.
   const changes = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.tick}`, !aiOff);
-  useFocusOnOpen(focusComposer, composerId);
 
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Space unavailable</h2><p>Your access to this space may have changed. Reload to check current access.</p></div></div>;
   // The root sits at the thread's top (and in the stream); the list holds its replies.
   // What came of this thread (#694): the decisions made from it stand among its replies, in time order.
   const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];
-  const entries = feedEntries(messages.filter((message) => message.sequence > 1), !!thread.olderCursor, made);
+  // A decision's discussion has no root message (#1424): its head is the decision, and its first message is a reply like the others.
+  const entries = feedEntries(messages.filter((message) => message.sequence > 1 || !!conversation?.decision), !!thread.olderCursor, made);
   const { messageWork, referenceWork } = reading;
   const others = (core.people ?? []).filter((person) => person.kind === 'human' && person.id !== me.user.id).map((person) => person.name.trim().split(/\s+/)[0] || person.name);
   const privateAi = { assistant, changes, others, lookups: { projectId: project.id, messages, work: referenceWork.rows, author, people: core.people } };
   return <div className={`${conversation ? 'thread__pane' : 'project-convo'}${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
-    {!conversation ? feed?.(<PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={privateAi.lookups} own />) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} privateAi={privateAi} owners={owners}
+    {/* The stream is given its end only when there is one: an empty conversation's "Where do we start?" stands only while nothing is in it (founder check 2026-11-17). */}
+    {!conversation ? feed?.(hasPrivateAiLines(assistant) ? <PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={privateAi.lookups} own /> : null) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} privateAi={privateAi} owners={owners}
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
-      waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} />}
-    {conversation ? <MessageWorkPages read={messageWork} /> : null}
-    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
+      waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} onOpenDiscussion={onOpenDiscussion} />}
+    {conversation ? <MessageWorkPages read={messageWork} typed={typed} /> : null}
+    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked.{typed ? ' Your reply is kept.' : ''} <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
     <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} typing={typing}
       readFailure={thread.readFailure} />
   </div>;
-}
-
-/** When the thread opens for a reply, its field takes focus once. */
-function useFocusOnOpen(focusComposer: boolean, composerId: string) {
-  useEffect(() => {
-    if (focusComposer) document.getElementById(composerId)?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 }

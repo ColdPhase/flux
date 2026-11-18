@@ -202,9 +202,9 @@ class ConnectedFlow(unittest.TestCase):
 
     def test_07_a_decision_opens_with_its_kind_and_state(self) -> None:
         page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sms']}")
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['d_sms']}")
         panel = page.locator("#details")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel).not_to_contain_text("Current rule")
         # A space has no details panel, so no "Now": what is current lives in the Tasks and the Inbox (#865, #1419).
         page.goto(f"/projects/{self.ids['project']}")
@@ -216,7 +216,7 @@ class ConnectedFlow(unittest.TestCase):
 
     def test_08_add_the_card_under_a_heading_and_the_toast_stays_clear_of_the_sheet(self) -> None:
         page = self.page(phone=True)
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sat']}")
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['d_sat']}")
         sheet = page.locator("#details")  # its heading follows what opened it: "Add to a Wiki page" after this tap (#1058)
         expect(sheet).to_be_visible()
         sheet.get_by_role("button", name="Add to a Wiki page").tap()
@@ -227,6 +227,10 @@ class ConnectedFlow(unittest.TestCase):
         toast = page.locator(".ui-toast", has_text=f"Added to “{PAGE}”")
         expect(toast).to_be_visible()
         page.wait_for_timeout(400)
+        # The toast's box is where it was last drawn, the controls' are where they are laid out now: WebKit can go a second without drawing a
+        # frame while the decision's rows arrive in the sheet (seen on CI and locally: the rows laid out and the toast's place already
+        # raised in its style, but nothing drawn yet). Both are read once the page has drawn what it laid out.
+        page.evaluate("() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done))))")
         box = toast.bounding_box()
         assert box
         for control in page.locator("[aria-modal='true'] button:visible, [aria-modal='true'] a[href]:visible").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())"):

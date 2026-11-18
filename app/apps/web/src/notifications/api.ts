@@ -61,3 +61,7 @@ export interface AcceptedInboxItem { ownerId: string; key: string }
 export const NEEDS_YOU_ACCEPTED = 'flux:needs-you-accepted';
 export const announceAcceptedInboxItem = (ownerId: string, key: string) =>
   window.dispatchEvent(new CustomEvent<AcceptedInboxItem>(NEEDS_YOU_ACCEPTED, { detail: { ownerId, key } }));
+/** An accepted proposal is back with its acceptance's Undo (round 8, #1424): the count shows it again. */
+export const NEEDS_YOU_RETURNED = 'flux:needs-you-returned';
+export const announceReturnedInboxItem = (ownerId: string, key: string) =>
+  window.dispatchEvent(new CustomEvent<AcceptedInboxItem>(NEEDS_YOU_RETURNED, { detail: { ownerId, key } }));

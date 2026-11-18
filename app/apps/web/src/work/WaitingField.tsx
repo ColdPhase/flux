@@ -11,8 +11,9 @@ const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLo
 /**
  * Blocked is one field (#1438 point 12): "Waiting for" takes the reason as typed words, or a person (in the panel also a decision or a task)
  * picked from the list under it. A pick fills the field as a face and name with a remove, and the typed words stay beside it, so a task that
- * has both keeps both. The list is the composer's `@` list's model: arrows move, Enter picks the row the arrows chose (with none chosen it keeps
- * the words and leaves Enter to the form), Escape closes the list and never the window around it. It lists everything when the field is entered
+ * has both keeps both. The list is the composer's `@` list's model: arrows move, Enter picks the row the arrows chose (with none chosen it picks
+ * the one person the typed words found, round 8, #1424; otherwise it keeps the words and leaves Enter to the form), Escape closes the list and
+ * never the window around it. It lists everything when the field is entered
  * and what the words typed after that match; words that match nothing are simply a reason.
  */
 export function WaitingField({ label = 'Waiting for', choices, choice, choiceLabel, text, onChoice, onText, disabled, pickDisabled, maxLength, autoFocus }: {
@@ -71,6 +72,9 @@ export function WaitingField({ label = 'Waiting for', choices, choice, choiceLab
       setActive((current) => (event.key === 'ArrowDown' ? (current + 1) % shown.length : (current <= 0 ? shown.length - 1 : current - 1)));
     } else if (event.key === 'Enter' && open && active >= 0 && shown[active]) {
       event.preventDefault(); event.stopPropagation(); pick(shown[active]!);
+    } else if (event.key === 'Enter' && open && active < 0 && needle && shown.length === 1 && shown[0]!.value.startsWith('human:') && !event.nativeEvent.isComposing) {
+      // Enter with exactly one person found picks that person, as in every person picker (founder decision, round 8, #1424).
+      event.preventDefault(); event.stopPropagation(); pick(shown[0]!);
     } else if (event.key === 'Escape' && open) {
       event.preventDefault(); event.stopPropagation(); setDismissed(true); setActive(-1);
     } else if (event.key === 'Backspace' && choice && !event.currentTarget.value && !pickDisabled) {

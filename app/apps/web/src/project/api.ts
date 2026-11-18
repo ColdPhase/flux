@@ -42,7 +42,7 @@ export async function listAccessibleProjects(signal?: AbortSignal, read?: Encryp
 }
 // A new space carries the intent's Idempotency-Key: a retry after a lost 201 replays it instead of making a second one. The people are
 // added as members and the creator is its admin, in the same command (F-037).
-export const createProject = (workspaceId: string, name: string, idempotencyKey: string, options: { ai?: boolean; people?: string[] } = {}) =>
+export const createProject = (workspaceId: string, name: string, idempotencyKey: string, options: { ai?: boolean; people?: string[]; invites?: string[] } = {}) =>
   request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted', ...options }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
 /** A space admin, or a company owner or admin, renames the space. */
 export const renameProject = (projectId: string, name: string, idempotencyKey: string) =>

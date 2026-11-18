@@ -291,7 +291,8 @@ class OneConversationJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/{self.ids['c1']}$"))
         thread = self.thread(page)
         expect(thread).to_be_visible()
-        expect(thread.locator(".ui-panel__body")).to_be_focused()
+        # A thread is opened to reply: on a computer its reply field has the focus, so typing is the reply, never a shortcut (C-1).
+        expect(page.locator("#thread-composer")).to_be_focused()
         expect(thread.locator(".thread__root")).to_contain_text(OPENING)
         expect(thread.locator(f"#message-{self.ids['first']}")).to_contain_text(FIRST_REPLY)
         expect(thread.locator(f"#message-{self.ids['second']}")).to_contain_text(SECOND_REPLY)
@@ -346,7 +347,7 @@ class OneConversationJourney(unittest.TestCase):
         self.root(page, "r3").get_by_role("button", name="Reply in thread", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['c3']}$"))
         expect(page.locator("#thread-composer")).to_be_focused()
-        expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
+        expect(self.thread(page)).not_to_contain_text("No new topic needed")
         page.keyboard.press("Escape")
         expect(self.thread(page)).to_have_count(0)
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
@@ -359,7 +360,9 @@ class OneConversationJourney(unittest.TestCase):
         expect(thread).to_be_visible()
         feed = thread.locator(".thread__feed")
         expect(feed).not_to_have_class(re.compile("is-opening"))
-        expect(thread.locator(".thread__hint")).to_have_text(re.compile(r"^8 replies · "))  # the first reply's day follows (#768)
+        # One line between the root and its replies, with the first reply's day (#768): "8 replies · Today", or, where the first reply is
+        # already new (a thread never opened), the one "New · Today" divider, the head keeping the count (round 14).
+        expect(thread.locator(".thread__hint, [data-unread-start]").first).to_have_text(re.compile(r"^(8 replies|New) · "))
         page.wait_for_timeout(500)
         overflow = feed.evaluate("el => el.scrollHeight - el.clientHeight")
         self.assertGreater(overflow, 1, "the fixture thread overflows the desktop panel, so opening it could hide the root")
@@ -379,7 +382,7 @@ class OneConversationJourney(unittest.TestCase):
         oldest = self.root(page, "oldest_root")
         expect(oldest).to_be_in_viewport()
         expect(self.thread(page).locator(".thread__root")).to_contain_text("Earlier note 01")
-        expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
+        expect(self.thread(page)).not_to_contain_text("No new topic needed")
         # A reply's anchor opens its thread on that whole reply, focused; the stream shows its root.
         page.goto(self.project_url(f"/conversations/{self.ids['c1']}#message-{self.ids['first']}"))
         arrived = self.thread(page).locator(".project-convo__message.is-arrived")
@@ -532,6 +535,12 @@ class OneConversationJourney(unittest.TestCase):
         owner.goto(f"/projects/{project['id']}")
         stream = self.stream(owner)
         expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
+        # A-8: the mascot, the heading and the paragraph share one centre line, as drawn (the mascot and heading sat left of the paragraph).
+        centre = lambda locator: (lambda box: box["x"] + box["width"] / 2)(locator.bounding_box())  # noqa: E731
+        empty = stream.locator(".ui-empty--mascot")
+        expect(empty).to_be_visible()
+        for part in (".ui-empty__mascot", ".ui-empty__title", ".ui-empty__body"):
+            self.assertAlmostEqual(centre(empty.locator(part)), centre(empty), delta=2, msg=f"{part} is centred")
         expect(stream).not_to_contain_text("Everyone in Workspace conversation sees it.")  # the default audience is not said (#871)
         expect(stream).not_to_contain_text("the only one in this space")
         self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
@@ -577,7 +586,9 @@ class OneConversationJourney(unittest.TestCase):
         owner.goto(f"/projects/{project['id']}")
         stream = self.stream(owner)
         expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
-        expect(stream).to_contain_text("For now you are the only one in this space; the people you add will see it too.")
+        # True while invites are still waiting too: never "For now you are the only one in this space" (personas-27).
+        expect(stream).to_contain_text("The people you add to this space will see it too.")
+        expect(stream).not_to_contain_text("the only one in this space")
         self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
         member = self.page("jonas")
         self.api(member, "GET", path, status=404)
@@ -590,6 +601,21 @@ class OneConversationJourney(unittest.TestCase):
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
         self.api(member, "GET", path, status=404)
+
+    def test_05f_a_mention_is_followed_by_one_space_however_many_were_typed(self) -> None:
+        """B-9: the composer adds a space after a picked mention and people type one more; the message shows one gap, not a wide one."""
+        owner = self.page("ada")
+        workspace = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Mention gaps"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Mention conversation", "visibility": "workspace"}, status=201)
+        sent = self.api(owner, "POST", f"/api/v1/projects/{project['id']}/conversations",
+                        {"body": "Hi @Jonas  welcome! Can you  bring @Lee   a coffee?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        owner.goto(f"/projects/{project['id']}")
+        body = owner.locator(f"#message-{sent['messages'][0]['id']} .message-body")
+        expect(body).to_be_visible()
+        text = body.evaluate("element => element.textContent")
+        self.assertEqual(text, "Hi @Jonas welcome! Can you  bring @Lee a coffee?", "one space after a mention; two typed elsewhere stay as typed")
+        self.assertEqual(self.api(owner, "GET", f"/api/v1/projects/{project['id']}/conversation-roots", status=200)["roots"][0]["message"]["body"],
+                         "Hi @Jonas  welcome! Can you  bring @Lee   a coffee?", "the stored words are as typed")
 
     # ---------------------------------------------------------------- phone and tablet
 

@@ -100,7 +100,8 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
 
   // A start with an open prerequisite is refused in plain words and changes nothing.
   await panel.getByRole('button', { name: 'Status', exact: true }).click();
-  await panel.getByRole('menuitemradio', { name: 'Doing' }).click();
+  // The Status menu opens in a layer over the page (it must never be cut by the panel), so it is found on the page.
+  await page.getByRole('menuitemradio', { name: 'Doing' }).click();
   await panel.getByRole('alert').filter({ hasText: 'every task it waits for is done' }).waitFor();
   assert.equal(((expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200)) as WorkItem).status, 'open');
 
@@ -120,7 +121,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   await heading(page).filter({ hasText: 'Measure gestures at 5 lux' }).waitFor();
   await page.locator('.details.wd').getByRole('region', { name: 'Waits for' }).getByRole('status').filter({ hasText: 'Every prerequisite is done.' }).waitFor();
   await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).click();
-  await page.locator('.details.wd').getByRole('menuitemradio', { name: 'Doing' }).click();
+  await page.getByRole('menuitemradio', { name: 'Doing' }).click();
   await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).filter({ hasText: 'Doing' }).waitFor();
   assert.equal(((expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200)) as WorkItem).status, 'in_progress');
 

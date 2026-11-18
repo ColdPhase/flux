@@ -152,3 +152,33 @@ test('every loader of a route tree is wrapped, and so is the one a lazy route br
   assert.equal(plain.loader, undefined);
   assert.equal((index as { loader?: unknown }).loader, undefined);
 });
+
+// Round 15 (new P2-2): offline, opening a space read 10 s earlier replaced the whole app, sidebar included, with "Flux can't be reached".
+test('the shell reads the same on every page: offline, a move to another place keeps it', async () => {
+  const shell = { me: 'ada' };
+  type Tree = { id?: string; path?: string; loader?: unknown; children?: Tree[] };
+  const tree = keepPagesOnRefresh<Tree>({ id: 'app', path: '/', loader: loaderOf(shell, new NetworkError()) }, ['app']);
+  const call = (path: string, params: Record<string, string>) => (tree.loader as (a: PageArgs) => Promise<unknown>)(args(path, params));
+  assert.equal(await call('/', {}), shell);
+  assert.equal(await call('/projects/a', { projectId: 'a' }), shell, 'another place keeps the shell it read');
+});
+
+test('with no answer at all, a page read earlier gives back what it read then', async () => {
+  const space = { name: 'Bakery floor' };
+  let offline = false;
+  const keep = keepOnRefresh((async (pageArgs: PageArgs) => {
+    if (offline) throw new NetworkError();
+    return new URL(pageArgs.request.url).pathname === '/projects/a' ? space : 'home';
+  }) as Loading);
+  assert.equal(await keep(args('/projects/a')), space);
+  assert.equal(await keep(args('/', {})), 'home');
+  offline = true;
+  assert.equal(await keep(args('/projects/a')), space, 'the space read before opens as it was');
+  await assert.rejects(keep(args('/projects/b', { projectId: 'b' })), NetworkError, 'a place never read has nothing to show');
+  offline = false;
+  const failure = new ApiError(503, null, 'Service Unavailable');
+  const busy = keepOnRefresh(loaderOf('a', 'home', failure));
+  await busy(args('/projects/a'));
+  await busy(args('/', {}));
+  await assert.rejects(busy(args('/projects/a')), failure, 'an answer that failed is said, only no answer at all keeps an earlier page');
+});

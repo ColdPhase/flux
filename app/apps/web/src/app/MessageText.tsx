@@ -1,9 +1,12 @@
-import { Fragment, useMemo, type ReactNode } from 'react';
-import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, type MessageInline, type ProjectPerson } from '@flux/contracts';
+import { Fragment, isValidElement, useMemo, type ReactNode } from 'react';
+import { useInRouterContext } from 'react-router';
+import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, webSourcesStart, type MessageInline, type ProjectPerson } from '@flux/contracts';
 import { Icon, Kreska, initials } from '../ui';
 import { CodeBlock } from './CodeBlock';
 import { useLinkPreviews } from './linkPreviews';
 import { ThoughtChip, thoughtLink } from './thoughtLinks';
+import { RefChipOpen } from './refChips';
+import { WebSources } from './WebSources';
 import '../composer/attachments.css';
 import './message-format.css';
 
@@ -16,17 +19,53 @@ import './message-format.css';
 // an agent's chip carries the Kreska mark.
 
 /** What a mention chip needs of a person: the name to match, and whether it is an agent. A space's people are this, and so are a chat's known names. */
-export type NamedPerson = Pick<ProjectPerson, 'kind' | 'name'>;
+export type NamedPerson = Pick<ProjectPerson, 'kind' | 'name'> & { colour?: ProjectPerson['colour'] };
 
 const URL_TOKEN = LINK_URL_SOURCE;
+
+/**
+ * A long address breaks after its separators (`/`, `_`, `#`, `?`, `&`, `=`, `.`, `-`), never inside a word ("Soil_m / oisture"; visual
+ * review 2026-11-17). `<wbr>` adds no character, so copying the link copies the address as written.
+ */
+function breakable(url: string): ReactNode {
+  const parts = url.split(/(?<=[/_#?&=.-])(?=[^/_#?&=.-])/u);
+  return parts.length < 2 ? url : parts.map((part, index) => <Fragment key={index}>{index ? <wbr /> : null}{part}</Fragment>);
+}
 const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The inline references in a body, longest known names first; a web address is always group `url`; `[3]` is group `cite` when asked for. */
 function tokens(names: string[], cites = false): RegExp {
   const known = names.length ? String.raw`|(?<klead>^|[\s(])(?<known>@(?:${names.map(escapeRe).join('|')}))(?![\p{L}\p{N}])` : '';
   const cite = cites ? String.raw`|\[(?<cite>\d{1,3})\]` : '';
-  return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*(?:(?<=['’]s) assistant\b)?)|(?<tlead>^|[\s(])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]${cite}`, 'gu');
+  return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*(?:(?<=['’]s) assistant\b)?)|(?<tlead>^|[\s(\-\u2013\u2014/,])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]${cite}`, 'gu');
 }
+
+/** What may not stand alone at a line's edge next to a chip or a code span: the punctuation after it, and an opening bracket before it. */
+const TRAILING = /^[.,;:!?)\]}…”’"']+/u;
+const OPENING = /[([{“‘"']$/u;
+/**
+ * A chip or a code span keeps the punctuation it touches on its line (round 15: "Volunteer rota" with ";" alone at the next line's start, and
+ * "(" left at the end of a line before "#2"): the pair is one unbreakable run, while the words inside a long code span still wrap.
+ */
+function glue(parts: ReactNode[], keyPrefix: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (!isValidElement(part) || !gluable.has(part)) { out.push(part); continue; }
+    const before = out[out.length - 1];
+    const lead = typeof before === 'string' ? OPENING.exec(before)?.[0] ?? '' : '';
+    const next = parts[index + 1];
+    const tail = typeof next === 'string' ? TRAILING.exec(next)?.[0] ?? '' : '';
+    if (!lead && !tail) { out.push(part); continue; }
+    if (lead) out[out.length - 1] = (before as string).slice(0, -lead.length);
+    out.push(<span key={`${keyPrefix}g${index}`} className="msg-glue">{lead}{part}{tail}</span>);
+    if (tail) { parts[index + 1] = (next as string).slice(tail.length); }
+  }
+  return out.filter((part) => part !== '');
+}
+/** The elements `glue` keeps together with their punctuation: the chips and the code spans of a text. */
+const gluable = new WeakSet<object>();
+const mark = <T extends object>(element: T): T => { gluable.add(element); return element; };
 
 /**
  * The body as formatted text with inline chips and links. `linked={false}` keeps a web address as plain text, for a surface that is
@@ -34,8 +73,12 @@ function tokens(names: string[], cites = false): RegExp {
  * into what the caller draws for source 3 (null leaves the text as it is).
  */
 export function MessageText({ body, linked = true, people = null, cite }: { body: string; linked?: boolean; people?: readonly NamedPerson[] | null; cite?: (index: number) => ReactNode | null }) {
+  const opens = useInRouterContext() && linked;
   const names = [...(people ?? [])].sort((a, b) => b.name.length - a.name.length);
-  const blocks = useMemo(() => parseMessage(body), [body]);
+  // The list Flux appended to an agent's web answer is its own quiet "Sources (N)" disclosure, never raw addresses under the words
+  // (founder check, Hubert 2026-11-17).
+  const sourcesAt = useMemo(() => webSourcesStart(body), [body]);
+  const blocks = useMemo(() => parseMessage(sourcesAt < body.length ? body.slice(0, sourcesAt) : body), [body, sourcesAt]);
   const reference = tokens(names.map((person) => person.name), cite !== undefined);
   /** A run of plain text: the references in it as chips and links. */
   const chips = (text: string, keyPrefix: string): ReactNode[] => {
@@ -49,36 +92,44 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       if (start > last) parts.push(text.slice(last, start));
       const thought = groups.url ? thoughtLink(groups.url) : null;
       // A map thought's own address (its Copy link) is the thought's chip, not a bare address (#1376).
-      if (thought) parts.push(<ThoughtChip key={`${keyPrefix}${key++}`} link={thought} linked={linked} />);
-      else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
+      if (thought) parts.push(mark(<ThoughtChip key={`${keyPrefix}${key++}`} link={thought} linked={linked} />));
+      else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{breakable(groups.url)}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
       else if (groups.known || groups.mention) {
         const name = (groups.known ?? groups.mention!).slice(1);
-        const agent = names.find((person) => person.name === name)?.kind === 'agent' || /['’]s assistant$/.test(name);
-        parts.push(<span key={`${keyPrefix}${key++}`} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
-          {agent ? <Kreska size={12} className="ref-chip__k" /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
-          <span className="ui-vh">@</span>{name}</span>);
+        const named = names.find((person) => person.name === name);
+        const agent = named?.kind === 'agent' || /['’]s assistant$/.test(name);
+        parts.push(mark(<span key={`${keyPrefix}${key++}`} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
+          {agent ? <Kreska size={12} className="ref-chip__k" {...(named?.colour ? { hue: named.colour } : {})} /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
+          <span className="ui-vh">@</span>{name}</span>));
       }
-      else if (groups.task) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);
-      else if (groups.wiki) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>);
+      // A task's and a page's chip opens what it names (train 37 row 9), except on a surface that is itself a link or outside the app's pages.
+      else if (groups.task) parts.push(mark(opens
+        ? <RefChipOpen key={`${keyPrefix}${key++}`} kind="task" value={groups.task} className="ref-chip ref-chip--task"><Icon name="tasks" size={12} />#{groups.task}</RefChipOpen>
+        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>));
+      else if (groups.wiki) parts.push(mark(opens
+        ? <RefChipOpen key={`${keyPrefix}${key++}`} kind="wiki" value={groups.wiki} className="ref-chip ref-chip--wiki"><Icon name="doc" size={12} />{groups.wiki}</RefChipOpen>
+        : <span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>));
       else if (groups.cite) {
         const source = cite?.(Number(groups.cite)) ?? null;
         parts.push(source === null ? match[0] : <Fragment key={`${keyPrefix}${key++}`}>{source}</Fragment>);
       }
       last = match.index! + match[0].length;
+      // The composer adds a space after a picked mention and a person types one more out of habit: a mention is followed by one space, never a wide gap.
+      if (groups.known || groups.mention) while (text[last] === ' ' && text[last + 1] === ' ') last += 1;
     }
     if (last < text.length) parts.push(text.slice(last));
     return parts;
   };
   /** Text with its marks: bold, italic and code, the references inside them kept (code is the exception: it is only text). */
-  const inline = (nodes: MessageInline[], keyPrefix: string): ReactNode[] => nodes.flatMap<ReactNode>((node, index): ReactNode[] => {
+  const inline = (nodes: MessageInline[], keyPrefix: string): ReactNode[] => glue(nodes.flatMap<ReactNode>((node, index): ReactNode[] => {
     const key = `${keyPrefix}${index}`;
     switch (node.kind) {
       case 'text': return chips(node.text, `${key}-`);
       case 'bold': return [<strong key={key} className="msg-strong">{inline(node.children, `${key}-`)}</strong>];
       case 'italic': return [<em key={key} className="msg-em">{inline(node.children, `${key}-`)}</em>];
-      case 'code': return [<code key={key} className="msg-code">{node.text}</code>];
+      case 'code': return [mark(<code key={key} className="msg-code">{node.text}</code>)];
     }
-  });
+  }), keyPrefix);
   return <>{blocks.map((block, index) => {
     switch (block.kind) {
       case 'text': return <Fragment key={`p${index}`}>{inline(block.inline, `p${index}-`)}</Fragment>;
@@ -92,7 +143,7 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       }
       case 'code': return <CodeBlock key={`c${index}`} code={block.text} lang={block.lang} />;
     }
-  })}</>;
+  })}{sourcesAt < body.length ? <WebSources block={body.slice(sourcesAt)} linked={linked} /> : null}</>;
 }
 
 /** A readable title from a web address alone: the reader's browser fetches no page. */
@@ -120,7 +171,7 @@ export function LinkPreviews({ body, projectId, messageId }: { body: string; pro
       <a className="link-preview" href={raw} target="_blank" rel="noopener noreferrer nofollow" data-page={page?.description ? 'described' : page?.title ? 'titled' : 'address'}>
         <span className="link-preview__site"><Icon name="link" size={12} />{url.hostname.replace(/^www\./, '')}</span>
         <strong>{page?.title ?? addressTitle(url)}</strong>
-        <small>{page?.description ?? (url.pathname.length > 1 ? `${url.hostname}${url.pathname}` : 'Opens in a new tab')}</small>
+        <small>{page?.description ?? (url.pathname.length > 1 ? breakable(`${url.hostname}${url.pathname}`) : 'Opens in a new tab')}</small>
       </a>
     </li>;
   })}</ul>;

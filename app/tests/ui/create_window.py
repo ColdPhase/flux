@@ -90,13 +90,13 @@ def create_other(page: Page, name: str) -> None:
 
 
 def open_decision(page: Page) -> Locator:
-    """The Create window on its Decision tab, whichever way the device opens it: New on a computer, the "+" sheet's Decision row on a phone (#867)."""
+    """The Create window on its Decision tab, whichever way the device opens it: New on a computer, the phone's "+" (which opens the same
+    window on Task, #1438 point 8); then its Decision tab (#867)."""
     if (page.viewport_size or {"width": 1500})["width"] <= 640:
         page.get_by_role("button", name="Create", exact=True).click()
-        page.get_by_role("button", name="Decision", exact=True).click()
     else:
         open_create(page)
-        create_other(page, "Decision")
+    create_other(page, "Decision")
     decision = page.get_by_role("dialog", name="New decision")
     expect(decision).to_be_visible()
     return decision
@@ -104,14 +104,14 @@ def open_decision(page: Page) -> Locator:
 
 def propose_decision(page: Page, title: str, *, why: str | None = None, replaces: str | None = None) -> None:
     """Proposes a decision through the one form (#1419): the words, why, what it replaces (an accepted decision's title), then Propose decision.
-    The proposal is held for Undo and reaches the people who can accept it when that window ends, so callers wait for it by its record."""
+    The proposal is sent at once (#1424 L) and callers wait for it by its record."""
     decision = open_decision(page)
     decision.get_by_role("textbox", name="Decision", exact=True).fill(title)
     if why:
         decision.get_by_role("textbox", name="Why", exact=True).fill(why)
     if replaces:
         from app_select import choose
-        decision.get_by_role("button", name="Replace an accepted decision…").click()
+        decision.get_by_role("button", name="This replaces an older decision…").click()
         choose(decision.get_by_label("Does it replace an earlier decision?", exact=True), label=replaces)
     decision.get_by_role("button", name=re.compile("^Propose decision")).click()
     expect(decision).to_have_count(0)

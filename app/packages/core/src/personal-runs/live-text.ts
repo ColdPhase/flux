@@ -16,6 +16,11 @@ export interface LiveText {
   turn(n?: number): void;
   /** More of the current turn's words, as the model wrote them. */
   push(delta: string): void;
+  /**
+   * Message `turn` (the current one when not named) called a tool: its words were a working note, not the answer (founder check, Hubert
+   * 2026-11-17). They are dropped, here and in the asker's view, and the working line says the step.
+   */
+  note(turn?: number): void;
   /** The Flux tool the agent uses now, for the working line. */
   step(tool: string): void;
   /** The current turn's words so far, whole and as the model wrote them (for a stop that keeps them). */
@@ -93,6 +98,14 @@ export function liveText(port: RunLiveText | undefined, run: Pick<RunRecord, 'id
       if (!port || timer) return;
       timer = setTimeout(flush, Math.max(0, last + intervalMs - now()));
       (timer as { unref?: () => void }).unref?.();
+    },
+    note(n) {
+      if (n !== undefined && n !== turn) return;
+      if (timer) { clearTimeout(timer); timer = null; }
+      raw = '';
+      if (closed || !sent) { sent = ''; return; }
+      sent = '';
+      deliver({ runId: run.id, turn, at: 0, text: '' });
     },
     step(tool) {
       if (!closed) deliver({ runId: run.id, step: tool });

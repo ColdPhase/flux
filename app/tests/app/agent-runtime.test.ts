@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_PATH } from '@flux/contracts';
 import { agentRuntimeUseCases, reconcileAgentRuntime, type AgentRuntimeConfig, type RuntimeManagerPort } from '@flux/core';
@@ -8,6 +8,7 @@ import { agentRuntimeOperations, agentRuntimeStore, workspaceRepository } from '
 import { Browser } from './support/http.js';
 import { db, insertedHuman, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
+import { claimRuntimeSlot } from './support/runtime-slot.js';
 
 // F-022 T3 (#278) against the running API and PostgreSQL of the normal test stack, where the operator
 // switch FLUX_AGENT_RUNTIME is empty (the default). The live runtime with slots is
@@ -97,8 +98,7 @@ describe('runtime tables hold display facts only', () => {
 
   test('a binding id is a canonical version 4 UUID by CHECK, and display labels are bounded', async () => {
     const owner = await insertedHuman('runtime-check-owner');
-    const slot = `runtime-${700 + Math.floor(Math.random() * 99)}`;
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready')`, [slot]);
+    const slot = await claimRuntimeSlot(pool);
     try {
       for (const id of ['00000000-0000-1000-8000-000000000000', '6ba7b810-9dad-11d1-80b4-00c04fd430c8']) {
         await assert.rejects(pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [id, owner.id, slot]), /agent_runtime_bindings_id_check/);
@@ -124,9 +124,16 @@ describe('runtime tables hold display facts only', () => {
 
 describe('the PostgreSQL store under the owner use cases', () => {
   const config: AgentRuntimeConfig = { clients: ['claude_code'], commercialTermsAgreedOn: null, idleDays: null, manager: { url: 'http://unused:1', secret: 'x'.repeat(32) } };
-  const slots = [`runtime-${800 + Math.floor(Math.random() * 90)}`];
-  const dirs = new Map<string, string[]>(slots.map((slot) => [slot, []]));
-  const boots = new Map<string, string>(slots.map((slot) => [slot, randomUUID()]));
+  // Claimed before the tests (not ready until the reconcile below reads it from the manager), filled in here.
+  const slots: string[] = [];
+  const dirs = new Map<string, string[]>();
+  const boots = new Map<string, string>();
+  before(async () => {
+    const slot = await claimRuntimeSlot(pool, { state: 'unknown' });
+    slots.push(slot);
+    dirs.set(slot, []);
+    boots.set(slot, randomUUID());
+  });
   const manager: RuntimeManagerPort = {
     async slots() { return { ok: true, value: slots.map((slot) => ({ slot, reachable: true as const, bootId: boots.get(slot)!, bindings: [...dirs.get(slot)!], other: 0, capacity: 2, running: [] })) }; },
     async bind(slot, id) { dirs.get(slot)!.push(id); return { ok: true, value: undefined }; },
@@ -147,7 +154,7 @@ describe('the PostgreSQL store under the owner use cases', () => {
       assert.equal(others.rows[0].n, 0);
       const outcomes = await Promise.allSettled([runtime.bind(ada.id), runtime.bind(jonas.id), runtime.bind(mia.id)]);
       assert.deepEqual(outcomes.map((outcome) => outcome.status), ['fulfilled', 'fulfilled', 'fulfilled']);
-      const bound = await pool.query(`SELECT slot, owner_user_id FROM agent_runtime_bindings WHERE slot = ANY($1) AND state = 'active' ORDER BY slot`, [slots]);
+      const bound = await pool.query(`SELECT slot, owner_user_id FROM agent_runtime_bindings WHERE slot = ANY($1) AND owner_user_id = ANY($2) AND state = 'active' ORDER BY slot`, [slots, [ada.id, jonas.id, mia.id]]);
       assert.equal(bound.rows.length, 3, 'three owners in one runtime');
       assert.equal(new Set(bound.rows.map((row) => row.slot)).size, 1);
       const capacity = await pool.query(`SELECT capacity FROM agent_runtime_slots WHERE slot = ANY($1)`, [slots]);
@@ -160,7 +167,9 @@ describe('the PostgreSQL store under the owner use cases', () => {
       assert.deepEqual([status.lastRelease?.reason, status.lastRelease?.signOutFailed], ['owner', true]);
       // The operator's view and release by a person's e-mail.
       const emails = await pool.query<{ id: string; email: string }>('SELECT id, email FROM auth_users WHERE id = ANY($1)', [[jonas.id, mia.id]]);
-      const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot));
+      // The shared test database's binder may also place another test's person in this ready runtime (#860: no cap), so read our owners only.
+      const ours = new Set(emails.rows.map((row) => row.email));
+      const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot) && row.email !== null && ours.has(row.email));
       assert.deepEqual(listed.map((row) => row.email).sort(), emails.rows.map((row) => row.email).sort());
       assert.equal(listed[0]!.capacity, 2);
       assert.ok(await agentRuntimeOperations(db).release(emails.rows.find((row) => row.id === jonas.id)!.email));
@@ -177,7 +186,8 @@ describe('the PostgreSQL store under the owner use cases', () => {
 
 describe('the idle policy and a guest (#1090)', () => {
   const config: AgentRuntimeConfig = { clients: ['claude_code'], commercialTermsAgreedOn: null, idleDays: 30, manager: { url: 'http://unused:1', secret: 'x'.repeat(32) } };
-  const slot = `runtime-${700 + Math.floor(Math.random() * 90)}`;
+  let slot = '';
+  before(async () => { slot = await claimRuntimeSlot(pool, { state: 'unknown' }); });
   const dirs: string[] = [];
   const boot = randomUUID();
   const manager: RuntimeManagerPort = {
@@ -236,12 +246,14 @@ describe('purge records confirmed and unconfirmed vendor logout', () => {
       const rollback = new Error('rollback isolated purge fixture');
       // Purge updates every binding. Roll back the whole test, including nested adapter
       // transactions, so this regression cannot alter other owners' runtime state.
+      // The slot's name is claimed outside (not ready, so no binder places anyone there); it is ready only inside the fixture.
+      const slot = await claimRuntimeSlot(pool, { state: 'unknown' });
       await assert.rejects(db.transaction(async (tx) => {
-        await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-999', 'ready')`);
+        await tx.execute(sql`UPDATE agent_runtime_slots SET state = 'ready', out_of_pool_reason = NULL WHERE slot = ${slot}`);
         await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state)
-          VALUES (${randomUUID()}, ${owner.id}, 'runtime-999', 'active')`);
+          VALUES (${randomUUID()}, ${owner.id}, ${slot}, 'active')`);
         await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state, release_reason, release_requested_at, released_at, release_logout_failed)
-          VALUES (${randomUUID()}, ${historicalOwner.id}, 'runtime-999', 'released', 'owner', now() - interval '1 day', now() - interval '1 day', true)`);
+          VALUES (${randomUUID()}, ${historicalOwner.id}, ${slot}, 'released', 'owner', now() - interval '1 day', now() - interval '1 day', true)`);
         const purgeId = await agentRuntimeOperations(tx).beginPurge();
         await agentRuntimeOperations(tx).forgetAll(purgeId, confirmed);
         const view = await agentRuntimeStore(tx).ownerView(owner.id);
@@ -252,7 +264,7 @@ describe('purge records confirmed and unconfirmed vendor logout', () => {
         assert.equal(historical.lastRelease?.reason, 'owner');
         assert.equal(historical.lastRelease?.signOutFailed, true, 'purge preserves earlier release failures');
         throw rollback;
-      }), (error) => error === rollback);
+      }), (error) => error === rollback).finally(() => pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]));
     });
   }
 });

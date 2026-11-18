@@ -2,7 +2,8 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { DocSummary, ObjectLink } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Input, Select, Option, useToast } from '../ui';
+import { Button, Input, useToast } from '../ui';
+import { Select, Option } from '../ui/Select';
 import { useShellActions, type AddToDocView } from '../app/shellContext';
 import { addDocSection, createDoc, docUrl, getDoc, listProjectDocs } from './api';
 

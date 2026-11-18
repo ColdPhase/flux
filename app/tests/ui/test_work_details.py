@@ -122,12 +122,12 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(field).to_have_value("My unfinished blocker explanation is private until saved")
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
-        # The one decision form is the Create window's (#1419): its "Replace an accepted decision…" choice pages through every accepted rule.
+        # The one decision form is the Create window's (#1419): its "This replaces an older decision…" choice pages through every accepted rule.
         page=self.page();page.goto(f"/projects/{self.project}/tasks")
         window=open_decision(page)
         window.get_by_role("textbox",name="Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=window.get_by_role("textbox",name="Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        window.get_by_role("button",name="Replace an accepted decision…").click();self.choices_ready(window,"Decisions it can replace")
+        window.get_by_role("button",name="This replaces an older decision…").click();self.choices_ready(window,"Decisions it can replace")
         nav=window.get_by_role("navigation",name="Decisions it can replace");select=window.get_by_label("Does it replace an earlier decision?",exact=True);seen={value for value in values(select) if value}
         nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(window,"Decisions it can replace")
         seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})
@@ -135,14 +135,14 @@ class NativeDetailsJourney(unittest.TestCase):
         nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(window,"Decisions it can replace")
         expect_value(select, chosen["id"]);expect(why).to_have_value("Retain the complete earlier measurements before changing the cable")
         window.get_by_role("button",name=re.compile("^Propose decision")).click()
-        # The proposal is held for Undo and reaches the people who can accept it when that window ends.
+        # The proposal reaches the people who can accept it at once (#1424 L).
         expect(page.locator(".ui-toast",has_text="Decision proposed")).to_be_visible()
         proposal=None
         for _ in range(80):
             proposal=next((item for item in api(self.ctx,"GET",self.root+"/decisions?limit=100")["items"] if item["title"]=="Keep a manual off switch after measuring both shields"),None)
             if proposal:break
             page.wait_for_timeout(250)
-        self.assertIsNotNone(proposal,"the proposal was sent when the Undo window ended")
+        self.assertIsNotNone(proposal,"the proposal was sent")
         self.assertEqual(proposal["supersedes"],chosen["id"]);self.assertEqual(proposal["rationale"],"Retain the complete earlier measurements before changing the cable")
         self.__class__.pivot=proposal
 
@@ -164,7 +164,7 @@ class NativeDetailsJourney(unittest.TestCase):
         self.in_panel_viewport(phone,mobile.get_by_role("button",name="Accept",exact=True));self.in_panel_viewport(phone,mobile.locator(".wd-decision-identity"))
         shot(phone,"bounded-details-replaces-phone")
         accept.click()
-        expect(panel).to_contain_text("Decision · accepted")
+        expect(panel).to_contain_text("Accepted")
         after=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
         self.assertEqual([(item["id"],item["version"]) for item in before],[(item["id"],item["version"]) for item in after],"no task was moved")
         self.assertFalse(any(link["role"]=="still_applies" for link in self.native("decision",self.pivot["id"])["links"]))
@@ -180,7 +180,8 @@ class NativeDetailsJourney(unittest.TestCase):
         # project; it closes there, and Back to the page it was opened on restores it with its own project's links.
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_count(0)
         expect(page.locator(f"#details .wd[data-detail-id='{self.rules[1]['id']}']")).to_have_count(0)
-        page.go_back();expect(page).to_have_url(re.compile(f"/projects/{self.project}/tasks"));expect(panel).to_be_visible();self.ready(panel)
+        page.go_back();expect(page).to_have_url(re.compile(rf"/projects/{self.project}(\?.*)?$"));  # a decision opens over its space's Conversation (#1424)
+        expect(panel).to_be_visible();self.ready(panel)
         panel.get_by_role("region",name="Affects").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
         expect(panel).not_to_contain_text("Everyone in Library lighting measurements")
@@ -348,7 +349,7 @@ class NativeDetailsJourney(unittest.TestCase):
             menu.get_by_role("menuitemradio", name=re.compile("Ada Kowalska")).click()
         self.assertEqual(conflict.value.status, 409)
         expect(owner).to_contain_text("Ada Kowalska")
-        expect(panel).to_contain_text("Now: Nobody yet")
+        expect(panel).to_contain_text("Now: No owner")
         expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
         api(self.ctx, "PATCH", url, {"title": "The peer revised it again", "expectedVersion": current["version"]})
         expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised it again")

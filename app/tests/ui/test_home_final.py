@@ -132,7 +132,8 @@ class HomeFinal(unittest.TestCase):
         expect(decision_row).to_contain_text("from Jonas Berg")
         expect(rows.nth(0)).to_contain_text("Question")
         expect(rows.nth(1)).to_contain_text("1 decision waiting")
-        expect(rows.nth(2)).to_contain_text("is blocked")
+        expect(rows.nth(2)).to_contain_text("Blocked")
+        expect(rows.nth(2)).to_contain_text("Design a weatherproof enclosure")
         expect(need.get_by_role("button")).to_have_count(0)
         link = page.get_by_role("link", name=re.compile("^Open Inbox"))
         expect(link).to_have_attribute("aria-keyshortcuts", "G I")
@@ -194,20 +195,28 @@ class HomeFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
         page.locator(".ui-toast", has_text="Accepted").get_by_role("button", name="Undo").click()
         expect(page.locator(".nyc")).to_have_count(3)
-        status = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]
-        self.assertEqual(status, "proposed", "Undo kept the decision proposed")
+        # Accepted at once, and Undo takes the acceptance back (round 8, #1424).
+        status = lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]  # noqa: E731
+        deadline = time.monotonic() + 10
+        while status() != "proposed" and time.monotonic() < deadline:
+            time.sleep(0.2)
+        self.assertEqual(status(), "proposed", "Undo took the acceptance back")
 
     def test_04_nothing_to_do_is_calm(self) -> None:
+        # Done on a task given to her or on her blocked task finishes the task (#1424): those are put back after, as the done-today list does.
+        finished = []
         for item in self.queue()["items"]:
             response = self.contexts["ada"].request.post(f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", data={"action": "done"}, headers={"origin": ORIGIN})
             self.assertEqual(response.status, 200, response.text())
+            if item["kind"] in ("task", "blocked"):
+                finished.append(item["key"])
         page = self.page()
         page.goto("/")
         expect(page.get_by_text("Nothing is waiting for you.")).to_be_visible()
         expect(page.get_by_role("heading", name=re.compile(r"^Waiting for you$"))).to_be_visible()
         shot(page, "home-final-desktop-1440-clear")
         # Bring the queue back for the phone.
-        for key in (f"decision:{self.decision['id']}",):
+        for key in (f"decision:{self.decision['id']}", *finished):
             self.contexts["ada"].request.delete(f"/api/v1/needs-you/{urllib.parse.quote(key, safe='')}", headers={"origin": ORIGIN})
         self.post("jonas", f"/api/v1/projects/{self.project_id}/conversations", {"body": "@Ada Kowalska is the gate code still 1234?", "clientMessageId": str(uuid.uuid4())})
         self.wait_for(lambda: {"decision", "question"} <= {item["kind"] for item in self.queue()["items"]}, "things that need her again")
@@ -303,8 +312,11 @@ class HomeFinal(unittest.TestCase):
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
-        # A first visit starts the return point; what happens after it is what she returns to.
-        page.goto("/")
+        # A first visit starts the return point; what happens after it is what she returns to. The point is saved at the mark Home read,
+        # so the decision is proposed only once that save is answered: proposed earlier, it is before her point and not "since you left".
+        with page.expect_response(lambda response: response.request.method == "PUT" and response.url.endswith("/api/v1/return-points")) as saved:
+            page.goto("/")
+        self.assertTrue(saved.value.ok, f"the first visit's return point: {saved.value.status}")
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
         decision = call(jonas, "POST", f"/api/v1/projects/{project['id']}/decisions", {"title": "Mesh in front of the diverter", "rationale": "Leaves clog it."}, 201)
         queued = lambda: call(ada, "GET", "/api/v1/needs-you")["items"]  # noqa: E731

@@ -7,12 +7,13 @@ import {
   RuntimeAuthSupersededError,
   type RuntimeAuthClaim, type RuntimeAuthOperation,
 } from '@flux/db';
-import { database, db, insertedHuman, insertedRuntimeSlot, pool, connectionString } from './support/db.js';
+import { database, db, insertedHuman, pool, connectionString } from './support/db.js';
+import { claimRuntimeSlot } from './support/runtime-slot.js';
 
 async function fixture(work: (target: RuntimeAuthClaim, operation: ReturnType<typeof runtimeAuthOperations>) => Promise<void>) {
   const owner = await insertedHuman('auth-fence-owner');
   const sessionId = randomUUID(), bindingId = randomUUID(), boot = randomUUID();
-  const slot = await insertedRuntimeSlot(boot);
+  const slot = await claimRuntimeSlot(pool, { bootId: boot });
   await pool.query(`INSERT INTO auth_sessions(id, user_id, token, expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`,
     [sessionId, owner.id, `test-cookie-${randomUUID()}`]);
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId, owner.id, slot]);
@@ -20,6 +21,7 @@ async function fixture(work: (target: RuntimeAuthClaim, operation: ReturnType<ty
     await work({ ownerUserId: owner.id, sessionId, bindingId, client: 'claude_code', kind: 'check', leaseMs: 60_000, lifetimeMs: 120_000 }, runtimeAuthOperations(db));
   } finally {
     await pool.query('DELETE FROM auth_users WHERE id=$1', [owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1', [slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1', [slot]);
     await pool.query('UPDATE agent_runtime_auth_admission SET blocked=false,purge_id=NULL WHERE singleton');
   }

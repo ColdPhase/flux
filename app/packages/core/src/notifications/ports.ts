@@ -32,6 +32,10 @@ export interface ProjectMessageFacts {
   conversationCreatedBy: { kind: 'human' | 'agent'; id: string };
   author: { kind: 'human' | 'agent'; id: string };
   authorName: string | null;
+  /** An agent author's owner, for its one label "Planner · Ada's agent" (#1364). */
+  authorOwnerId?: string | null;
+  /** That owner left the company or was removed, and has not come back: "Planner · Stefan Kowal (removed)'s agent" (#1424, 2026-11-17). */
+  authorOwnerRemoved?: boolean;
   /** The name of the local client or assistant that posted for its author (LC-2, AG-4 Show everyone): the author stays the person, and the notice says so. */
   via?: string | null;
   /** `via` names an agent whose answer the author showed everyone (the message has its colour), not a local client (#1424). */
@@ -45,14 +49,38 @@ export interface ProjectMessageFacts {
    * writers follow). Absent for a person who made no choice. Absent altogether when the store has none.
    */
   threadFollows?: { userId: string; following: boolean }[];
+  /**
+   * The decision this conversation is the one discussion of (#1424): its title (for the notice's words) and who a question that names
+   * nobody asks, its proposer or an agent proposer's owner (persona round 8 P2 3). Absent for any other conversation.
+   */
+  decision?: { title: string; askee: string | null } | null;
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
+  /**
+   * What other people wrote at this message's level after its author last wrote there (a space's conversation; a direct message's roots
+   * or one of its threads), newest first and at most 20, each with whether it reached the author's Inbox as a question to them
+   * (`askedAuthor`): such a question is answered by this message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
+   */
+  since?: { authorId: string; askedAuthor: boolean }[];
   /**
    * For a line a server agent wrote (an assistant run's blocker or result, a task's report): its owner, the only person it may notify
    * (#1089, F-036 AG-4: an agent sends no message to another person by itself). The line still shows in the discussion. Absent for a
    * person's line and for a local client's, which writes as its person (LC-2).
    */
   onlyNotifies?: string | null;
+}
+
+/** A person's message in a space that may still ask someone who joins later (personas-27): newest first, see `joinQuestions`. */
+export interface JoinQuestionFacts {
+  id: string;
+  projectId: string;
+  projectName: string;
+  conversationId: string;
+  authorId: string;
+  via?: string | null;
+  viaAgent?: boolean;
+  body: string;
+  attachmentCount?: number;
 }
 
 export interface DmMessageFacts {
@@ -68,6 +96,12 @@ export interface DmMessageFacts {
   viaAgent?: boolean;
   body: string;
   participantIds: string[];
+  /**
+   * What other people wrote at this message's level after its author last wrote there (a space's conversation; a direct message's roots
+   * or one of its threads), newest first and at most 20, each with whether it reached the author's Inbox as a question to them
+   * (`askedAuthor`): such a question is answered by this message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
+   */
+  since?: { authorId: string; askedAuthor: boolean }[];
 }
 
 export interface WorkFacts { id: string; projectId: string; projectName: string; title: string; number: number; ownerUserId: string | null; waitingForUserId: string | null; status: string; blocker: string | null; dropped: boolean }
@@ -138,6 +172,12 @@ export interface NotificationFacts {
   names(userIds: string[]): Promise<Map<string, string>>;
   /** F-030: the workspace's visible name when it is encrypted, else null. */
   sealedWorkspace?(workspaceId: string): Promise<{ name: string } | null>;
+  /**
+   * For someone who joined a space (`projectId`) or the company (its open spaces, `workspaceId`) (personas-27): people's messages there of the last
+   * `days` days, newest first (at most 200), that are still open (nobody but their author wrote in their thread after them), not removed, not
+   * the joiner's own, and of which the joiner was not told yet (no notification of theirs opens them). The generator picks a question naming them.
+   */
+  joinQuestions?(userId: string, place: { projectId: string } | { workspaceId: string }, days: number): Promise<JoinQuestionFacts[]>;
 }
 
 export type EmailAddressKind = 'account' | 'extra';
@@ -185,6 +225,10 @@ export interface GeneratedNotification {
   inInbox: boolean;
   /** F-029: from AI work, by the event's actor or the source's author. */
   aiOrigin: boolean;
+  /** The notice tells the asker that their question was answered (#1424 decision 1): the Inbox names it a Reply. */
+  answer?: boolean;
+  /** Who it comes from, the one its title names (`human:<id>`, `agent:<id>`): the Inbox's face and name for it. */
+  from: string;
 }
 
 export interface EmailJob { emailId: string }
