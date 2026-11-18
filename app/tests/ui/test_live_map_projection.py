@@ -212,7 +212,17 @@ class LiveMapProjectionJourney(LiveFixture):
         drop still being saved; every move is kept now, and no message names a code, on the map or in its List."""
         await self.create_map(4)
         ada, kai = self.pages['ada'], self.pages['kai']
-        for _ in range(3):
+        async def landed(times):
+            for _ in range(100):
+                stored = {item['id']: item for item in (await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}'))['thoughts']}
+                if all(stored[thought['id']]['version'] == thought['version'] + times for thought in self.thoughts):
+                    return stored
+                await asyncio.sleep(0.1)
+            return stored
+        for done in range(3):
+            # A thought whose own drop is still being saved is not dragged again (live-doc `beginGesture`), so each round starts once the
+            # last is saved; within a round every drag starts at once after the drop before it.
+            await landed(done)
             for thought in self.thoughts:
                 node = ada.locator(f'.sk-node[data-id="{thought["id"]}"]')
                 box = await node.bounding_box()
@@ -220,8 +230,7 @@ class LiveMapProjectionJourney(LiveFixture):
                 await ada.mouse.down()
                 await ada.mouse.move(box['x'] + 26, box['y'] + 32, steps=2)
                 await ada.mouse.up()
-        await self.map_saved(ada)
-        stored = {item['id']: item for item in (await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}'))['thoughts']}
+        stored = await landed(3)
         for thought in self.thoughts:
             self.assertEqual(stored[thought['id']]['version'], thought['version'] + 3, f'every drop of {thought["id"]} landed, though each next drag started at once')
             self.assertGreater(stored[thought['id']]['y'], thought['y'])
