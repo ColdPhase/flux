@@ -353,6 +353,12 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     // stack, so the place is measured again (WebKit: the toast stood on the link above a decision's composer, test_connected_flow 08).
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', measure);
+    // The first toast is drawn where it belongs (over the work beside a panel, under the Inbox's open item), never first at the window's
+    // centre and a frame later there (founder check, Hubert 2026-11-18: it appeared off centre and jumped): placed before the first paint,
+    // on the node, as `measure` then keeps it in state on its frame.
+    const node = stack.current;
+    const first = besidePanel(node) ?? toastHome();
+    if (node && first) { node.style.setProperty('--toast-left', `${first.left}px`); node.style.setProperty('--toast-max', `${first.width}px`); }
     measure();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, stack]);

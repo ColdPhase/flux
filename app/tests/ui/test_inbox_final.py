@@ -415,9 +415,18 @@ class InboxFinal(unittest.TestCase):
             page.keyboard.press("j")
         expect(mention).to_have_attribute("aria-current", "true")
         expect(self.item(page, MENTIONED).get_by_role("button", name="Done").locator("kbd")).to_have_text("E")
+        # Every frame from its first: the toast appears where it stands, under the open item, never off centre first (founder check, Hubert 2026-11-18).
+        page.evaluate("""() => { window.__toastX = []; const tick = () => { const t = document.querySelector('.ui-toast');
+            if (t) { const r = t.getBoundingClientRect(); window.__toastX.push(Math.round(r.left + r.width / 2)); }
+            if (window.__toastX.length < 20) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }""")
         page.keyboard.press("e")
         toast = page.get_by_role("status").filter(has_text="Marked done")
         expect(toast).to_be_visible()
+        page.wait_for_function("() => window.__toastX.length >= 20")
+        frames = page.evaluate("window.__toastX")
+        self.assertLessEqual(max(frames) - min(frames), 1, f"the toast keeps one horizontal place from its first frame: {frames}")
+        home = page.locator("[data-toast-home]").bounding_box()
+        self.assertAlmostEqual(frames[0], home["x"] + home["width"] / 2, delta=1, msg="it stands under the open item")
         expect(cards).to_have_count(3)
         self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked"]), "Done to be stored")
         page.keyboard.press("z")
