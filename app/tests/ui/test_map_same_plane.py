@@ -348,11 +348,14 @@ class MapSamePlane(unittest.TestCase):
                 self.assertNotEqual(zoom, first, 'the view was changed')
                 page.wait_for_timeout(500)
                 for how in ('tab', 'back'):
-                    self.tab(page, 'Conversation')
-                    expect(page.locator('.sk-node')).to_have_count(0)
+                    # A space's views replace each other (#1547), so Back is tried from another page the person went to.
                     if how == 'tab':
+                        self.tab(page, 'Conversation')
+                        expect(page.locator('.sk-node')).to_have_count(0)
                         self.tab(page, 'Map')
                     else:
+                        page.goto('/')
+                        expect(page.locator('.sk-node')).to_have_count(0)
                         page.go_back()
                     expect(page.locator('.sk-node')).to_have_count(len(ROWS))
                     page.wait_for_timeout(700)
