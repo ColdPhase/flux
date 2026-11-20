@@ -55,6 +55,9 @@
 # FLUX_TEST_PORT / FLUX_TEST_MAILPIT_PORT (18780 / 18781). Needs internet only to build the images and install the pinned Claude Code.
 # Run it alone under the shared Docker lock: a local model is slow, and the run takes hours.
 set -eu
+# The whole script is one block, read before any of it runs: a checkout edited during the hours of a run cannot change what the shell runs
+# next (sh reads a script as it goes; an edit once made it resume mid-line).
+{
 
 # `--eval`: the answer-accuracy evaluation on a real Anthropic key instead (#1295): scripts/check_ai_eval.sh.
 if [ "${1:-}" = --eval ]; then shift; exec "$(dirname "$0")/check_ai_eval.sh" "$@"; fi
@@ -160,7 +163,7 @@ cleanup() {
       mkdir -p "$(dirname "$ledger")"
       printf '%s\t%s\t%s\t%s\n' "$stamp" "$run_cost" "$FLUX_AI_ANTHROPIC_MODEL" "$(git rev-parse --short=9 HEAD)" >> "$ledger"
     fi
-    printf 'The Anthropic key spent $%s in this run (provider usage, as the proxy priced it)%s.\n' "$run_cost" "${dry_run:+; DRY RUN: the mock's usage, nothing paid}"
+    printf 'The Anthropic key spent $%s in this run (provider usage, as the proxy priced it)%s.\n' "$run_cost" "${dry_run:+; DRY RUN: usage of the mock, nothing paid}"
   fi
   if [ -n "$model_attached" ]; then docker network disconnect "$network" "$model_container" >/dev/null 2>&1 || true; fi
   if [ -n "$model_started" ]; then
@@ -311,3 +314,4 @@ if [ -n "$dry_run" ]; then
 fi
 if grep -q '| FAIL |' "$FLUX_AI_EVIDENCE_DIR/results.md"; then fail "a scenario failed (see the table; tell a Flux bug from a model's weakness in the evidence)"; fi
 printf 'AI real-model acceptance passed.\n'
+}; exit
