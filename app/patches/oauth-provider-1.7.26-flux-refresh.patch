@@ -1,14 +1,14 @@
-diff --git a/dist/authorize-CLcUWfZo.mjs b/dist/authorize-CLcUWfZo.mjs
---- a/dist/authorize-CLcUWfZo.mjs
-+++ b/dist/authorize-CLcUWfZo.mjs
-@@ -406 +406 @@ async function resolveAccessTokenClaims(input) {
+diff --git a/dist/authorize-Dvegxay_.mjs b/dist/authorize-Dvegxay_.mjs
+--- a/dist/authorize-Dvegxay_.mjs
++++ b/dist/authorize-Dvegxay_.mjs
+@@ -412 +412 @@ async function resolveAccessTokenClaims(input) {
 -	const { ctx, opts, user, client, scopes, resources, referenceId, metadata, grantType, sessionId, perRequestClaims, resourcePolicyClaims } = input;
 +	const { ctx, opts, user, client, scopes, resources, referenceId, metadata, grantType, sessionId, authorizationCodeId, perRequestClaims, resourcePolicyClaims } = input;
-@@ -423,0 +424,3 @@ async function resolveAccessTokenClaims(input) {
+@@ -429,0 +430,3 @@ async function resolveAccessTokenClaims(input) {
 +		// Flux #310: provenance belongs to a minted authorization-code family, never shared consent.
 +		sessionId,
 +		authorizationCodeId,
-@@ -1675 +1678,7 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+@@ -1767 +1770,7 @@ function grantRevokedDuringIssuance() {
 -async function invalidateRefreshFamily(ctx, clientId, userId) {
 +async function invalidateRefreshFamily(ctx, clientId, userId, refreshToken) {
 +	// Flux #152: a client/user pair can contain several independent connections.
@@ -17,15 +17,15 @@ diff --git a/dist/authorize-CLcUWfZo.mjs b/dist/authorize-CLcUWfZo.mjs
 +	const family = refreshToken.authorizationCodeId ? {
 +		field: "authorizationCodeId", value: refreshToken.authorizationCodeId
 +	} : { field: "id", value: refreshToken.id };
-@@ -1684 +1693 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
+@@ -1783 +1792 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
+-			}
++			}, family
+@@ -1795 +1804 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
 -		}]
 +		}, family]
-@@ -1702 +1711 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
--		}]
-+		}, family]
-@@ -2025,0 +2035 @@ async function createUserTokens(ctx, opts, params) {
+@@ -2153,0 +2163 @@ async function createUserTokens(ctx, opts, params) {
 +		authorizationCodeId: params.authorizationCodeId,
-@@ -2335,0 +2346,8 @@ async function handleRefreshTokenGrant(ctx, opts) {
+@@ -2486,0 +2497,8 @@ async function handleRefreshTokenGrant(ctx, opts) {
 +			// Cached rotation responses must recheck Flux's current connection authority.
 +			const user = await ctx.context.internalAdapter.findUserById(refreshToken.userId);
 +			if (!user) throw new APIError("BAD_REQUEST", { error: "invalid_grant" });
@@ -34,12 +34,12 @@ diff --git a/dist/authorize-CLcUWfZo.mjs b/dist/authorize-CLcUWfZo.mjs
 +				sessionId: refreshToken.sessionId, authorizationCodeId: refreshToken.authorizationCodeId,
 +				resources: resources ?? refreshToken.resources, metadata: parseClientMetadata(client.metadata)
 +			});
-@@ -2348 +2366 @@ async function handleRefreshTokenGrant(ctx, opts) {
+@@ -2499 +2517 @@ async function handleRefreshTokenGrant(ctx, opts) {
 -		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId);
 +		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId, refreshToken);
-@@ -6231 +6249 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
--		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
-+		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);
-@@ -6252 +6270 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
+@@ -6341 +6359 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
+-		if (refreshToken.clientId === clientId) await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
++		if (refreshToken.clientId === clientId) await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);
+@@ -6362 +6380 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
 -		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
 +		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);
