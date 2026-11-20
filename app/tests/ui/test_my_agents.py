@@ -389,9 +389,10 @@ class MyAgentsJourney(unittest.TestCase):
         box = back.bounding_box()
         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"‹ AI on touch: {box}")
 
-    def test_05b_segmented_choices_size_each_option_to_its_label_and_keep_its_room(self) -> None:
-        """#1219: Model (under More, #1419) gives each option its label and 14 px each side, not an equal share of the group, so the longest
-        label never fills its pill edge to edge. Where the group has no room for one row (a phone) the options wrap instead of overflowing.
+    def test_05b_segmented_choices_have_equal_options_that_keep_their_room(self) -> None:
+        """#1561 (C-66, replacing #1219): Model (under More, #1419) is a segmented control of equal options: each takes the same share of the group
+        and is never narrower than its label plus 14 px each side, so the longest label sits in its pill with that room and a shorter one has more.
+        Where the group has no room for one row (a phone) the options wrap into equal columns instead of overflowing.
         A plan's models are segments; an API key's are a dropdown (#1218), so the Model group measured here is a Claude plan's."""
         agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
         for label, phone, viewport in (("1440", False, None), ("390", True, PHONE), ("320", True, {"width": 320, "height": 640})):
@@ -407,7 +408,7 @@ class MyAgentsJourney(unittest.TestCase):
               return { name: group.getAttribute('aria-labelledby'), options: [...group.querySelectorAll('[role=radio]')].map((button) => {
                 const range = document.createRange(); range.selectNodeContents(button);
                 const text = range.getBoundingClientRect(), box = button.getBoundingClientRect();
-                return { label: button.textContent, left: text.left - box.left, right: box.right - text.right, lines: range.getClientRects().length,
+                return { label: button.textContent, width: box.width, left: text.left - box.left, right: box.right - text.right, lines: range.getClientRects().length,
                   inside: box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5, checked: button.getAttribute('aria-checked') };
               }) };
             })""")
@@ -415,11 +416,12 @@ class MyAgentsJourney(unittest.TestCase):
             self.assertGreaterEqual(len(models), 1, "the Model choice is on the page")
             for group in models:
                 self.assertEqual(sum(option["checked"] == "true" for option in group["options"]), 1, group)
+                widths = [option["width"] for option in group["options"]]
+                self.assertLessEqual(max(widths) - min(widths), 1, f"{label}: {group['name']} has equal options (±1 px): {widths}")
                 for option in group["options"]:
                     where = f"{label}: {group['name']} / {option['label']}"
-                    self.assertGreaterEqual(option["left"], 12, f"{where} keeps 12 px left of its label: {option}")
-                    self.assertGreaterEqual(option["right"], 12, f"{where} keeps 12 px right of its label: {option}")
-                    self.assertLessEqual(option["left"] + option["right"], 30, f"{where} is as wide as its label and 14 px each side, also alone on a wrapped row: {option}")
+                    self.assertGreaterEqual(option["left"], 14 - 0.5, f"{where} keeps its 14 px left of its label: {option}")
+                    self.assertGreaterEqual(option["right"], 14 - 0.5, f"{where} keeps its 14 px right of its label: {option}")
                     self.assertEqual(option["lines"], 1, f"{where} stays on one line")
                     self.assertTrue(option["inside"], f"{where} stays inside its group")
             self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, f"{label}: no sideways scroll")
