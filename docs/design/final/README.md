@@ -203,6 +203,12 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   - **A task made on My tasks is yours**, as one made from your own message: it shows on the list it was made from.
   - **A panel opened from the Inbox** opens as every panel does (Tasks below: a short panel and the phone's sheet open at the top, never
     past the title), so a blocked task's sheet and a discussed decision at 200 % show what they are first.
+- **My tasks shows due days and the tasks you gave others** (founder decision, Hubert, 2026-11-14, #1424 item 9, [#1519](https://github.com/ColdPhase/flux/issues/1519)).
+  A row with a due day says it on its quiet line under the title, as the card does ("Due 25 Nov", "Overdue · 12 Nov", "Due today"). Under your own tasks is a
+  second section, **Tasks you gave others**: the unfinished tasks you created for another person, a space at a time in the same cards of rows, each with its
+  owner's name before its due day on that quiet line ("Jonas · Due 25 Nov"). A task you made for yourself, for your own agent or for no one is not on it, and a
+  finished one leaves it. The section is there only when you have such a task (a page with none is as before), and when your own list is empty it stands alone.
+  Both lists cap at 500 and say "Showing N of M".
 - **Lists of rows are cards**: My tasks' spaces are cards of rows like Home's, the glyph, the word and the chevron on the first line's middle.
   The phone's Spaces list ends a row in its dot and its ⋯, with no chevron.
 
@@ -1898,7 +1904,13 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
   (the last space you opened or made a task in, kept on this device for your account), not Everyone; only a person who has not
   opened any space yet starts on the first one in their list. The space picker in the window's first row changes it, as before.
-- **A new task is always To do, so Create has no Status** (#1424). The window's properties are Owner and Link. A task that starts in
+- **A task can have its due day in Create** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424) item 9, [#1519](https://github.com/ColdPhase/flux/issues/1519)): the Task tab's
+  properties are **Owner, Due and Link**, so a task for someone with a day is one step, not a second one in the panel. **Due** is a chip with the clock icon that
+  reads "Add a date", or the day once one is set ("14 Nov 2026"); on the phone it is a row, "Due", in the properties card between Owner and Link. A click or tap
+  opens the date field with its calendar (a popover on a computer, the sheet on a phone), exactly as the task panel's Due does ([Typed entry](#date-and-time-pickers),
+  the picker, Today, Tomorrow and Clear): a day saves at once and Esc leaves it unchanged, without closing the window. The day goes with the task when it is
+  created ("Due 14 Nov" is on its card at once) and is kept with an unresolved create like the other fields.
+- **A new task is always To do, so Create has no Status** (#1424). The window's properties are Owner, Due and Link. A task that starts in
   another state is changed in the panel that opens on it at once. **Blocked is one field** (#1438 point 12), in the task panel: its
   Status menu's Blocked adds one field, **Waiting for**, where a task used to ask twice (a person chip, then "What is it waiting
   for?"). Type the reason ("The permit") or pick someone from the list that opens under the field (the people of the space, the
@@ -2004,7 +2016,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   accepted" when it resumes.
 - **The link buttons stay** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 13): the panel's
   **Add to a thought** and Create's **+ From a message or thought** are the only way to make those links from a task, so they are not
-  removed or merged into another control, and no other place offers them.
+  removed or merged into another control, and no other place offers them (a map thought's **Make a task** makes the one link itself, #1519).
 
 ### Wiki
 
@@ -2111,7 +2123,11 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   because its audience differs from the default (on the phone, whose map has no head of its own, under the title in the header).
   An empty My map is drawn like a space's empty map: **Thought** alone, with no Select, Move around, Undo or zoom until there is a thought
   for them to act on (its Map | List switch stays, so the header keeps its shape).
-- A selected thought offers Move to a space map and Copy link. The tools are Select, Move the
+- A selected thought offers **Make a task** (founder decision, Hubert, 2026-11-14, #1424 item 9, [#1519](https://github.com/ColdPhase/flux/issues/1519): a thought becomes
+  a task from the thought itself, without the detour through New › Task › + From a message or thought), Move to a space map and Copy link. **Make a task** is
+  in the floating bar and the List's ⋯ (the phone's thought sheet has it too); it opens the Create window on Task with the thought's first line as the title. In
+  a space's map the thought is also linked as the task's source (its chip is in the window's Link row, to remove); My map's thoughts are private and cannot be
+  linked, so only their words go and the window's Space picker chooses where the task lives. The thought stays where it is. The tools are Select, Move the
   map, + Thought and Undo, with zoom at the bottom right.
   - **Move to a space map** (#948) opens a small window: choose the space (any space you are in), then its map. A
     space can have several maps, so the window lists them (newest change first, the newest chosen); a space with
