@@ -209,6 +209,32 @@ class StreamFocusAndCards(unittest.TestCase):
                 self.assertLessEqual(abs(after["scrollTop"] - before["scrollTop"]), 1, f"the stream stays where it was: {before} -> {after}")
                 self.assertTrue(before["viewTop"] - 1 <= after["top"] and after["bottom"] <= after["viewBottom"] + 1, f"the focused control is in view: {after}")
 
+    def test_01c_back_to_the_links_address_never_moves_the_stream_to_the_linked_message(self) -> None:
+        """#1530: WebKit also scrolls to the fragment on a Back or Forward to an address that has one, unless the history's scroll restoration
+        is manual: Esc from a task opened from a card (a Back to `…#message-…`) put the linked message at the top of the stream again, over
+        the place the reader had moved on to (test_arrival_focus test_02, ~214 px). The stream keeps its own places (#592)."""
+        target = self.ids["messages"][13]
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}/messages/{target}")
+        expect(page).to_have_url(re.compile(f"#message-{target}$"))
+        expect(page.locator(".project-convo__feed.is-stream")).to_have_attribute("data-references-phase", "ready")
+        page.wait_for_timeout(1000)
+        for _ in range(12):
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(100)
+        page.wait_for_timeout(400)
+        before = page.evaluate(FOCUSED)
+        assert before is not None
+        # A step of the history this page made and leaves again: the Back lands on the link's address, as Esc's Back does.
+        page.evaluate("history.pushState(history.state, '', location.pathname + location.search + '#elsewhere')")
+        page.go_back()
+        expect(page).to_have_url(re.compile(f"#message-{target}$"))
+        page.wait_for_timeout(600)
+        after = page.evaluate(FOCUSED)
+        assert after is not None
+        self.assertLessEqual(abs(after["scrollTop"] - before["scrollTop"]), 1, f"the stream stays where the reader was: {before} -> {after}")
+        self.assertEqual(after["name"], before["name"], "the focus stays where the reader was")
+
     # ---------------------------------------------------------------- the task card in a thread
 
     def test_02_in_a_thread_a_task_made_from_a_reply_is_its_card_under_that_reply(self) -> None:
