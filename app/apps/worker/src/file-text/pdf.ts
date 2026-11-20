@@ -9,7 +9,7 @@ import type { Extracted, PagePicture } from './text.js';
  * reading stops when `chars` characters are found; the parent kills this process at its time and memory limits.
  */
 export interface PdfLimits { pages: number; chars: number; pictures?: PictureLimits }
-export interface PictureLimits { pages: number; side: number; pixels: number; pictureBytes: number; totalBytes: number }
+export interface PictureLimits { pages: number; side: number; pixels: number; pictureBytes: number; totalBytes: number; untilMs: number }
 
 interface TextItem { str?: string; hasEOL?: boolean }
 interface PdfPage {
@@ -80,6 +80,8 @@ async function pagePictures(pdfjs: PdfJs, bytes: Uint8Array, limits: PictureLimi
     const painted = new Set([pdfjs.OPS.paintImageXObject, pdfjs.OPS.paintImageXObjectRepeat, pdfjs.OPS.paintInlineImageXObject]);
     let total = 0;
     for (let number = 1; number <= Math.min(document.numPages, limits.pages); number++) {
+      // The pages made so far are kept rather than lost to the parent's time bound (`performance.now()` counts from this process's start).
+      if (performance.now() > limits.untilMs) break;
       let page: PdfPage;
       try { page = await document.getPage(number); } catch { continue; }
       try {

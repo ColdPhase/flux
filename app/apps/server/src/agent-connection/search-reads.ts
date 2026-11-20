@@ -275,11 +275,12 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
 async function pagesOf(rows: ReturnType<typeof fileTextRows>, claims: FluxMcpClaims, fileId: string, where: Record<string, unknown>, offset: number) {
   const sees = claims.run ? claims.run.tools.includes('flux_view_image') : true;
   if (!sees) return { ...where, totalLength: 0, body: '', nextOffset: null, noText: true, note: NO_TEXT_BLIND };
-  const { total, pictures } = await rows.pictures(fileId, 1, 10);
+  // Only the pictures this call may give are read (a file's ten can be 20 MiB).
+  const { total, pictures } = await rows.pictures(fileId, offset, PICTURES_PER_CALL.pages);
   const from = Math.min(offset, total);
   const given: { page: number; png: Buffer }[] = [];
   let bytes = 0;
-  for (const picture of pictures.slice(from)) {
+  for (const picture of pictures) {
     if (given.length >= PICTURES_PER_CALL.pages || given.length && bytes + picture.png.length > PICTURES_PER_CALL.bytes) break;
     given.push({ page: picture.page, png: picture.png });
     bytes += picture.png.length;

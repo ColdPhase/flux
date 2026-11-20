@@ -160,11 +160,11 @@ export function fileTextRows(db: Database) {
         FROM agent_chat_file_text WHERE file_id = ${fileId}::uuid`)).rows[0] as { text: string; parts: number };
     },
 
-    /** The pages' pictures of a PDF without text (C-69), from page `from` on, at most `limit` of them, and how many it has in all. */
-    async pictures(fileId: string, from: number, limit: number): Promise<{ total: number; pictures: FilePagePicture[] }> {
+    /** The pages' pictures of a PDF without text (C-69) in page order, `skip` of them skipped and at most `limit` read, and how many it has in all. */
+    async pictures(fileId: string, skip: number, limit: number): Promise<{ total: number; pictures: FilePagePicture[] }> {
       const total = (await db.execute(sql`SELECT count(*)::int AS n FROM file_page_pictures WHERE file_id = ${fileId}::uuid`)).rows[0] as { n: number };
-      const rows = (await db.execute(sql`SELECT page, width, height, png FROM file_page_pictures WHERE file_id = ${fileId}::uuid AND page >= ${from}
-        ORDER BY page LIMIT ${limit}`)).rows as unknown as FilePagePicture[];
+      const rows = (await db.execute(sql`SELECT page, width, height, png FROM file_page_pictures WHERE file_id = ${fileId}::uuid
+        ORDER BY page OFFSET ${skip} LIMIT ${limit}`)).rows as unknown as FilePagePicture[];
       return { total: total.n, pictures: rows };
     },
 
