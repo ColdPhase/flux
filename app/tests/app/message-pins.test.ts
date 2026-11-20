@@ -229,7 +229,18 @@ describe('pinned messages (C-74, #1615)', () => {
     const searched = (await chat.call('flux_search', { q: words })).message;
     assert.ok(!refused(searched) && !JSON.stringify(searched).includes(words), JSON.stringify(searched));
     await scene.complete(chat.runId);
+    // A direct message of the vault: its list is empty, so only the lock check can answer for it.
+    const opened = await ada.browser.request('POST', `/api/v1/workspaces/${sealed.workspace.id}/dms`, { body: { participantIds: [jonas.id] } });
+    assert.ok(opened.status === 200 || opened.status === 201, opened.text);
+    const dmPlace: PinPlace = { type: 'dm', id: (opened.json as Dm).id };
+    const said = (expectStatus(await jonas.browser.request('POST', `${dmPath(dmPlace.id)}/messages`, { body: { body: word('sealeddm'), clientMessageId: randomUUID() } }), 201) as { id: string }).id;
+    assert.deepEqual((await list(ada, dmPlace)).items, []);
     expectStatus(await lock(ada.browser, sealed.workspace.id), 200);
-    assert.equal((await ada.browser.request('GET', pinsPath(place))).status, 423);
+    // F-030 (AC-6): locked, every pin route of the vault answers 423 before anything else, an empty list and a message that is not there too.
+    for (const [method, path] of [['GET', pinsPath(place)], ['PUT', pinPath(place, root.messages[0]!.id)], ['DELETE', pinPath(place, root.messages[0]!.id)],
+      ['GET', pinsPath(dmPlace)], ['PUT', pinPath(dmPlace, said)], ['DELETE', pinPath(dmPlace, said)], ['PUT', pinPath(dmPlace, randomUUID())], ['DELETE', pinPath(dmPlace, randomUUID())]] as const) {
+      const answer = await ada.browser.request(method, path);
+      assert.equal(answer.status, 423, `${method} ${path}: ${answer.status} ${answer.text}`);
+    }
   });
 });

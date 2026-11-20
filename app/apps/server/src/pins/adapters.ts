@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { createPinUseCases, enforce, evaluateAgent, evaluateDm, evaluateProject, ForbiddenError, NotFoundError, recordEvent, type PinPorts, type PinUnitOfWork, type PinTargetRef } from '@flux/core';
-import { accessReader, messagePinRows, schema, type Database, type PinTarget, type Transaction } from '@flux/db';
+import { accessReader, messagePinRows, schema, sealOf, type Database, type PinTarget, type Transaction } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of pinned messages (C-74, #1615): the access policy decides who reads and writes a conversation, exactly as it does for its
@@ -19,6 +19,9 @@ function pinPorts(tx: Transaction): PinPorts {
         }
         if (place.type === 'dm') {
           const { dm } = enforce(await evaluateDm(principal, write ? 'dm.write' : 'dm.read', place.id, reader, { lock: write }), 'dm');
+          // F-030 (AC-6): a locked encrypted workspace answers 423 before anything else, even for an empty list or a message that is not
+          // there, as the direct message's other routes do (a space's pins get it from its project row, opened by `evaluateProject`).
+          await sealOf(tx, dm!.workspaceId, { write: false });
           // A 1:1 whose other person left takes no new messages: its person still reads it, and its list, but pins nothing (a reader).
           if (write) {
             const [found] = await tx.select({ kind: schema.dms.kind }).from(schema.dms).where(eq(schema.dms.id, place.id));
