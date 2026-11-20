@@ -122,6 +122,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     };
     await prefetch(decisions.flatMap((decision) => links(decision.id)
       .filter((link) => link.from.id === decision.id && link.role === 'affects' && link.to.type === 'work').slice(0, 4).map((link) => link.to.id)));
+    // How many messages each decision's discussion holds, in one read (a discussed decision says so on its card).
+    const replies = decisions.length && ports.discussionReplies ? await ports.discussionReplies(decisions.map((decision) => decision.id)) : new Map<string, number>();
     for (const decision of decisions) {
       // #763 FT-8: your own proposal waits for someone else, never in your Inbox, also when nobody else here can accept it (personas-30:
       // the only person of a space found what they had just proposed there as something that needs them). It stays on its card.
@@ -146,6 +148,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
           id: decision.id, version: decision.version, proposedBy: { kind: by.kind, id: by.id, name }, basedOn, affects,
           // Only the people it is asked of (personas-27): the one who proposed it is not asked, unless that is you and nobody else can.
           accepters: (accepters.get(decision.projectId) ?? []).filter((person) => person.you || !(by.kind === 'human' && person.id === by.id)), canAccept: true, supersedes,
+          ...(replies.get(decision.id) ? { replies: replies.get(decision.id)! } : {}),
         },
         blocked: null, reason: null, snoozeTask: affects[0] ?? null,
       });
@@ -239,6 +242,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const threadOf = (url: string | null) => /\/conversations\/([0-9a-f-]{36})#/i.exec(url ?? '')?.[1]?.toLowerCase() ?? null;
     const asking = inbox.items.filter((note) => (note.reason === 'mention' || note.reason === 'question') && unread(note)).map((note) => threadOf(note.url)).filter((id): id is string => !!id);
     const discussed = asking.length && ports.decisionsDiscussed ? await ports.decisionsDiscussed([...new Set(asking)]) : new Map<string, { decisionId: string; title: string }>();
+    // What the person asked, for each answer to a question of theirs (the Inbox's Reply shows it above the answer), in one read.
+    const answers = inbox.items.filter((note) => note.answer === true && (note.reason === 'mention' || note.reason === 'question') && unread(note) && note.createdAt.getTime() >= since);
+    const youAsked = answers.length && ports.askedBefore ? await ports.askedBefore(userId, answers.map((note) => ({ id: note.id, url: note.url }))) : new Map<string, string>();
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || !unread(note) || note.createdAt.getTime() < since) continue;
       const call = note.reason === 'invitation' ? callOf(note.url) : null;
@@ -262,7 +268,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
-        ...(call ? { call } : {}), ...(answer ? { answer: true } : {}), ...(about ? { about } : {}),
+        ...(call ? { call } : {}), ...(answer ? { answer: true } : {}), ...(answer && youAsked.has(note.id) ? { asked: excerpt(youAsked.get(note.id)!, 240) } : {}), ...(about ? { about } : {}),
       });
     }
     // A task someone else or an agent gave you (#1424 C), from the newest notification that gave it, while it is unread (opening the task

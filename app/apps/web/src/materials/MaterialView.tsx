@@ -1,18 +1,29 @@
 import { Link, Navigate, useLoaderData, useLocation } from 'react-router';
 import type { MaterialOrDoc, MaterialVersion, Project, ProjectPerson } from '@flux/contracts';
-import type { materialLoader } from './loader';
+import { sourcePath, type materialLoader, type sourceLoader } from './loader';
 import { useShellData } from '../app/data';
 import { agentAuthorLabel, personName, youLabel } from '../docs/format';
 import { Icon } from '../ui';
+import { useProjectShell } from '../project/data';
 import { useGoToOrigin, useRouteOrigin } from '../place/origin';
 import './material.css';
 
+/** `/materials/:id`: a saved source by its id alone goes to its place in its space (materials/loader.ts), keeping where it was followed from. */
 export function MaterialView() {
   const data = useLoaderData() as Awaited<ReturnType<typeof materialLoader>>;
   const location = useLocation();
-  if ('redirectTo' in data) return <Navigate to={data.redirectTo} replace state={location.state} />;
-  return <MaterialPage material={data.material} version={data.version} people={data.people} project={data.project} />;
+  return <Navigate to={data.redirectTo} replace state={location.state} />;
 }
+
+/** A saved source in its space: the space's own header and tabs are round it, with the Wiki current. */
+export function SourcePage() {
+  const data = useLoaderData() as Awaited<ReturnType<typeof sourceLoader>>;
+  const location = useLocation();
+  const shell = useProjectShell();
+  if ('redirectTo' in data) return <Navigate to={data.redirectTo} replace state={location.state} />;
+  return <MaterialPage material={data.material} version={data.version} people={shell?.people ?? null} project={shell?.project ?? null} />;
+}
+
 /**
  * Back to where the page was opened from (docs/development/return-to-origin.md): the Wiki's switcher, a wiki card, a task. A page opened by its
  * own address has no origin and leads to its space's conversation (round 15 confirm S2: from the Wiki it led to the conversation).
@@ -46,7 +57,7 @@ function MaterialPage({ material, version, people, project }: { material: Materi
       <p className="material-view__meta">{author} · Saved {saved.format(new Date(version.createdAt))}</p>
       {version.body ? <p className="material-view__body">{version.body}</p> : null}
       {version.url ? <a className="ui-link material-view__link" href={version.url} target="_blank" rel="noreferrer">Open source link</a> : null}
-      {earlier ? <p className="material-view__meta">The current version is <Link className="ui-link" to={`/materials/${material.materialId}`}>version {material.version}</Link>.</p> : null}
+      {earlier ? <p className="material-view__meta">The current version is <Link className="ui-link" to={sourcePath(material.projectId, material.materialId)}>version {material.version}</Link>.</p> : null}
     </article></div>
   );
 }

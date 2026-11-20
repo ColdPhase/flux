@@ -93,6 +93,14 @@ This retains the one-project-stream functional contract. Current composition fol
 [F-026 navigation and panels](../design/final/README.md#4-structure-and-navigation), with
 task announcements governed by [P5](../design/final/README.md#5-behaviour).
 
+`GET /api/v1/space-previews?projectIds=a,b` (at most 100 ids) returns the Spaces list's second line and time (v0.2.2, #1563):
+`{ items: [{ projectId, at, author, body, files }] }`, the newest message of each of those spaces the caller can read, among the
+space's own conversations (a task's or a decision's discussion is not one), taken from the 20 newest conversations of the space
+(`project_conversations_project_idx`, so the read costs the same however long a space has run) and never a message its author took
+back. A space with no message has no item, and one the caller cannot read is left out as if it did not exist. `body` is the beginning
+of its words as one plain line (at most 300 characters), opened here for an encrypted space; an agent is named by its name and a person
+who left "… (removed)". The web app reads it once for the spaces shown and again after a message event.
+
 `GET /api/v1/projects/:projectId/conversation-roots` returns the project's roots
 for the Conversation tab: `{ projectId, roots, rootPage }`. Each root is
 `{ conversationId, message, replyCount, lastReplyAt }`, where `message` is the

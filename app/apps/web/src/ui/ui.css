@@ -410,6 +410,12 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 }
 /* Beside an open detail panel (Toast.tsx `besidePanel`): over the work left of it, its actions on a second line where that is narrow. */
 .ui-toasts--beside .ui-toast { flex-wrap: wrap; row-gap: 2px; border-radius: var(--r-lg); }
+/* Two lines, never three (round 15 look-2 P3-9: at 200 % "Task #12 created", Undo and Another task each took a line): the words and × share
+   the first line, the actions share the second, and the divider that stood between the words and the actions is not drawn. */
+.ui-toasts--beside .ui-toast__msg { order: 1; flex: 1 1 calc(100% - 52px); }
+.ui-toasts--beside .ui-toast__close { order: 2; }
+.ui-toasts--beside .ui-toast__sep { display: none; }
+.ui-toasts--beside .ui-toast__action { order: 3; white-space: nowrap; }
 .ui-toast {
   display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: 100%; padding: 4px 6px 4px 16px; border-radius: var(--r-pill);
   /* A raised card, never an inverted bar (founder direction, Hubert 2026-11-17, #1424): --el with --t1 text, a --line2 hairline and the

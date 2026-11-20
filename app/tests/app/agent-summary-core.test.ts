@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { digestPage, summaryCursorText, summaryNote, summaryRange, type DigestMessage } from '@flux/core';
+import { digestPage, instantsInZone, summaryCursorText, summaryNote, summaryRange, zonedMoment, type DigestMessage } from '@flux/core';
 
 // The range, the page and the cursor of `flux_summarize` (F-042, AG-12, #1292) as pure functions: no database, no network.
 
@@ -85,4 +85,29 @@ test('the note says when the answer stopped early and how to go on, and says pla
   assert.match(summaryNote(page, 3, range), /^Stopped early: this answer ends at 2026-11-02T10:00:00\.000Z and 3 later messages are not in it\..*call this tool again with the same arguments and next/);
   assert.match(summaryNote(page, 1, range), /1 later message is not in it/);
   assert.match(summaryNote(digestPage([]), 0, range), /^No messages in this range\. Say so; do not guess what was said\.$/);
+});
+
+test('the digest tells days and clock in the owner\'s own zone, and its note names the range with its offset (v0.2.2, #1563)', () => {
+  const messages = [
+    message(1, '2026-11-02T23:30:00Z', 'Jonas Berg', 'Late note.'),
+    message(2, '2026-11-03T09:00:00Z', 'Ada Nowak', 'Morning.'),
+  ];
+  // Warsaw is UTC+1 in November: 23:30Z is already the next day there.
+  const page = digestPage(messages, undefined, 'Europe/Warsaw');
+  assert.equal(page.digest, ['## 2026-11-03', '00:30 Jonas Berg: Late note.', '10:00 Ada Nowak: Morning.'].join('\n'));
+  assert.equal(digestPage(messages).digest, ['## 2026-11-02', '23:30 Jonas Berg: Late note.', '## 2026-11-03', '09:00 Ada Nowak: Morning.'].join('\n'), 'UTC where none is given');
+  const range = summaryRange({ after: '2026-11-02T08:00:00+01:00' });
+  assert.match(summaryNote(page, 0, range, 'Europe/Warsaw'), /from 2026-11-02T08:00:00\+01:00 on/);
+});
+
+test('an instant in UTC is written in a zone with the offset of that moment (summer and winter differ), and only a whole string value is', () => {
+  assert.deepEqual([zonedMoment(new Date('2026-11-19T14:34:12Z'), 'Europe/Warsaw').stamp, zonedMoment(new Date('2026-07-19T14:34:12Z'), 'Europe/Warsaw').stamp],
+    ['2026-11-19T15:34:12+01:00', '2026-07-19T16:34:12+02:00']);
+  assert.equal(zonedMoment(new Date('2026-11-19T14:34:12Z'), 'Asia/Kolkata').stamp, '2026-11-19T20:04:12+05:30', 'a half-hour zone');
+  assert.equal(zonedMoment(new Date('2026-11-19T14:34:12Z'), 'America/New_York').stamp, '2026-11-19T09:34:12-05:00', 'west of UTC');
+  assert.equal(zonedMoment(new Date('2026-11-19T00:00:00Z'), 'Not/AZone').stamp, '2026-11-19T00:00:00+00:00', 'an unknown zone is UTC');
+  const json = JSON.stringify({ createdAt: '2026-11-19T14:34:12.500Z', title: 'Ship it at 2026-11-19T14:34:12Z', dueOn: '2026-11-19', n: 3 });
+  assert.deepEqual(JSON.parse(instantsInZone(json, 'Europe/Warsaw')),
+    { createdAt: '2026-11-19T15:34:12.500+01:00', title: 'Ship it at 2026-11-19T14:34:12Z', dueOn: '2026-11-19', n: 3 }, 'a date and words that name an instant stay as written');
+  assert.equal(instantsInZone(json, 'UTC'), json, 'a person in UTC reads the answer as it is');
 });

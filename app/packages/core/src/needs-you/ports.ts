@@ -116,6 +116,14 @@ export interface NeedsYouPorts {
   level?(userId: string): Promise<NotificationLevel>;
   /** Of these conversations, the decisions' discussions (#1424): which decision each is about, with its title. */
   decisionsDiscussed?(conversationIds: string[]): Promise<Map<string, { decisionId: string; title: string }>>;
+  /** Of these decisions, how many messages each one's discussion holds (a decision nobody discussed is absent). */
+  discussionReplies?(decisionIds: string[]): Promise<Map<string, number>>;
+  /**
+   * Of these notifications (each an answer to the person's question, with the address of the message that answers), what the person asked:
+   * their own message in that conversation just before the answer, as the words it was written in, by notification id. A conversation whose
+   * words are sealed (an encrypted space) and a person who wrote nothing before it are absent.
+   */
+  askedBefore?(userId: string, answers: { id: string; url: string | null }[]): Promise<Map<string, string>>;
   /** Of these calls, the ones still on with someone in them (F-041): a call's notice asks nothing once it is over. */
   runningCalls?(sessionIds: string[]): Promise<Set<string>>;
   work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findWorks' | 'findDecision' | 'taskPlans'>;

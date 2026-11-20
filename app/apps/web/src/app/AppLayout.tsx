@@ -867,8 +867,6 @@ function AppLayoutContent() {
   const dmMute = useMuteRow('dm', activeDm?.id);
   const placeMute = spaceMute ?? dmMute;
   const matches = useMatches();
-  const shownSpace = (matches[matches.length - 1]?.loaderData as { project?: { name?: unknown } | null } | undefined)?.project?.name;
-  const materialSpace = typeof shownSpace === 'string' && shownSpace.trim() ? shownSpace : undefined;
   const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
   // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
   const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
@@ -918,8 +916,8 @@ function AppLayoutContent() {
         ? { crumb: null, title: 'Page not found', noDetails: true }
       // A header names the place or nothing (#1371): a page of the Wiki, an agent that is not there and a space that did not open are never "Home".
       : /^\/materials\//.test(location.pathname)
-        // Named by its space, as the space's other Wiki pages are (round 15 look-3 F5), read from the page's own loader.
-        ? { crumb: null, title: materialSpace ?? 'Wiki', noDetails: true }
+        // A saved source by its id alone, for the moment before it goes to its place in its space (its header names the space and has its tabs).
+        ? { crumb: null, title: 'Wiki', noDetails: true }
       : /^\/agents\//.test(location.pathname)
         ? { crumb: null, title: 'Messages', noDetails: true }
       : /^\/projects\/[^/]+/.test(location.pathname)

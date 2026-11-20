@@ -134,7 +134,8 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   own empty row inside a card (Home's "Nothing is waiting for you.") stays a row of that card. **An empty state stands only while its place is
   empty** (founder check, Hubert 2026-11-17: "Where do we start?" stood under the assistant's private answer and touched it): a conversation
   with anything in it, the person's own agent at work or its private answer, a message being sent, a task or a decision card, has none; it
-  comes back when the place is empty again (the answer dismissed).
+  comes back when the place is empty again (the answer dismissed). The Spaces page's two (no spaces yet, "You’re no longer in {company}") are
+  this component, not a paragraph of their own (v0.2.2, #1563).
 - **An error state** (`ErrorState`) has the same parts at the start of its column, and its "Try again" is the secondary button with the
   refresh icon everywhere. A message never says "Try again." beside a Try again button.
 - **Faces** are `--face` with a `--line2` hairline; two initials in a 20 px face are scaled like the 16 px face's, so a row of faces never
@@ -176,7 +177,9 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   shows what this tab last read (what waits, Continue, First steps, "My tasks (N)"), never "This couldn’t be loaded" over what was loaded a
   moment ago and never "My tasks (0)" for tasks it could not read; the shell (the sidebar, the header) is the same on every page and never
   leaves for "Flux can’t be reached"; a place read before in this tab (the newest twelve of each read) opens with what it showed then. Only a
-  place never read says it couldn’t be loaded, inside the shell. The line is a pill where a toast stands: above the phone's "+", capsule and
+  place never read says it couldn’t be loaded, inside the shell. **Offline, a conversation says nothing of its linked work** (v0.2.2, #1563; round 15
+  confirm S4): "Linked work could not be loaded." stood over the composer's own offline line, which already says it; the work is read again once
+  Flux answers. The line is a pill where a toast stands: above the phone's "+", capsule and
   map toolbar as measured, and on the computer 24 px up, inside the panel (look-1 P2-4, P3-5).
 - **The phone's header** meets a scrolled page at a `--line` hairline. A place that is not available keeps the phone's tab bar, and its tile
   is the alert icon, not a magnifier.
@@ -665,7 +668,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   A reply the person has just sent stays whole above the field in a thread, also in the phone's sheet, whatever the
   engine does with the list as the reply is stored ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
   **A toast never stands on the open panel** (personas-33/34, 200 %): one that would is centred over the work beside the panel instead, as
-  narrow as that work, its actions on a second line where needed. **A proposed decision's answer stays in view:** Accept, Not now and
+  narrow as that work, in two lines and never three: the words and × on the first, the actions (Undo, Another task) together on the second,
+  with no divider between them (v0.2.2, #1563; round 15 look-2 P3-9: at 200 % "Task #12 created", Undo and Another task each took a line). **A proposed decision's answer stays in view:** Accept, Not now and
   Discuss stick under the decision's pinned title while its discussion scrolls, so R or Discuss, which bring the newest message into view
   above the field, never hide them (personas-35, 200 %). **The discussion keeps its room** (personas-36, 200 %: the title and the answer
   filled the panel and no message showed): the title and the whole answer stick only while together they take at most two fifths of the
@@ -836,6 +840,10 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   or a key pressed twice lands on nothing. Choosing an item (J, K, a click on a row) or Undo ends the pause at once. 450 ms is shorter than
   anyone needs to read the card that came in, and it follows the toast's own guard against a tap aimed at what was there (600 ms).
   Nothing moves for it: no animation is added or held back ([motion](../motion.md)).
+- **The open item says what it is about** (v0.2.2, #1563; round 15 look-1 P3-11): a **Reply** (the answer to a question of yours) opens with a
+  quiet line above its words, "You asked  {your own message just before the answer}" (`--fs-sm`, `--t2`, the word in `--t3`, at most 240
+  characters; none where the words are sealed, in an encrypted space, or when nothing of yours came before it), so the answer is not read
+  without its question; and a **decision people have discussed** says "Discussion  3 replies" under its lines. A row keeps its one line.
 - **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
   letters typed with R are held for half a second, never run as A, E or S, and then the keys are the Inbox's again.
 - **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
@@ -2773,6 +2781,11 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 - **The order is yours.** It is per person and the same on every device and in every open tab. **Everyone is always first** and
   never moves. A new space, and a space you are added to, goes to the end. Nothing else changes the order: not activity, not
   unread, not the name. Until you move a space the list is as it was (the order the spaces were made in).
+- **A row says what was said last** (v0.2.2, #1563; round 15 look-2 P3-11), as a conversation's row in Messages does: a second line under the
+  name in `--t3`, the newest message of the space's conversation ("Maja: I moved the calibration notes…", "You: …", "Maja: Sent a file"; the
+  first name of whoever wrote it, an agent by its name; a task's or a decision's discussion is not the space's conversation), and its time at
+  the right in the same fixed column (`lastSaid`). A space with no message has neither line nor time. It reads the same on the computer
+  and the phone; the ⋯ of a row a person can move takes the time's place while the pointer is on the row, and on touch it stands beside it.
 - **There are no favourites.** No pinned section, no star and no second list: ordering is enough to keep your main spaces on top,
   and it keeps the sidebar one list (founder choice on #1250, 2026-11-10).
 - **Move with a pointer.** With a mouse, press a row and drag: the drag starts after 4 px, so a plain click still opens the space
@@ -2868,7 +2881,10 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
   the company, so this conversation has nobody to send to.", with no offer to reopen it.
 - **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
   is only Home's own, and Home has no header row on the computer.
-- **A Wiki page by its address** (the old "material") is a card on the page: its back link, its space's Wiki as a link with "Version 1"
+- **A Wiki page by its address** (the old "material") is a page of its space (v0.2.2, #1563; round 15 look-3 F5, confirm S2): its address is
+  `/projects/:id/docs/sources/:materialId` (a link by the id alone, `/materials/:id`, goes there, keeping where it was followed from), so it has
+  the space's own header (its name, Conversation · Tasks · Map · Wiki with the Wiki current, its people and ⋯), never a header "Wiki" without
+  tabs, and its way back returns to where the person came from (the Wiki's page switcher, a message, a task). It is a card on the page: its back link, its space's Wiki as a link with "Version 1"
   ("Community garden sensors · Wiki · Version 1", round 15 look-3 F5), and the space's Wiki page switcher lists it with the space's pages, the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
 - **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
 

@@ -286,7 +286,7 @@ class ReturnToOrigin(unittest.TestCase):
         self.assert_same(before, self.offset(page, feed, target), "the message stays where it was when something arrives below")
         history = page.evaluate("history.length")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
-        expect(page).to_have_url(re.compile(r"/materials/[0-9a-f-]{36}/versions/1$"))
+        expect(page).to_have_url(re.compile(r"/docs/sources/[0-9a-f-]{36}/versions/1$"))
         expect(page.get_by_role("heading", name="Sensor shortlist")).to_be_visible()
         self.assertEqual(page.evaluate("history.length"), history + 1, "following a reference adds one history entry")
         back = self.origin_back(page, "Conversation")
@@ -324,7 +324,7 @@ class ReturnToOrigin(unittest.TestCase):
         shot(page, f"592-wiki-card-returned-{engine}-{size}")
         # Forward leads to the object again, with its way back.
         page.go_forward()
-        expect(page).to_have_url(re.compile(r"/materials/"))
+        expect(page).to_have_url(re.compile(r"/docs/sources/"))
         expect(self.origin_back(page, "Conversation")).to_have_count(1)
 
     def test_01_wiki_card_back_by_the_control(self):
@@ -413,7 +413,7 @@ class ReturnToOrigin(unittest.TestCase):
         url, history = page.url, page.evaluate("history.length")
         self.reply("jonas", self.thread, f"A late reply while you read the shortlist ({engine}, {size}).")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
-        expect(page).to_have_url(re.compile(r"/materials/[0-9a-f-]{36}/versions/1$"))
+        expect(page).to_have_url(re.compile(r"/docs/sources/[0-9a-f-]{36}/versions/1$"))
         back = self.origin_back(page, "Thread")
         expect(back).to_have_count(1)
         shot(page, f"592-thread-wiki-destination-{engine}-{size}")
