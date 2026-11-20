@@ -351,11 +351,11 @@ class MapSamePlane(unittest.TestCase):
                 self.assertTrue(text.startswith(f'From {NAME} (you) · '), text)
                 self.assertTrue(meta.get_attribute('title').startswith(f'From {NAME} (you) · '), 'the whole line is its title')
                 parts = meta.evaluate("""el => [...el.children].map((c) => { const b = c.getBoundingClientRect(); return {cls: c.className, text: c.textContent, left: b.left, right: b.right, whole: c.scrollWidth <= c.clientWidth + 0.5}; })""")
-                card = node.bounding_box()
+                card = meta.bounding_box()  # the line's own box, inside the card's padding: nothing may reach past it, not even clipped
                 for before, after in zip(parts, parts[1:]):
                     self.assertLessEqual(before['right'], after['left'] + 0.5, f'{before["text"]!r} runs over {after["text"]!r}: {parts}')
                 for part in parts:
-                    self.assertLessEqual(part['right'], card['x'] + card['width'] + 0.5, f'{part["text"]!r} reaches past the card: {parts}')
+                    self.assertLessEqual(part['right'], card['x'] + card['width'] + 0.5, f'{part["text"]!r} reaches past its line: {parts}')
                 by = {part['cls']: part for part in parts if part['cls'] != 'sk-p__w'}
                 self.assertEqual([p['text'] for p in parts if p['cls'] == 'sk-p__w'], ['From ', ' (you)'], 'the lead and "(you)" are whole')
                 self.assertTrue(by['sk-p__t']['whole'], f'the time stays whole: {parts}')
