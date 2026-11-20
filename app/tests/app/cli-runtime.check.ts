@@ -301,13 +301,13 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is a lux?' } }), 202) as AssistantRun;
     const row = await until('the run to end', () => runRow(started.id), (current) => !['queued', 'reading', 'dispatching'].includes(current.status), 240);
     assert.deepEqual([row.engine, row.status, row.end_reason], ['runtime', 'completed', null], JSON.stringify(row));
-    assert.deepEqual(row.run_tools, ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize'], 'a direct-message ask is minted the web read and the four tools that find, read around, summarise and read the files of that DM');
+    assert.deepEqual(row.run_tools, ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image'], 'a direct-message ask is minted the web read and the five tools that find, read around, summarise, read and look at the files of that DM');
     assert.ok(row.answer_body, 'the answer is committed');
     // Every request the model got: the mock records one with no Flux tool at all as a `side` request (Claude Code), so both kinds count.
     const asked = (await journalSince(from)).filter((entry) => entry.client === client && (entry.kind === 'main' || entry.kind === 'side'));
     assert.ok(asked.length >= 1, 'the model was asked');
     for (const entry of asked) {
-      assert.deepEqual(fluxTools(entry), ['flux_read_around', 'flux_read_file', 'flux_search', 'flux_summarize'], `the server defines no web read, so the model is offered the four tools of its DM alone: ${JSON.stringify(entry.tools)}`);
+      assert.deepEqual(fluxTools(entry), ['flux_read_around', 'flux_read_file', 'flux_search', 'flux_summarize', 'flux_view_image'], `the server defines no web read, so the model is offered the five tools of its DM alone: ${JSON.stringify(entry.tools)}`);
       assert.deepEqual(otherTools(entry, client), [], `and nothing else that acts: ${JSON.stringify(entry.tools)}`);
     }
     print({ ENGINE: engine, RUN: started.id, CLIENT: cli, REQUESTS: asked.length, TOOLS: 3 });

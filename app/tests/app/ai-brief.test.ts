@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { briefPrivateText, buildBrief, DM_FILES_LINE, runtimeBrief, type BriefInput, type MessageSource, type TaskFacts } from '@flux/core';
+import { briefPrivateText, buildBrief, DM_FILES_LINE, runtimeBrief, VIEW_PICTURE_LINE, type BriefInput, type MessageSource, type TaskFacts } from '@flux/core';
 import type { MessageFile } from '@flux/contracts';
 
 // The exact text every run is given (#1064): one brief per place, which the agent runtime gets on standard input, whether it runs pi with an
@@ -139,6 +139,11 @@ describe('the brief of every run (#1064)', () => {
     // Without the tool, or without a file in the conversation, the brief is what it was.
     assert.ok(!buildBrief(dmFour).system.includes(DM_FILES_LINE) && buildBrief(dmFour).request.includes('<attachment name="north.csv" bytes="2048"/>'));
     assert.ok(!buildBrief({ ...dm, tools: [...DM_TOOLS, 'flux_read_file'] }).system.includes(DM_FILES_LINE), 'a conversation without files says nothing of files');
+    // A model that sees pictures also looks at the conversation's pictures with flux_view_image (#1590, coordinator answer 2026-11-20); never in a conversation without files.
+    const looking = buildBrief({ ...dmFour, tools: [...DM_TOOLS, 'flux_read_file', 'flux_view_image'] }).system;
+    assert.ok(looking.includes(VIEW_PICTURE_LINE) && looking.includes(DM_FILES_LINE));
+    assert.ok(!system.includes(VIEW_PICTURE_LINE), 'a model that does not see pictures is not told to look at one');
+    assert.ok(!buildBrief({ ...dm, tools: [...DM_TOOLS, 'flux_read_file', 'flux_view_image'] }).system.includes(VIEW_PICTURE_LINE));
   });
 
   test('a message cannot leave its fence or forge the request; a web address keeps its & so it matches exactly (C-30)', () => {

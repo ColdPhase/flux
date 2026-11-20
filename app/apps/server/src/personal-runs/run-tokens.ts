@@ -22,9 +22,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const RUN_TOKEN_AUTHORIZED_PARTY = 'flux-personal-run';
 /**
  * A run in a direct message: reading a web page, and finding, reading around and summarising the messages of that direct message (F-042, #1290, #1292), and
- * reading the text of the files sent in it (`flux_read_file`, #1590, C-64 (3); the tool answers for that direct message's files alone). Sorted, as every run's tools are.
+ * reading the text of the files sent in it and looking at its pictures (`flux_read_file`, `flux_view_image`, #1590, C-64 (3); both answer for that direct
+ * message's files alone; the picture only for a model that sees pictures, as everywhere). Sorted, as every run's tools are.
  */
-const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize'];
+const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image'];
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -59,17 +60,17 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // An answer to another agent's question only reads, whatever the switch (TA-3: a question is not an instruction).
       // A private chat reads and answers and changes nothing (#842); a run in a direct message has the web read, since no
       // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads. It finds older messages of that DM
-      // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290), and the text of its files (#1590).
+      // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290), and the text and pictures of its files (#1590).
       const readOnly = run.kind === 'task_answer' || run.projectId === null;
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
-      const base = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly)
+      const base = (run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly)
         .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
         // A file the run made or wrote (#1437) goes on the same answers…
         .filter((tool) => tool !== 'flux_attach_file' || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
         // …and both on its answer in the agent's private chat (founder decision on #1217, 2026-11-12; coordinator decision on #1437,
         // 2026-11-13): read-only as it is, the chat's answer to its owner can show a picture or carry a file. A schedule's report cannot.
-        .concat(run.projectId === null && run.dmId === null && run.kind === 'ask' ? [ATTACH_PICTURE_TOOL, 'flux_attach_file'] : [])
-        // A picture goes to the model only when it sees pictures (#1217): otherwise it is told it sees only the names of attached files.
+        .concat(run.projectId === null && run.dmId === null && run.kind === 'ask' ? [ATTACH_PICTURE_TOOL, 'flux_attach_file'] : []))
+        // A picture goes to the model only when it sees pictures (#1217), in a direct message too: otherwise it is told it sees only the names of attached files.
         .filter((tool) => tool !== VIEW_PICTURE_TOOL || aiModelSeesPictures(run.provider, run.model, run.engine));
       // pi has no web search of its own (#1441, RT-5): Flux's, through the key's provider's hosted search, wherever the run may read the web.
       const tools = keySearch && request.body.engine === 'pi' && run.engine === 'server' && aiModelSearchesWeb(run.provider, run.model) ? [...base, WEB_SEARCH_TOOL] : base;

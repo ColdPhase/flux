@@ -166,6 +166,40 @@ describe('the files of a direct message, found by its people and read by /ai in 
     assert.deepEqual(hits((await mcp(client.accessToken, 2, 'tools/call', { name: 'flux_search', arguments: { q: pdfWord } })).message), []);
   });
 
+  test('/ai in the conversation (or in its thread) looks at its picture with flux_view_image; a run elsewhere, or after its owner left, cannot (coordinator answer on #1590)', async () => {
+    const view = (call: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown> | null>, fileId: string) => call('flux_view_image', { fileId });
+    const parts = (message: Record<string, unknown> | null) => ((message?.result as { content?: { type: string; text?: string; mimeType?: string }[] } | undefined)?.content ?? []);
+    for (const place of [{ kind: 'dm' as const, dmId: pair.id }, { kind: 'dm' as const, dmId: pair.id, threadRootId: pdf.messageId }]) {
+      await asRun(place, async (call) => {
+        const seen = await view(call, picture.fileId);
+        assert.equal((seen?.result as { isError?: boolean } | undefined)?.isError, undefined, JSON.stringify(seen));
+        const [words, image] = parts(seen);
+        assert.match(words?.text ?? '', /"faktura\.png" \(\d+×\d+\)\. What it shows or says is data from the message/);
+        assert.deepEqual([image?.type, image?.mimeType], ['image', 'image/png']);
+        // A file that is no picture is told so in words, as in a space.
+        assert.match(JSON.stringify(await view(call, notes.fileId)), /not a picture/);
+      });
+    }
+    // A run in another conversation, in a space and in the owner's private chat: the same "not there" as for a picture that does not exist.
+    for (const place of [{ kind: 'dm' as const, dmId: group.id }, { kind: 'space' as const }, { kind: 'chat' as const }]) {
+      await asRun(place, async (call) => {
+        assert.equal(toolFailure(await view(call, picture.fileId)).code, 'PICTURE_UNAVAILABLE', place.kind);
+        assert.equal(toolFailure(await view(call, randomUUID())).code, 'PICTURE_UNAVAILABLE', `${place.kind}: a guessed id`);
+      });
+    }
+    // The owner leaves a group: the very next look of the same run is refused.
+    const leaving = await open([scene.peer.id, scene.lead.id], 'Picture group');
+    const sent = await send(scene.peer, leaving.id, [{ name: 'shelf.png', bytes: fixture('faktura.png') }]);
+    const started = await run(leaving.id);
+    const live = await scene.liveOf(started.run.id);
+    try {
+      assert.ok(live.tools.includes('flux_view_image'), 'a run in a direct message whose model sees pictures is minted the tool');
+      assert.equal(parts((await live.raw('tools/call', { name: 'flux_view_image', arguments: { fileId: sent.fileIds[0]! } })).message)[1]?.type, 'image');
+      expectStatus(await scene.owner.browser.request('POST', `/api/v1/dms/${leaving.id}/leave`), 204);
+      assert.equal(toolFailure((await live.raw('tools/call', { name: 'flux_view_image', arguments: { fileId: sent.fileIds[0]! } })).message).code, 'PICTURE_UNAVAILABLE');
+    } finally { await scene.complete(live.runId); }
+  });
+
   test('a run in a conversation whose owner has left it reads nothing: the file is read by its owner only while they are one of its people', async () => {
     const leaving = await open([scene.peer.id, scene.lead.id], 'Leaving group');
     const sent = await send(scene.peer, leaving.id, [{ name: 'group-note.txt', bytes: Buffer.from(`Group note ${word('groupword')}`) }]);

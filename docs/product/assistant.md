@@ -455,7 +455,8 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
 - **An agent looks at a picture it was given** with `flux_view_image`: a PNG, JPEG, WebP or GIF attached to a message the run may read
   (the same 5 MiB and pixel limits) goes to the model as image input. On the owner's API key it is an image in the request; on Claude
   Code and Codex it is an MCP image result, which the CLI hands to its model. The tool is offered only when the run's model sees
-  pictures. The model list says when a model does not ("Can't see pictures"); such an agent is told, as before, that it sees only
+  pictures. A run in a direct message (or its thread) looks at that conversation's pictures only, while its owner is one of its people
+  ([C-64](decisions.md) point 3, #1590). The model list says when a model does not ("Can't see pictures"); such an agent is told, as before, that it sees only
   the names of attached files, and says so.
 - **Files its owner sends in its private chat** ([C-64](decisions.md) point 4, #1438 point 10): the owner attaches photos, videos and
   files to a message to the agent, or sends them alone. The run of that chat is told their names and ids with the request (and with the

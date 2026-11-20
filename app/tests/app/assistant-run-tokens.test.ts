@@ -342,13 +342,13 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     // A direct message: it reads a web page and finds, reads around and summarises the messages of that DM and of nothing else (F-042, #1290,
     // #1292); the DM itself is given in the request, and no space is reachable.
     const inDm = await asked({ kind: 'dm', dmId, threadRootId: null }, [call('flux_search', { q: 'canary' }), { text: 'Fact: done.' }]);
-    assert.deepEqual(offered(pi.gateway.requests[0]!), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize']);
+    assert.deepEqual(offered(pi.gateway.requests[0]!), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image']);
     assert.match(pi.gateway.requests[0]!.prompt, new RegExp(DM_CANARY), 'the DM is what the model reads');
     assert.ok((results()[0] ?? '').includes(`/dm/${dmId}#message-`), 'it finds the message of its DM');
     assert.ok(!(results()[0] ?? '').includes('/projects/'), 'and nothing of a space, though the Wiki says "canary" too');
     for (const canary of [WIKI_CANARY, OTHER_CANARY, PRIVATE_CANARY]) assert.ok(!JSON.stringify(pi.gateway.requests).includes(canary), `${canary} never reaches the provider`);
     const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
-    assert.deepEqual((dmToken.rows[0].run_tools as string[]).filter((name) => name !== 'flux_web_search'), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize']);
+    assert.deepEqual((dmToken.rows[0].run_tools as string[]).filter((name) => name !== 'flux_web_search'), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image']);
     // A call of any other tool is refused by the route (pi itself stops a run that asks for a tool it was not given: agent-runtime-pi.test.ts).
     const dmRun = await runs.invoke(human(owner), { kind: 'dm', dmId, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' });
     await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [dmRun.run.id]);

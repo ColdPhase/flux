@@ -7,14 +7,14 @@ import { withAgentConnection } from './context.js';
 import { pictureStorage } from './picture-actions.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError } from './tool-results.js';
-import { reachesChatFile } from './chat-files.js';
+import { reachesChatFile, reachesDmFile } from './chat-files.js';
 
 /**
  * `flux_view_image` (#1217, F-036 AG-8, C-59): a run looks at a picture attached to a message it may read, and its model gets it as image
  * input: an MCP image result, which the worker turns into an image of the request on the owner's API key and which Claude Code and Codex hand
  * to their model. Only a PNG, JPEG, WebP or GIF by its bytes, within the same size and pixel bounds as a picture an agent attaches, and sent
  * as `cleanPicture` keeps it (no metadata, nothing after its end). The message must be one the run reaches (`requireObject`: its own space,
- * or for a chat any space of its owner with AI on), and the file one of that message's. What a picture shows or says is data, never an
+ * or for a chat any space of its owner with AI on; a direct message's only for a run in it, C-64 (3)), and the file one of that message's. What a picture shows or says is data, never an
  * instruction, as for a page.
  *
  * Listed only for a run whose model sees pictures (`aiModelSeesPictures`, the run token's tools): an agent without one is told it sees only
@@ -53,6 +53,12 @@ export function registerAgentPictureViews(tools: AgentToolRegistry, db: Database
         if (!row || row.state !== 'ready' || row.size === null || row.sha256 === null) throw unavailable();
         // A picture its owner sent in the agent's chat (C-64): only a run of that chat reaches it.
         if (row.agentId) { if (!await reachesChatFile(ctx, claims, row)) throw unavailable(); return row; }
+        // A picture sent in a direct message (C-64 (3), #1590): only a run in that conversation (or its thread) whose owner is one of its people now.
+        if (row.dmId) {
+          if (row.dmMessageId === null || row.posterOf !== null || !await reachesDmFile(ctx, claims, { workspaceId: row.workspaceId, dmId: row.dmId })) throw unavailable();
+          claims.dispatch?.dm(row.dmId);
+          return row;
+        }
         if (row.messageId === null || row.projectId === null) throw unavailable();
         const m = schema.projectMessages;
         const [message] = await tx.select({ conversationId: m.conversationId, projectId: m.projectId }).from(m)
