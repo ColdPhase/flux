@@ -175,7 +175,10 @@ describe('the provider\'s own web search on each wire format (#954; Docker mock 
     assert.equal(aiModelSearchesWeb('openai', 'o3-mini'), false);
     assert.equal(aiModelSearchesWeb('openai', 'gpt-5-nano'), true);
     assert.equal(aiModelSearchesWeb('anthropic', 'claude-sonnet-5'), true);
-    assert.equal(aiModelSearchesWeb('openrouter', 'vendor/model'), false);
+    // #1585 (C-72): Gemini and OpenRouter search through flux_web_search; an endpoint of the owner's own has none.
+    assert.equal(aiModelSearchesWeb('openrouter', 'vendor/model'), true);
+    assert.equal(aiModelSearchesWeb('gemini', 'gemini-3.8-flash'), true);
+    assert.equal(aiModelSearchesWeb('openai_compatible', 'llama3.1:8b'), false);
   });
 });
 

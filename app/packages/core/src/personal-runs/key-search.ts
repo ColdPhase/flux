@@ -1,11 +1,11 @@
-import { aiModelSearchesWeb, maxRequestMicros, personalRunMaxInputTokens } from '@flux/contracts';
-import type { PersonalCompute, PersonalConnection, WebSearchFound } from './ports.js';
+import { aiModelSearchesWeb, maxRequestMicros, personalRunMaxInputTokens, webSearchMicros } from '@flux/contracts';
+import type { PersonalCompute, PersonalComputeUsage, PersonalConnection, WebSearchFound } from './ports.js';
 import { centsToMicros, costMicros } from './validation.js';
 import { boundedWebSearch, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
 // `flux_web_search` (#1441, RT-5): the web search of an API-key agent that runs in pi, which has no search of its own. The Flux server
-// runs it with the run owner's key, through the provider's hosted search (Anthropic's web search tool, OpenAI Responses' `web_search`):
-// the same search the worker's own loop offers that key (#954, C-29), as one request of the run with no other tool. It is reserved against
+// runs it with the run owner's key, through the provider's hosted search (Anthropic's web search tool, OpenAI Responses' `web_search`,
+// Gemini's Google Search grounding and OpenRouter's `web` plugin, #1585, C-72), as one request of the run with no other tool. It is reserved against
 // the key's daily budget before it is sent and charged on the run after it (CA-3, #854), and its queries and result addresses are
 // recorded like a CLI's search (C-30). A key whose provider has no hosted search has no such tool.
 
@@ -17,16 +17,29 @@ export const KEY_SEARCH_SYSTEM = 'You search the web for an agent. Search for wh
 
 /**
  * The most a search's answer may hold (tokens), the longest query, and the most searches the provider may make for one request (Anthropic
- * `max_uses`, OpenAI `max_tool_calls`): the bound its hold is made for (security review of #1453, P2-2).
+ * `max_uses`, OpenAI `max_tool_calls`; OpenRouter's plugin searches once; Gemini has no such bound, so its hold is for three and a fourth
+ * query is charged as reported): the bound its hold is made for (security review of #1453, P2-2).
  */
 export const KEY_SEARCH_LIMITS = { maxTokens: 1_500, query: WEB_SEARCH_BOUNDS.query, searches: 3 } as const;
 
 /**
  * The most one search request can cost at the key's price: the search results' input a request with the search may carry, the answer's
- * bound, and each search's fee. Null without a price.
+ * bound, and each search's fee at the key's provider and model (`webSearchMicros`, C-72). Null without a price.
  */
-export function keySearchHoldMicros(price: PersonalConnection['price']): number | null {
-  return price ? maxRequestMicros(price, personalRunMaxInputTokens(true, true), KEY_SEARCH_LIMITS.maxTokens, KEY_SEARCH_LIMITS.searches) : null;
+export function keySearchHoldMicros(connection: Pick<PersonalConnection, 'price' | 'provider' | 'model'>): number | null {
+  return connection.price ? maxRequestMicros(connection.price, personalRunMaxInputTokens(true, true), KEY_SEARCH_LIMITS.maxTokens)
+    + KEY_SEARCH_LIMITS.searches * webSearchMicros(connection.provider, connection.model) : null;
+}
+
+/**
+ * What a search request cost (C-72): its tokens at the key's price and each search the provider reported at its fee. A provider that reports
+ * its own cost (OpenRouter's `usage.cost`) is charged the larger of the two, so a search fee its report might leave out is never lost.
+ */
+export function keySearchChargeMicros(connection: Pick<PersonalConnection, 'price' | 'provider' | 'model'>, usage: PersonalComputeUsage): number | null {
+  if (!connection.price) return null;
+  const { reportedCostMicros, webSearches, ...tokens } = usage;
+  const counted = costMicros(tokens, connection.price) + (webSearches ?? 0) * webSearchMicros(connection.provider, connection.model);
+  return typeof reportedCostMicros === 'number' && Number.isSafeInteger(reportedCostMicros) && reportedCostMicros >= 0 ? Math.max(counted, reportedCostMicros) : counted;
 }
 
 /** Whether a key run in pi gets `flux_web_search`: its provider has a hosted search for this model (Flux's table), and the web is on. */
@@ -54,7 +67,7 @@ export async function searchWithKey(compute: PersonalCompute, meter: KeySearchMe
   signal?: AbortSignal): Promise<KeySearchOutcome> {
   if (!compute.enabled || connection.status !== 'active') return { ok: false, reason: 'unavailable' };
   if (!aiModelSearchesWeb(connection.provider, connection.model)) return { ok: false, reason: 'no_search' };
-  const held = keySearchHoldMicros(connection.price);
+  const held = keySearchHoldMicros(connection);
   if (held === null) return { ok: false, reason: 'unavailable' };
   if (!(await meter.hold(runId, connection, held, centsToMicros(connection.dailyBudgetCents)))) return { ok: false, reason: 'budget' };
   // Until the provider's complete answer says otherwise, the request is charged all it held.
@@ -69,7 +82,7 @@ export async function searchWithKey(compute: PersonalCompute, meter: KeySearchMe
       if (result.billed === 'none') charged = 0;
       return { ok: false, reason: result.reason === 'no_credits' ? 'unavailable' : 'failed' };
     }
-    const cost = connection.price ? costMicros(result.usage, connection.price) : null;
+    const cost = keySearchChargeMicros(connection, result.usage);
     // What the provider reported is recorded as it is, never cut to the hold (security review of #1453, P2-2).
     if (cost !== null && Number.isSafeInteger(cost) && cost >= 0) charged = cost;
     const found = boundedWebSearch(result.webSearch ?? { queries: [query], results: [], cited: [] });

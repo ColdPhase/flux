@@ -31,8 +31,9 @@ const KEY_FORMAT_PROBLEMS: Record<AiProviderKind, string> = {
 export const aiKeyFormatProblem = (provider: AiProviderKind) => KEY_FORMAT_PROBLEMS[provider];
 
 /**
- * A bounded model id. OpenRouter's `:online` variants add a paid provider-hosted web search, and
- * provider-hosted tools stay off for every provider (PROV-2), so they are refused.
+ * A bounded model id. OpenRouter's `:online` variants add a paid provider-hosted web search to every request, and
+ * provider-hosted tools stay off for every provider (PROV-2), so they are refused: OpenRouter's search is asked for only by
+ * `flux_web_search`'s own request (its `web` plugin, #1585, C-72).
  */
 export function validModelId(provider: AiProviderKind, model: unknown): model is string {
   if (typeof model !== 'string' || !AI_MODEL_ID_PATTERN.test(model)) return false;

@@ -2,6 +2,7 @@ import type { AiProviderKind } from '@flux/contracts';
 import type { PersonalCompute } from '@flux/core';
 import { chatBaseUrl, chatCompletion, chatFailureOf } from './chat-completions.js';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
+import { geminiApiRoot, geminiSearch } from './gemini-search.js';
 import { guardedFetch } from './guarded-fetch.js';
 import { checkRequestLimits, PersonalKeyUnavailableError, type PersonalKeyResolver } from './limits.js';
 
@@ -13,7 +14,8 @@ import { checkRequestLimits, PersonalKeyUnavailableError, type PersonalKeyResolv
 // with them (F-027 AST-8) each call is one turn of the worker's loop and carries the earlier turns.
 // There is no token-count endpoint on this wire format, so the conservative Flux estimate alone bounds the input. "Low effort" has no equivalent that every
 // compatible model accepts (non-reasoning models reject `reasoning_effort`), so none is sent; the
-// output bound, which includes any reasoning tokens, stays the cost bound.
+// output bound, which includes any reasoning tokens, stays the cost bound. `flux_web_search`'s one search request (#1585, C-72) is the one
+// exception to "no hosted tools": OpenRouter's `web` plugin on Chat Completions, and Gemini's Google Search grounding on its own API.
 
 export interface OpenAiCompatiblePersonalComputeOptions {
   enabled: boolean;
@@ -37,11 +39,15 @@ export function openAiCompatiblePersonalCompute({ enabled, resolveKey, policy = 
         const baseUrl = chatBaseUrl(request.connection.provider, request.connection.baseUrl, baseUrls);
         const apiKey = await resolveKey(request.connection.keyRef);
         if (!apiKey || !baseUrl) throw new PersonalKeyUnavailableError();
+        // `flux_web_search`'s one request on a Gemini key (#1585, C-72): Google Search grounding, on Gemini's own API at the same host.
+        if (request.webSearch && request.connection.provider === 'gemini')
+          return await geminiSearch(fetch, { baseUrl: geminiApiRoot(baseUrl), apiKey, model: request.model, system: request.system, user: request.input,
+            maxTokens: request.maxTokens, signal });
         const result = await chatCompletion(fetch, { provider: request.connection.provider, baseUrl, apiKey, model: request.model,
           system: request.system, user: request.input, maxTokens: request.maxTokens, tools: request.tools, turns: request.turns,
-          ...(request.answerNow ? { answerNow: request.answerNow } : {}), signal });
+          ...(request.answerNow ? { answerNow: request.answerNow } : {}), ...(request.webSearch ? { webSearch: true } : {}), signal });
         return { kind: 'completed', text: result.text, stopReason: result.stopReason, usage: result.usage,
-          ...(result.toolCalls ? { toolCalls: result.toolCalls, replay: result.replay } : {}) };
+          ...(result.toolCalls ? { toolCalls: result.toolCalls, replay: result.replay } : {}), ...(result.webSearch ? { webSearch: result.webSearch } : {}) };
       } catch (error) {
         if (error instanceof PersonalKeyUnavailableError) return { kind: 'failed', reason: 'provider_error', billed: 'none' };
         return { kind: 'failed', ...chatFailureOf(error, signal) };

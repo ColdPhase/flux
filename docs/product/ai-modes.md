@@ -388,13 +388,16 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   network or keys of their own. None fits safely, so Flux adds its own tool, `flux_web_search`, offered to pi runs only (the run token's
   mint adds it when the worker says the run is in pi): the Flux server runs one search request with the run owner's key and model through
   the provider's hosted search, the same search an API key had before pi (#954, C-29: Anthropic's web search tool, OpenAI
-  Responses' `web_search`), with no other tool and Flux's own short instruction, and at most three searches (Anthropic `max_uses`,
-  OpenAI `max_tool_calls`); it holds the request's largest cost for that bound, the searches' fees included, against the key's daily
+  Responses' `web_search`; and since #1585, C-72, Gemini's Google Search grounding on its own `generateContent` API and OpenRouter's
+  `web` plugin on its Exa engine), with no other tool and Flux's own short instruction, and at most three searches (Anthropic `max_uses`,
+  OpenAI `max_tool_calls`; OpenRouter's plugin searches once; Gemini has no such bound, so a fourth query is charged as reported); it
+  holds the request's largest cost for that bound, each search at its provider's fee (`webSearchMicros`, C-72), against the key's daily
   budget before sending it (a search that does not fit is refused with that reason and nothing is sent) and charges what the provider
   reported on the run after it, the gateway's rule (a request never sent, and an error the provider documents as free, cost nothing; any other failure keeps the hold); and it records the query and the result addresses like a CLI's search (C-30). A key whose
-  provider has no hosted search through Flux's adapters (OpenRouter, Gemini's OpenAI-compatible endpoint, OpenAI-compatible and
-  self-hosted, CA-6) has no such tool and its brief says it has no web search; it reads the pages it is given with
-  `flux_read_web`. `FLUX_WEB_READS=off` removes it. Pages are read with `flux_read_web` only, never from the sandbox's network.
+  provider has no hosted search through Flux's adapters (an OpenAI-compatible or self-hosted endpoint of the owner's own, CA-6) has
+  no such tool and its brief says it has no web search; it reads the pages it is given with
+  `flux_read_web`. `FLUX_WEB_READS=off` removes it. The search request carries only Flux's instruction and the agent's query, never
+  the run's brief or what it read (C-30); a query is the model's own text, as on every engine. Pages are read with `flux_read_web` only, never from the sandbox's network.
 - **Codex** runs with `--ignore-user-config`, every reviewed default-on feature switched off by
   `-c` (apps, hooks, goals, plugins, memories and the rest of the reviewed list; its shell stays on, #1437), Flux as
   the only, required MCP server with exactly the run's tools, and no persistence. **Its shell and file tools** (#1437) are

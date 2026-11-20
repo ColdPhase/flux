@@ -1,5 +1,5 @@
-import { AI_PROVIDERS, type AiProviderKind } from '@flux/contracts';
-import type { PersonalTool, PersonalToolCall, PersonalTurn } from '@flux/core';
+import { AI_PROVIDERS, OPENROUTER_WEB_PLUGIN, type AiProviderKind } from '@flux/contracts';
+import type { PersonalTool, PersonalToolCall, PersonalTurn, WebSearchFound } from '@flux/core';
 import { MalformedResponseError } from './errors.js';
 import { endpointRefusal, ResponseTooLargeError, type GuardedFetch } from './guarded-fetch.js';
 import { chatMessages, chatToolCalls, chatTools } from './tool-wire.js';
@@ -50,6 +50,11 @@ export interface ChatRequest {
   turns?: readonly PersonalTurn[];
   /** A run's last request (#1410): no tool may be called (`tool_choice: none`), and Flux's words follow the last results. */
   answerNow?: string;
+  /**
+   * OpenRouter's web search (#1585, C-72): `flux_web_search`'s one request carries OpenRouter's `web` plugin (`OPENROUTER_WEB_PLUGIN`), which
+   * searches once before the model answers and returns its sources as `url_citation` annotations. Only OpenRouter, and never with tools.
+   */
+  webSearch?: boolean;
   signal: AbortSignal;
 }
 
@@ -58,10 +63,23 @@ export type ChatStopReason = 'end_turn' | 'max_tokens' | 'refusal' | 'tool_use';
 export interface ChatResult {
   text: string;
   stopReason: ChatStopReason;
-  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number };
+  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number; webSearches?: number };
   /** Only with `stopReason: 'tool_use'`. `replay` is the provider's assistant message, sent back unchanged with the results. */
   toolCalls?: PersonalToolCall[];
   replay?: unknown;
+  /** What OpenRouter's search found: the addresses of its `url_citation` annotations, each a result the answer cites. */
+  webSearch?: WebSearchFound;
+}
+
+/** The addresses of a message's `url_citation` annotations (OpenRouter's documented shape: `{ type, url_citation: { url, title, content } }`). */
+function citedAddresses(message: unknown): string[] {
+  const annotations = message && typeof message === 'object' ? (message as { annotations?: unknown }).annotations : null;
+  if (!Array.isArray(annotations)) return [];
+  return annotations.flatMap((annotation) => {
+    const cited = annotation && typeof annotation === 'object' && (annotation as { type?: unknown }).type === 'url_citation'
+      ? (annotation as { url_citation?: { url?: unknown } }).url_citation : null;
+    return typeof cited?.url === 'string' ? [cited.url] : [];
+  });
 }
 
 function textOf(content: unknown): string {
@@ -85,6 +103,11 @@ export async function chatCompletion(fetch: GuardedFetch, request: ChatRequest):
   if (request.schema) body.response_format = { type: 'json_schema', json_schema: { name: request.schema.name, strict: true, schema: request.schema.schema } };
   // OpenRouter reports each response's cost in `usage.cost` (its usage accounting).
   if (AI_PROVIDERS[request.provider].reportsCost) body.usage = { include: true };
+  const search = request.webSearch === true;
+  if (search) {
+    if (request.provider !== 'openrouter' || request.tools?.length) throw new Error('Web search on Chat Completions is OpenRouter\'s, alone');
+    body.plugins = [OPENROUTER_WEB_PLUGIN];
+  }
   // The trailing slashes of the base go without a regular expression (no backtracking on a long run of them).
   let base = request.baseUrl;
   while (base.endsWith('/')) base = base.slice(0, -1);
@@ -110,9 +133,12 @@ export async function chatCompletion(fetch: GuardedFetch, request: ChatRequest):
   const cost = parsed.usage?.cost;
   const reportedCostMicros = AI_PROVIDERS[request.provider].reportsCost && typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
     ? Math.ceil(cost * 1_000_000) : undefined;
+  // The plugin searches once for each request that carries it, and OpenRouter charges that search whatever it found.
+  const cited = search ? citedAddresses(choice.message) : [];
   return { text: refused ? '' : textOf(choice.message?.content), stopReason,
-    usage: { inputTokens, outputTokens, ...(reportedCostMicros !== undefined ? { reportedCostMicros } : {}) },
-    ...(stopReason === 'tool_use' ? { toolCalls, replay: choice.message } : {}) };
+    usage: { inputTokens, outputTokens, ...(reportedCostMicros !== undefined ? { reportedCostMicros } : {}), ...(search ? { webSearches: 1 } : {}) },
+    ...(stopReason === 'tool_use' ? { toolCalls, replay: choice.message } : {}),
+    ...(search ? { webSearch: { queries: [], results: cited, cited } } : {}) };
 }
 
 export type ChatFailureReason = 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted';
