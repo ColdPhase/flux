@@ -41,6 +41,15 @@ export const FILE_TEXT_LIMITS = {
    */
   pictures: { pages: 10, side: 1568, pixels: 16_000_000, pictureBytes: 3_600_000, totalBytes: 20 * 1024 * 1024, untilMs: 12_000 },
   pictureOutputBytes: 28 * 1024 * 1024,
+  /**
+   * OCR (C-70, #1575; only with FLUX_FILE_OCR=on): one picture at a time (a PDF page drawn again at most `side` px on its long side, or a
+   * picture people sent of at most `pixels`), each in a child of its own with these bounds (measured 2026-11-20 on a Ryzen 9 7900X, two
+   * CPUs: a dense A4 page at 300 dpi took 3.7 s and 200 MiB, a 12-megapixel photo 1.5 s and 270 MiB). Its text is kept only when Tesseract's
+   * mean confidence is at least `confidence` and it found at least `words` words of three letters or more (a selfie or a landscape keeps
+   * nothing). While the switch is on, the worker queues at most `batch` files that OCR has yet to read whenever its queue is empty.
+   */
+  ocr: { side: 2480, pixels: 24_000_000, timeoutMs: 60_000, cpuSeconds: 60, memoryBytes: 384 * 1024 * 1024, extraBytes: 384 * 1024 * 1024,
+    outputBytes: 1024 * 1024, confidence: 60, words: 3, batch: 50 },
   /** A job is claimed for this long (a worker that died leaves it to be claimed again) and tried this many times. */
   leaseMs: 2 * 60_000,
   attempts: 3,

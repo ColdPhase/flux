@@ -212,6 +212,13 @@ VARIABLES: dict[str, Var] = {
         "against the `files` volume. Every other file stays at 5 MiB, and in an encrypted space a video is an ordinary 5 MiB file that "
         "downloads. A video is a stream and an upload of this size must get through your reverse proxy: its body limit must be at least this "
         "(nginx: `client_max_body_size`). Other values stop the API.", "500"),
+    "FLUX_FILE_OCR": Var("files", "`on` · `off`",
+        "Off by default (C-70, #1575). `on` makes the worker read text in scans and pictures by OCR (Tesseract, Polish and English, shipped in "
+        "the image): the pages of a PDF without a text layer (its first 10) and the PNG, JPEG, WebP and GIF pictures people send to a space or to "
+        "their agent's chat. The text is kept only when OCR is confident and finds at least three words, and it is then the file's text everywhere: "
+        "search finds it and agents read it like a PDF's own text. It runs in the same sandboxed reader as file text, one picture at a time at a "
+        "low priority, about 4 s of one CPU and at most 384 MiB for a dense page. Files sent before the switch was turned on are read a batch of "
+        "50 at a time, newest first. Never in an encrypted space. Other values stop the worker.", "on"),
     "FLUX_WEB_READS": Var("ai", "`on` · `off`",
         "On by default (founder direction 2026-11-08, C-29): a server agent's run reads public web pages and searches the web. "
         "`off` turns both off. Reading is Flux's `flux_read_web` tool (read-only, GET only), with the guard of link cards: public `http(s)` addresses on default "

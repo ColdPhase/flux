@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, test } from 'node:test';
@@ -73,6 +73,19 @@ describe('hostile files cannot hurt the worker', () => {
     // A text-only page that is empty has no picture at all.
     const empty = await sandbox.extract(pdfBytes(['']), 'pdf');
     assert.equal(empty.ok ? 'read' : (empty.pictures ?? []).length, 0);
+  });
+
+  test('C-70: OCR in its own child reads a picture\'s words, keeps nothing of a landscape or of bytes that are no picture, and holds its bounds', async () => {
+    const ocr = createFileTextSandbox({ ocr: true });
+    assert.equal(ocr.ocr, true, 'Tesseract and its data are installed');
+    const fixture = (name: string) => readFileSync(join(here, 'fixtures', 'ocr', name));
+    const read = await ocr.recognise(fixture('faktura.jpg'));
+    assert.ok(read.ok && /kalibratorów/.test(read.text) && /Zażółć gęślą jaźń/.test(read.text), JSON.stringify(read));
+    assert.deepEqual(await ocr.recognise(fixture('landscape.jpg')), { ok: false, reason: 'empty' });
+    const broken = await ocr.recognise(Buffer.from('%PDF-1.4 not a picture at all'));
+    assert.equal(broken.ok, false);
+    assert.ok(!broken.ok && ['unreadable', 'crashed'].includes(broken.reason), JSON.stringify(broken));
+    assert.equal(createFileTextSandbox().ocr, false, 'off unless the worker turns it on');
   });
 
   test('zip bombs: a deflate stream that expands to a thousand times its size, whether the entry tells the truth about it or not', async () => {

@@ -100,6 +100,12 @@ RUN set -eu; cd /app/node_modules; for d in .pnpm/pdfjs-dist@*/node_modules/pdfj
     rm -rf "$d/web" "$d/build" "$d/types" "$d/image_decoders" "$d/legacy/web"; \
     find "$d/legacy/build" -type f \( -name '*.min.mjs' -o -name 'pdf.sandbox*' -o -name 'pdf.renderer*' \) -delete; done; \
   cd /app/apps/worker && node --input-type=module -e "await import('pdfjs-dist/legacy/build/pdf.mjs'); await import('pdfjs-dist/legacy/build/pdf.worker.mjs')"
+# OCR (C-70) loads one build of Tesseract (SIMD, LSTM: tesseract-core-simd-lstm.js and .wasm) and the Polish and English `4.0.0_best_int`
+# data: the other builds, their base64 copies and the larger `4.0.0` data are not shipped (about 8.6 MB stays of 58 MB).
+RUN set -eu; cd /app/node_modules/.pnpm; for d in tesseract.js-core@*/node_modules/tesseract.js-core; do \
+    find "$d" -maxdepth 1 -type f -name 'tesseract-core*' ! -name 'tesseract-core-simd-lstm.js' ! -name 'tesseract-core-simd-lstm.wasm' -delete; done; \
+  for d in @tesseract.js-data+*/node_modules/@tesseract.js-data/*; do rm -rf "$d/4.0.0"; test -f "$d/4.0.0_best_int/$(basename "$d").traineddata.gz"; done; \
+  test -f /app/apps/worker/node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.65.0 package. Never deployed.

@@ -49,6 +49,15 @@ export function greyIfGrey(pixels: Pixels): Pixels {
   return { ...pixels, channels: 1, data: out };
 }
 
+/** Grey by luminance (ITU-R BT.601), the picture OCR reads (C-70). */
+export function toGrey(pixels: Pixels): Pixels {
+  if (pixels.channels === 1) return pixels;
+  const { data } = pixels;
+  const out = new Uint8Array(data.length / 3);
+  for (let i = 0; i < out.length; i++) out[i] = Math.round(0.299 * data[i * 3]! + 0.587 * data[i * 3 + 1]! + 0.114 * data[i * 3 + 2]!);
+  return { ...pixels, channels: 1, data: out };
+}
+
 /** At most `side` pixels on the long side, each target pixel the average of the source pixels it covers; a smaller picture is kept. */
 export function scaleDown(pixels: Pixels, side: number): Pixels {
   const { width, height, channels, data } = pixels;

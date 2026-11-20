@@ -293,6 +293,24 @@ async function pagesOf(rows: ReturnType<typeof fileTextRows>, claims: FluxMcpCla
   return Object.defineProperty(value, PAGE_PICTURES, { value: given, enumerable: false }) as typeof value & WithPictures;
 }
 
+/**
+ * C-70 (#1575): a file whose text Flux read by OCR is read as text, each page's under "[Page N]" for a scan, so a model without vision
+ * works with it and a model with vision reads the text first (no picture tokens unless the layout matters).
+ */
+function ocrText(parts: { page: number | null; text: string }[]): string {
+  let last: number | null = null;
+  return parts.map((part) => {
+    const head = part.page !== null && part.page !== last ? `${last === null ? '' : '\n\n'}[Page ${part.page}]\n` : '';
+    last = part.page ?? last;
+    return `${head}${part.text}`;
+  }).join('');
+}
+const ocrNote = (claims: FluxMcpClaims, scan: boolean) => {
+  const sees = claims.run ? claims.run.tools.includes('flux_view_image') : false;
+  return `Flux read this text by OCR from ${scan ? 'a scan; [Page N] marks its pages' : 'the picture'}. It may contain mistakes.`
+    + (sees ? ` To see ${scan ? 'a page' : 'the picture'} itself, call flux_view_image with this fileId${scan ? ' and the page' : ''}.` : '');
+};
+
 async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z.output<typeof fileInput>) {
   const rows = fileTextRows(ctx.tx);
   const file = await rows.locate(ctx.workspaceId, input.fileId.toLowerCase());
@@ -300,8 +318,9 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
     // A file its owner sent in the agent's chat (#1438, C-64): only a run of that chat reads it, and it is no search row.
     const chat = await rows.locateChat(ctx.workspaceId, input.fileId.toLowerCase());
     if (!chat || !await reachesChatFile(ctx, claims, chat)) throw fileNotFound();
-    const { text, parts } = await rows.chatText(chat.fileId);
-    const named = { fileId: chat.fileId, name: chat.name, ...(chat.pages !== null ? { pages: chat.pages } : {}) };
+    const { text: plain, parts } = await rows.chatText(chat.fileId);
+    const text = chat.ocr ? ocrText(await rows.pagedParts(chat.fileId, true)) : plain;
+    const named = { fileId: chat.fileId, name: chat.name, ...(chat.pages !== null ? { pages: chat.pages } : {}), ...(chat.ocr ? { ocr: true, note: ocrNote(claims, chat.pages !== null) } : {}) };
     if (!parts && chat.noText && !chat.pending) return pagesOf(rows, claims, chat.fileId, named, input.offset);
     if (!parts) return { ...named, totalLength: 0, body: '', nextOffset: null,
       note: chat.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
@@ -311,9 +330,11 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
   }
   // The same reach as a search: the run's own space, or every space of a chat or a client, while AI is on there and the owner may read it.
   try { await ctx.requireProject(file.projectId); } catch (error) { throw error instanceof DomainError ? fileNotFound() : error; }
-  const { text, parts } = await rows.text(file.fileId);
+  const { text: plain, parts } = await rows.text(file.fileId);
+  const text = file.ocr ? ocrText(await rows.pagedParts(file.fileId, false)) : plain;
   claims.dispatch?.project(file.projectId, 'project.read');
-  const where = { fileId: file.fileId, name: file.name, projectId: file.projectId, conversationId: file.conversationId, messageId: file.messageId, ...(file.pages !== null ? { pages: file.pages } : {}) };
+  const where = { fileId: file.fileId, name: file.name, projectId: file.projectId, conversationId: file.conversationId, messageId: file.messageId,
+    ...(file.pages !== null ? { pages: file.pages } : {}), ...(file.ocr ? { ocr: true, note: ocrNote(claims, file.pages !== null) } : {}) };
   if (!parts) return file.noText && !file.pending ? pagesOf(rows, claims, file.fileId, where, input.offset) : { ...where, totalLength: 0, body: '', nextOffset: null,
     note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
   const offset = Math.min(input.offset, text.length);

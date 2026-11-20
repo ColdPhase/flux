@@ -1,6 +1,7 @@
 import { readSync, writeSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { extractDocx } from './docx.js';
+import { recognise, type OcrLimits } from './ocr.js';
 import { extractPdf, type PictureLimits } from './pdf.js';
 import { extractText, type Extracted } from './text.js';
 
@@ -10,11 +11,13 @@ import { extractText, type Extracted } from './text.js';
  * the kernel) before it reads a byte of the file: if that fails it exits at once without reading anything. The file arrives on stdin, the answer leaves
  * on stdout as one JSON line, and nothing else is written there.
  *
- * argv: format (`pdf`, `docx` or `text`), the path of sandbox.node, and a JSON object of limits.
+ * argv: format (`pdf`, `docx`, `text`, or `ocr` for one picture, C-70), the path of sandbox.node, and a JSON object of limits.
  */
 interface Limits { pages: number; chars: number; fileBytes: number; zipEntries: number; zipDirectoryBytes: number; xmlBytes: number; extraBytes: number; cpuSeconds: number; pdfjs: string; reads: string[];
   /** The pictures of a PDF without text (C-69). */
-  pictures: PictureLimits }
+  pictures: PictureLimits;
+  /** OCR of one picture (C-70), only for format `ocr`. */
+  ocr?: OcrLimits }
 
 // Whatever a library prints must not reach the answer.
 console.log = console.warn = console.info = console.debug = (...args: unknown[]) => console.error(...args);
@@ -65,4 +68,5 @@ if (!bytes) answer({ ok: false, reason: 'too-large' });
 else if (format === 'pdf') answer(await extractPdf(bytes, limits, limits.pdfjs));
 else if (format === 'docx') answer(extractDocx(bytes, limits));
 else if (format === 'text') answer(extractText(bytes, limits.chars));
+else if (format === 'ocr' && limits.ocr) answer(await recognise(bytes, limits.ocr));
 else answer({ ok: false, reason: 'unreadable' });
