@@ -14,6 +14,7 @@ on:
       - 'scripts/check_upgrade_matrix.sh'
       - 'scripts/release/smoke_artifacts.sh'
       - 'scripts/release/smoke_data.py'
+      - 'scripts/release/removed-columns.txt'
       - 'scripts/release/smoke_journeys.py'
       - 'scripts/release/smoke_journeys_browser.py'
       - 'scripts/release/journeys_browser.sh'

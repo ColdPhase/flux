@@ -222,12 +222,17 @@ expected_ledger() { # the candidate's migration files, as the migrator numbers t
   ls "$root/app/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -
 }
 # Content tables compared across the upgrade: rows keep their previous columns (a migration may add a column or a
-# constraint but must not change or drop a recorded value). Tables the previous release lacks are skipped.
+# constraint but must not change or drop a recorded value). Tables the previous release lacks are skipped. A column that a migration
+# removes on purpose is listed in removed-columns.txt and left out (#1605); any other column that is gone after the upgrade fails by name.
 content_tables="workspaces workspace_members projects project_grants project_materials project_material_versions project_conversations project_messages project_work_items project_decisions agents"
+removed_columns() { # table: the quoted names of the columns of it that removed-columns.txt lists, comma separated (empty for none)
+  sed -e 's/#.*//' "$root/scripts/release/removed-columns.txt" | awk -v t="$1" -v q="'" '$1 == t { printf "%s%s%s%s", (n++ ? "," : ""), q, $2, q }'
+}
 table_columns() {
-  local table columns
+  local table columns removed
   for table in $content_tables; do
-    columns=$(sql "$1" "$2" "$3" "SELECT string_agg(quote_literal(column_name), ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '$table'")
+    removed=$(removed_columns "$table")
+    columns=$(sql "$1" "$2" "$3" "SELECT string_agg(quote_literal(column_name), ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '$table'${removed:+ AND column_name NOT IN ($removed)}")
     if [ -n "$columns" ]; then printf '%s %s\n' "$table" "$columns"; fi
   done
 }
@@ -409,6 +414,11 @@ ledger_after=$(ledger "$source_project" "$up_env" "$assets")
 [ "$ledger_after" = "$candidate_ledger" ] || fail "the ledger after the upgrade ($ledger_after) is not the candidate's migration files ($candidate_ledger)"
 printf '%s\n' "$ledger_after" | tr ',' '\n' > "$up_dir/ledger.after"
 [ -z "$(comm -23 <(sort "$up_dir/ledger.before") <(sort "$up_dir/ledger.after"))" ] || fail "a ledger row of the previous release is gone"
+while read -r table columns; do
+  gone=$(sql "$source_project" "$up_env" "$assets" "SELECT string_agg(c, ', ') FROM unnest(ARRAY[$columns]) c WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = '$table' AND column_name = c)")
+  [ -z "$gone" ] || fail "the upgrade dropped $table.{$gone}: a column removed on purpose is listed in scripts/release/removed-columns.txt (#1605)"
+done < "$up_dir/columns"
 table_snapshot "$source_project" "$up_env" "$assets" "$up_dir/columns" > "$up_dir/tables.after"
 cmp "$up_dir/tables.before" "$up_dir/tables.after" || { diff "$up_dir/tables.before" "$up_dir/tables.after" >&2 || true; fail "content rows changed across the upgrade"; }
 [ "$(volume_stamps "$source_project")" = "$(cat "$up_dir/volumes.before")" ] || fail "a volume was recreated by the upgrade"
