@@ -2132,8 +2132,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   when pressed; a link to a thought still centres that thought. **The header floats over the plane** (#1424): a space's title pill and **Map options**
   share the first row, 10 px from the edges, and **Thought** floats at the bottom; the plane scrolls under them, Fit leaves room for them so no
   thought is hidden for good, and a long title gives way with an ellipsis, never over Map options. A thought's line of provenance ("From Ada
-  Kowalska (you) · 19 lis, 21:25") stays one line whose parts never overlap: the name gives way first with an ellipsis and keeps at least its
-  first letters, then the time does, and "(you)" stays whole; the card's edge clips whatever is left. The one line "Connect and arrange on a computer" is said **once** per person on a
+  Kowalska (you) · 19 lis, 21:25") stays one line whose parts never overlap: only the name gives way, with an ellipsis, and keeps at least its
+  first letters, so "(you)" and the time stay whole; where even that does not fit, the card's edge clips the end. The one line "Connect and arrange on a computer" is said **once** per person on a
   device, with its own quiet close (**Dismiss**), and is not drawn again on any map after that.
 
 ### Settings
