@@ -24,6 +24,8 @@ export interface SelectionTools {
   onMove: (() => void) | null;
   /** "Copy link" to the one selected thought, on My map and a space's map (#948, #1376). */
   onCopyLink: (() => void) | null;
+  /** "Make a task" from the one selected thought (#1519): the Create window on Task, with the thought's words as its title. */
+  onMakeTask: (() => void) | null;
   onUndo(): void;
   onHelp(): void;
 }
@@ -1074,6 +1076,7 @@ export function SketchMap(props: SketchMapProps) {
           {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" onClick={() => props.onConnections(lastThought.id)}>Connections</button> : null}
           {props.bar.onMove ? <button type="button" className="sk-edit-btn" onClick={props.bar.onMove}>Move to a space map</button> : null}
+          {single && props.bar.onMakeTask ? <button type="button" className="sk-edit-btn" onClick={props.bar.onMakeTask}>Make a task</button> : null}
           {single && props.bar.onCopyLink ? <button type="button" className="sk-edit-btn" onClick={props.bar.onCopyLink}>Copy link</button> : null}
           {linkAnchor}
           {sourceMessage && !compact ? <Link className="sk-edit-btn" to={sourceMessage} aria-label={`Open the message ${label} came from`}>Open message</Link> : null}
@@ -1296,6 +1299,7 @@ export function SketchMap(props: SketchMapProps) {
             {sourceMessage ? <Link className="sk-options__action" to={sourceMessage} onClick={() => setPhoneMenuOpen(false)}><Icon name="chat" size={18} />Open message</Link> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
             {props.bar.onMove ? <button type="button" className="sk-options__action" onClick={() => phoneAction(props.bar.onMove!)}><Icon name="map" size={18} />Move to a space map</button> : null}
+            {selection.length === 1 && props.bar.onMakeTask ? <button type="button" className="sk-options__action" onClick={() => phoneAction(props.bar.onMakeTask!)}><Icon name="add-task" size={18} />Make a task</button> : null}
             {selection.length === 1 && props.bar.onCopyLink ? <button type="button" className="sk-options__action" onClick={() => phoneAction(props.bar.onCopyLink!)}><Icon name="link" size={18} />Copy link</button> : null}
             <button type="button" className="sk-options__action" aria-label="Remove from map" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
           </> : <>

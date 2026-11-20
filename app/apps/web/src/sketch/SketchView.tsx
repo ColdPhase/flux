@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
-import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, WORK_LIMITS, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery, useToast } from '../ui';
 import { getProject } from '../api/sketches';
 import { ApiError, NetworkError } from '../api/client';
@@ -677,7 +677,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     say(`Shape: ${next === 'card' ? 'card' : next === 'pill' ? 'pill' : 'circle'}`, true);
   };
 
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
 
   // #948: on My map a selected thought goes to a space's map, or its address is copied (it opens My map with the thought selected).
   const toast = useToast();
@@ -695,6 +695,15 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     const failed = () => toast({ message: 'Could not copy the link', tone: 'danger' });
     if (!navigator.clipboard) { failed(); return; }
     navigator.clipboard.writeText(link).then(done, failed);
+  } : null;
+
+  // #1519: the one selected thought becomes a task from the thought itself. The Create window opens on Task with its words as the title; in a space's map the
+  // thought is also linked as the task's source. My map's thoughts are private and cannot be linked, so only their words go (the person picks the space).
+  const makeTask = sketch && canWrite && selection.length === 1 ? () => {
+    const thought = (doc.confirmedThoughts ?? sketch.thoughts).find((item) => item.id === selection[0]);
+    const title = (thought?.text ?? '').trim().split('\n', 1)[0]!.slice(0, WORK_LIMITS.title).trim();
+    if (!thought || !title) { toast({ message: 'Give the thought some words first', timeout: 3000 }); return; }
+    openCreate({ kind: 'task', title, ...(taskProjectId ? { projectId: taskProjectId, sources: [{ ref: { type: 'thought' as const, id: thought.id }, label: quote(title) }] } : {}) });
   } : null;
 
   const undo = () => {
@@ -884,7 +893,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           </div>
           <SketchMap {...shared} editControls={editControls} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onMakeTask: makeTask, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
@@ -910,7 +919,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     : 'Arrows move between thoughts; Left and Right fold and unfold a branch. Alt with Up or Down moves a thought among its neighbours in your list only.';
   const list = <SketchList {...shared} arrange={!phone} helpId={helpId} personalOutline={personalOutline} onNavigate={navigateThought}
     onReparent={reparent} onConnectFrom={connectFromDot} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-    onMove={moveTo.start} onCopyLink={canWrite ? copyLink : null} onSay={(text) => say(text)} />;
+    onMove={moveTo.start} onCopyLink={canWrite ? copyLink : null} onMakeTask={makeTask} onSay={(text) => say(text)} />;
   const connections = connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
     onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null;
 

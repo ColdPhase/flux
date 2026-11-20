@@ -412,6 +412,21 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       });
     },
 
+    /**
+     * The unfinished work the caller made for someone else (#1519, "tasks I gave others"): created by them, owned by another person, not done, in
+     * the projects of the workspace they can currently read. A task they made for themselves, for their own agent or for no one is not on it.
+     */
+    async listGiven(principal: Principal, workspaceId: string, query?: PageQuery): Promise<Page<WorkItem>> {
+      const window = valid.page(query);
+      const workspace = valid.id(workspaceId, 'workspaceId');
+      const creator = actor(principal);
+      return uow.run(async (ports) => {
+        await ports.access.requireWorkspace(principal, workspace);
+        const { items, total } = await ports.work.listGivenVisible(principal, workspace, creator, window);
+        return { items: await presentWorks(ports, items), total, ...window };
+      });
+    },
+
     getWork: (principal: Principal, workId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, 'work', workId, 'read');
       const record = (await ports.work.findWork(id))!;

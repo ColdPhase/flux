@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, StatusGlyph, useMediaQuery } from '../ui';
-import { listAssignedWork } from '../work/api';
-import { STATUS_LABEL, blockedLine, taskNumber } from '../work/format';
+import { listAssignedWork, listGivenWork } from '../work/api';
+import { STATUS_LABEL, blockedLine, dueShort, taskNumber } from '../work/format';
 import { getProject } from '../project/api';
 import { useShellData } from './data';
 import { startsSpaces } from '../people/api';
@@ -15,7 +15,7 @@ const CAP = 500;
 /** The project Tasks view's order: what is moving, what is stuck, what waits. */
 const ORDER: Record<string, number> = { in_progress: 0, blocked: 1, open: 2 };
 
-interface Loaded { userId: string; items: WorkItem[]; total: number; failed: boolean; names: Map<string, string> }
+interface Loaded { userId: string; items: WorkItem[]; total: number; failed: boolean; given: WorkItem[]; givenTotal: number; names: Map<string, string> }
 
 /**
  * Home's Tasks (#190 HOME-2): the work you own that is open, in progress or blocked, across every
@@ -51,18 +51,22 @@ export function HomeTasks() {
     const userId = me.user.id;
     void (async () => {
       let read: Awaited<ReturnType<typeof listAssignedWork>>;
-      try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch { if (!controller.signal.aborted) { readEnded.current?.(); readEnded.current = null; } return; }
+      let gave: Awaited<ReturnType<typeof listGivenWork>>;
+      try {
+        const ids = workspaces.map((space) => space.id);
+        [read, gave] = await Promise.all([listAssignedWork(ids, CAP, controller.signal), listGivenWork(ids, CAP, controller.signal)]);
+      } catch { if (!controller.signal.aborted) { readEnded.current?.(); readEnded.current = null; } return; }
       const { items, total, failed } = read;
       // Project names as the sidebar shows them; a project granted after the shell loaded asks once.
       const names = new Map(projects.map((project) => [project.id, project.name]));
-      for (const projectId of new Set(items.map((item) => item.projectId))) {
+      for (const projectId of new Set([...items, ...gave.items].map((item) => item.projectId))) {
         if (names.has(projectId)) continue;
         try { names.set(projectId, (await getProject(projectId, controller.signal)).name); } catch {
           if (controller.signal.aborted) return;
           names.set(projectId, 'Space');
         }
       }
-      if (!controller.signal.aborted) { setLoaded({ userId, items, total, failed, names }); readEnded.current?.(); readEnded.current = null; }
+      if (!controller.signal.aborted) { setLoaded({ userId, items, total, failed: failed || gave.failed, given: gave.items, givenTotal: gave.total, names }); readEnded.current?.(); readEnded.current = null; }
     })();
     return () => controller.abort();
   }, [me.user.id, workspaces, projects, refresh]);
@@ -72,14 +76,43 @@ export function HomeTasks() {
 
   // On a touch screen, pulling the list down from the top reads again (the list also reads when shown again).
   const pulling = (node: ReactNode) => <PullToRefresh onRefresh={() => new Promise<void>((resolve) => { readEnded.current = resolve; setRefresh((n) => n + 1); })}>{node}</PullToRefresh>;
-  const groups = new Map<string, WorkItem[]>();
-  for (const item of shown.items) groups.set(item.projectId, [...(groups.get(item.projectId) ?? []), item]);
-  const ordered = [...groups.entries()]
-    .map(([projectId, items]) => ({ projectId, name: shown.names.get(projectId) ?? 'Space',
-      items: items.sort((a, b) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || b.updatedAt.localeCompare(a.updatedAt)) }))
-    .sort((a, b) => a.name.localeCompare(b.name) || a.projectId.localeCompare(b.projectId));
+  // The work, a space at a time, in the Tasks view's order.
+  const byPlace = (list: WorkItem[]) => {
+    const groups = new Map<string, WorkItem[]>();
+    for (const item of list) groups.set(item.projectId, [...(groups.get(item.projectId) ?? []), item]);
+    return [...groups.entries()]
+      .map(([projectId, items]) => ({ projectId, name: shown.names.get(projectId) ?? 'Space',
+        items: items.sort((a, b) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || b.updatedAt.localeCompare(a.updatedAt)) }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.projectId.localeCompare(b.projectId));
+  };
+  const ordered = byPlace(shown.items);
+  const gave = byPlace(shown.given);
+  // A row reads as in every other list (personas-33): its state glyph with its word, then its number and title. Under them one quiet line: what a blocked
+  // task waits for, who has a task you gave, and its due day (#1519).
+  const row = (item: WorkItem, giver: boolean) => {
+    const meta = [giver && item.owner ? item.owner.name : null, item.dueOn ? dueShort(item.dueOn) : null].filter(Boolean).join(' · ');
+    return (
+      <li key={item.id}>
+        <RefLink className="home-tasks__item" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
+          <span className={`home-tasks__status is-${item.status}`}><StatusGlyph status={item.status} size={16} className="home-tasks__glyph" />{STATUS_LABEL[item.status]}</span>
+          <span className="home-tasks__body">
+            <span className="home-tasks__title"><span className="home-tasks__num ui-task-number">{taskNumber(item)}</span> {item.title}</span>
+            {item.status === 'blocked' ? <span className="home-tasks__why">{blockedLine(item, me.user.id)}</span> : null}
+            {meta ? <span className="home-tasks__meta">{meta}</span> : null}
+          </span>
+          <Icon name="chevron-right" size={14} className="home-tasks__go" />
+        </RefLink>
+      </li>
+    );
+  };
+  const places = (list: typeof ordered, giver: boolean) => list.map((group) => (
+    <div className="home-tasks__place" key={group.projectId}>
+      <h3 className="home-tasks__name">{group.name}</h3>
+      <ul className="home-tasks__list">{group.items.map((item) => row(item, giver))}</ul>
+    </div>
+  ));
 
-  if (!shown.items.length) {
+  if (!shown.items.length && !shown.given.length) {
     if (shown.failed) {
       return (
         <ErrorState title="My tasks couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={again}>Try again</Button>}>
@@ -104,28 +137,17 @@ export function HomeTasks() {
       {shown.failed ? (
         <p className="home-tasks__note" role="alert">Some of your tasks could not be loaded. <button type="button" className="ui-link" onClick={again}>Try again</button></p>
       ) : null}
-      {ordered.map((group) => (
-        <div className="home-tasks__place" key={group.projectId}>
-          <h3 className="home-tasks__name">{group.name}</h3>
-          <ul className="home-tasks__list">
-            {group.items.map((item) => (
-              <li key={item.id}>
-                <RefLink className="home-tasks__item" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
-                  {/* A task reads as in every other list (personas-33): its state glyph with its word, then its number and title. */}
-                  <span className={`home-tasks__status is-${item.status}`}><StatusGlyph status={item.status} size={16} className="home-tasks__glyph" />{STATUS_LABEL[item.status]}</span>
-                  <span className="home-tasks__body">
-                    <span className="home-tasks__title"><span className="home-tasks__num ui-task-number">{taskNumber(item)}</span> {item.title}</span>
-                    {item.status === 'blocked' ? <span className="home-tasks__why">{blockedLine(item, me.user.id)}</span> : null}
-                  </span>
-                  <Icon name="chevron-right" size={14} className="home-tasks__go" />
-                </RefLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {places(ordered, false)}
       {shown.total > shown.items.length ? (
         <p className="home-tasks__more">Showing {shown.items.length} of {shown.total}. Open a space’s Tasks for the rest.</p>
+      ) : null}
+      {/* The tasks you made for other people and that are not done: who has each, and when it is due (#1519, "tasks I gave others"). */}
+      {gave.length ? (
+        <section className="home-tasks__given" aria-labelledby="home-given-h">
+          <h2 id="home-given-h" className="home-tasks__section">Tasks you gave others</h2>
+          {places(gave, true)}
+          {shown.givenTotal > shown.given.length ? <p className="home-tasks__more">Showing {shown.given.length} of {shown.givenTotal}. Open a space’s Tasks for the rest.</p> : null}
+        </section>
       ) : null}
     </section>,
   );

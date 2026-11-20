@@ -501,7 +501,11 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 .home-tasks__status.is-blocked { color: var(--t1); }
 .home-tasks__body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .home-tasks__title { overflow-wrap: anywhere; }
-.home-tasks__why { color: var(--t3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.home-tasks__why, .home-tasks__meta { color: var(--t3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+/* The tasks you gave others: a second section under your own, in the same rows (#1519). */
+.home-tasks__given { margin-top: 32px; }
+.home-tasks__section { margin: 0 0 12px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
+.home-tasks__section + .home-tasks__place { margin-top: 0; }
 .home-tasks__go { flex: none; display: block; height: calc(var(--fs-md) * 1.45); color: var(--t3); }
 .home-tasks__more { margin-top: 14px; color: var(--t3); font-size: var(--fs-sm); }
 .home-tasks__center { display: flex; justify-content: center; padding: 48px 0; }
