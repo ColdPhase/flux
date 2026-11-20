@@ -548,12 +548,13 @@ function DmContent({ initial }: { initial: Dm }) {
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value, position) => { menu.change(position); change(value); }}
             onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title} · / actions`, `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
-            fieldProps={{ 'aria-describedby': asking ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
+            fieldProps={{ 'aria-describedby': asking && !dm.aiOff?.length ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
               'aria-activedescendant': menu.open ? `dm-composer-menu-${menu.options[menu.active]!.id}` : undefined }}
             menu={<ComposerMenu open={menu.open} id="dm-composer-menu" options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />}
             attach={asking || recipientGone ? null : composer}
             sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
-          {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
+          {/* While AI is off here (C-73) nobody's agent answers, so there is no audience to name: the line under the field says why. */}
+          {asking && !dm.aiOff?.length ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : null}
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />

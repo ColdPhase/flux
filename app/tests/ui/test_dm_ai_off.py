@@ -95,6 +95,7 @@ class DirectMessageAiOff(unittest.TestCase):
         composer.press("Enter")
         expect(ada.get_by_role("alert")).to_contain_text("AI is off in this conversation · turned off by Kai. Remove /ai to send these words as a message.")
         expect(composer).to_have_value("/ai what did Kai say about the invoice?")
+        expect(ada.locator(".composer__audience")).to_have_count(0)
         shot(ada, "dm-ai-off-desktop-1440-ai-refused-light")
         open_details(ada)
         ada_details = ada.locator("#details")
