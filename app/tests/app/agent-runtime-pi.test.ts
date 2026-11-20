@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
-import type { AddressInfo } from 'node:net';
+import { createServer, type AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { agentConnectionPath, assistantChangeActionPath, type Conversation, type Project, type Workspace } from '@flux/contracts';
@@ -9,7 +9,8 @@ import { RUN_TOKEN_LIMITS } from '@flux/contracts';
 import { createModelGateway, createPersonalRunProcessor, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { MODEL_GATEWAY_LIMITS, parseModelGatewayUrl, parseRuntimeEngines, parseSupervisorRequest } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
-import { classifyPiError, gatewayProvider, piArgs, PI_OWN_TOOLS } from '../../apps/runtime/src/supervisor/pi.js';
+import { probeGateway } from '../../apps/runtime/src/supervisor/gateway-probe.js';
+import { classifyPiError, gatewayProvider, piArgs, piErrorClass, PI_OWN_TOOLS } from '../../apps/runtime/src/supervisor/pi.js';
 import { RUN_BRIEF_OWN_TOOLS } from '../../apps/runtime/src/supervisor/run.js';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
@@ -45,6 +46,8 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   const why = async (runId: string) => JSON.stringify({ row: await row(runId), requests: gateway.requests.map((request) => ({ path: request.path, tools: request.tools })), pi: lastPi }, null, 1).slice(0, 20_000);
   let processor: ReturnType<typeof createPersonalRunProcessor>;
   let apiUrl = ''; let closeApp: () => Promise<void> = async () => undefined;
+  /** runtime-manager's log lines (#1556). */
+  const managerLines: Record<string, unknown>[] = [];
 
   const ask = (prompt = 'Make a page of the notes') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
   const row = async (runId: string) => (await pool.query('SELECT status, end_reason, answer_body, cost_state, engine FROM personal_runs WHERE id = $1', [runId])).rows[0] as Record<string, unknown>;
@@ -55,7 +58,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     // The manager first, then an API of this file's own that reaches it (flux_attach_file reads a run's scratch through it, #1437), then
     // the slot, whose pi reaches that API's MCP route.
     const slots = new Map<string, { host: string; port: number; secret: string }>();
-    manager = createManagerServer({ secret: SECRET, slots, log: () => undefined });
+    manager = createManagerServer({ secret: SECRET, slots, log: (event) => { managerLines.push(event); } });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     const managerUrl = `http://127.0.0.1:${(manager.address() as AddressInfo).port}`;
     const env: NodeJS.ProcessEnv = { ...process.env, FLUX_AGENT_RUNTIME: 'pi', FLUX_RUNTIME_MANAGER_URL: managerUrl, FLUX_RUNTIME_MANAGER_SECRET: SECRET,
@@ -151,6 +154,41 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     const stored = await row(started.run.id);
     assert.deepEqual([stored.end_reason, stored.answer_body, stored.cost_state], ['budget', null, 'released']);
     assert.equal(gateway.requests.length, 1, 'pi does not retry a refusal');
+  });
+
+  test('#1556: a run whose model gateway is unreachable ends "gateway_unreachable", never a provider failure, and runtime-manager logs the cause', async () => {
+    // A port nobody listens on: the runtime → gateway path is blocked, as by the firewall rule of the founder's server.
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, '127.0.0.1', done));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((done) => closed.close(() => done()));
+    const origin = slot.config.modelOrigin;
+    slot.config.modelOrigin = `http://127.0.0.1:${port}`;
+    managerLines.length = 0;
+    try {
+      gateway.script([]);
+      const started = await ask('Summarize the notes');
+      assert.equal(await processor.process(started.run.id), 'unavailable', await why(started.run.id));
+      const stored = await row(started.run.id);
+      assert.deepEqual([stored.status, stored.end_reason, stored.answer_body], ['unavailable', 'gateway_unreachable', null]);
+      assert.equal(gateway.requests.length, 0, 'the gateway was never asked');
+      const lines = managerLines.filter((line) => line.kind === 'run');
+      assert.equal(lines.length, 1, JSON.stringify(managerLines));
+      assert.equal(lines[0]!.outcome, 'gateway_unreachable');
+      assert.ok(['connection_refused', 'connection_error'].includes(String(lines[0]!.error)), JSON.stringify(lines[0]));
+      assert.match(String(lines[0]!.lastEvent), /^[a-z_]+$/);
+      assert.ok(!JSON.stringify(lines).includes('Summarize'), 'no content in the line');
+    } finally { slot.config.modelOrigin = origin; }
+  });
+
+  test('#1556: the runtime\'s start check of the gateway path', async () => {
+    assert.equal(await probeGateway(gateway.url), 'ok');
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, '127.0.0.1', done));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((done) => closed.close(() => done()));
+    assert.equal(await probeGateway(`http://127.0.0.1:${port}`), 'connection_refused');
+    assert.equal(await probeGateway('http://flux-no-such-host.invalid:8081'), 'dns');
   });
 
   test('pi attaches a file it made in its scratch with flux_attach_file (#1437), like its asker\'s own upload', async () => {
@@ -259,6 +297,14 @@ describe('pi\'s launcher templates and the protocol (#1441)', () => {
     assert.equal(classifyPiError('400 prompt is too long: 210000 tokens > 200000 maximum'), 'input_too_large');
     assert.equal(classifyPiError('404 model_not_found'), 'model_unavailable');
     assert.equal(classifyPiError('500 upstream broke'), 'crashed');
+    // #1556: pi never reached the gateway; the gateway's own answer about the provider's connection stays the provider's.
+    for (const text of ['Connection error.', 'fetch failed', 'connect ECONNREFUSED 172.18.0.5:8081', 'Connect Timeout Error (attempted address: runtime-egress:8081, timeout: 10000ms)',
+      'getaddrinfo ENOTFOUND runtime-egress']) assert.equal(classifyPiError(text), 'gateway_unreachable', text);
+    assert.equal(classifyPiError('502 {"error":"connect ECONNREFUSED api.anthropic.com"}'), 'crashed');
+    assert.equal(piErrorClass('502 {"error":"connect ECONNREFUSED api.anthropic.com"}'), 'http_502');
+    assert.equal(piErrorClass('socket hang up'), 'connection_reset');
+    assert.equal(classifyPiError('socket hang up'), 'crashed', 'a reset after connecting may have reached the gateway');
+    assert.equal(classifyPiError('400 Your request was refused under our usage policy'), 'refused');
   });
 
   test('a run in pi needs its key\'s provider and model; a plan CLI\'s run takes neither key field', () => {

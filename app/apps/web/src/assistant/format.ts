@@ -133,6 +133,8 @@ function endedWords(run: AssistantRun): string | null {
   // When it comes back and what the owner can do (v0.2.1 release gate, J34): the day's budget starts again tomorrow, and Connect AI raises it.
   if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget, so nothing more was sent today. It starts again tomorrow, or raise the budget in Settings › AI.';
   if (run.endReason === 'credits') return 'API credits used up. API requests stop until your next monthly credits arrive.';
+  // #1556: the AI provider was never asked; the path inside this server is broken, which only whoever runs Flux can fix.
+  if (run.endReason === 'gateway_unreachable') return 'Flux couldn’t reach its model gateway, so the AI provider wasn’t asked. Tell whoever runs Flux. Nothing was posted.';
   if (onRuntime(run)) {
     const words = runtimeEndedText(run);
     if (words) return words;
@@ -150,7 +152,7 @@ function endedWords(run: AssistantRun): string | null {
   }
 }
 
-export const canRetry = (run: AssistantRun) => run.endReason !== 'ai_off' && (run.status === 'provider_failed' || run.status === 'stopped')
+export const canRetry = (run: AssistantRun) => run.endReason !== 'ai_off' && (run.status === 'provider_failed' || run.status === 'stopped' || run.endReason === 'gateway_unreachable')
   || (onRuntime(run) && (run.endReason === 'slot_busy' || run.endReason === 'wall_clock' || run.endReason === 'max_turns' || run.endReason === 'plan_limit'));
 
 export type AskState =

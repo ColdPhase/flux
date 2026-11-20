@@ -215,6 +215,13 @@ the token as its API key; it adds the provider's usual paths:
   when the worker's shared bound on request bodies in memory is full instead, the same code comes with `x-should-retry: true` and
   `retry-after: 2`, and the harness sends it again). After a 402 or 403 the
   harness gets no further answer and stops; Flux ends the run calmly, as on a server run ("budget" for the day's money).
+- **An unreachable gateway** (#1556): when pi cannot connect to the gateway at all (refused, a connect timeout, no such host), the
+  provider was never asked, so the run ends `gateway_unreachable` (status unavailable), never as a provider failure. The asker reads
+  "Flux couldn't reach its model gateway, so the AI provider wasn't asked. Tell whoever runs Flux. Nothing was posted." and can try
+  again. Every run of pi that ends without an answer names its cause in runtime-manager's log line (`error`: the class of pi's
+  error such as `connection_refused` or `http_502`, or how pi ended; `lastEvent`: the type of the last event pi printed), never its
+  words. When the runtime starts with pi, it opens one TCP connection to `runtime-egress:8081` and logs `gateway_probe` with `ok`,
+  or `unreachable` with the class and a sentence for the operator, before any person's run meets a blocked path.
 - **Metering** ([CA-3](model-providers.md#ca-3--the-providers-limits-not-fluxs)). Before a request is sent, the most it can cost
   (its body's bytes as input tokens plus 1,024, at the cache-write rate where the provider has one, and its output bound, at the run
   model's price) is held on the run against what is left of the key's daily budget, with everything else on the key that day.

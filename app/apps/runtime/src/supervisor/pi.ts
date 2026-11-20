@@ -103,9 +103,33 @@ export function classifyPiError(text: string): RunOutcome {
   if (/\bflux_credits\b|credit balance is too low|insufficient_quota|insufficient credits|exceeded your current quota/i.test(text)) return 'credits';
   if (/prompt is too long|context_length_exceeded|maximum context length|context window|too many tokens/i.test(text)) return 'input_too_large';
   if (MODEL_NOT_ACCEPTED.test(text) || /\bnot_found_error\b.*\bmodel\b/i.test(text)) return 'model_unavailable';
-  if (/usage policy|content policy|refus/i.test(text)) return 'refused';
+  // pi never reached the gateway (#1556): the provider was not asked, so this is no provider failure (and `ECONNREFUSED` is no refusal).
+  if (GATEWAY_UNREACHABLE.has(piErrorClass(text))) return 'gateway_unreachable';
+  if (/usage policy|content policy|\brefus/i.test(text)) return 'refused';
   return 'crashed';
 }
+
+/**
+ * The class of pi's error text, for the operator's log line (#1556) and `classifyPiError`; never its words. An HTTP status first: the gateway
+ * answered, so whatever its body says about the provider's connection is the provider's. Then Node's and undici's connection errors, which
+ * pi's provider clients carry in their message or cause (`Connection error.`, `fetch failed`, `connect ECONNREFUSED 172.18.0.5:8081`).
+ */
+export function piErrorClass(text: string): string {
+  const status = /^\s*(\d{3})\b/.exec(text);
+  if (status) return `http_${status[1]}`;
+  if (/ECONNREFUSED|connection refused/i.test(text)) return 'connection_refused';
+  if (/UND_ERR_CONNECT_TIMEOUT|Connect Timeout|connect ETIMEDOUT/i.test(text)) return 'connect_timeout';
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(text)) return 'dns';
+  if (/EHOSTUNREACH|ENETUNREACH/i.test(text)) return 'unreachable';
+  if (/ECONNRESET|socket hang up|UND_ERR_SOCKET/i.test(text)) return 'connection_reset';
+  if (/^\s*Connection error|fetch failed/i.test(text)) return 'connection_error';
+  if (/timed? ?out/i.test(text)) return 'timeout';
+  return 'other';
+}
+/** The classes in which pi's request never reached the gateway. A reset or a timeout after connecting is not one: the gateway may have answered. */
+const GATEWAY_UNREACHABLE = new Set(['connection_refused', 'connect_timeout', 'dns', 'unreachable', 'connection_error']);
+/** An event type as the log may carry it. */
+const eventType = (type: string) => (/^[a-z_]{1,40}$/.test(type) ? type : null);
 
 const MAX_LINE_BYTES = 4 * 1024 * 1024;
 const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
@@ -129,18 +153,20 @@ export const installedPi = (paths: PiPaths) => access(paths.cli, constants.R_OK)
 export async function runPi(config: SupervisorConfig, request: PiRequest, dir: string, person: Person, send: Send): Promise<Outcome> {
   const paths = config.piPaths ?? PI_PATHS;
   const runs = runsOf(config);
-  const crashed = (): Outcome => ({ result: { kind: 'run', runId: request.runId, outcome: 'crashed', answer: null, resetsAt: null, turns: 0 } });
+  // pi did not start: the step that failed is the run's cause in runtime-manager's line (#1556).
+  const crashed = (step: string): Outcome => ({ result: { kind: 'run', runId: request.runId, outcome: 'crashed', answer: null, resetsAt: null, turns: 0,
+    cause: { error: step, lastEvent: null } } });
   const mcpUrl = config.mcpUrl ?? `http://${config.egressHost}:8080/mcp`;
   const modelOrigin = config.modelOrigin ?? MODEL_GATEWAY_ORIGIN;
   // pi never runs without its own shell and files (founder decision 2026-11-13, #1441): no sandbox, no run.
   const sandbox: SandboxSetup | null = config.sandbox ?? null;
-  if (!sandbox) return crashed();
+  if (!sandbox) return crashed('no_sandbox');
   const runDir = join(config.tmpDir, `run-${request.runId}`);
   await rm(runDir, { recursive: true, force: true });
   await mkdir(runDir);
   await chmod(runDir, 0o755);
   let scratch: string;
-  try { scratch = await createScratch(sandbox, request.runId, person); } catch { await rm(runDir, { recursive: true, force: true }).catch(() => undefined); return crashed(); }
+  try { scratch = await createScratch(sandbox, request.runId, person); } catch { await rm(runDir, { recursive: true, force: true }).catch(() => undefined); return crashed('no_scratch'); }
   const brief = RUN_BRIEF_OWN_TOOLS;
   // pi's own files hold no secret: the run token is named (`$FLUX_RUN_TOKEN`), never written.
   const files: Record<string, unknown> = {
@@ -159,12 +185,12 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     await asThem(person, 'rm -rf -- "$1/tmp" && mkdir -m 0700 -- "$1/tmp"', dir);
     await clearLeftovers(config.tmpDir, person);
   };
-  if (!(await freshHome(person, dir, runDir))) { await cleanUp(); return crashed(); }
+  if (!(await freshHome(person, dir, runDir))) { await cleanUp(); return crashed('no_home'); }
   // The broker that starts every shell of the run outside pi's domain (#1437, #1461), as for the CLIs: pi's domain may execute nothing but
   // node and the sandbox, so its `bash` (Flux's sandbox shell) hands each command to the broker. Without it pi would have no shell: the run
   // does not start.
   const broker: Broker | null = await startBroker(sandbox, scratch, runDir, person).catch(() => null);
-  if (!broker) { await cleanUp(); return crashed(); }
+  if (!broker) { await cleanUp(); return crashed('no_broker'); }
 
   const work = scratch;
   const env: Record<string, string> = {
@@ -248,6 +274,9 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
 
     let assistantMessages = 0;
     let lastAssistant: Record<string, unknown> | null = null;
+    /** For the operator's line of a run without an answer (#1556): the last event type pi printed and the class of its error. */
+    let lastEvent: string | null = null;
+    let errorClass: string | null = null;
     /**
      * The read-back (RT-5): every system message lists the tools pi offers the model (`toolsAdded`). Anything but the run's exact Flux tools
      * and pi's four own tools stops the run with nothing committed; so does a run whose Flux server offered no tool.
@@ -264,6 +293,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     const handle = (event: Record<string, unknown>) => {
       if (outcome) return;
       const type = typeof event.type === 'string' ? event.type : '';
+      lastEvent = eventType(type) ?? lastEvent;
       const message = isObject(event.message) ? event.message : null;
       if (type === 'message_start' && message?.role === 'system') { checkTools(message); return; }
       if (!initSeen && type !== 'session' && type !== 'agent_start' && type !== 'turn_start') {
@@ -301,7 +331,12 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
         const last = lastAssistant as Record<string, unknown> | null;
         if (event.aborted === true || last?.stopReason === 'aborted') { outcome = stopping ? 'stopped' : 'crashed'; return; }
         if (!last) { outcome = 'crashed'; return; }
-        if (last.stopReason === 'error') { outcome = classifyPiError(typeof last.errorMessage === 'string' ? last.errorMessage : ''); return; }
+        if (last.stopReason === 'error') {
+          const words = typeof last.errorMessage === 'string' ? last.errorMessage : '';
+          errorClass = piErrorClass(words);
+          outcome = classifyPiError(words);
+          return;
+        }
         const text = textOf(last);
         if (Buffer.byteLength(text, 'utf8') > request.caps.maxAnswerBytes) outcome = 'answer_too_large';
         else { answer = text; outcome = 'completed'; }
@@ -347,7 +382,10 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
       killGroup('SIGKILL');
       if (!outcome) outcome = resultSeen ? 'unknown' : stopping ? 'stopped' : code === 0 || pending.length ? 'unknown' : 'crashed';
       if (config.piDiagnostics) void readFile(join(home, 'mcp.log'), 'utf8').catch(() => '').then((mcpLog) => config.piDiagnostics!({ stderr, mcpLog, events: [`outcome ${outcome}`, ...seen] }));
-      resolve({ kind: 'run', runId: request.runId, outcome, answer: outcome === 'completed' ? answer : null, resetsAt: null, turns });
+      // A run without an answer always says why in runtime-manager's line (#1556): pi's error class, or how pi ended, and its last event.
+      const cause = outcome === 'completed' || outcome === 'stopped' ? null
+        : { error: errorClass ?? (resultSeen || outcome !== 'crashed' ? outcome : code === null ? 'no_result' : `exit_${code}`), lastEvent };
+      resolve({ kind: 'run', runId: request.runId, outcome, answer: outcome === 'completed' ? answer : null, resetsAt: null, turns, ...(cause ? { cause } : {}) });
     };
     child.on('error', () => settle(null));
     child.on('close', (code) => settle(code));
