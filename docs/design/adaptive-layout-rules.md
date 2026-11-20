@@ -54,13 +54,14 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 
 No rule caps the whole application. Reading measures are set per surface.
 
-**Map layout and controls (decision, 2026-10-30, #151 AC-1).** The thoughts' layout follows the map's own width
-(*container*): a map at most 640 px wide (`NARROW_MAP` in `sketch/SketchMap.tsx`, measured on the map's wrapper with a
-ResizeObserver) shows the two columns, a wider one the plane, on any device. The controls follow the device and window
-as before (*viewport*, `MEDIA.phone`): a computer keeps its toolbar, zoom and Fit with the columns, and never gets
-the phone's Map options sheet or Thought button. In the columns nothing is arranged by dragging, as on a phone.
-So a desktop map beside docked Details at 1001–1200 px (about 450 px wide at 1100) takes the columns with the computer's
-controls, and the plane returns when the map is wider again; each layout keeps its own camera and zoom (test_02b).
+**Map layout and controls (decision, 2026-11-20, C-67, #1553; it replaces the 2026-10-30 rule of #151 AC-1).** A map looks the same
+on every device and in every pane: the thoughts stand where people arranged them, on the computer's plane, and no width projects
+them into columns. A phone or a map beside docked Details shows that plane with free pan (one finger or the trackpad) and pinch zoom
+from Fit's floor to 150 %; the person's place on it is remembered per person, map and device, and Fit frames a map only the first time
+it is opened on that device, or when asked. The controls follow the device and window (*viewport*, `MEDIA.phone`): a computer keeps
+its toolbar, zoom and Fit at any pane width and never gets the phone's Map options sheet or Thought button; the phone's header pills and
+Thought float over the plane, which scrolls under them, and Fit leaves room for them. Connecting and arranging stay computer-only on
+the phone (S15).
 
 ## Input modes
 

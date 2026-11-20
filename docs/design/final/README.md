@@ -253,7 +253,7 @@ looks ugly"):
   follows the dock's curve and never draws a 10 px box inside the round bar. These are map tools (`sk-tool sk-tool--word`), not system
   buttons, whose radius stays 10. A notice under the map's header (a kept private movement, the read-only line, a kept edit) takes its own
   room and never lies on what it is about: in the List it opens the list's column, in its flow above the first row; on the Map it is a
-  raised card under the header and the plane starts under it (the computer's canvas inset and the phone's projection), so it covers no
+  raised card under the header and the plane starts under it (the canvas inset, on the computer and on the phone), so it covers no
   thought; with no notice the plane starts under the header, as before.
 - **Tasks:** below 2000 px the List starts at the toolbar's left edge; a card's number and owner stay on one line (a long name ends in
   an ellipsis); where the number, a due day and the owner's face, mark and a few letters do not fit one line (a column beside the open
@@ -912,7 +912,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S12 | **Giving a task to an agent is its Owner field.** The picker lists people and then "Your agents", only your own. In a space with AI off, "Your agents" disappear from the picker and it lists people only. Each agent shows its Kreska in its own colour. There is no hand-off window. |
 | S13 | A working agent is always visible: one state line under its last message in the task's discussion, with Stop, and its face in the space header while it works. The agent's owner or the space admin can Stop it. |
 | S14 | An agent's question is a message with two to four ready answers, and an Inbox item for the person asked. |
-| S15 | On the phone the map is for viewing and for adding a thought. Connecting and arranging happen on the computer. |
+| S15 | On the phone the map is for viewing and for adding a thought. Connecting and arranging happen on the computer. The phone shows the computer's plane with free pan and pinch zoom, never a column layout (C-67). |
 | S16 | **One search** over spaces, people, messages, tasks, Wiki pages, files and thoughts you can see, grouped by kind, with no filter chips. |
 | S17 | Larger small text on the phone; the phone's text size setting applies. At 200 % (Android's font scale, large text; the type tokens are rem) nothing overlaps and nothing is lost (#1370): **initials sit inside their circle at any text size** (the face tokens `--fs-face`, `--fs-face-lg` and `--fs-face-xl` are px on purpose, like `--fs-input-touch`), the space's header folds the people and Call into ⋯ as on a narrow window (its container queries are in rem), and **the composer's hint is one line**: it shortens from "Message · @ mention · / actions" to "Message · @ · /" and then "Message" when the field has no room for more. |
 | S18 | Keyboard shortcuts, shown in menus. |
@@ -2170,9 +2170,18 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   touch screen only (a tablet), a toggle that makes each tap add to the selection, because touch has no Shift-click; a computer selects several with
   Shift-click, and the phone selects one thought at a time (S15).
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
-  follows S15: view and add a thought. **The map is framed below its header** (#1424): a space's title pill and **Map options** share
-  the first row, 10 px from the edges, and the thoughts start under that row, so nothing floats over the first thought; a long title
-  gives way with an ellipsis, never over Map options. The one line "Connect and arrange on a computer" is said **once** per person on a
+  follows S15: view and add a thought. **A map looks the same on every device** (founder decision, Hubert, 2026-11-20,
+  [#1553](https://github.com/ColdPhase/flux/issues/1553), C-67): the phone, and any narrow pane such as a map beside docked Details, shows the
+  **same plane as the computer**, the positions people arranged, never a two-column projection; a thought's place never changes with the
+  screen or with a selection. **Touch:** one finger pans the plane, two fingers pinch-zoom it from Fit's floor to 150 %, a double tap zooms in,
+  a tap selects; a thought moves only after a long press and then a drag, on a screen that arranges (a tablet; the phone does not, S15), so a
+  pan never moves a thought. **The view is remembered** per person, map and device (the zoom, the place on the plane and the selected thought):
+  a map opens where it was left on Back, a tab or a link to the map, and **Fit** frames it only the first time it is opened on that device, or
+  when pressed; a link to a thought still centres that thought. **The header floats over the plane** (#1424): a space's title pill and **Map options**
+  share the first row, 10 px from the edges, and **Thought** floats at the bottom; the plane scrolls under them, Fit leaves room for them so no
+  thought is hidden for good, and a long title gives way with an ellipsis, never over Map options. A thought's line of provenance ("From Ada
+  Kowalska (you) · 19 lis, 21:25") stays one line whose parts never overlap: only the name gives way, with an ellipsis, and keeps at least its
+  first letters, so "(you)" and the time stay whole; where even that does not fit, the card's edge clips the end. The one line "Connect and arrange on a computer" is said **once** per person on a
   device, with its own quiet close (**Dismiss**), and is not drawn again on any map after that.
 
 ### Settings
