@@ -554,10 +554,10 @@ export function SketchMap(props: SketchMapProps) {
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { ro.disconnect(); el.removeEventListener('scroll', onScroll); };
   }, [sync]);
-  useLayoutEffect(() => {
-    geometry.current = { rects, origin, zoom };
-    apply();
-  });
+  // Only the geometry follows each render. The camera is put back where the layout changed under it (`sync`) and where a view is chosen
+  // (opening, Fit), never on every render: WebKit delivers the scroll event of a pan or a wheel a frame later, so a render in between
+  // would put the view back to where it was before the pan.
+  useLayoutEffect(() => { geometry.current = { rects, origin, zoom }; });
 
   // #509: the plane has no fixed edge, so its origin follows the outermost thoughts. When it moves
   // (a thought landed beyond the edge) the view moves with it, so nothing on screen jumps. A zoom

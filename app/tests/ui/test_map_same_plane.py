@@ -97,8 +97,11 @@ class MapSamePlane(unittest.TestCase):
         first = boxes[ROWS[0][0]]
         return {text: (round((box['x'] - first['x']) / zoom), round((box['y'] - first['y']) / zoom), round(box['width'] / zoom)) for text, box in boxes.items()}
 
-    # -- touch through Chromium's own gesture handling
+    # -- touch through Chromium's own gesture handling (a pan, a pinch and a long press need CDP's touch points; Playwright's WebKit has
+    # only a tap, so those gestures are Chromium's here and the rest runs on both)
     def cdp(self, page):
+        if os.environ.get('FLUX_UI_BROWSER', 'chromium') != 'chromium':
+            self.skipTest('multi-point touch gestures are dispatched through Chromium DevTools only')
         if not hasattr(page, '_cdp'):
             page._cdp = page.context.new_cdp_session(page)
         return page._cdp
@@ -127,6 +130,9 @@ class MapSamePlane(unittest.TestCase):
         page.wait_for_timeout(300)
 
     def tap(self, page, point):
+        if os.environ.get('FLUX_UI_BROWSER', 'chromium') != 'chromium':
+            page.touchscreen.tap(*point)
+            return
         self.touch(page, 'touchStart', point)
         page.wait_for_timeout(40)
         self.touch(page, 'touchEnd')
