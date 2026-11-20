@@ -38,8 +38,14 @@ export function takeAsk(text: string): { body: string; ask: AgentQuestion | null
   const body = (joinsAddress(text, joined) ? `${text.slice(0, start)}\n${text.slice(end + CLOSE.length)}` : joined).trim();
   try {
     const raw = JSON.parse(text.slice(start + OPEN.length, end)) as { agent?: unknown; owner?: unknown; question?: unknown };
-    const agent = typeof raw.agent === 'string' ? raw.agent.trim() : '';
-    const owner = typeof raw.owner === 'string' ? raw.owner.trim() : '';
+    const written = typeof raw.agent === 'string' ? raw.agent.trim() : '';
+    const given = typeof raw.owner === 'string' ? raw.owner.trim() : '';
+    // A model often names the agent as Flux listed it to it, "Asystent (Dariusz's agent)" (`askableLines`, `agentLabel`): that is the
+    // agent "Asystent" of Dariusz, unless the block names another owner (real-model check with pi, 2026-11-20).
+    const label = fromLabel(written);
+    const fits = label !== null && (!given || sameOwner(given, label.owner));
+    const agent = fits ? label.name : written;
+    const owner = fits ? (given || label.owner) : given;
     const question = typeof raw.question === 'string' ? raw.question.trim() : '';
     if (!agent || agent.length > NAME_LIMIT || owner.length > NAME_LIMIT || !question || question.length > QUESTION_LIMIT) return { body, ask: null };
     return { body, ask: { agent, ...(owner ? { owner } : {}), question } };
@@ -47,6 +53,19 @@ export function takeAsk(text: string): { body: string; ask: AgentQuestion | null
     return { body, ask: null };
   }
 }
+
+const LABEL_END = "'s agent)";
+/** "Asystent (Dariusz's agent)" as its name and owner; null for any other name. Read by position, not by a pattern (the text is a model's). */
+function fromLabel(written: string): { name: string; owner: string } | null {
+  if (!written.endsWith(LABEL_END)) return null;
+  const open = written.indexOf(' (');
+  if (open <= 0) return null;
+  const name = written.slice(0, open).trim();
+  const owner = written.slice(open + 2, written.length - LABEL_END.length).trim();
+  return name && owner ? { name, owner } : null;
+}
+/** The same owner, by whole or first name, without case. */
+const sameOwner = (a: string, b: string) => [a, first(a)].some((one) => [b, first(b)].some((other) => one.toLowerCase() === other.toLowerCase()));
 
 export interface Askable { id: string; name: string; ownerId: string; ownerName: string }
 

@@ -1,6 +1,6 @@
 import type http from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { claudeReal, codexReal, codexSearchReal, realModelOn, realTranscript } from './real-model.js';
+import { claudeReal, codexReal, codexSearchReal, piReal, realModelOn, realTranscript } from './real-model.js';
 
 /**
  * TEST ONLY (#1125): the vendors of the REAL pinned Claude Code and Codex, served by the `providermock` service for
@@ -27,7 +27,8 @@ import { claudeReal, codexReal, codexSearchReal, realModelOn, realTranscript } f
  *
  * With `FLUX_CLI_REAL_MODEL_URL` set (scripts/check_ai_real_model.sh), a REAL local model answers instead of the steps: the model requests
  * and the searches go to real-model.ts, `GET /__real/transcript?since=n` returns what the model was sent and answered, and everything else
- * here (sign-in, refresh, usage, the revoked key, the journal) stays as it is.
+ * here (sign-in, refresh, usage, the revoked key, the journal) stays as it is. `/real/openai/v1/…` is then also the OpenAI-compatible endpoint
+ * of the check's API keys (pi, #1441): passed through to the model unchanged and recorded (`piReal`).
  */
 
 type Json = Record<string, unknown>;
@@ -356,6 +357,8 @@ export function handleCliVendor(request: http.IncomingMessage, response: http.Se
   }
   if (path === '/__cli/journal') { json(response, 200, { journal: state.journal }); return true; }
   if (path === '/__real/transcript') { json(response, 200, { transcript: realTranscript(Number(url.searchParams.get('since') ?? '0')) }); return true; }
+  // An API key's endpoint for the pi engine (#1441): passed through to the real model unchanged, and recorded.
+  if (path.startsWith('/real/openai/v1/') && realModelOn()) { void piReal(request, response, path.slice('/real/openai'.length), raw); return true; }
   if (!path.startsWith('/cli/')) return false;
 
   if (path.startsWith('/cli/anthropic/')) {
