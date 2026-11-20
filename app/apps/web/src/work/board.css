@@ -22,15 +22,8 @@
 /* In reading order: [Board | List] [Mine] [Search tasks], then "+ Task" at the far end (Spokój S6). */
 .tb-search { margin-left: 8px; }
 .tb-add.ui-btn { margin-left: auto; }
-.tb-mode { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--seg); box-shadow: var(--sh-seg); }
-.tb-mode__b {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: calc(var(--ctl) - 4px); min-width: 26px; padding: 0 12px;
-  border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--seg-off); transition: var(--tr);
-}
-.tb-mode__b svg { display: none; }
-@media (hover: hover) { .tb-mode__b:hover { color: var(--t1); } }
-.tb-mode__b[aria-checked="true"] { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
-@media (forced-colors: active) { .tb-mode__b[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+/* Board | List is the app's one segmented control (`.seg`, ui/ui.css, #1561). */
+.tb-mode { flex: none; }
 /* Mine is the system's outline Button with the person icon, as drawn (#1373); pressed it takes the --t1 edge (ui.css). */
 .tb-add.ui-btn { gap: 6px; padding: 0 10px; font-size: var(--fs-sm); }
 
@@ -148,23 +141,40 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-board > .tb-col { flex: 0 0 min(86%, 340px); }
 }
 
+/* ---------- The phone's Board: one status at a time (#1560) ----------
+   Under 641 px `.tb-board--one` shows the chosen status's column at the full width, and the status row above it holds the four statuses with their
+   glyph and count: one segmented control (ui/ui.css) of equal options, each the word over its glyph and count, so four fit a 320 px phone. The row
+   sticks under the control row while the column scrolls. Nothing scrolls sideways, at page level or inside the board. */
+.ui-tabs.tb-status { position: sticky; top: 0; z-index: 1; max-width: none; padding: 8px var(--space-page) 6px; background: var(--bg); }
+.tb-status.ui-tabs--seg .ui-tabs__bar { --seg-pad: 4px; width: 100%; max-width: none; }
+.tb-status.ui-tabs--seg .ui-tabs__tab { flex-direction: column; gap: 1px; min-height: 48px; padding-block: 4px; }
+.tb-status .ui-tabs__meta { gap: 5px; }
+/* A phone on its side (up to 480 px high) has no room to spare for a row that stays: it scrolls away with the column, and the control row above keeps its place. */
+@media (max-height: 480px) { .ui-tabs.tb-status { position: static; } }
+.tb-board.tb-board--one { display: block; position: relative; overflow: visible; padding-top: 4px; mask-image: none; }
+.tb-board--one .tb-col[hidden] { display: none; }
+/* The status row is the column's header. */
+.tb-board--one .tb-col__head { display: none; }
+
 /* ---------- Phone (#868): the same control row as the computer, without "+ Task" (the floating Create is the phone's one "+") ---------- */
 .tb-search__l { display: none; }
 @media (max-width: 640px) {
   .tb-add.ui-btn { display: none; }
-  .tb-bar { flex-wrap: nowrap; padding-top: 10px; }
-  .tb-search { flex: 1 1 0; margin-left: 2px; }
+  /* One row; only where Board | List and Mine leave the search less than its word (large text) does the search take the line below, whole
+     (Board | List's options are never narrower than their labels, #1561, so the row cannot squeeze them instead). */
+  .tb-bar { padding-top: 10px; }
+  .tb-search { flex: 1 1 0; margin-left: 2px; min-width: 4.5rem; }
 }
-/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc". */
+/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc".
+   Board | List keeps 56 px options (a pill, never a circle, #1561), so Mine and the gaps give up the room it took (release audit P3 20 still holds). */
 @media (max-width: 359px) {
-  .tb-bar { gap: 6px; }
-  .tb-mode__b { padding: 0 9px; }
-  .tb-bar .tb-mine { padding-inline: 9px; }
-  .tb-search { gap: 4px; }
+  .tb-bar { gap: 4px; }
+  .tb-mode .seg__b { min-width: 3.5rem; padding: 0 9px; }
+  .tb-bar .tb-mine { padding-inline: 6px; }
+  .tb-search { gap: 4px; margin-left: 0; }
 }
 
 @media (pointer: coarse) {
-  .tb-mode__b { min-height: 44px; min-width: 44px; }
   .tb-search input { font-size: var(--fs-input-touch); }
   .tb-note__x { min-height: 44px; }
 }

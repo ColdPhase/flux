@@ -9,6 +9,9 @@ Settings, light and dark, on the computer (1440) and on the phone (390):
   label at least 4.5:1 on the track and not the selected label's colour, and in dark a 1 px light edge (2:1 against the track);
 - an off switch's edge and knob at least 3:1 against the card and the track, an on switch's track at least 3:1 against the card and its knob
   at least 4.5:1 on it;
+- every segmented control's GEOMETRY (#1561, tests/ui/segmented.py), on the computer (1440) and on the phone with touch (390 and 320): the options
+  take equal shares of the track and none is narrower than its own label, so the selected pill is the same size whichever option is selected, inside
+  the track, never a circle, with nothing scrolling sideways;
 - a switch's SHAPE, on and off, on the phone and the computer: the painted track is a pill (wider than tall, 20 to 30 px tall, fully rounded)
   and the knob sits inside it. On the phone the touch box is 44 px tall but only the padding box is painted (`background-clip`), so a `background`
   shorthand that resets the clip draws a solid 44 px disc and fails here.
@@ -25,7 +28,9 @@ import unittest
 from playwright.sync_api import Browser, Locator, Page, expect, sync_playwright
 
 from contrast import FILL, MEASURE, RING
+from create_window import kind_tab, open_create, window
 from layers import settle
+from segmented import check_segmented
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_map_options, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -227,6 +232,122 @@ class SwitchesVisible(unittest.TestCase):
             expect(row).to_have_attribute("aria-checked", "true")
             self.switch(page, row, "Settings switch", part="> span", on=True)
             shot(page, f"1238-switch-on-{size}-{scheme}")
+
+    # ---------------------------------------------------------------- segmented controls: equal options (#1561)
+
+    def fixture(self, page: Page, html: str, name: str) -> Locator:
+        """A control the running app only draws in a state this test cannot reach cheaply (a live call, a plan's models): its own markup and classes, in the app's
+        page, so the same stylesheet draws it. Choosing an option moves `aria-checked`, as the app's own handler does."""
+        page.evaluate("""([html, name]) => {
+          const host = document.createElement('div');
+          host.id = 'seg-fixture';
+          Object.assign(host.style, { position: 'fixed', top: '90px', left: '0', right: '0', zIndex: '99999', padding: '12px 16px', background: 'var(--bg)' });
+          host.innerHTML = html;
+          document.body.appendChild(host);
+          for (const group of host.querySelectorAll('[role="radiogroup"]')) {
+            group.setAttribute('aria-label', name);
+            group.addEventListener('click', (event) => {
+              const option = event.target.closest('[role="radio"]');
+              if (!option) return;
+              for (const other of group.querySelectorAll('[role="radio"]')) other.setAttribute('aria-checked', String(other === option));
+            });
+          }
+        }""", [html, name])
+        return page.get_by_role("radiogroup", name=name)
+
+    def seg_html(self, classes: str, labels: list[str]) -> str:
+        options = "".join(f'<button type="button" role="radio" class="seg__b" aria-checked="{"true" if i == 0 else "false"}">{label}</button>' for i, label in enumerate(labels))
+        return f'<div class="seg {classes}" role="radiogroup">{options}</div>'
+
+    def check(self, page: Page, track, what: str, *, touch: bool, skip: tuple[str, ...] = (), shot_name: str | None = None) -> None:
+        settle(page)
+        taken = (lambda option: shot(page, f"{shot_name}-{option.lower().replace(' ', '-')}")) if shot_name else None
+        type(self).measured.extend(check_segmented(self, page, track, what, skip=skip, touch=touch, shot=taken))
+
+    def fixtures(self, page: Page, tag: str, *, touch: bool) -> None:
+        """Model, the live stage's screens and the screen mode, drawn with the classes the app gives them."""
+        for what, classes, labels, name, shot_name in (
+            ("Model", "seg--wrap", ["Opus 5.5", "Sonnet 5.5", "Haiku 4.5"], "Model", "model"),
+            ("Live stage", "lv-stage__pick", ["Ada’s screen", "Jonas’s screen"], "Screen to focus", "live-stage"),
+            ("Screen mode", "lv-line__seg", ["Sharp text", "Smooth motion"], "How your screen is sent", "live-mode"),
+        ):
+            self.fixture(page, self.seg_html(classes, labels), name)
+            self.check(page, lambda: page.get_by_role("radiogroup", name=name), f"{what} {tag}", touch=touch)
+            shot(page, f"1561-{shot_name}-{tag}")
+            page.evaluate("() => document.getElementById('seg-fixture').remove()")
+
+    def test_03b_every_segmented_control_has_equal_options_on_the_computer(self) -> None:
+        for scheme in ("light", "dark"):
+            page = self.page(scheme, False)
+            project = self.ids["project"]
+            page.goto(f"/projects/{project}/tasks")
+            expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_visible()
+            self.check(page, lambda: page.get_by_role("radiogroup", name="Show tasks as"), f"Board / List 1440 {scheme}", touch=False, shot_name=f"1561-board-list-1440-{scheme}")
+            page.goto(f"/projects/{project}/map/{self.ids['sketch']}")
+            expect(page.locator(".sk-canvas")).to_be_visible()
+            self.check(page, lambda: page.get_by_role("radiogroup", name="Show as"), f"Map / List 1440 {scheme}", touch=False, shot_name=f"1561-map-list-1440-{scheme}")
+            # The Create window's kinds (Space leaves them for its own window, so it is measured but not chosen).
+            page.goto(f"/projects/{project}/tasks")
+            open_create(page)
+            expect(window(page)).to_be_visible()
+            self.check(page, lambda: window(page).get_by_role("tablist", name="Create"), f"Create 1440 {scheme}", touch=False, skip=("Space",), shot_name=f"1561-create-1440-{scheme}")
+            page.keyboard.press("Escape")
+            # Model, the live stage's screens and the screen mode: the same classes the app draws them with.
+            self.fixtures(page, f"1440-{scheme}", touch=False)
+
+    def test_03c_every_segmented_control_has_equal_options_on_the_phone(self) -> None:
+        project = self.ids["project"]
+        for width in (390, 320):
+            for scheme in ("light", "dark"):
+                page = self.page(scheme, True)
+                page.set_viewport_size({"width": width, "height": 844 if width == 390 else 568})
+                tag = f"{width}-{scheme}"
+                page.goto(f"/projects/{project}/tasks?view=list")
+                expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_visible()
+                self.check(page, lambda: page.get_by_role("radiogroup", name="Show tasks as"), f"Board / List {tag}", touch=True, shot_name=f"1561-board-list-{tag}")
+                self.fixtures(page, tag, touch=True)
+                # The phone Board's statuses: one segmented control, the words over their glyph and count.
+                page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name="Board", exact=True).tap()
+                expect(page.get_by_role("tablist", name="Task status")).to_be_visible()
+                self.check(page, lambda: page.get_by_role("tablist", name="Task status"), f"Task status {tag}", touch=True, shot_name=f"1561-board-status-{tag}")
+                page.goto(f"/projects/{project}/map/{self.ids['sketch']}")
+                expect(page.locator(".sk-canvas")).to_be_visible()
+
+                def map_mode():
+                    # The phone's Map / List is in the Map options sheet, which closes when an option is chosen; in the List the switch may stand in the page.
+                    expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
+                    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+                    trigger = page.get_by_role("button", name="Map options", exact=True)
+                    switch = page.get_by_role("radiogroup", name="Show as")
+                    expect(sheet.or_(trigger).or_(switch).first).to_be_visible()
+                    if not sheet.is_visible() and not trigger.is_visible():
+                        return switch
+                    if not sheet.is_visible():
+                        open_map_options(page, touch=True)
+                    return sheet.get_by_role("radiogroup", name="Show as")
+                self.check(page, map_mode, f"Map / List {tag}", touch=True, shot_name=f"1561-map-list-{tag}")
+                page.goto(f"/projects/{project}/tasks")
+                page.get_by_role("button", name="Create", exact=True).tap()
+                expect(window(page)).to_be_visible()
+                settle(page)
+                self.check(page, lambda: window(page).get_by_role("tablist", name="Create"), f"Create {tag}", touch=True, skip=("Space",), shot_name=f"1561-create-{tag}")
+                # Close is whole and 44 px; at 320 px it lies on the line below the tabs, where five words do not fit beside it at equal widths.
+                kind_tab(page, "Task").tap()
+                settle(page)
+                close = window(page).get_by_role("button", name="Close", exact=True).bounding_box()
+                tabs = window(page).get_by_role("tablist", name="Create").bounding_box()
+                self.assertGreaterEqual(min(close["width"], close["height"]), 43.9, f"Close is a 44 px target {close}")
+                self.assertGreaterEqual(close["x"], 0)
+                self.assertLessEqual(close["x"] + close["width"], width + .5, f"Close is whole {close}")
+                below = window(page).locator(".create__in--close-below").count() == 1
+                self.assertEqual(below, width == 320, f"Close is {'below' if below else 'beside'} the tabs at {width} px {close} {tabs}")
+                if below:
+                    self.assertGreaterEqual(close["y"], tabs["y"] + tabs["height"] - .5, f"Close is under the tabs {close} {tabs}")
+                    self.assertGreaterEqual(tabs["width"], width - 12 - 1, f"the tabs take the full width {tabs}")
+                else:
+                    self.assertLessEqual(tabs["x"] + tabs["width"], close["x"] + .5, f"the tabs end where Close begins {tabs} {close}")
+                type(self).measured.append(f"Create {tag}: close {'below' if below else 'beside'} the tabs, tabs {tabs['width']:.1f} px, close {close['width']:.0f} x {close['height']:.0f}")
+                shot(page, f"1561-create-sheet-{tag}")
 
     def test_04_zz_the_measured_numbers(self) -> None:
         # Printed with -v so a reviewer sees the numbers; the assertions above already hold them to the targets.

@@ -23,6 +23,7 @@ import { Avatar, Button, Icon, Kreska, MEDIA, Overlay, Spinner, Tabs, useMediaQu
 import { Select, Option, OptionGroup } from '../ui/Select';
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
+import { useCloseBelow } from './closeBeside';
 import { createWork, proposeDecision, withdrawDecision } from '../work/api';
 import { holdProposal } from '../work/heldProposals';
 import { useWorkChoices } from '../work/useDetailReads';
@@ -135,9 +136,11 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
     if (tab) { awaitField(); requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus()); }
   };
   const shared = { phone, carried, projectId, onProject: changeProject, onClose };
+  const head = useRef<HTMLDivElement>(null);
+  const closeBelow = useCloseBelow(head);
   return (
-    <div className="create__in">
-      <div className="create__head ui-panel__head">
+    <div className={closeBelow ? 'create__in create__in--close-below' : 'create__in'}>
+      <div className="create__head ui-panel__head" ref={head}>
         <div className="create__kinds" onClick={pointerOnTab}>
           <Tabs variant="segmented" className="create__tabs" label="Create" items={kinds} value={kind} panelIdPrefix={prefix}
             onChange={(id) => { if (id === 'space') onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title)); else onKind(id as Kind); }} />

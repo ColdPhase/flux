@@ -594,6 +594,9 @@ class AdaptiveMatrix(AdaptiveBase):
                 pane = page.locator(".app__pane").bounding_box()
                 self.assertGreaterEqual(box["x"], pane["x"] - 1, f"the {column} column starts inside the pane at {size}")
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
+        if width <= 640:
+            # The phone's Board shows one status at a time (#1560): the card is in Doing.
+            page.get_by_role("tab", name=re.compile("^Doing")).click()
         card = self.card(page, fx.OPEN_TASK)
         self.primary(page, card, "a task card")
         self.no_sideways_scroll(page, "Tasks")
