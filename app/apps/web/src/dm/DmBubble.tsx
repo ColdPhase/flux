@@ -108,7 +108,7 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
           <MessageContent body={own.slot ?? (message.body ? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div> : null)}
             files={message.files} references={message.references}
             context={{ author: name, at: message.createdAt, caption: message.body, onReply: writable ? onReply : undefined, onCreateTask: writable ? () => onCreateTask(message, undefined) : undefined }} />
-          {groupLast ? <MessageTime at={message.createdAt} receipt={receipt} edited={message.editedAt} /> : null}
+          <MessageTime at={message.createdAt} receipt={receipt} edited={message.editedAt} last={!!groupLast} />
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}
               onClick={(event) => onOpenThread?.(message, event.currentTarget)}>

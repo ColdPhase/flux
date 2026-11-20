@@ -23,7 +23,7 @@ import './notices.css';
 
 /** How long a notice stays (a call's stays until the call ends). */
 export const NOTICE_MS = 6000;
-const MESSAGE_REASONS = new Set(['dm', 'mention', 'question', 'reply']);
+const MESSAGE_REASONS = new Set(['dm', 'mention', 'question', 'reply', 'message']);
 /** The messages that sound: direct messages, mentions and questions to you; a reply in a thread does not (#1243, #1419 item 18). */
 const SOUNDED_MESSAGES = new Set(['dm', 'mention', 'question']);
 const LIVE_URL = /^\/projects\/[0-9a-f-]+\/live\/([0-9a-f-]+)/i;

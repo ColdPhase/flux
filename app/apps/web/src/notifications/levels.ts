@@ -8,13 +8,13 @@ import { NEEDS_YOU_REASONS, type NotificationLevel, type NotificationReason } fr
 export const REASON_WORDS: Record<NotificationReason, string> = {
   question: 'questions', mention: 'mentions', dm: 'messages to you', assigned: 'tasks that need you',
   review: 'decisions about your work', invitation: 'invitations to a call', approval: 'agents waiting for you',
-  reply: 'every reply in conversations you are part of', call: 'calls started in your spaces',
+  reply: 'every reply in conversations you are part of', call: 'calls started in your spaces', message: 'new messages in your spaces',
 };
 /** The order a line names them in. */
-const ORDER: readonly NotificationReason[] = ['question', 'mention', 'dm', 'assigned', 'review', 'invitation', 'approval', 'reply', 'call'];
+const ORDER: readonly NotificationReason[] = ['question', 'mention', 'dm', 'assigned', 'review', 'invitation', 'approval', 'message', 'reply', 'call'];
 const needsYou = new Set<NotificationReason>(NEEDS_YOU_REASONS);
 
-/** What interrupts the person by push and email at each level. The Inbox keeps every reason at each, but a call started in a space, which waits nowhere (#1438 point 11). */
+/** What interrupts the person by push and email at each level. The Inbox keeps every reason at each, but a call started in a space, which waits nowhere (#1438 point 11), and a new message in a space (C-65). */
 export const LEVEL_REASONS: Record<NotificationLevel, readonly NotificationReason[]> = {
   needsYou: ORDER.filter((reason) => needsYou.has(reason)),
   everything: ORDER,

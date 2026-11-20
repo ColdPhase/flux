@@ -170,6 +170,12 @@ export interface NotificationFacts {
   /** Null unless the change still waits for its owner's OK (#1186). */
   waitingChange(changeId: string): Promise<WaitingChangeFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;
+  /**
+   * Of these people, who chose the level "Everything": only they get a `message` notification (C-65, #1550), which `channelsOf` gives no
+   * channel to at any other level. Asked once for a message's whole audience, so a space of hundreds is not read one person at a time.
+   * Absent when the store does not read it: every person is then a candidate and `deliver` decides.
+   */
+  everythingLevel?(userIds: string[]): Promise<Set<string>>;
   /** F-030: the workspace's visible name when it is encrypted, else null. */
   sealedWorkspace?(workspaceId: string): Promise<{ name: string } | null>;
   /**

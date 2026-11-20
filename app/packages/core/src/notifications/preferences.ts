@@ -54,8 +54,13 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
-/** A live call invitation and a call started in your space are never emailed: the call may be over before a mail is read (docs/development/live-sessions.md, F-041). */
-const NEVER_EMAILED = new Set<NotificationReason>(['invitation', 'call']);
+/**
+ * A live call invitation and a call started in your space are never emailed: the call may be over before a mail is read (docs/development/live-sessions.md,
+ * F-041). Nor is a new message in a space (C-65, #1550): a mail for each message would be the noisiest thing Flux sends.
+ */
+const NEVER_EMAILED = new Set<NotificationReason>(['invitation', 'call', 'message']);
+/** What waits nowhere: a call started in a space (#1438 point 11) and a new message in a space (C-65) are push and notice only, never an Inbox item. */
+const NEVER_IN_INBOX = new Set<NotificationReason>(['call', 'message']);
 
 /**
  * The channels each reason has under the stored level: the inbox always; push for the reasons the level lets interrupt
@@ -66,8 +71,9 @@ export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>)
   const result = {} as Record<NotificationReason, ChannelChoice>;
   for (const reason of NOTIFICATION_REASONS) {
     const interrupts = stored.level === 'everything' || (stored.level === 'needsYou' && NEEDS_YOU.has(reason));
-    // A call started in a space waits nowhere (#1438 point 11): it is read in the space, and only push at "Everything" tells the person.
-    result[reason] = { inApp: reason !== 'call', push: interrupts, email: interrupts && stored.emailMe && !NEVER_EMAILED.has(reason) };
+    // A call started in a space waits nowhere (#1438 point 11): it is read in the space, and only push at "Everything" tells the person. A new message
+    // in a space is the same (C-65): the Inbox keeps only what needs you.
+    result[reason] = { inApp: !NEVER_IN_INBOX.has(reason), push: interrupts, email: interrupts && stored.emailMe && !NEVER_EMAILED.has(reason) };
   }
   return result;
 }

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { RECEIPT_LIMITS, type MessageReadersResult, type MessageReader, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
-import { sameMessageAuthor } from './messageParts';
 import { streamLive, useStreamEvents } from '../api/stream';
 
 /**
@@ -79,32 +78,23 @@ export function useObservation({ scope, observe, enabled, feed, ids: watched, de
   useEffect(() => () => window.clearTimeout(flushTimer.current), []);
 }
 
-/** A run of the person's own consecutive messages that is whole: every message of it is on screen and stored. */
+/** One of the person's own messages, asked about alone: a receipt is per message (#1551), so a run is one message. */
 export interface OwnRun { ids: string[]; last: string }
 
 type Line = { id: string | null; authorId: string; createdAt: string };
 
 /**
- * The person's own author runs, as the bubbles group them (same author, same day). A run is left out when it
- * could be longer than what is loaded: it starts at the first loaded message while earlier ones exist, or it is
- * followed by a message still being sent. Only whole runs can claim "Seen by".
+ * The person's own messages, each its own run (#1551): a reader's face stands under the newest message of the person's they have read, in the
+ * middle of a group too, and moves down as they read on, so a message sent after the one they had read never takes the receipt back. A message
+ * still being sent has no id and is not asked about. The server places each reader once, under the newest of the runs (messages) it is asked
+ * about that they have read, oldest first.
  */
-export function ownRuns(lines: readonly Line[], meId: string, hasEarlier: boolean): OwnRun[] {
-  const runs: OwnRun[] = [];
-  let start = 0;
-  while (start < lines.length) {
-    let end = start;
-    while (end + 1 < lines.length && sameMessageAuthor(lines[end], lines[end + 1])) end++;
-    const run = lines.slice(start, end + 1);
-    const whole = run.every((line) => line.id !== null) && !(hasEarlier && start === 0);
-    if (run[0]!.authorId === meId && whole) runs.push({ ids: run.map((line) => line.id!), last: run.at(-1)!.id! });
-    start = end + 1;
-  }
-  return runs;
+export function ownRuns(lines: readonly Line[], meId: string): OwnRun[] {
+  return lines.flatMap((line) => (line.authorId === meId && line.id !== null ? [{ ids: [line.id], last: line.id }] : []));
 }
 
 /**
- * Who read one of the person's own whole runs (#1231): how many, and only the newest few, which is all the row under the message draws.
+ * Who read one of the person's own messages (#1231, #1551): how many, and only the newest few, which is all the row under the message draws.
  * `list` reads the whole list a page at a time, and is called only when a person opens it.
  */
 export interface Receipt {
@@ -114,8 +104,8 @@ export interface Receipt {
 }
 
 /**
- * Who read each of the person's own whole runs, keyed by the run's last message. Each reader is in one run, the newest they read whole
- * (the server places them); refetched when the runs or `tick` change. Only the newest runs are asked about: older ones are bounded by
+ * Who read each of the person's own messages, keyed by the message. Each reader is under one message, the newest of the person's they read
+ * (the server places them); refetched when the runs or `tick` change. Only the newest messages are asked about: older ones are bounded by
  * the request limits and are not at the reading edge.
  */
 export function useReceipts({ scope, fetchReceipts, fetchReaders, runs, tick }: {

@@ -43,7 +43,7 @@ const t = schema.notificationAddressTokens;
 const ob = schema.notificationEmails;
 const CURSOR = 'generator';
 
-type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval' | 'call';
+type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval' | 'call' | 'message';
 type SourceType = 'workspace' | 'project' | 'dm';
 
 export interface StoredPreferenceRow {
@@ -213,6 +213,12 @@ export function notificationFactRows(db: DbExecutor) {
   };
   return {
     names,
+    /** Of these people, who chose "Everything" (only they get a `message` push, C-65): a person who never changed anything is at the default, Only what needs me. */
+    async everythingLevel(userIds: string[]) {
+      if (!userIds.length) return new Set<string>();
+      const p = schema.notificationPreferences;
+      return new Set((await db.select({ id: p.userId }).from(p).where(and(inArray(p.userId, userIds), eq(p.level, 'everything')))).map((row) => row.id));
+    },
     async sealedWorkspace(workspaceId: string) {
       const [row] = await db.select({ name: schema.workspaces.name, encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
       return row?.encrypted ? { name: row.name } : null;

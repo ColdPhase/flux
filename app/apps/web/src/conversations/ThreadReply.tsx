@@ -66,7 +66,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
+      <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} last={stored.groupLast !== false} />
       <MessageTaskCards preview={preview} />
       <MessageActions {...actions} />
       {touch.dots}{touch.node}

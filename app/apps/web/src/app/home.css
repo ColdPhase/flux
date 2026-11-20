@@ -27,6 +27,15 @@
 .home__steps { margin-bottom: 28px; }
 /* The phone's two places, under the waiting items (no sidebar there). */
 .home__places { margin-top: 16px; }
+/* New messages (#1548): the conversations with something new, as Messages rows: a face, the name over a one-line preview, then the time and the
+   unread dot (not the arrow, which the Messages rows do not have either). The name is bold in the primary colour, as an unread row is. */
+.home__news { margin-top: 28px; }
+.home__tile { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-sm); background: var(--sub); color: var(--t1);
+  font-size: var(--fs-sm); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); }
+.home__row-one { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; -webkit-line-clamp: unset; line-clamp: unset; }
+.home__row--chat .home__row-t { font-weight: 600; }
+.home__row-end { display: flex; align-items: center; gap: 8px; color: var(--t3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.home__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--inv); }
 /* The first step for a person with no project yet (#763 FT-1): Hello, one sentence about what Flux is for, one primary. */
 .home__first { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px; margin-bottom: 24px; }
 .home__first h3 { margin: 6px 0 0; font-size: var(--fs-lg); font-weight: 600; }
@@ -42,6 +51,7 @@
   .home__hello { margin-bottom: 20px; font-size: var(--fs-2xl); }
   .home__sech { padding-inline: 4px; }
   .home__need { margin-top: 20px; }
+  .home__news { margin-top: 24px; }
   .home__steps { margin-bottom: 20px; }
   .home__continue { margin-top: 24px; }
   .home .agentlive { margin: 0 0 12px; padding: 12px 12px 12px 14px; border-radius: var(--r-card); }

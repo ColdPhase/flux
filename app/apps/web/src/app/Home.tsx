@@ -13,6 +13,7 @@ import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { useSmallMoments } from './smallMoments';
 import { HomeWorkingAgents, WorkingAssistant } from './WorkingAgent';
+import { NewMessages } from './NewMessages';
 import '../notifications/needs-you.css';
 import './home.css';
 import { RefLink } from '../place/origin';
@@ -456,6 +457,9 @@ export function Home() {
           <HomeRow to="/map" face={<span className="nyc__face nyc__face--icon"><Icon name="map" size={16} /></span>} title="My map" />
         </ul>
       ) : null}
+
+      {/* The conversations with something new, under what waits for you (#1548); nothing at all while none has. Not part of the Inbox. */}
+      {firstRun ? null : <NewMessages />}
 
       {/* Nothing appears twice (#1424 C): Continue offers nothing the Inbox holds, its rows here or the items beyond them. */}
       <ContinueSection reads={reads} covered={queue.items === null && !queue.failed ? null : waitingIds(waitingRows(queue.items ?? [], Infinity))} />
