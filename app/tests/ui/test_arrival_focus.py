@@ -352,9 +352,10 @@ class ArrivalFocus(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['long']}")
         expect(page.locator("#project-composer")).to_be_focused()
-        # Away to the space's Tasks inside the app, and Back: the conversation arrives again (a new arrival, not a page load).
-        page.locator(f"a[href='/projects/{self.ids['long']}/tasks']").first.click()
-        page.wait_for_url(re.compile(r"/tasks$"))
+        # Away to the Inbox inside the app (the space's own views replace each other, #1547), and Back: the conversation arrives again (a new
+        # arrival, not a page load).
+        page.locator("a[href='/inbox']").first.click()
+        page.wait_for_url(re.compile(r"/inbox"))
         page.go_back(wait_until="commit")
         # Within 100 ms of the arrival, Tab on to the first link.
         for _ in range(15):

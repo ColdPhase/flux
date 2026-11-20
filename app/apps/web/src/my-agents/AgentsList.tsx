@@ -8,6 +8,7 @@ import { useAssistantModel } from '../assistant/model';
 import { createMyAgent } from './api';
 import { jobLine, mayDoLabel, modelLine } from './agentLabel';
 import './my-agents.css';
+import { writeNow } from '../ui/focusField';
 
 // Settings › AI › Your agents (F-036 AG-1, #857; mockup Main): one row per agent with its Kreska in its own colour, its name, one
 // line about its job, its tag ("Ask me first on" or "Ask me first off", #1419, #1424) and its model with the connection. The first, Assistant, carries "Answers /ai".
@@ -53,7 +54,7 @@ export function AgentsList({ listed = false }: { listed?: boolean } = {}) {
       {adding ? (
         <form className="sset-card agl__new" onSubmit={(event) => void add(event)}>
           <label className="agl__label" htmlFor="new-agent-name">Name</label>
-          <input id="new-agent-name" className="agl__input" value={name} maxLength={80} autoComplete="off" placeholder="Planner, Reviewer…" onChange={(event) => setName(event.target.value)} autoFocus />
+          <input id="new-agent-name" className="agl__input" value={name} maxLength={80} autoComplete="off" placeholder="Planner, Reviewer…" onChange={(event) => setName(event.target.value)} autoFocus={writeNow} />
           <Button type="submit" variant="primary" busy={busy} disabled={!name.trim()}>Make agent</Button>
           <Button variant="secondary" onClick={() => { setAdding(false); setName(''); setError(''); }}>Cancel</Button>
           {error ? <p className="nset__error agl__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}

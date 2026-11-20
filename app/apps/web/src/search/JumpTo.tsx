@@ -13,6 +13,7 @@ import { ResultBody, resultName } from './ResultRow';
 import { useSearch } from './useSearch';
 import { UnsearchedSpaces } from '../encryption/WaitingSpaces';
 import './search.css';
+import { focusOnOpen } from '../ui/focusField';
 
 /** Results listed at once. There is no second page: a longer list is narrowed by typing more words. */
 const RESULTS = 20;
@@ -79,7 +80,8 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
   const text = query.trim();
   const state = useSearch(text, RESULTS);
   // Once, as the body opens.
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // A computer's cursor is in the field as the dialog opens; a touch screen opens it with no keyboard (#1546).
+  useEffect(() => { focusOnOpen(inputRef.current); }, []);
 
   const shown = state.status === 'ready' ? state.items : state.status === 'loading' ? state.previous?.items ?? [] : [];
   // With no text: up to four recent places (not the one in view, and only those the person can still open, named as

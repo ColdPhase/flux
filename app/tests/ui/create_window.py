@@ -32,7 +32,11 @@ def open_from_tasks(page: Page) -> Locator:
         page.get_by_role("button", name=re.compile("^(New )?Task$")).first.click()
     expect(dialog(page)).to_be_visible()
     field = title_field(page)
-    expect(field).to_be_focused()
+    if page.evaluate("matchMedia('(hover: none)').matches"):
+        # A touch screen opens the window with no field focused (#1546); a tap on the field raises the keyboard.
+        expect(field).not_to_be_focused()
+    else:
+        expect(field).to_be_focused()
     return field
 
 

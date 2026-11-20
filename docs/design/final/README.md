@@ -772,6 +772,36 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     in a group or alone, in a space, a thread or a direct message. It opens the same sheet as a long press.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.
+- **Back closes what sits on top, then leaves the place** (founder direction, Hubert, 2026-11-19, #1545, #1547; the history rules are in
+  [Return to where I was](../../development/return-to-origin.md#back-closes-what-is-on-top-and-a-spaces-views-are-one-place-1545-1547)).
+  - **Anything opened over the page takes the first Back, whichever it is:** the message actions sheet, the Create window, Search, a
+    Status, Owner, Due, date, time or other choice sheet, every ⋯ menu (a space's, Spaces', the Inbox's, a direct message's), People and
+    privacy and the other panels, the photo viewer and the PDF, CSV or text preview, Map options, the map picker, the Wiki's Contents, Page
+    actions and page picker, the navigation drawer. The next Back leaves the page. Over a task or a decision, Back closes the sheet or
+    menu on top and leaves the panel; the next Back closes the panel. A panel that has an address of its own (a task or a decision named by
+    `?open=`, a thread, an agent's chat) keeps it: Back closes it, as before. Closing something with its own control, a choice or Esc
+    never needs a second Back. A new overlay uses `Overlay` (it takes this by itself) or `useBackLayer`.
+  - **The views of a space are one place.** Choosing Conversation, Tasks, Map or Wiki replaces the history entry instead of adding one, so
+    the header's Back and the phone's Back leave the space for where the person came from (Spaces, Home, the Inbox), never walking back
+    through the tabs. The same on the computer: the browser's Back leaves the space. Inside a view Back still closes what is open on top
+    (a panel, a Wiki page opened from the list) before it leaves.
+- **No keyboard without a tap** (founder direction, Hubert, 2026-11-19, #1546). On a touch screen the app never focuses a text field by
+  itself: not opening a screen, a window, a sheet or a conversation (a space, a direct message, a thread, an agent's chat, the Assistant),
+  not choosing a tab (the Create window's Task, Thought, Decision, Page and Space), not a sheet closing, not Search opening. The keyboard comes
+  when the person **taps a field**, or after an action whose whole point is to write now: Reply in thread, Reply in the Inbox, Edit, Rename,
+  Change (name, email, password), Add (a memory, a page name), a new thought from the map's dot. The pickers that only look something up
+  (Find a map, Find a page, Add people's filter) open on their list, never on their field. A computer keeps the cursor where it
+  was (see "Where focus goes"): keyboard users rely on it. In code every such focus goes through `ui/focusField.ts` (`writeNow`,
+  `focusesOnOpen()`, `focusToWrite`, `focusOnOpen`), ESLint refuses a bare `autoFocus` on a text field, and
+  `app/tests/ui/test_no_keyboard_on_touch.py` opens every screen, window and sheet on a touch phone and asserts that no editable element has
+  focus until a tap.
+- **The edges follow the theme** (founder report, Hubert, 2026-11-19, #1544). On the phone the page is the whole screen: no raised card,
+  so no inset hairline and none of the sidebar's colour at its edges, light or dark (a 1 px light frame showed around a dark screen). The
+  strip an installed Android app shows under the page (the
+  navigation bar) is painted from the web app manifest's colours, which cannot follow a dark or light theme by themselves. Flux has two
+  manifests, `/manifest.webmanifest` (`#F4F4F5`, light) and `/manifest-dark.webmanifest` (`#111111`, dark), and the page links the one of the
+  theme it shows (`theme.ts`, first paint in `index.html`); the status bar follows the `theme-color` tag, which already takes the page's
+  background. Chrome reads the manifest again when it checks the installed app for an update, so a changed theme reaches the bar then.
 
 ### Underline tabs (the views switch)
 

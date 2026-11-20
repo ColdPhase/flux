@@ -796,10 +796,10 @@ class SpaceSettings(unittest.TestCase):
         expect(noa).to_have_url(re.compile(r"/projects$"))
         expect(noa.get_by_text("This place isn’t available")).to_have_count(0)
         expect(noa.get_by_role("navigation", name="Spaces").get_by_text("Wheel room")).to_have_count(0)
-        # Back into Tasks reads the space and says so too.
+        # The space's views were one entry (#1547), so Back from the landing leaves for where Noa came from, Home. (Back into a place of the space
+        # that is gone lands calmly too: test_return_to_origin.)
         noa.go_back()
-        expect(noa.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
-        expect(noa).to_have_url(re.compile(r"/projects$"))
+        expect(noa).to_have_url(re.compile(r"/$"))
         # New message no longer offers the company's people: without a company there is nothing to make, so nothing offers New message
         # (persona round 30, F-026 "A person who is no longer in the company"); with no conversation and no agent, no Messages heading either.
         expect(noa.get_by_role("navigation", name="Messages")).to_have_count(0)

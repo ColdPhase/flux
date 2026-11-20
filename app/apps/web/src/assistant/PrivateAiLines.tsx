@@ -10,6 +10,7 @@ import type { ConversationAssistant } from './useConversationAssistant';
 import { useRunChanges, WaitingChanges } from './WaitingChanges';
 import { MessageFiles } from '../composer/Attachments';
 import './assistant.css';
+import { focusOnOpen } from '../ui/focusField';
 
 // The answer to `/ai` (#842, F-036 AG-4; mockup AiPrivate): a card only its asker sees, in the place they asked. Show everyone posts it as their
 // message, labelled "Ada's Assistant" with the agent's Kreska (#1232); Dismiss puts it away. Nothing about it reaches anyone else until then. While the agent works, or when a run
@@ -46,7 +47,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
   const [busy, setBusy] = useState<'' | 'show' | 'dismiss'>('');
   const [failed, setFailed] = useState('');
   const { changes, refresh } = useRunChanges(run.id, refreshKey, run.projectId !== null, assistant.changesOf(run.id));
-  const toTheBox = () => { if (composerId) requestAnimationFrame(() => document.getElementById(composerId)?.focus({ preventScroll: true })); };
+  const toTheBox = () => { if (composerId) requestAnimationFrame(() => focusOnOpen(document.getElementById(composerId), { preventScroll: true })); };
   async function act(kind: 'show' | 'dismiss') {
     setBusy(kind); setFailed('');
     try { await (kind === 'show' ? assistant.show(run) : assistant.dismissPrivate(run)); toTheBox(); }

@@ -6,6 +6,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { acceptInvite, previewInvite } from '../people/api';
 import { Button, Icon, Input, Spinner } from '../ui';
 import type { FormResult } from './logic';
+import { focusesOnOpen } from '../ui/focusField';
 
 // The page an invite link opens (F-035, #763 PE-2): `/join#<token>`. The token stays in the fragment (never sent in a
 // request line) and in this tab's session storage, so signing in comes back here with it. Founder decision 2026-11-13 (#1438):
@@ -270,7 +271,7 @@ function JoinSignUp({ result, token, lockedEmail }: { result: FormResult | undef
         <div className="auth__error" role="alert"><Icon name="alert" /><div><p>{result.formError}</p>
           {result.accountExists ? <p><Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link> · <Link className="ui-link" to="/forgot-password">Reset password</Link></p> : null}</div></div>
       ) : null}
-      <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name} hint="Shown to people you work with." autoFocus />
+      <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name} hint="Shown to people you work with." autoFocus={focusesOnOpen()} />
       {/* #1471: the account is made from this link; a link for one address fills it in, read-only. */}
       <input type="hidden" name="inviteToken" value={token} />
       <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}

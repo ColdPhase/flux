@@ -8,6 +8,7 @@ import { Button, Icon, Spinner, trapTab } from '../ui';
 import { fileKind, fileSize, fileWord, type PreviewFormat } from './fileKind';
 import type { ParsedFormat, PreviewModel } from './previewParse';
 import { JsonErrorView, JsonView, MarkdownView, TableView, TextView, hiddenColumns, tableRows } from './previewViews';
+import { useBackLayer } from '../ui/backLayer';
 
 // A file preview in the photo viewer's frame (C-60, #1252, F-026 §6): always dark, Close, the name with "type · size", Download.
 // Someone else's HTML never runs on Flux's origin: it is framed from the preview route, which sandboxes it to an opaque origin
@@ -173,6 +174,8 @@ const PARSED: Partial<Record<PreviewFormat, ParsedFormat>> = { text: 'text', mar
 export function FileViewer({ file, format, poster, page = null, onClose }: { file: MessageFile; format: PreviewFormat; poster?: string; page?: number | null; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // The preview is open while it is mounted: Back closes it first (#1545).
+  useBackLayer(true, onClose);
   const returnTo = useRef<Element | null>(null);
   const [scripts, setScripts] = useState(false);
   const [source, setSource] = useState(false);

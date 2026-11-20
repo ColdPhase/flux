@@ -11,6 +11,7 @@ import { waitingHash } from './waitingHash';
 import { useLocation } from 'react-router';
 import { ClampedWords } from './ClampedWords';
 import { peopleNamed } from './peopleNamed';
+import { writeNow } from '../ui/focusField';
 
 // An agent's message about what it changed, and what waits for its owner (F-036 AG-3, #855; mockup UndoApproval).
 // Everyone who can read the conversation sees the change line with Undo; only the owner sees what waits, and only the
@@ -163,7 +164,7 @@ function WaitingCard({ change, agent, busy, onAct, editing, onEdit }: {
       {change.line ? <p className="assistant-waiting__why">{change.line}</p> : null}
       {editing ? <form className="assistant-waiting__edit" onSubmit={(event) => { event.preventDefault(); onAct(`edit:${change.id}`, async () => { await editChange(change, title.trim()); onEdit(false); }); }}>
         <label className="ui-vh" htmlFor={`edit-${change.id}`}>Task title</label>
-        <input id={`edit-${change.id}`} value={title} maxLength={WORK_LIMITS.title} onChange={(event) => setTitle(event.target.value)} autoFocus />
+        <input id={`edit-${change.id}`} value={title} maxLength={WORK_LIMITS.title} onChange={(event) => setTitle(event.target.value)} autoFocus={writeNow} />
         <Button type="submit" variant="secondary" busy={busy === `edit:${change.id}`} disabled={!title.trim() || !!busy}>Save</Button>
         <Button variant="secondary" disabled={!!busy} onClick={() => { setTitle(change.objectTitle); onEdit(false); }}>Cancel</Button>
       </form> : <div className="assistant-proposal__actions">
@@ -189,7 +190,7 @@ function ProposalGroup({ changes, agent, busy, onAct, editing, onEdit }: {
           <li key={change.id}><form className="assistant-waiting__edit" onSubmit={(event) => { event.preventDefault();
             onAct(`edit:${change.id}`, async () => { await editChange(change, (titles[change.id] ?? change.objectTitle).trim()); onEdit(null); }); }}>
             <label className="ui-vh" htmlFor={`edit-${change.id}`}>Task title</label>
-            <input id={`edit-${change.id}`} value={titles[change.id] ?? change.objectTitle} maxLength={WORK_LIMITS.title} autoFocus
+            <input id={`edit-${change.id}`} value={titles[change.id] ?? change.objectTitle} maxLength={WORK_LIMITS.title} autoFocus={writeNow}
               onChange={(event) => setTitles((current) => ({ ...current, [change.id]: event.target.value }))} />
             <Button type="submit" variant="secondary" busy={busy === `edit:${change.id}`} disabled={!(titles[change.id] ?? change.objectTitle).trim() || !!busy}>Save</Button>
             <Button variant="secondary" disabled={!!busy} onClick={() => onEdit(null)}>Cancel</Button>

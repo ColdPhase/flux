@@ -381,12 +381,12 @@ class PhoneFinal(unittest.TestCase):
                 back.click()
                 expect(page).to_have_url(f"{ORIGIN}/projects")
                 expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
-                # Back follows the way you came: from Tasks, opened through the views, it returns to the conversation.
+                # The views of a space are one place (#1547): from Tasks, opened through the views, Back leaves the space for the list it came from.
                 page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
                 page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Tasks")).click()
                 expect(page).to_have_url(re.compile(r"/tasks"))
                 page.get_by_role("button", name="Back", exact=True).click()
-                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
+                expect(page).to_have_url(f"{ORIGIN}/projects")
 
     def test_08_a_direct_message_has_no_tab_bar_either_and_other_places_reach_it(self):
         page = self.page(SIZES[0])

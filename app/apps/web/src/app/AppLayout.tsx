@@ -1076,7 +1076,7 @@ function AppLayoutContent() {
         {activeAgent ? <MoreMenu items={[{ label: 'Settings', icon: 'gear', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
         {!backOnly && !activeProject && !activeDm && !activeAgent && !lockedHere && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
-      {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
+      {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} replace /> : null}
       {lockedHere ? <Tabs className="phead__views" label="Space views" items={LOCKED_VIEWS} inactive /> : null}
     </header>
   );
@@ -1123,7 +1123,7 @@ function AppLayoutContent() {
             {encryptedMark}
             {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
           </div>
-          {rowViews ? <Tabs className="top__views" label={rowViews.label} items={rowViews.items} inactive={rowViews.inactive} /> : null}
+          {rowViews ? <Tabs className="top__views" label={rowViews.label} items={rowViews.items} inactive={rowViews.inactive} replace /> : null}
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
@@ -1150,7 +1150,7 @@ function AppLayoutContent() {
               <DeferredLiveStage />
             </ViewFade>
           </main>
-          <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+          <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" backLayer={!opening && !ownedShown && !new URLSearchParams(location.search).has('open')} back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}
             focusBack={() => objectControl(now.current.detailsView)}>

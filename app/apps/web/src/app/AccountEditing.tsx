@@ -6,6 +6,7 @@ import { changeEmail, changePassword, endOtherSessions, endSession, getCapabilit
 import { Avatar, Button, Icon, Input, Spinner } from '../ui';
 import { photoProblem, removeMyPhoto, setMyPhoto, usePhotoOf } from '../people/photos';
 import { SwitchRow } from '../ui/SwitchRow';
+import { writeNow } from '../ui/focusField';
 
 // Settings → Account (#763 SG-1): the person changes their own name, address and password and sees where they are signed
 // in. Each is one row with its value and Change; the form opens in place, and saving says so on the row. Under single
@@ -140,7 +141,7 @@ function NameForm({ current, onDone }: { current: string; onDone: () => void }) 
   }
   return (
     <form className="sset-acct__fields" noValidate onSubmit={(event) => void submit(event)}>
-      <Input label="Name" autoComplete="name" value={value} maxLength={200} autoFocus error={error || undefined} hint="Shown to people you work with." onChange={(event) => { setValue(event.target.value); setError(''); }} />
+      <Input label="Name" autoComplete="name" value={value} maxLength={200} autoFocus={writeNow} error={error || undefined} hint="Shown to people you work with." onChange={(event) => { setValue(event.target.value); setError(''); }} />
       <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Save name</Button></div>
     </form>
   );
@@ -171,7 +172,7 @@ function EmailForm({ current, onDone }: { current: string; onDone: (message: str
   }
   return (
     <form className="sset-acct__fields" noValidate onSubmit={(event) => void submit(event)}>
-      <Input label="New email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} autoFocus value={value}
+      <Input label="New email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} autoFocus={writeNow} value={value}
         error={errors.email} onChange={(event) => { setValue(event.target.value); setErrors({}); }} />
       <Input label="Current password" type="password" autoComplete="current-password" value={password} error={errors.password}
         onChange={(event) => { setPassword(event.target.value); setErrors({}); }} />
@@ -200,7 +201,7 @@ function PasswordForm({ onDone }: { onDone: (others: boolean) => void }) {
   }
   return (
     <form className="sset-acct__fields" noValidate onSubmit={(event) => void submit(event)}>
-      <Input label="Current password" type="password" autoComplete="current-password" autoFocus value={currentPassword} error={errors.current}
+      <Input label="Current password" type="password" autoComplete="current-password" autoFocus={writeNow} value={currentPassword} error={errors.current}
         onChange={(event) => { setCurrent(event.target.value); setErrors({}); }} />
       <Input label="New password" type="password" autoComplete="new-password" value={next} error={errors.next}
         hint={`At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} onChange={(event) => { setNext(event.target.value); setErrors({}); }} />

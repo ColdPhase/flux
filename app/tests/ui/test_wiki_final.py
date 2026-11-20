@@ -332,7 +332,10 @@ class WikiFinal(unittest.TestCase):
                 self.assertGreaterEqual(box["x"], 0)
                 self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
                 shot(page, f"wiki-final-phone-390-{theme}")
-                page.keyboard.press("Escape")
+                # The picker opens on its list on a touch screen (#1546), so no field holds the focus for Esc: the phone's Back closes it (#1545).
+                expect(pages.get_by_role("textbox", name="Find a page")).not_to_be_focused()
+                page.go_back()
+                expect(pages).to_have_count(0)
                 # Writing happens on the page: a tap into the text puts the caret there.
                 existing_text(page).locator(".cm-line").first.tap()
                 expect(existing_text(page)).to_be_focused()

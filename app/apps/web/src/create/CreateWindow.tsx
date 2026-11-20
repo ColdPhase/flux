@@ -35,6 +35,7 @@ import { SpaceFace } from '../ui/SpaceFace';
 import { leaveFocusToDestination } from '../ui/Overlay';
 import { returnFocusToObject } from '../ui/SidePanel';
 import './create.css';
+import { focusOnOpen, touchFirst, writeNow } from '../ui/focusField';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
 // same tabs and fields, whether it opens from New / C, Tasks, a message's menu, the Map or the phone's "+". Task is the default;
@@ -135,7 +136,8 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
   const pointerOnTab = (event: MouseEvent) => {
     const tab = event.detail > 0 ? (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab : undefined;
     // What is typed on the way is kept for the field (F-026 §4): "Paint the shed" typed at once lost "Paint " on the tab.
-    if (tab) { awaitField(); requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus()); }
+    // On a touch screen a tab shows its fields and focuses none: the keyboard comes when a field is tapped (#1546).
+    if (tab && !touchFirst()) { awaitField(); requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus()); }
   };
   const shared = { phone, carried, projectId, onProject: changeProject, onClose };
   const head = useRef<HTMLDivElement>(null);
@@ -358,7 +360,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   // A title made from a message is its first clause, selected, so typing replaces it (#763 B5). Once, on open.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { titleRef.current?.focus(); if (request.sources?.some((source) => source.ref.type === 'message')) titleRef.current?.select(); }, []);
+  useEffect(() => { if (touchFirst()) return; titleRef.current?.focus(); if (request.sources?.some((source) => source.ref.type === 'message')) titleRef.current?.select(); }, []);
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -518,7 +520,7 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
   }
   // A window that opens on Thought (a guest with no space, the map's "+") puts the cursor in it, as Task does (F-026 §4, persona round 28).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ids.active) document.getElementById(ids.field)?.focus(); }, []);
+  useEffect(() => { if (ids.active) focusOnOpen(document.getElementById(ids.field)); }, []);
   const where = <span className="create__private"><Icon name="lock" size={13} />Only you see it</span>;
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">It goes on My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
@@ -612,7 +614,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const title = oneLine(carried.text);
   const ready = !!title && title.length <= WORK_LIMITS.title && !!project && !busy;
   useEffect(() => {
-    if (!ids.active || request.kind !== 'decision') return;
+    if (!ids.active || request.kind !== 'decision' || touchFirst()) return;
     // A `/decide` with its words goes on in Why (F-026 §4, personas-36); a decision from a message starts on its title, selected.
     if (request.afterTitle && oneLine(carried.text)) { whyRef.current?.focus(); return; }
     titleRef.current?.focus();
@@ -765,7 +767,7 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
     // The window grows for results only once something is typed: an empty search keeps its height, with one line that says what to type
     // (round 15 look-2 P2-5: 170 px of empty window under the field).
     <div ref={box} className={`create__picker${text ? ' create__picker--searching' : ''}`}>
-      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
+      <input className="ui-input" type="search" autoFocus={writeNow} aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.stopPropagation(); onDone(); }

@@ -25,6 +25,11 @@ export interface SidePanelProps {
   /** On a phone the sheet opens at full height (a thread); the height then stays while the content changes. */
   startFull?: boolean;
   /**
+   * On a phone Back closes the panel first (#1545). A panel that is a history entry of its own (a task or a decision named by `?open=`, a thread,
+   * an agent's chat) leaves it off: Back over that entry is its way back.
+   */
+  backLayer?: boolean;
+  /**
    * Names what the panel shows. When it changes while the panel stays open, the body's content is in place at once
    * and fades in; the shell and the head do not move (#863). Without it the kind chip and the title tell.
    */
@@ -249,10 +254,10 @@ export function SidePanel(live: SidePanelProps) {
   // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
   if (props.chip) {
     return (
-      <Overlay placement="bottom" bare keepLiveStrip open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
+      <Overlay placement="bottom" bare keepLiveStrip backLayer={props.backLayer ?? false} open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
         <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onHeight={props.onHeight} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
       </Overlay>
     );
   }
-  return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} keepLiveStrip className="ui-panel">{content}</Sheet>;
+  return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} keepLiveStrip backLayer={props.backLayer ?? false} className="ui-panel">{content}</Sheet>;
 }

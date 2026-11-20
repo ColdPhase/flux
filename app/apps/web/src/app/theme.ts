@@ -25,14 +25,31 @@ let listening = false;
 function syncThemeColor() {
   const background = (element: Element) => getComputedStyle(element).backgroundColor;
   const transparent = (value: string) => !value || value === 'transparent' || /^rgba\(.*,\s*0\)$/.test(value);
-  let colour = background(document.body);
+  // The page's own background token, the colour of the header and the pane that sit under the status bar: the body takes the sidebar's
+  // colour around the app on a computer, which would leave a strip of another colour above a phone's header (#1544).
+  let colour = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  if (!colour) colour = background(document.body);
   if (transparent(colour)) colour = background(document.documentElement);
   if (transparent(colour)) return;
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = colour;
 }
 
+/**
+ * An installed Android app paints its navigation bar, the strip under the app, from the manifest's colours, which cannot follow the
+ * theme (#1544): the dark theme links the dark manifest, the light theme the light one. Chrome reads it again when it checks the
+ * installed app for an update.
+ */
+function syncManifest() {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (!link) return;
+  const shown = document.documentElement.dataset.theme ?? (systemTheme?.matches ? 'dark' : 'light');
+  const href = shown === 'dark' ? '/manifest-dark.webmanifest' : '/manifest.webmanifest';
+  if (link.getAttribute('href') !== href) link.setAttribute('href', href);
+}
+
 function publish() {
   syncThemeColor();
+  syncManifest();
   listeners.forEach((listener) => listener());
 }
 

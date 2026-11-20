@@ -45,6 +45,7 @@ import { named, youLabel } from '../docs/format';
 import { useGivenTaskOpened } from '../notifications/givenTask';
 import { MessageText } from '../app/MessageText';
 import { plainWords } from './messageWords';
+import { writeNow } from '../ui/focusField';
 
 /** The user id in an owner choice's value (`human:<id>`), for the person's photo (F-039); null for an agent or nobody. */
 const humanId = (value: string | null | undefined) => value?.startsWith('human:') ? value.slice('human:'.length) : null;
@@ -486,7 +487,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             {writable && editingBlocker ? (
               <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
                 {/* One field (#1438 point 12): the reason as words, or a person, a decision or a task picked from its list. */}
-                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus maxLength={2000}
+                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus={writeNow} maxLength={2000}
                   onChoice={chooseWait} onText={(value) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(value); }} />
                 {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || NO_BLOCK_REASON}</p> : null}
                 <div className="wd-blocker__form-acts">

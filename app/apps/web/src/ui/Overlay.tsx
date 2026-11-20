@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { duration, settle, token, type Pose } from './motion';
+import { useBackLayer } from './backLayer';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -124,6 +125,11 @@ export interface OverlayProps {
    * strip. Leave and the microphone must not be taken away by a thread (F-026, live-ux "never covers").
    */
   keepLiveStrip?: boolean;
+  /**
+   * On a phone Back closes this surface first (#1545, `useBackLayer`). A panel that has an entry of its own (a task, a decision, a thread, an
+   * agent) turns it off: its entry is the one Back leaves.
+   */
+  backLayer?: boolean;
   children: ReactNode;
 }
 
@@ -217,7 +223,7 @@ export function leaveFocusToDestination() { destinationTakesFocus = true; }
  * Modal surface in a portal: scrim, focus moved in and trapped, Esc and scrim close,
  * the rest of the app inert, focus returned to the opener. Slides from its edge.
  */
-export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, bare, keepLiveStrip, children }: OverlayProps) {
+export function Overlay({ open, onClose, placement, label, labelledBy, initialFocus, className, id, bare, keepLiveStrip, backLayer = true, children }: OverlayProps) {
   const { mounted, unmount } = usePresence(open);
   const frameRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -226,7 +232,7 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
   const onCloseRef = useRef(onClose);
   const openRef = useRef(open);
   useEffect(() => { onCloseRef.current = onClose; openRef.current = open; });
-
+  useBackLayer(open, () => onCloseRef.current(), backLayer);
 
   useLayoutEffect(() => {
     if (!open || !mounted) return;

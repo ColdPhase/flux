@@ -11,6 +11,7 @@ import { quote } from './format';
 import { named } from '../docs/format';
 import { useShellData } from '../app/data';
 import { RefLink } from '../place/origin';
+import { useBackLayer } from '../ui/backLayer';
 
 /** One thought's linked tasks: the exact count and the tasks of its bounded window. */
 export interface ThoughtTasksEntry {
@@ -194,6 +195,7 @@ function Chooser({ anchor, labelledBy, onClose, children }: { anchor: RefObject<
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
+  useBackLayer(true, () => onCloseRef.current(false));
 
   useLayoutEffect(() => {
     const pop = ref.current;

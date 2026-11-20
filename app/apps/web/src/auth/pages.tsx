@@ -6,6 +6,7 @@ import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input } from '../ui';
 import { safeNext, signedOauthQuery, takePasswordChangedFor, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
+import { focusesOnOpen } from '../ui/focusField';
 
 /** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
 function Brand() {
@@ -200,9 +201,9 @@ export function SignInPage() {
         <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
           <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
           <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-            defaultValue={result?.values?.email ?? changedFor ?? undefined} error={result?.fieldErrors?.email} autoFocus={!changedFor || !!result} />
+            defaultValue={result?.values?.email ?? changedFor ?? undefined} error={result?.fieldErrors?.email} autoFocus={focusesOnOpen() && (!changedFor || !!result)} />
           <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
-            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} autoFocus={!!changedFor && !result} />
+            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} autoFocus={focusesOnOpen() && !!changedFor && !result} />
           <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
         </Form>
       </div>
@@ -270,7 +271,7 @@ export function SignUpPage() {
         {setup ? <input type="hidden" name="setupToken" value={mode.token} /> : null}
         {mode.kind === 'invite' ? <input type="hidden" name="inviteToken" value={mode.token} /> : null}
         <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name}
-          hint="Shown to people you work with." autoFocus />
+          hint="Shown to people you work with." autoFocus={focusesOnOpen()} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           readOnly={locked !== null} hint={locked !== null ? 'You join with this email.' : undefined}
           defaultValue={locked ?? result?.values?.email ?? params.get('email') ?? undefined} error={result?.fieldErrors?.email} />
@@ -387,7 +388,7 @@ export function ForgotPasswordPage() {
       {unavailable ? <><ResetUnavailable /><p className="auth__alt"><Link className="ui-link" to="/sign-in">Back to sign in</Link></p></> : <><Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Request password reset">
         <FormError message={result?.formError} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
+          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus={focusesOnOpen()} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Sending…' : 'Send reset link'}</Button>
       </Form>
       <p className="auth__alt"><Link className="ui-link" to="/sign-in">Back to sign in</Link></p></>}
@@ -437,7 +438,7 @@ export function ResetPasswordPage() {
         {/* The address named above goes with the form, not in a link: the sign-in page after it fills Email with it (personas-35). */}
         {account ? <input type="hidden" name="account" value={account} /> : null}
         <Input label="New password" name="password" type="password" autoComplete="new-password" error={result?.fieldErrors?.password}
-          hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} autoFocus />
+          hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} autoFocus={focusesOnOpen()} />
         <Input label="Repeat new password" name="confirm" type="password" autoComplete="new-password" error={result?.fieldErrors?.confirm} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Saving…' : 'Save new password'}</Button>
       </Form>

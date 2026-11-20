@@ -24,6 +24,7 @@ import { InviteLinkList } from './SomeoneNew';
 import { PeoplePicker } from './PeoplePicker';
 import './people.css';
 import { awaitField, focusField } from '../ui/keys';
+import { focusOnOpen, writeNow } from '../ui/focusField';
 
 // Roles from the most to the least (personas-27): Owner, Admin, Member, Guest, in every menu of roles.
 const ROLES: WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
@@ -429,7 +430,7 @@ function CompanyName({ workspace, manager, startEditing = false, onChanged, onCl
       {editing ? (
         <form className="people__add sset-card people__nameform" onSubmit={(event) => void save(event)} noValidate aria-label="Change the company name"
           onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
-          <Input ref={fieldRef} id="company-name-input" label="Company name" value={value} maxLength={200} autoFocus onChange={(event) => { setValue(event.target.value); setProblem(''); }}
+          <Input ref={fieldRef} id="company-name-input" label="Company name" value={value} maxLength={200} autoFocus={writeNow} onChange={(event) => { setValue(event.target.value); setProblem(''); }}
             error={problem || undefined} hint="Shown on the sign-in page and in emails." />
           <div className="details__actions">
             <Button type="submit" variant="primary" busy={busy}>Save name</Button>
@@ -468,7 +469,7 @@ function AddPeople({ workspace, members, companyId, companyName, onAdded, onClos
     return () => controller.abort();
   }, [companyId, companyName]);
   // It opens on its search or first person, as Space settings' (F-026 §4).
-  useEffect(() => { if (company) root.current?.querySelector<HTMLElement>('.pick__list input:not([disabled])')?.focus(); }, [company]);
+  useEffect(() => { if (company) focusOnOpen(root.current?.querySelector<HTMLElement>('.pick__list input:not([disabled])')); }, [company]);
   const candidates = (company ?? []).filter((person) => !members.some((member) => member.userId === person.userId));
   async function add() {
     if (busy || !chosen.length) return;

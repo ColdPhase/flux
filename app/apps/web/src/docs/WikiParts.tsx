@@ -15,6 +15,8 @@ import { holdTyping } from './typeAhead';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
 import { useFitInWindow } from '../ui/pickerPlace';
+import { focusOnOpen, writeNow } from '../ui/focusField';
+import { useBackLayer } from '../ui/backLayer';
 
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
@@ -154,6 +156,7 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
+  useBackLayer(open, () => close(false));
   useAway(open, () => close(false), surface, button);
   useFitInWindow(open, surface, button);
   // The list as it is now: someone may have added a page since this one opened. A newer read replaces one still on its way.
@@ -166,7 +169,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   }, [project.id]);
   useEffect(() => {
     if (!open) return;
-    findRef.current?.focus();
+    // The page picker opens on its list on a touch screen: the keyboard would cover it (#1546).
+    focusOnOpen(findRef.current);
     read();
     return () => reading.current?.abort();
   }, [open, read]);
@@ -263,7 +267,7 @@ export function NewPage({ name, done, primary }: { name?: string; done?: () => v
   return (
     <form className="wiki-newpage" onSubmit={(event) => void create(event)}>
       <label className="ui-vh" htmlFor={fieldId}>Name of the new page</label>
-      <input id={fieldId} className="wiki-newpage__field" value={title} placeholder="Name of the new page" maxLength={200} autoFocus autoComplete="off"
+      <input id={fieldId} className="wiki-newpage__field" value={title} placeholder="Name of the new page" maxLength={200} autoFocus={writeNow} autoComplete="off"
         onChange={(event) => setTitle(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setNaming(false); } }} />
       <Button type="submit" variant={primary ? 'primary' : 'soft'} disabled={!title.trim()} busy={busy}>Create</Button>
@@ -309,6 +313,7 @@ function Contents({ headings, onHeading }: { headings: ContentsHeading[]; onHead
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); if (restore) button.current?.focus(); }, []);
+  useBackLayer(open, () => close(false));
   useAway(open, () => close(false), surface, button);
   useFitInWindow(open, surface, button);
   useEffect(() => { if (open) (surface.current?.querySelector<HTMLElement>('[role="menuitem"]') ?? surface.current)?.focus(); }, [open]);
@@ -362,6 +367,7 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setExporting(false); if (restore) buttonRef.current?.focus(); }, [buttonRef]);
+  useBackLayer(open, () => close(false));
   useFitInWindow(open, surface, buttonRef);
   useAway(open, () => close(false), surface, buttonRef);
   useEffect(() => { if (open) surface.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus(); }, [open, exporting]);

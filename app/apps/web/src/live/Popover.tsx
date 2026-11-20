@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { trapTab, usePop } from '../ui';
+import { useBackLayer } from '../ui/backLayer';
 
 /**
  * A small non-modal dialog under its button (the account menu's pattern): focus moves in,
@@ -18,6 +19,8 @@ export function Popover({ open, onClose, anchorRef, label, className, children, 
   const pop = usePop(open);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
+  // Back closes it first on a phone (#1545).
+  useBackLayer(open, () => onCloseRef.current());
 
   useLayoutEffect(() => {
     if (!open) return;

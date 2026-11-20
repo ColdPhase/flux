@@ -13,6 +13,7 @@ import '../app/settings.css';
 import '../people/space.css';
 import '../encryption/encryption.css';
 import { useCompanyCandidates, useNewProject } from './newProject';
+import { focusOnOpen } from '../ui/focusField';
 
 /**
  * A new space in one window (F-037, #874, S20): its name, the people (chosen from the company), an AI switch that starts on, an Encrypted
@@ -60,13 +61,13 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
   // The recovery code is made when the switch is first turned on and kept only in this form until Create sends it.
   const [code, setCode] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState(false);
-  // The window opens on its Name (the surface takes focus first; this runs after it).
+  // The window opens on its Name (the surface takes focus first; this runs after it); on a touch screen no field takes the focus (#1546).
   const nameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const repeatRef = useRef<HTMLInputElement>(null);
   const downloadRef = useRef<HTMLButtonElement>(null);
   const ids = { hint: useId(), length: useId(), code: useId(), why: useId() };
-  useEffect(() => { nameRef.current?.focus(); }, []);
+  useEffect(() => { focusOnOpen(nameRef.current); }, []);
 
   // Whether this server can make encrypted spaces (its key service answers): asked once, and the switch says so when it cannot.
   useEffect(() => {
