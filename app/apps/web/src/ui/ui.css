@@ -366,8 +366,10 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 /* At large text (200 %) the head gives way before Close does: the chip and the meta shorten with an ellipsis, and Close stays inside the panel. */
 .ui-panel__head > .ui-panel__close { flex: none; margin-left: auto; }
 .ui-panel__chip { min-width: 0; }
-.ui-panel__kind { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.ui-panel__meta { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ui-panel__kind { min-width: 0; overflow: hidden; white-space: nowrap; }
+/* The kind is a flex box, so its word carries the ellipsis itself ("Threa" was cut with none at 360 px, #1568); the count gives way first. */
+.ui-panel__word { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ui-panel__meta { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex-shrink: 1000; }
 .ui-panel--docked, .ui-panel--overlay { --panel-bg: var(--el); background: var(--panel-bg); }
 /* One shell for a task, a thread and the project's details (#512, AC-1): a card with the same head height and close place. */
 .ui-panel--docked { margin: 10px 10px 10px 0; border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); }

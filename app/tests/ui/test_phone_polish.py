@@ -189,6 +189,11 @@ class PhonePolish(unittest.TestCase):
                 self.assertEqual(placed["scrollTop"], 0, "an unanswered thread opens at its top")
                 self.assertGreaterEqual(placed["rootTop"], placed["feedTop"], "the first lines of the message are not under the sheet's head row")
                 self.assertGreater(placed["rootBottom"], placed["feedBottom"], "the question is long enough that its end is the part that would have been shown")
+                # The head row "‹ Inbox / Thread · 0 replies · Following ×": the count gives way first, "Thread" stays whole (it read "Threa" at 360).
+                word = page.locator(".ui-panel__head .ui-panel__word")
+                expect(word).to_have_text("Thread")
+                fits = word.evaluate("el => el.scrollWidth <= el.clientWidth")
+                self.assertTrue(fits, "the kind's word is not cut in the sheet's head row")
                 shot(page, f"1568-thread-from-inbox-{'360' if small else '390'}-{'dark' if dark else 'light'}")
 
     def test_04_what_change_opens_in_quiet_hours_and_muted_places_is_in_view_above_the_tab_bar(self) -> None:

@@ -1590,7 +1590,8 @@ menu's rows, the sidebar's end slot, the panel head's quiet actions and the exis
 - **Follow and Following** are one quiet button in a thread's panel head, between its reply count and the close control (the head's
   "quiet actions" slot): **Follow** with the plus icon, **Following** with the check (the label says the state), the `Button`'s quiet variant at the small
   size, no colour of its own. It is the same on the computer's panel, the tablet's overlay and
-  the phone's sheet. A thread is followed without choosing when the person started it, wrote in it or was mentioned in it; **Following**
+  the phone's sheet. Where the head is narrow (a 360 px phone with "‹ Inbox /", 200 % text) the reply count gives way first, then the kind
+  ("Thread"), each with "…"; Following and Close stay whole (v0.2.2, [#1568](https://github.com/ColdPhase/flux/issues/1568)). A thread is followed without choosing when the person started it, wrote in it or was mentioned in it; **Following**
   then stops its replies from notifying (**Follow** shows again). A mention of or a question to the person still arrives in a thread they unfollowed.
 - **Everything stays in step.** The ⋯ row, the sidebar mark, the Settings list and the thread's button read and write the same
   preferences that the Inbox, push and email use, and a change in one tab shows in the person's other open tabs without a reload.
