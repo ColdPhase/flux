@@ -54,6 +54,8 @@ export interface ProjectMessageFacts {
    * nobody asks, its proposer or an agent proposer's owner (persona round 8 P2 3). Absent for any other conversation.
    */
   decision?: { title: string; askee: string | null } | null;
+  /** This conversation is a task's one discussion (#868): on the task's card, never a message of the space's stream. Absent for any other conversation. */
+  inTask?: boolean;
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
   /**
@@ -170,6 +172,12 @@ export interface NotificationFacts {
   /** Null unless the change still waits for its owner's OK (#1186). */
   waitingChange(changeId: string): Promise<WaitingChangeFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;
+  /**
+   * Of these people, who chose the level "Everything": only they get a `message` notification (C-65, #1550), which `channelsOf` gives no
+   * channel to at any other level. Asked once for a message's whole audience, so a space of hundreds is not read one person at a time.
+   * Absent when the store does not read it: every person is then a candidate and `deliver` decides.
+   */
+  everythingLevel?(userIds: string[]): Promise<Set<string>>;
   /** F-030: the workspace's visible name when it is encrypted, else null. */
   sealedWorkspace?(workspaceId: string): Promise<{ name: string } | null>;
   /**

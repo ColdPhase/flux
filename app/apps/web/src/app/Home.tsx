@@ -13,6 +13,7 @@ import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { useSmallMoments } from './smallMoments';
 import { HomeWorkingAgents, WorkingAssistant } from './WorkingAgent';
+import { NewMessages, useNewMessages } from './NewMessages';
 import '../notifications/needs-you.css';
 import './home.css';
 import { RefLink } from '../place/origin';
@@ -384,6 +385,7 @@ export function Home() {
   const beyond = (queue.items?.length ?? 0) - rows.reduce((sum, row) => sum + ('decisions' in row ? row.decisions.length : 1), 0);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
   const reads = useContinue(me.user.id, workspaceIds);
+  const news = useNewMessages();
   // A person with no space yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
   // A space waiting to be unlocked is not a first run (F-030, #655).
   const firstRun = projects.length === 0 && !lockedWorkspaces.length && !rows.length;
@@ -457,8 +459,11 @@ export function Home() {
         </ul>
       ) : null}
 
+      {/* The conversations with something new, under what waits for you (#1548); nothing at all while none has. Not part of the Inbox. */}
+      {firstRun ? null : <NewMessages read={news} />}
+
       {/* Nothing appears twice (#1424 C): Continue offers nothing the Inbox holds, its rows here or the items beyond them. */}
-      <ContinueSection reads={reads} covered={queue.items === null && !queue.failed ? null : waitingIds(waitingRows(queue.items ?? [], Infinity))} />
+      <ContinueSection reads={reads} covered={(queue.items === null && !queue.failed) || !news.ready ? null : waitingIds(waitingRows(queue.items ?? [], Infinity))} />
       {/* The one-time offer to turn notifications on (#1243): last on the page, since it may not come (motion rule 6). */}
       {/* Someone removed from the company (or not in one yet) is told nothing here: the offer is not made to them (personas-34). */}
       <PushOffer userId={me.user.id} hidden={pushRow || !workspace} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />

@@ -7,7 +7,8 @@ This page is the contract for foundation area 8.9 as built in
 the #41 inbox and Web Push ([mobile PWA](../product/mobile-pwa.md#lock-screen-privacy)).
 Migration `0015_notifications.sql`, `FLUX_SCHEMA_VERSION` 15. Migration `0023_notifications_level.sql` (#872) keeps
 the level and `email_me` and drops the per-reason `channels` and `email_destination`. Migration `0057_notification_follows.sql`
-(#1249) adds `notification_follows`, the thread follow choices below.
+(#1249) adds `notification_follows`, the thread follow choices below. Migration `0100_new_message_notices.sql` (#1550, C-65) allows the reason `message` (and its content-free
+title ending in an encrypted workspace); no stored row changes.
 
 ## What notifies, and why
 
@@ -18,6 +19,7 @@ A notification exists only for a reason a person can act on (`reason` on every r
 | `mention` | `project.message_sent.v1` / `project.conversation_created.v1`, and `dm.message_sent.v1` (#1249) | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them, in a space or in a direct message; and a person whose question the message answers (#1424 decision 1): its author was named and asked in that conversation (or at that level of a direct message) after their own last message there. "Marta answered you in Product". |
 | `question` | same | A mention that asks something (`?`); in a direct message between two people, any message that asks something, for the other person, named or not (#1424 A); or, for an agent's question card (`flux_ask_question`, #347), exactly the one person asked, and nobody else because of that message. |
 | `reply` | same | The people who **follow** the conversation (a thread), unless the message mentions them: by default its starter and earlier writers, and whoever followed it (see "Follow a thread" under Preferences, #1249). |
+| `message` | same | **At Everything only** (C-65, #1550): everyone else the event reached who has no more specific reason, for a new message in a space they are in: one that opens a conversation of the space's stream (a top-level message, from someone else: not their own, not a server agent's line meant for its owner alone). A reply is its thread's (`reply` for those who follow it), and a decision's or a task's discussion is on its card, so neither is a `message`. Push and the open tab's notice; **never an Inbox item, never emailed**; nothing is made at Only what needs me or Nothing. "Maja wrote in Tool library". |
 | `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants, except those the message names (they get a `mention` or a `question`, #1249) and, in a direct message between two people, the other person when it asks something (a `question`, #1424 A); their reply in that DM answers it: it leaves Needs You as in a space thread, #1170. |
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |
 | `review` | `project.decision_proposed.v1` | Owners of work the decision affects, and the owner of the agent that produced it. |
@@ -106,11 +108,11 @@ The settings page sends its saves one after another, numbered, and shows only th
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
   The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
   to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`, `approval`) at `needsYou`, to every
-  reason (adding `reply` and `call`, a call started in one of your spaces, F-041) at `everything`, and to none at `nothing`. Email follows push except for `invitation` and `call`: a live call
-  invitation or notice is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
+  reason (adding `reply`, `message`, a new message in a space you are in (C-65, #1550), and `call`, a call started in one of your spaces, F-041) at `everything`, and to none at `nothing`. Email follows push except for `invitation`, `call` and `message`: a live call
+  invitation or notice is Inbox and push only, because the call can be over before a mail is read (live-sessions.md), and a `message` is push and notice only, never an Inbox item or an email. Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33. The line under each level in Settings names exactly these reasons
   (`app/apps/web/src/notifications/levels.ts`, #1173): "Questions, mentions, messages to you, tasks that need you, decisions about
-  your work, invitations to a call and agents waiting for you", then "Also every reply in conversations you are part of and calls started in your spaces";
+  your work, invitations to a call and agents waiting for you", then "Also new messages in your spaces, every reply in conversations you are part of and calls started in your spaces";
   `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
   for you while blocked, ready for you to check or able to continue. An agent's question is a `question`, and an agent waiting for your
   OK is `approval` (#1186).
@@ -121,7 +123,7 @@ The settings page sends its saves one after another, numbered, and shows only th
   `accountEnabled`, `addresses`, `available`, `lastFailureAt`), `quietHours` and `muted`; `PATCH` takes `accountEnabled`
   for the sign-in address's switch (`notification_preferences.account_enabled`, default on).
 - **Mute a place** (a space or a DM the person can read; #1249): only its ordinary messages are quiet, on every channel: a
-  `reply` in a thread and a `dm` get no inbox item, push, email or sound. Everything that needs the person still arrives (founder
+  `reply` in a thread, a `message` and a `dm` get no inbox item, push, email or sound. Everything that needs the person still arrives (founder
   decision on #1249): a **mention** of them, a **question** to them, a task given to them (`assigned`), a decision about their work
   (`review`), a live call invitation (`invitation`) and an agent waiting for their OK (`approval`): the reasons of "Only what needs me"
   except an ordinary direct message (in a DM, a message that names the person is a `mention` or a `question`, and any question between two people is a `question`, not `dm`,

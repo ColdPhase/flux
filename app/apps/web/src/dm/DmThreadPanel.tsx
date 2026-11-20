@@ -244,7 +244,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   useArrivals(feed, [...shown.map((message) => `thread-message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)], (id) => document.getElementById(id), (ids, atEnd) => {
     if (!atEnd) newBelow.add(arrivedBelow(feed.current, ids, (id) => document.getElementById(id)));
   }, { animate: false });
-  const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, !!older);
+  const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId);
   const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), fetchReaders: (list, run, after, signal) => dmReaders(dmId, list, run, after, signal), runs, tick: receiptTick });
   useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root && !returned.pending, feed,
     ids: (root ? [root, ...shown] : shown).filter((m) => m.authorId !== meId).map((m) => m.id), depend: shown.length });

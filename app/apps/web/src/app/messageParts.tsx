@@ -154,13 +154,18 @@ export function sameMessageAuthor(a: { authorId: string | null; createdAt: strin
     && new Date(a.createdAt).toDateString() === new Date(b.createdAt).toDateString();
 }
 
-/** The line under the last message of an author's group: the time, "· edited", and under the person's own messages the faces of who read it (#1231). */
-export function MessageTime({ at, receipt, edited }: { at: string; receipt?: Receipt | undefined; edited?: string }) {
+/**
+ * The line under the last message of an author's group: the time, "· edited", and under the person's own messages the faces of who read it (#1231).
+ * Under a message in the middle of a group (`last` false) there is no time: only the faces of whoever has read up to here, when someone has (#1551).
+ */
+export function MessageTime({ at, receipt, edited, last = true }: { at: string; receipt?: Receipt | undefined; edited?: string; last?: boolean }) {
+  const faces = receipt && receipt.count > 0 ? <ReceiptFaces receipt={receipt} /> : null;
+  if (!last) return faces ? <div className="message-time message-time--seen">{faces}</div> : null;
   return (
     <div className="message-time">
       <span className="message-time__when"><time dateTime={at} title={when(at)}>{clock(at)}</time>
         {edited ? <span className="message-edited" title={`Edited ${when(edited)}`}> · edited</span> : null}</span>
-      {receipt && receipt.count > 0 ? <ReceiptFaces receipt={receipt} /> : null}
+      {faces}
     </div>
   );
 }

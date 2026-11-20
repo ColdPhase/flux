@@ -416,7 +416,7 @@ function DmContent({ initial }: { initial: Dm }) {
   // Nothing is seen while the feed is hidden for its read-back to the first new message.
   useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending && !waitingForUnread, feed: feedBox,
     ids: shown.filter((m) => m.authorId !== me.user.id && !m.notice).map((m) => m.id), depend: shown.length });
-  const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
+  const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id);
   const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), fetchReaders: (list, run, after, signal) => dmReaders(dm.id, list, run, after, signal), runs, tick: receiptTick + refreshTick });
 
   function openThread(rootId: string, reply: boolean) {

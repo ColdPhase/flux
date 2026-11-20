@@ -216,7 +216,7 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   tone for a direct message, a mention or a question to you and one soft two-note chime for a
   direct call invitation (#1223, F-039). An open tab plays a sound only with a new notice card,
   so it follows the level and quiet hours, and a burst that joins the card shown does not sound again.
-  Never a loop, never for a call started in a space, never for a reply.
+  Never a loop, never for a call started in a space, never for a reply or a new message in a space.
 - **The tab and the app** (founder decision, 2026-11-12). The tab title gets "(N)" and
   the favicon a dot (`/icons/icon-dot.svg`) while unread notifications wait that would
   notify you under your level (direct messages, mentions, questions, tasks, call
@@ -255,6 +255,7 @@ hold the notice, the sound and push alike; the Inbox always keeps the row.
 | My agent waiting for my OK | `approval` | Only what needs me |
 | My agent finished a task ("Done: #4 …" in its chat) | not yet a notification: the chat is unread (its name is bold in Messages) | Everything, once it is one |
 | A reply in a conversation I am part of | `reply` | Everything |
+| A new message in a space I am in (one that opens a conversation) that does not name me (C-65, #1550) | `message`: push and notice only, never an Inbox item, never email | Everything |
 | A call started in my space ([F-039](live-collaboration.md), #1223) | the call's notice | Notice at Only what needs me; push at Everything |
 | An invitation to a call | `invitation` | Only what needs me (with the chime) |
 | Being added to a space | not yet a notification | Only what needs me, once it is one |
@@ -568,6 +569,7 @@ person, and holds on every device they receive push on.
   | A mention of you, or an answer to your question | `mention` | "Ada mentioned you in Tool library" |
   | A question to you | `question` | "Ada asked you in Tool library" |
   | A reply in a conversation you are part of | `reply` | "Ada replied in Tool library" |
+  | A new message in a space you are in (Everything only) | `message` | "Ada wrote in Tool library" |
   | A task for you, waiting for you, or able to continue | `assigned` | "Ada assigned you a task in Tool library" |
   | A decision about your work | `review` | "Ada asked for your review in Tool library" |
   | An agent waiting for your OK | `approval` | "Scout is waiting for your OK in Tool library" |

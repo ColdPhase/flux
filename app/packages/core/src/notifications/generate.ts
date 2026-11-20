@@ -84,6 +84,7 @@ export interface Candidate {
 export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationReason, 'security'>, string>> = {
   mention: 'mentioned you', question: 'asked you', reply: 'replied', dm: 'sent you a message', assigned: 'assigned you a task',
   review: 'asked for your review', invitation: 'invited you to a call', approval: 'is waiting for your OK', call: 'started a call',
+  message: 'wrote',
 };
 export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
   return hiddenNotificationTitle(reason, who, workspaceName);
@@ -135,7 +136,8 @@ async function actorName(facts: NotificationFacts, actorId: string): Promise<str
 
 /**
  * Who an event concerns and why: people addressed in a message (mention, question), people in a
- * conversation that gets a reply, the other people of a direct message, the new owner of work,
+ * conversation that gets a reply, everyone else a new message of the space reached (`message`: pushed only at Everything, C-65), the other people of a
+ * direct message, the new owner of work,
  * the people whose work (or agent) a proposed decision is about, and the
  * recipient of a live invitation. Only
  * people in the event's recorded audience are considered; the actor is never notified.
@@ -174,6 +176,11 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       // Its notice says which decision it is about: "Jonas asked you about “Stand closes at 15:00”" (a sealed space keeps its fixed words).
       const place = message.decision ? `about ${quote(excerpt(message.decision.title, 60))}` : `in ${message.projectName}`;
       const toStarter = asksStarter(message.body, authorId, starter) ? starter : null;
+      // A new message in the space's own conversation: one that opens a conversation of the stream. A reply is its thread's (followers hear it as
+      // a `reply`), and a decision's or a task's discussion is on its card, not in the stream: none of them is a "new message in a space".
+      const newInSpace = message.sequence === 1 && !message.decision && !message.inTask;
+      // Only a person at Everything is told of a message that is no more theirs than anyone's (`channelsOf`): asked once for all of them.
+      const atEverything = newInSpace && facts.everythingLevel ? await facts.everythingLevel(people) : null;
       const result: Candidate[] = [];
       for (const userId of people) {
         const name = names.get(userId) ?? '';
@@ -182,11 +189,14 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         if (message.asked && !askedThis) continue;
         const named = mentions(message.body, name) || toStarter === userId;
         const addressed = named || answered.has(userId);
-        const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : follows(userId) ? 'reply' : null;
-        if (!reason) continue;
+        // The most specific reason first, so a person is told once per message: asked or named, then a thread they follow, then (at Everything only,
+        // `channelsOf`) a new message in a space they are in (C-65, #1550): a top-level message, which starts a conversation nobody follows yet.
+        const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : follows(userId) ? 'reply' : newInSpace ? 'message' : null;
+        if (!reason || (reason === 'message' && atEverything && !atEverything.has(userId))) continue;
         const title = reason === 'question' ? `${author} asked you ${place}`
           : reason === 'mention' ? `${author} ${named ? 'mentioned' : 'answered'} you ${place}`
-            : message.decision ? `${author} replied about ${quote(excerpt(message.decision.title, 60))}` : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
+            : reason === 'message' ? `${author} wrote in ${message.projectName}`
+              : message.decision ? `${author} replied about ${quote(excerpt(message.decision.title, 60))}` : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question, MESSAGE_WORDS) : excerpt(messagePreview(message.body, message.attachmentCount), MESSAGE_WORDS), url,
           aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent', where: message.projectName,
@@ -361,11 +371,11 @@ export interface GenerationOptions {
  */
 async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: Candidate, options: GenerationOptions, notices: NoticeAnnouncement[] = []) {
   const preferences = await ports.preferences.get(candidate.userId);
+  const channels = channelsOf(preferences)[candidate.reason];
+  if (!channels.inApp && !channels.push && !channels.email) return false;
   // A muted place keeps its ordinary messages quiet; what needs the person (a mention, a question, a task, a decision, an invitation, an agent
   // waiting) still arrives (#1249). The one rule is `quiet`.
   if (await ports.preferences.quiet(candidate.userId, candidate.source, candidate.reason)) return false;
-  const channels = channelsOf(preferences)[candidate.reason];
-  if (!channels.inApp && !channels.push && !channels.email) return false;
   // Access now, not only at event time: someone removed since then gets nothing.
   const decision = await ports.authorizer.canRead(candidate.userId, candidate.source);
   const source = { workspaceId: event.workspaceId, type: candidate.source.type, id: candidate.source.id };

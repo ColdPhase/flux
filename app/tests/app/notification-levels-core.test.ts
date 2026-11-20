@@ -16,13 +16,16 @@ import {
 // Notification levels (#350, F-026 S22) with in-memory ports.
 
 const fresh = (): StoredPreferences => ({ ...DEFAULT_PREFERENCES });
+/** Push and notice only: a call started in a space (#1438 point 11) and a new message in a space (C-65, #1550) are no Inbox item and no email. */
+const WAITS_NOWHERE: readonly string[] = ['call', 'message'];
+const NEVER_EMAILED: readonly string[] = ['invitation', 'call', 'message'];
 
 describe('notification levels', () => {
   test('the default is Only what needs me with email too: push and email for the needs-you reasons, not replies, and the inbox for all', () => {
     const channels = channelsOf(fresh());
     for (const reason of NOTIFICATION_REASONS) {
       const needsYou = (NEEDS_YOU_REASONS as readonly string[]).includes(reason);
-      assert.equal(channels[reason].inApp, reason !== 'call', `${reason} reaches the inbox, a call started in a space excepted (#1438 point 11)`);
+      assert.equal(channels[reason].inApp, !WAITS_NOWHERE.includes(reason), `${reason} reaches the inbox, a call started in a space and a new message in a space excepted (#1438 point 11, C-65)`);
       assert.equal(channels[reason].push, needsYou, `${reason} push`);
       assert.equal(channels[reason].email, needsYou && reason !== 'invitation', `${reason} email follows push, a live call invitation excepted`);
     }
@@ -32,11 +35,11 @@ describe('notification levels', () => {
   test('Everything, Nothing and back: the inbox is never turned off', () => {
     const everything = applyPreferenceChange(fresh(), { level: 'everything' });
     assert.equal(everything.level, 'everything');
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email === (reason !== 'invitation' && reason !== 'call')));
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email === (!NEVER_EMAILED.includes(reason))));
 
     const nothing = applyPreferenceChange(everything, { level: 'nothing' });
     const off = channelsOf(nothing);
-    assert.ok(NOTIFICATION_REASONS.every((reason) => off[reason].inApp === (reason !== 'call') && !off[reason].push && !off[reason].email), 'Nothing keeps the inbox only');
+    assert.ok(NOTIFICATION_REASONS.every((reason) => off[reason].inApp === !WAITS_NOWHERE.includes(reason) && !off[reason].push && !off[reason].email), 'Nothing keeps the inbox only');
 
     const back = applyPreferenceChange(nothing, { level: 'needsYou' });
     assert.deepEqual(back, fresh(), 'Only what needs me after Nothing is the default again');
@@ -48,7 +51,7 @@ describe('notification levels', () => {
     assert.ok(NOTIFICATION_REASONS.every((reason) => !channelsOf(noEmail)[reason].email), 'no reason emails');
     assert.deepEqual(NOTIFICATION_REASONS.map((reason) => channelsOf(noEmail)[reason].push), NOTIFICATION_REASONS.map((reason) => channelsOf(fresh())[reason].push), 'push is unchanged');
     const everything = applyPreferenceChange(fresh(), { level: 'everything', emailMe: true });
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email === (reason !== 'invitation' && reason !== 'call')), 'Everything emails every reason but a live call invitation or notice');
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email === (!NEVER_EMAILED.includes(reason))), 'Everything emails every reason but a live call invitation or notice, and a new message in a space');
     assert.equal(channelsOf(everything).invitation.push, true, 'the invitation still rings on push, and is in the Inbox');
   });
 
