@@ -455,6 +455,17 @@ class SearchJourney(unittest.TestCase):
         expect(field).to_have_value("")
         expect(field).to_be_focused()  # the keyboard that was up stays up
         self.assertEqual(clear_button.count(), 0, f"{where}: the clear goes with the text")
+        # A clear pressed while the keyboard is down does not raise it; one pressed from the keyboard hands the focus to the field, not to the page.
+        field.fill("lamp")
+        field.blur()
+        clear_button.tap()
+        expect(field).to_have_value("")
+        self.assertFalse(field.evaluate("el => el === document.activeElement"), f"{where}: a tap on the clear does not focus the field")
+        field.fill("lamp")
+        clear_button.focus()
+        clear_button.press("Enter")
+        expect(field).to_have_value("")
+        expect(field).to_be_focused()
 
     def test_08b_the_phone_search_fields_are_one_flat_pill_and_cancel_stands_outside(self) -> None:
         lamp = self.ids["lamp"]

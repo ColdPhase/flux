@@ -39,13 +39,19 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
     event.preventDefault();
     own.current?.focus();
   };
+  // The clear goes with the text, so a keyboard or screen-reader activation (where the × itself holds the focus) hands the focus to the field
+  // instead of dropping it to the page. A tap never gives it a focus (mousedown is cancelled below), so a keyboard that was down stays down.
+  const clear = (event: MouseEvent<HTMLButtonElement>) => {
+    if (document.activeElement === event.currentTarget) own.current?.focus();
+    onValue('');
+  };
   return (
     <div className={['ui-search', phoneIcon ? 'ui-search--phone-icon' : '', className].filter(Boolean).join(' ')} onMouseDown={focusInput}>
       <Icon name="search" size={iconSize} className="ui-search__icon" />
       <input enterKeyHint="search" {...input} ref={setRefs} className={inputClassName} type="search" value={value} onChange={(event) => onValue(event.target.value)} />
       {children}
       {/* Not drawn on the computer or the tablet (their fields keep the browser's cross). mousedown never takes the focus off the field. */}
-      {value ? <IconButton icon="x" label="Clear search" size={16} className="ui-search__clear" data-tip={undefined} onMouseDown={(event) => event.preventDefault()} onClick={() => onValue('')} /> : null}
+      {value ? <IconButton icon="x" label="Clear search" size={16} className="ui-search__clear" data-tip={undefined} onMouseDown={(event) => event.preventDefault()} onClick={clear} /> : null}
     </div>
   );
 });
