@@ -80,7 +80,8 @@ class ContentSecurityPolicy(unittest.TestCase):
         # The policy that ships is the stack's report-only one (its enforced policy adds eval for the test driver, see csp_gate.sh).
         policy = response.headers.get("content-security-policy-report-only", "")
         self.assertIn("default-src 'self'", policy)
-        self.assertRegex(policy, r"script-src 'self' 'sha256-[A-Za-z0-9+/=]+';")
+        # The page's inline scripts by hash only: the theme read before the first paint and the body's first script (#1530).
+        self.assertRegex(policy, r"script-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+;")
         self.assertNotRegex(re.search(r"script-src[^;]*", policy).group(0), r"unsafe-")
         self.assertEqual(response.headers["content-security-policy"].replace(" 'unsafe-eval'", ""), re.sub(r"; report-uri \S+$", "", policy))
         for path in ("/", "/inbox", "/settings", "/settings/account", "/tasks", "/projects"):
