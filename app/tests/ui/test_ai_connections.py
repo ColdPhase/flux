@@ -247,7 +247,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(empty.get_by_label("Model", exact=True)).to_be_editable()
 
         # The path the release test found (#1594): an endpoint that wants a key, a wrong one, the model typed, Connect, no list asked.
-        wrong = "local-refused-placeholder"
+        wrong = "local-refused-typo-1594"  # not the key test_03c listed with
         form = self.page()
         form.goto("/settings/ai-connections")
         form.get_by_role("button", name="Add a key").click()
