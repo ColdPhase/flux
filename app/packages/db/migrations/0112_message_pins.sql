@@ -7,7 +7,10 @@
 --   chat a run (its request or its answer, `run_part`) or one of the agent's own lines. A message is pinned at most once.
 -- - The rows go with what they name: a removed space, direct message, agent or run takes its pins (the foreign keys cascade). A message the
 --   author deletes keeps its row as the "Message removed" marker, so the delete takes its pin in the same transaction
---   (`messageChangeRows.removeProject` / `removeDm`), and every read leaves out a removed message.
+--   (`messageChangeRows.removeProject` / `removeDm`), and an agent's answer that Undo removes takes its pin the same way
+--   (`assistantRemovalRows`). Every read leaves out a removed message.
+-- - A pin outlives the person who pinned it: it is the conversation's, not theirs. Deleting that person empties `pinned_by`, and the list says
+--   "Pinned by a former member".
 --
 -- v0.2.1 data: the table is new and empty; nothing is pinned after the upgrade and nothing is backfilled.
 -- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
@@ -24,7 +27,7 @@ CREATE TABLE public.message_pins (
     run_id uuid,
     run_part text,
     agent_chat_message_id uuid,
-    pinned_by text NOT NULL,
+    pinned_by text,
     pinned_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT message_pins_pkey PRIMARY KEY (id),
     CONSTRAINT message_pins_workspace_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE,
@@ -35,7 +38,7 @@ CREATE TABLE public.message_pins (
     CONSTRAINT message_pins_dm_message_fkey FOREIGN KEY (dm_message_id) REFERENCES public.dm_messages(id) ON DELETE CASCADE,
     CONSTRAINT message_pins_run_fkey FOREIGN KEY (run_id) REFERENCES public.personal_runs(id) ON DELETE CASCADE,
     CONSTRAINT message_pins_agent_chat_message_fkey FOREIGN KEY (agent_chat_message_id) REFERENCES public.agent_chat_messages(id) ON DELETE CASCADE,
-    CONSTRAINT message_pins_pinned_by_fkey FOREIGN KEY (pinned_by) REFERENCES public.auth_users(id) ON DELETE CASCADE,
+    CONSTRAINT message_pins_pinned_by_fkey FOREIGN KEY (pinned_by) REFERENCES public.auth_users(id) ON DELETE SET NULL,
     CONSTRAINT message_pins_one_place CHECK (num_nonnulls(project_id, dm_id, agent_id) = 1),
     CONSTRAINT message_pins_one_message CHECK (num_nonnulls(project_message_id, dm_message_id, run_id, agent_chat_message_id) = 1),
     CONSTRAINT message_pins_message_of_place CHECK ((project_id IS NULL) = (project_message_id IS NULL) AND (dm_id IS NULL) = (dm_message_id IS NULL)

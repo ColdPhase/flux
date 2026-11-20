@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { forgetPin } from './message-pins.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -89,6 +90,8 @@ export function assistantRemovalRows(db: DbExecutor) {
     await db.execute(sql`DELETE FROM message_references WHERE project_message_id = ${message.id}`);
     await db.execute(sql`UPDATE project_messages SET body = ${byOwner ? REMOVED_BY_OWNER_BODY : REMOVED_MESSAGE_BODY}, removed_at = now(),
       contribution_kind = 'text', source_material_id = NULL, source_material_version = NULL WHERE id = ${message.id}`);
+    // C-74: a removed message leaves the pinned list, in this transaction, as an author's delete takes its pin (`messageChangeRows`).
+    await forgetPin(db, { kind: 'project', id: message.id });
     await forgetNotices(message.projectId, message.id);
     return { ok: true, projectId: message.projectId, snapshot: { conversationId: message.conversationId, sequence: message.sequence, bodyHash: message.hash, bodyLength: message.length } };
   }

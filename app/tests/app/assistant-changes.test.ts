@@ -4,8 +4,8 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import * as Y from 'yjs';
 import {
   agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, decisionDiscussionPath, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
-  NEEDS_YOU_PATH, personalRunTokenPath, projectExportPath,
-  type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
+  NEEDS_YOU_PATH, personalRunTokenPath, pinPath, pinsPath, projectExportPath,
+  type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type PinnedMessages, type Project, type Workspace,
 } from '@flux/contracts';
 import { recoverPersonalRuns, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -622,6 +622,26 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const removed = (await pool.query(`SELECT id, removed_at IS NOT NULL AS removed FROM project_messages WHERE id = ANY($1::uuid[])`, [[first.messageId, second.messageId]])).rows as { id: string; removed: boolean }[];
     assert.deepEqual(removed.filter((row) => row.removed).length, 2, 'neither message stays behind');
     assert.deepEqual([(await stateOf(first.change.id)).state, (await stateOf(second.change.id)).state], ['undone', 'undone']);
+  });
+
+  test('C-74: Undo of an agent\'s pinned message takes its pin in the same transaction; the list and the export forget it', async () => {
+    const item = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'A pinned line taken back' } }), 201) as { id: string };
+    const root = expectStatus(await owner.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Where is the shed key?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    const line = await post('flux_reply_in_conversation', { conversationId: root.conversationId, message: { body: 'Under the third pot' } });
+    const run = await liveRun();
+    await complete(run.runId);
+    await pool.query(`UPDATE assistant_changes SET run_id = $2, connection_id = NULL, receipt = jsonb_set(receipt, '{undo,plan}', '{"kind":"removal"}') WHERE id = $1`,
+      [line.change.id, run.runId]);
+    const pins = { type: 'project' as const, id: place.id };
+    assert.deepEqual((expectStatus(await peer.browser.request('PUT', pinPath(pins, line.messageId)), 200) as PinnedMessages).items.map((pin) => pin.messageId), [line.messageId]);
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 1, undone.message);
+    assert.ok((await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [line.messageId])).rows[0].removed_at, 'the message is the "Message removed" marker');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM message_pins WHERE project_message_id = $1`, [line.messageId])).rows[0].n, 0, 'its pin went with it');
+    assert.deepEqual((expectStatus(await peer.browser.request('GET', pinsPath(pins)), 200) as PinnedMessages).items, []);
+    const exported = expectStatus(await owner.browser.request('GET', projectExportPath(place.id)), 200) as { conversations: { messages: { id: string; pinned?: unknown }[] }[] };
+    const marker = exported.conversations.flatMap((conversation) => conversation.messages).find((message) => message.id === line.messageId)!;
+    assert.equal(marker.pinned, undefined, 'the marker is not pinned in the export');
   });
 
   test('#68 map: Undo removes an untouched map the assistant made and refuses once renamed, filled or cited', async () => {

@@ -2,7 +2,7 @@
 -- (C-69) and in the pictures people send (PNG, JPEG, WebP, GIF), in the same sandboxed reader, and keeps it as the file's text: search
 -- rows like a PDF's own text, or a chat's file text. `ocr_state` says whether OCR has read the file: NULL (not yet, or the switch was off),
 -- 'text' (its text was kept) or 'none' (nothing confident enough was found). A file of an encrypted space is never read.
--- v0.2.2's migrations are 0100 to 0110; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
+-- v0.2.2's migrations are 0100 to 0112; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
 -- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
 SET LOCAL lock_timeout = '5s';
 

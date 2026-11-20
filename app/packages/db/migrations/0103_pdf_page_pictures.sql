@@ -1,7 +1,7 @@
 -- A PDF without text (a scan, an exported map, slides saved as pictures; C-69, #1557). The worker's sandboxed reader keeps the picture of
 -- each of its first ten pages (a PNG of at most 1,568 px on its long side) for the agents whose model sees pictures, and marks the file
 -- `no_text`, so its row and its preview say why search and agents find no words in it. The pictures go with their file.
--- v0.2.2's migrations are 0100 to 0110; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
+-- v0.2.2's migrations are 0100 to 0112; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
 -- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
 SET LOCAL lock_timeout = '5s';
 

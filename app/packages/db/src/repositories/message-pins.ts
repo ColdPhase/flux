@@ -48,6 +48,11 @@ export function messagePinRows(db: DbExecutor) {
     };
   }
 
+  /** Who pinned it, as everyone reads it; null once that person is deleted (the pin stays: it is the conversation's). */
+  const pinner = (named: (ref: { kind: 'human' | 'agent'; id: string }) => string, by: string | null) => (by === null ? null : { id: by, name: named({ kind: 'human', id: by }) });
+  /** The people who pinned, for `names`. */
+  const pinners = (rows: { pin: { pinnedBy: string | null } }[]) => rows.flatMap((row) => (row.pin.pinnedBy === null ? [] : [{ kind: 'human' as const, id: row.pin.pinnedBy }]));
+
   return {
     /**
      * The message `messageId` names in this conversation, still there and one people wrote or read as a message: what a pin may name. An id of
@@ -99,7 +104,7 @@ export function messagePinRows(db: DbExecutor) {
         const roots = new Map(replies.length ? (await db.select({ id: pm.id, conversationId: pm.conversationId }).from(pm)
           .where(and(inArray(pm.conversationId, replies), eq(pm.sequence, 1)))).map((row) => [row.conversationId, row.id]) : []);
         const named = await names(workspaceId, [...opened.map((row) => (row.authorId !== null ? { kind: 'human' as const, id: row.authorId } : { kind: 'agent' as const, id: row.authorAgentId! })),
-          ...rows.map((row) => ({ kind: 'human' as const, id: row.pin.pinnedBy }))]);
+          ...pinners(rows)]);
         const colours = await agentColours(opened.flatMap((row) => (row.authorAgentId ? [row.authorAgentId] : [])));
         return rows.map((row, index) => {
           const message = opened[index]!;
@@ -108,7 +113,7 @@ export function messagePinRows(db: DbExecutor) {
           return { messageId: message.id, conversationId: message.conversationId, ...(root ? { threadRootId: root } : {}),
             author: { ...author, name: named(author), ...(author.kind === 'agent' && colours.get(author.id) ? { colour: colours.get(author.id)! } : {}) },
             body: message.body, ...(files.get(message.id)?.length ? { files: files.get(message.id) } : {}), createdAt: message.createdAt.toISOString(),
-            pinnedBy: { id: row.pin.pinnedBy, name: named({ kind: 'human', id: row.pin.pinnedBy }) }, pinnedAt: row.pin.pinnedAt.toISOString() };
+            pinnedBy: pinner(named, row.pin.pinnedBy), pinnedAt: row.pin.pinnedAt.toISOString() };
         });
       }
       if (place.type === 'dm') {
@@ -116,13 +121,13 @@ export function messagePinRows(db: DbExecutor) {
           .where(and(eq(p.dmId, place.id), isNull(dm.removedAt))).orderBy(desc(p.pinnedAt), desc(p.id)).limit(limit);
         const opened = await openRows(db, 'dm_messages', rows.map((row) => row.message));
         const files = await fileRows(db).messageFiles(opened.map((row) => row.id));
-        const named = await names(workspaceId, [...opened.map((row) => ({ kind: 'human' as const, id: row.authorId })), ...rows.map((row) => ({ kind: 'human' as const, id: row.pin.pinnedBy }))]);
+        const named = await names(workspaceId, [...opened.map((row) => ({ kind: 'human' as const, id: row.authorId })), ...pinners(rows)]);
         return rows.map((row, index) => {
           const message = opened[index]!;
           return { messageId: message.id, ...(message.threadRootId ? { threadRootId: message.threadRootId } : {}),
             author: { kind: 'human' as const, id: message.authorId, name: named({ kind: 'human', id: message.authorId }) },
             body: message.body, ...(files.get(message.id)?.length ? { files: files.get(message.id) } : {}), createdAt: message.createdAt.toISOString(),
-            pinnedBy: { id: row.pin.pinnedBy, name: named({ kind: 'human', id: row.pin.pinnedBy }) }, pinnedAt: row.pin.pinnedAt.toISOString() };
+            pinnedBy: pinner(named, row.pin.pinnedBy), pinnedAt: row.pin.pinnedAt.toISOString() };
         });
       }
       // An agent's chat: its owner's requests, the agent's answers and its own lines. Only its owner reads it, and it is never encrypted (no AI there).
@@ -131,11 +136,11 @@ export function messagePinRows(db: DbExecutor) {
         .from(p).leftJoin(runs, eq(runs.id, p.runId)).leftJoin(lines, eq(lines.id, p.agentChatMessageId))
         .where(eq(p.agentId, place.id)).orderBy(desc(p.pinnedAt), desc(p.id)).limit(limit);
       const agent = { kind: 'agent' as const, id: place.id };
-      const named = await names(workspaceId, [agent, ...rows.flatMap((row) => [{ kind: 'human' as const, id: row.pin.pinnedBy }, ...(row.run ? [{ kind: 'human' as const, id: row.run.ownerUserId }] : [])])]);
+      const named = await names(workspaceId, [agent, ...pinners(rows), ...rows.flatMap((row) => (row.run ? [{ kind: 'human' as const, id: row.run.ownerUserId }] : []))]);
       const colour = (await agentColours([place.id])).get(place.id);
       const said = { ...agent, name: named(agent), ...(colour ? { colour } : {}) };
       return rows.flatMap((row): PinRecord[] => {
-        const pinnedBy = { id: row.pin.pinnedBy, name: named({ kind: 'human', id: row.pin.pinnedBy }) };
+        const pinnedBy = pinner(named, row.pin.pinnedBy);
         const pinnedAt = row.pin.pinnedAt.toISOString();
         if (row.line) return [{ messageId: row.line.id, author: said, body: row.line.body, createdAt: row.line.createdAt.toISOString(), pinnedBy, pinnedAt }];
         if (!row.run) return [];

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { and, asc, count, eq, gte, inArray, isNull, lte, not } from 'drizzle-orm';
 import { AGENT_SEARCH_LIMITS, removedName } from '@flux/contracts';
-import { agentHit, agentSearchAudiences, isMessageKind, pinnedFirst, agentSearchPlan, AGENT_SEARCH_KINDS, authorLabel, authorsNamed, DomainError, evaluateProject, InvalidInputError, isAuthorName,
+import { agentHit, agentSearchAudiences, isMessageKind, pinnedFirst, agentSearchPlan, AGENT_SEARCH_KINDS, authorLabel, authorsNamed, DomainError, evaluateProject, FORMER_MEMBER, InvalidInputError, isAuthorName,
   NotFoundError, type AgentHit, type AgentSearchPlan, type AuthorCandidate, type SearchAudience } from '@flux/core';
 import { accessReader, dmAiOffSql, messagePinRows, dmAuthorName, fileTextRows, removedInDm, schema, searchRows, visibleFilter, type Database, type QueryVectors, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
 import { conversationStore } from '../conversation/store.js';
@@ -268,7 +268,7 @@ async function listPinned(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
   return { place: { type: dm ? 'dm' : 'space', id },
     pinned: items.map((item) => ({ messageId: item.messageId, ...(item.conversationId ? { conversationId: item.conversationId } : {}), ...(item.threadRootId ? { inThread: true } : {}),
       author: { kind: item.author.kind, id: item.author.id, name: item.author.name }, body: item.body, ...(item.files?.length ? { files: item.files.map((file) => ({ fileId: file.id, name: file.name })) } : {}),
-      at: item.createdAt, pinnedBy: item.pinnedBy.name, pinnedAt: item.pinnedAt })),
+      at: item.createdAt, pinnedBy: item.pinnedBy?.name ?? FORMER_MEMBER, pinnedAt: item.pinnedAt })),
     ...(items.length ? {} : { note: NO_PINS }) };
 }
 

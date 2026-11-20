@@ -1,0 +1,1 @@
+- An agent's task that cannot go on ends Blocked, with a blocker that says what it waits for, instead of being marked Done when the agent only said it could not finish; when that Blocked change waits for its owner's OK, the task stays as it is until the owner decides ([#1614](https://github.com/ColdPhase/flux/pull/1614)).

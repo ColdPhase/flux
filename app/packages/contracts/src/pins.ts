@@ -37,7 +37,8 @@ export interface PinnedMessage {
   /** Its files, each shown as its chip. */
   files?: MessageFile[];
   createdAt: string;
-  pinnedBy: { id: string; name: string };
+  /** Who pinned it; null once that person is deleted, because a pin is the conversation's and stays ("Pinned by a former member"). */
+  pinnedBy: { id: string; name: string } | null;
   pinnedAt: string;
 }
 

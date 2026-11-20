@@ -1674,7 +1674,8 @@ Founder decision, Hubert, 2026-11-20 ([#1615](https://github.com/ColdPhase/flux/
 - **The ⋯ menu:** **Pin** / **Unpin** after Copy text, before the line that sets off Edit and Delete, with its key `P` at the row's end on a
   computer (S6). `P` pins or unpins while focus is in the message. A deleted message has none.
 - **The line:** a pinned message shows one quiet line above its bubble, the pin glyph and "Pinned by Ada Kowalska" ("(you)" for the reader), in
-  `--t3` at meta size, on its author's side.
+  `--t3` at meta size, on its author's side. A pin outlives the person who pinned it: once that person is deleted the line, and the panel's
+  "pinned by", read "a former member".
 - **The header (computer and tablet):** a button with the pin glyph and the count, in a fixed slot before the faces. With no pins the slot stays
   empty, so nothing moves. It follows the faces into ⋯ (its **Pinned** row with the count) where the row has no room. A direct message and an
   agent's chat have the same button in their header, which always has room for it.
