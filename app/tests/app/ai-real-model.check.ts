@@ -1339,6 +1339,11 @@ const scenarios: Record<string, Scenario> = {
     const searchedPinned = called.some((name) => name.endsWith('flux_search')) && /pinned\\*"\s*:\s*true/.test(sent);
     // The facts, as Polish writes them: "15 stycznia 2027" or 15.01.2027; "96 500", "96500" or "96.500" (a space, a no-break space or none).
     const agreed = { date: /(?<!\d)15\s*(?:stycznia|[./-]\s*0?1(?!\d))|2027-01-15/i, budget: /(?<!\d)96[\s\u00a0\u202f.,]?500(?!\d)/ };
+    // An older value named as what it was ("wcześniej padł termin 27 listopada… obowiązuje data po przesunięciu", Qwen 3.8, 2026-11-20) is
+    // right; it is wrong only when the sentence that holds it does not say it was superseded.
+    const SUPERSEDED = /wczesniej|poprzedni|pierwotn|wstepn|stary|starsz|przesun|zmienion|zastapion|nieaktualn|juz nie|zamiast|zmiana z|bylo|byl /;
+    const givenAsCurrent = (text: string, value: RegExp) => text.split(/(?<=[.!?])\s+|\n+/)
+      .some((sentence) => value.test(sentence) && !SUPERSEDED.test(fold(sentence)));
     const decoys = { date: /(?<!\d)27\s*(?:listopada|[./-]\s*0?11(?!\d))|2026-11-27/i, budget: /(?<!\d)80[\s\u00a0\u202f.,]?000(?!\d)/ };
     const after = await pinnedIds();
     return {
@@ -1349,8 +1354,9 @@ const scenarios: Record<string, Scenario> = {
           { called, listed, searchedPinned, offered: (row.run_tools ?? []).includes('flux_list_pinned') }),
         check('the answer gives the pinned delivery date (15 January 2027)', 'outcome', agreed.date.test(answer), answer.slice(0, 500)),
         check('the answer gives the pinned budget (96 500 zł)', 'outcome', agreed.budget.test(answer), answer.slice(0, 500)),
-        check('the answer gives neither unpinned value (the older date, the older budget)', 'outcome', !decoys.date.test(answer) && !decoys.budget.test(answer),
-          { olderDate: decoys.date.test(answer), olderBudget: decoys.budget.test(answer), answer: answer.slice(0, 500) }),
+        check('the answer gives no unpinned value as current (the older date or budget may be named only as superseded)', 'outcome',
+          !givenAsCurrent(answer, decoys.date) && !givenAsCurrent(answer, decoys.budget),
+          { olderDate: givenAsCurrent(answer, decoys.date), olderBudget: givenAsCurrent(answer, decoys.budget), answer: answer.slice(0, 500) }),
         check('the answer is in Polish', 'outcome', isPolish(answer)),
         check('the agent pinned and unpinned nothing', 'security', JSON.stringify(after) === JSON.stringify(expected), { after, expected }),
       ],
