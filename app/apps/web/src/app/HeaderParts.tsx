@@ -3,6 +3,7 @@ import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, Icon, IconButton, Kreska, usePop, type IconName } from '../ui';
 import { activeFirst } from '../people/lastActive';
 import { useFitInWindow } from '../ui/pickerPlace';
+import { useBackLayer } from '../ui/backLayer';
 import { useAgentWorkingIn } from './WorkingAgent';
 
 /**
@@ -49,6 +50,8 @@ const shownRows = (menu: HTMLElement | null) => [...(menu?.querySelectorAll<HTML
 /** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). `cue` is a small mark on the button (a call is live). No items, no ⋯. */
 export function MoreMenu({ items, label = 'More', icon = 'more', className, size, cue }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus'; className?: string; size?: number; cue?: (id: string, buttonId: string) => ReactNode }) {
   const [open, setOpen] = useState(false);
+  // Back closes the open menu first (#1545).
+  useBackLayer(open, () => setOpen(false));
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();

@@ -3,6 +3,7 @@ import type { WorkspaceMember } from '@flux/contracts';
 import { Avatar, Button, Icon } from '../ui';
 import './space.css';
 import { awaitField } from '../ui/keys';
+import { focusOnOpen } from '../ui/focusField';
 
 /**
  * People chosen from the company (F-037, #874): the chosen ones are one-line chips in a field, and "Add people" opens the company's
@@ -29,7 +30,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!expanded) return;
-    root.current?.querySelector<HTMLElement>('.pick__list input:not([disabled]), .pick__list ~ * input:not([disabled])')?.focus();
+    focusOnOpen(root.current?.querySelector<HTMLElement>('.pick__list input:not([disabled]), .pick__list ~ * input:not([disabled])'));
   }, [expanded]);
   return (
     <div className="pick" data-people-picker="" ref={root}>

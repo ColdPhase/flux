@@ -22,6 +22,7 @@ import { useAgentChat, type AgentChat } from './useAgentChat';
 import { useAgentSchedules, type AgentSchedulesState } from './useAgentSchedules';
 import '../dm/dm.css';
 import './my-agents.css';
+import { touchFirst } from '../ui/focusField';
 
 /**
  * An agent as a private conversation in Messages (F-036 AG-4, #857, #842; mockup AgentReports): its header, the line that only its owner
@@ -287,7 +288,8 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   }, { animate: false });
   useLayoutEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; } }, [draft]);
   // Arriving puts the cursor at the end of a kept draft (F-026 §4).
-  useEffect(() => { const el = field.current; if (!el) return; el.focus({ preventScroll: true }); el.setSelectionRange(el.value.length, el.value.length); }, [agent.id]);
+  // On a computer; a touch screen opens it with no keyboard (#1546).
+  useEffect(() => { const el = field.current; if (!el || touchFirst()) return; el.focus({ preventScroll: true }); el.setSelectionRange(el.value.length, el.value.length); }, [agent.id]);
 
   async function send() {
     const prompt = draft.trim();

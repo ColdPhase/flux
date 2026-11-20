@@ -176,7 +176,8 @@ class CreateWindow(unittest.TestCase):
                 expect(dialog(page)).to_be_visible()
                 field = title_field(page)
                 expect(field).to_have_value("")
-                expect(field).to_be_focused()
+                # A computer's cursor is in the title; a touch screen raises no keyboard until the field is tapped (#1546).
+                expect(field).not_to_be_focused() if phone else expect(field).to_be_focused()
                 expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
                 expect(dialog(page).get_by_role("switch")).to_have_count(0)
                 field.fill(f"Second of two {tag}")
@@ -316,7 +317,7 @@ class CreateWindow(unittest.TestCase):
             tabs = window.get_by_role("tablist", name="Create").get_by_role("tab")
             self.assertEqual([item.strip() for item in tabs.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
             expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
-            expect(title_field(page)).to_be_focused()
+            expect(title_field(page)).not_to_be_focused()  # a touch screen raises no keyboard until a field is tapped (#1546)
             self.assertGreaterEqual(title_field(page).bounding_box()["height"], 43.9, "the title field is a 44 px target on touch")
             details = window.get_by_label("Details").bounding_box()
             self.assertTrue(has_minimum_touch_size(details["height"]), f"the Details field is a 44 px target on touch: {details}")
@@ -1010,7 +1011,8 @@ class CreateWindow(unittest.TestCase):
                     create_other(page, "Space")
                     expect(page.get_by_role("dialog", name="New space").get_by_role("textbox", name="Space name", exact=True)).to_be_visible()
                     shot(page, f"521-create-project-{size}-{scheme}-{engine}")
-                    page.keyboard.press("Escape")
+                    # On a touch phone nothing is focused in the window, so Esc has no target: the phone's Back closes it (#1545).
+                    page.go_back() if phone else page.keyboard.press("Escape")
                     expect(window(page)).to_have_count(0)
                     if phone:
                         page.get_by_role("button", name="More", exact=True).tap()

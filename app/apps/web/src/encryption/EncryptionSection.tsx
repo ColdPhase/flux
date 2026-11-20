@@ -8,6 +8,7 @@ import { checkPassword, generatePassphrase, loadWords } from './passphrase';
 import { PasswordLength, passwordRefusal } from './PasswordLength';
 import { RecoveryCodeBlock, useUnkeptCode } from './RecoveryCode';
 import { UnlockForm, whoCanUnlock } from './LockedSpace';
+import { writeNow } from '../ui/focusField';
 
 const timeOnly = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
 const dayOnly = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
@@ -184,7 +185,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
       ) : null}
       {panel?.kind === 'unlock' && locked ? (
         <div className="people__edit people__unlock" role="group" aria-label={`Unlock ${name}`}>
-          <UnlockForm workspaceId={workspace.id} name={name} encryption={enc} autoFocus onCancel={() => closeTo('lock')}
+          <UnlockForm workspaceId={workspace.id} name={name} encryption={enc} autoFocus={writeNow} onCancel={() => closeTo('lock')}
             onUnlocked={() => saved(`${name} is unlocked.`, 'lock', 'unlocked')} />
         </div>
       ) : null}

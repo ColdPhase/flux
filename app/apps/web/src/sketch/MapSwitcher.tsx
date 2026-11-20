@@ -6,6 +6,8 @@ import { useShellData } from '../app/data';
 import { createProjectSketch, listProjectSketches } from '../project/data';
 import { Icon, usePop, useToast } from '../ui';
 import '../docs/docs.css';
+import { focusOnOpen } from '../ui/focusField';
+import { useBackLayer } from '../ui/backLayer';
 
 const PAGE = 50;
 const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
@@ -32,6 +34,7 @@ export function MapSwitcher({ sketch, canWrite, onRename }: { sketch: Pick<Sketc
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); if (restore) button.current?.focus(); }, []);
+  useBackLayer(open, () => close(false));
   // A press outside closes it.
   useEffect(() => {
     if (!open) return;
@@ -57,7 +60,8 @@ export function MapSwitcher({ sketch, canWrite, onRename }: { sketch: Pick<Sketc
   }, [sketch.workspaceId, sketch.projectId]);
   useEffect(() => {
     if (!open) return undefined;
-    findRef.current?.focus();
+    // The map picker opens on its list on a touch screen: the keyboard would cover it (#1546).
+    focusOnOpen(findRef.current);
     read();
     return () => reading.current?.abort();
   }, [open, read]);

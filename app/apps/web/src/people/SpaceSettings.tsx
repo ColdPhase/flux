@@ -23,6 +23,7 @@ import { SomeoneNew, SpaceLinks } from './SomeoneNew';
 import '../app/settings.css';
 import './space.css';
 import './people.css';
+import { touchFirst, writeNow } from '../ui/focusField';
 
 /**
  * What a person is in a space, in the one word every list of people uses (#1424): a guest of the company is a Guest and its owner the Owner (as
@@ -102,7 +103,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   useEffect(() => { if (removing) focusOn(`[data-person="${removing}"] .spset__confirm button:last-child`); }, [removing]);
   useEffect(() => { if (leaving) focusOn('.spset__leaving button:last-child'); }, [leaving]);
   // The search or the first person, else "Someone new?" when nobody else is in the company (F-026 §4).
-  useEffect(() => { if (adding) focusOn('.spset__add input:not([disabled])'); }, [adding]);
+  useEffect(() => { if (adding && !touchFirst()) focusOn('.spset__add input:not([disabled])'); }, [adding]);
   // Opened from the header's faces or ⋯ › Settings, the settings take the focus as any opened panel does (F-026 §4, personas-33): the button
   // that opened them is no longer where the person works. A control inside them, a field being typed in, or a control in the open detail
   // panel beside them keeps it: an admin who unlocks the space in its keys panel stays on Lock now while the settings come back behind it.
@@ -434,7 +435,7 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
       <div className="sset-row spset__name">
         {editing ? (
           <form onSubmit={(event) => void save(event)} noValidate onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
-            <Input label="Space name" value={value} maxLength={200} autoFocus error={problem || undefined} onChange={(event) => { setValue(event.target.value); setProblem(''); }} />
+            <Input label="Space name" value={value} maxLength={200} autoFocus={writeNow} error={problem || undefined} onChange={(event) => { setValue(event.target.value); setProblem(''); }} />
             {/* Save and Cancel under the field, as the company name's (visual review 2026-11-17 V3): beside it they left a phone ~175 px for the name. */}
             <div className="details__actions">
               <Button type="submit" variant="primary" busy={busy}>Save</Button>

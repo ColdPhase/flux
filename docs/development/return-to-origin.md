@@ -18,7 +18,8 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    entry), so reload on the destination keeps the control's target.
 2. **Push for a reference, replace for a panel.** A reference to another page is one history entry; Back returns one
    step and Forward leads to the object again. Opening and closing panels and threads keeps today's replace semantics,
-   so Back does not walk through panel toggles. A panel's state is part of the *place* of the entry (below), not an
+   so Back does not walk through panel toggles. (A sheet, window or menu over the page and the tabs of a space follow
+   [the section below](#back-closes-what-is-on-top-and-a-spaces-views-are-one-place-1545-1547).) A panel's state is part of the *place* of the entry (below), not an
    entry of its own. Every `replace` on a page a reference leads to carries the entry's state, because a replace with no
    state sets `history.state.usr` to null and the control would vanish while the person is still there: the address
    cleaners (`?open=`, `?compose=`, `?ask=`, the Inbox redirect, Cancel on a slow route), the Agents view's thread and agent panel, a direct-message thread replacing a thread, the Inbox's review
@@ -71,6 +72,32 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    (Conversation, Tasks, Map, Wiki, Agents) keeps it. Back to the earlier page restores it as above. A link from another
    place to a project's task or decision opens it there on arrival (`?open=`).
 
+## Back closes what is on top, and a space's views are one place (#1545, #1547)
+
+Founder direction (Hubert, 2026-11-19, from his Android phone). Back closes whatever sits on top first, and only the next Back leaves
+the place; the tabs of one space are one place.
+
+1. **A layer takes one history entry while it is open** (`app/apps/web/src/ui/backLayer.ts`, `useBackLayer`): every `Overlay` (the message
+   actions sheet, the Create window, Search, a Select's, a date's or a time's sheet, the drawer), every ⋯ menu and popover (`MoreMenu`, the
+   live popovers, the Wiki's Contents, Page actions and page picker, the map picker, the receipts list, a thought's tasks), the photo viewer and
+   the file preview, and a panel that is not an entry of its own (People and privacy, an overview). On a touch screen or a window as narrow as a phone's (`(hover: none), (max-width: 680px)`); a computer keeps its keys (Esc).
+   The entry has the page's address and the page's router state with a mark, so the router never sees it. Back from a layer to the page under
+   it is taken by the layer (it closes, the router does not move); Back from a layer over a layer closes the top one.
+2. **Closing a layer another way never costs a second Back.** A layer closed by its control, a choice or Esc leaves its entry, and the next
+   layer takes it over instead of adding one; a Back or a Forward that lands on such an entry (it has the mark and nothing is open), or on the page's own entry from the
+   one that was left (the same router key), is stepped over in the direction it came from. A navigation made while a layer is open (Search's result, Create's new task) is an
+   ordinary entry above the left-over one: Back returns to the page the layer was opened from. When the router replaces a left-over entry
+   (a space's view chosen after a sheet was closed with a choice), the new entry names the page's entry under it (`fluxUnder`) and Back steps
+   over that one too, so the views stay one place. A Back from a left-over entry onto a layer that is still open (a day chosen in the Due
+   sheet over the Create window) goes on and closes that layer: no Back does nothing.
+3. **Panels keep their own entry.** A task or a decision (`?open=`), a thread and an agent's chat are routes of their own: their Back is the
+   one of rules 2 and 6 above, and their overlay does not take a layer (`SidePanel backLayer`, set by the shell). What opens over such a
+   panel (a Status, Owner or Due sheet, a menu) takes a layer of its own, so Back closes that and leaves the panel.
+4. **The views of a space replace each other** (#1547): choosing Conversation, Tasks, Map or Wiki is `replace`, not a push (`Tabs replace`), on
+   the phone and the computer. Back (the header's arrow, the gesture, the browser's button) leaves the space for where the person came
+   from. Inside a view Back is unchanged: it closes a panel opened with `?open=` and returns from a Wiki page to the Wiki list before it
+   leaves. A tab has no origin ("A sidebar link, a tab, a fresh URL or a new tab has no origin", rule 1), so replacing loses nothing.
+
 ## A search result carries no control (#1424)
 
 Founder decision (Hubert, 2026-11-13), after the release-gate journey review: a search result opened with "‹ Conversation" in the computer's header, which moved its name and tabs
@@ -120,6 +147,10 @@ and the draft (or the filter, selection and query where a page has no composer),
 grant was revoked, a direct message that was left), and a direct message's feed and thread that come back to an
 older message (read back through the older pages) with newer ones below. Browser Back is driven
 with `go_back`; Alt+← and the phone gesture are the same router POP and are not separately scripted.
+
+`app/tests/ui/test_phone_back.py` (Chromium, 390 × 844 with touch): Back closes the message actions sheet and the Create window and
+the next Back leaves the space; a sheet closed with its own control leaves no dead Back; switching Conversation, Tasks, Map and Wiki adds no
+entry and Back leaves the space (the computer's browser Back too).
 
 Not decided here and left as it was: restoring scroll inside every nested scroller (the Map canvas, the live editor),
 and the Details panel's unsent form fields (a proposal in progress), which keep their own recovery.

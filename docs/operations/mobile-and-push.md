@@ -14,7 +14,7 @@ iPhone and iPad and receiving notifications (MOB-6 in
   `FLUX_PUBLIC_ORIGIN` with a path at startup ("must be an http(s) origin without a path").
   Give Flux its own host name, such as `flux.example.org`, instead of
   `example.org/flux`.
-- The proxy must pass `/sw.js`, `/manifest.webmanifest`, `/icons/*` and `/offline.html`
+- The proxy must pass `/sw.js`, `/manifest.webmanifest`, `/manifest-dark.webmanifest`, `/icons/*` and `/offline.html`
   unchanged. Flux sends `Cache-Control: no-cache` for `/sw.js`; do not let the proxy or a CDN
   cache it longer, or people get updates late.
 

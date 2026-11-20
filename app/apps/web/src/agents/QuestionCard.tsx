@@ -7,6 +7,7 @@ import { Button, Icon } from '../ui';
 import { answerAgentQuestion } from './api';
 import './question.css';
 import { rememberQuestion, useQuestion } from './questions';
+import { writeNow } from '../ui/focusField';
 
 /**
  * Shows a message's body only when the message carries no question: the question card then carries the question
@@ -95,7 +96,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
           {typing ? (
             <form className="qcard__own" onSubmit={submitText}>
               <label className="ui-vh" htmlFor={`${labelId}-own`}>Your answer</label>
-              <input id={`${labelId}-own`} value={text} maxLength={AGENT_QUESTION_LIMITS.answer} autoFocus placeholder="Your answer" onChange={(event) => setText(event.target.value)} />
+              <input id={`${labelId}-own`} value={text} maxLength={AGENT_QUESTION_LIMITS.answer} autoFocus={writeNow} placeholder="Your answer" onChange={(event) => setText(event.target.value)} />
               <Button type="submit" variant="soft" disabled={!text.trim()} busy={!!busy && busy.startsWith('text:')}>Send</Button>
               <Button variant="secondary" onClick={() => { setTyping(false); setText(''); }}>Cancel</Button>
             </form>

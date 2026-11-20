@@ -7,6 +7,7 @@ import { ApiError } from '../api/client';
 import { encryptionProblem, unlockWorkspace, type WorkspaceEncryption } from './api';
 import { isManagerOf, setLockedPlace, useSpace } from './state';
 import './encryption.css';
+import { focusesOnOpen } from '../ui/focusField';
 
 /**
  * The panel of an encrypted workspace that waits to be unlocked (F-030, #655, S3). It is the page behind the sidebar's
@@ -91,7 +92,7 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
         <span className="locked__icon" aria-hidden="true"><Icon name="lock" size={20} /></span>
         <h2 className="locked__title">{name} is locked</h2>
         <p className="locked__text" data-locked-reason="">{text}</p>
-        {manager && unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus={focusIsFree()} more={keys} /> : null}
+        {manager && unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus={focusIsFree() && focusesOnOpen()} more={keys} /> : null}
         {manager && !unlocker ? keys : null}
       </div>
     </div></div>

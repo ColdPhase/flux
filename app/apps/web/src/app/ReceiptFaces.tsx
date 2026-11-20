@@ -5,6 +5,7 @@ import { Avatar, Button, usePop } from '../ui';
 import { clock, day } from './timeFormat';
 import type { Receipt } from './receipts';
 import './receipt-faces.css';
+import { useBackLayer } from '../ui/backLayer';
 
 /**
  * Who has read a message, as faces (#1231, docs/design/final/README.md "Time and who has read it"): at most 3 small faces and a "+N"
@@ -96,6 +97,7 @@ function ReaderList({ receipt, place, pinned, focusList, onClose, onEnter, onLea
   onEnter: () => void; onLeave: () => void; anchor: { current: HTMLElement | null };
 }) {
   const pop = usePop(true, { from: 'above' });
+  useBackLayer(true, () => onClose(false));
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLParagraphElement>(null);
   // The faces already read are shown at once; the list loads its first page when it opens, and then a page whenever its end is reached.

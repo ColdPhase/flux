@@ -9,6 +9,7 @@ import { addDays, addMonths, dateOf, firstWeekday, formatDay, makeDay, monthTitl
 import { usePop } from './pop';
 import './select.css';
 import './picker.css';
+import { useBackLayer } from './backLayer';
 
 // The one date field of the application (#1251, Prostota "Date and time pickers"): a text field you can type in ("14 Nov",
 // "2026-11-14", "tomorrow") with a chevron that opens a month. It replaces `<input type="date">`, whose popup the browser
@@ -93,6 +94,7 @@ export function DateField({ value, onChange, clearable, min = '1970-01-01', max 
     if (restore && !sheet) (returnTo.current ?? input.current)?.focus({ preventScroll: true });
     if (dismissed) onDismiss?.(restore ? 'close' : 'away');
   };
+  useBackLayer(open && !sheet, () => close({ dismissed: true, restore: false }));
   const openPicker = (from: HTMLElement | null, focusDay = true) => {
     if (disabled || open) return;
     returnTo.current = from;

@@ -40,6 +40,11 @@ interface TabsProps {
    * no link or key, so the header keeps its shape and nothing moves when the place opens.
    */
   inactive?: boolean;
+  /**
+   * Navigation tabs: choosing a tab replaces the history entry instead of adding one, for tabs that are the views of one place (a space's
+   * Conversation, Tasks, Map and Wiki): Back then leaves the place rather than walking back through its tabs (#1547).
+   */
+  replace?: boolean;
 }
 
 /** A quiet tab without a visible count still names it, e.g. "Tasks, 2 open" (an exact name). */
@@ -90,7 +95,7 @@ function opens(item: TabItem, path: string | null): boolean {
  * the tab becomes current (aria-current) when its content shows. A newer choice retargets the mark, and
  * a navigation that ends elsewhere returns it.
  */
-export function Tabs({ items, value, onChange, label, className, panelIdPrefix, variant = 'line', inactive = false }: TabsProps) {
+export function Tabs({ items, value, onChange, label, className, panelIdPrefix, variant = 'line', inactive = false, replace }: TabsProps) {
   const segmented = variant === 'segmented';
   const barRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
@@ -204,7 +209,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
           {items.map((item, index) => {
             const selected = item.id === currentId;
             return (
-              <Link key={item.id} to={item.to ?? '.'} role="tab" className="ui-tabs__tab" data-tab={item.id} data-pending={opens(item, pendingPath) ? '' : undefined} aria-label={quietName(item)}
+              <Link key={item.id} to={item.to ?? '.'} replace={replace} role="tab" className="ui-tabs__tab" data-tab={item.id} data-pending={opens(item, pendingPath) ? '' : undefined} aria-label={quietName(item)}
                 aria-selected={selected} aria-current={selected ? 'page' : undefined} tabIndex={selected || (currentId === undefined && index === 0) ? 0 : -1}
                 onClick={(event) => {
                   // The mark starts moving in the next frame, from the click, before the router renders the

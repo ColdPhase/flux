@@ -8,6 +8,7 @@ import { FileViewer } from './FileViewer';
 import { useFileLink } from './fileLink';
 import { MessageReferences } from './References';
 import './attachments.css';
+import { useBackLayer } from '../ui/backLayer';
 
 // Files, references and photos inside the message (#348, F-026 §6). Every byte is read through the
 // ordinary download route, which checks the reader's current access on each request.
@@ -259,6 +260,8 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
   const [note, setNote] = useState('');
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // The viewer is open while it is mounted: Back closes it first (#1545).
+  useBackLayer(true, onClose);
   const file = photos[index]!;
   const bytes = useFileBytes(file.id, 'image');
   const returnTo = useRef<Element | null>(null);

@@ -11,6 +11,7 @@ import { Select, Option } from '../ui/Select';
 import { getConversation, listConversations } from '../conversations/api';
 import { listProjectDocs } from './api';
 import { kindLabel } from './format';
+import { useBackLayer } from '../ui/backLayer';
 
 // Mod-K in the Wiki page (#869): find something of this project and insert a `flux:` reference.
 // Only objects of the same project are offered; the server checks again when the doc is saved.
@@ -79,6 +80,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
   const active = position.key === activeKey ? Math.max(0, Math.min(position.index, shown.length - 1)) : 0;
   const setActive = (next: number | ((index: number) => number)) => setPosition((previous) => ({ key: activeKey,
     index: typeof next === 'function' ? next(previous.key === activeKey ? previous.index : 0) : next }));
+  useBackLayer(true, onClose);
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => {
     const list = listRef.current, option = document.getElementById(`${listId}-${active}`);

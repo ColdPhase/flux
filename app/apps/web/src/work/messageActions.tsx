@@ -7,6 +7,7 @@ import { MessageSheet } from './MessageSheet';
 import { swallowReleaseClick } from './releaseClick';
 import { isTyping } from '../ui/keys';
 import './message-actions.css';
+import { useBackLayer } from '../ui/backLayer';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
 // they are two gestures, a long press (the message menu) and a swipe right (Reply in thread), plus the same menu for keyboards and
@@ -163,6 +164,7 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
  */
 function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[]; anchor: HTMLElement; onClose: (restoreFocus: boolean) => void; label: string }) {
   const pop = usePop(open);
+  useBackLayer(open, () => props.onClose(false));
   return pop.mounted ? <MessageMenu {...props} popProps={pop.props} /> : null;
 }
 

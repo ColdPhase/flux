@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { createPortal } from 'react-dom';
 import { Icon, MEDIA, Overlay, useMediaQuery, usePop } from '../ui';
 import { containPointer, useAnchoredLayer } from '../ui/pickerPlace';
+import { useBackLayer } from '../ui/backLayer';
 
 /** The tallest a computer's menu grows before it scrolls: 20 lines of the root size, so it grows with the system's text size. */
 const menuCap = () => 20 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
@@ -48,6 +49,7 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
   const layer = useRef<HTMLDivElement>(null);
   const place = useAnchoredLayer(open, !sheet, button, layer, open && !sheet ? menuCap() : 0, options.length);
   const pop = usePop(open, { from: place?.side ?? 'below' });
+  useBackLayer(open && !sheet, () => setOpen(false));
   const items = useRef<(HTMLButtonElement | null)[]>([]);
   const first = useRef<HTMLButtonElement | null>(null);
   const menuId = useId();

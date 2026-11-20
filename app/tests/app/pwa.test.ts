@@ -40,6 +40,18 @@ describe('web app manifest and icons', () => {
     for (const required of ['192x192:any', '512x512:any', '192x192:maskable', '512x512:maskable']) assert.ok(purposes.includes(required), required);
   });
 
+  test('the dark manifest is the same app in the dark theme colours, so the installed app\'s navigation bar is dark in dark mode (#1544)', async () => {
+    const light = JSON.parse((await get('/manifest.webmanifest')).bytes.toString('utf8')) as Manifest;
+    const { response, bytes } = await get('/manifest-dark.webmanifest');
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /^application\/manifest\+json/);
+    const dark = JSON.parse(bytes.toString('utf8')) as Manifest;
+    assert.deepEqual({ ...dark, theme_color: light.theme_color, background_color: light.background_color }, light);
+    assert.equal(light.theme_color, '#F4F4F5');
+    assert.equal(dark.theme_color, '#111111');
+    assert.equal(dark.background_color, '#111111');
+  });
+
   test('every manifest icon and the Apple touch icon is a PNG of the declared size', async () => {
     const manifest = JSON.parse((await get('/manifest.webmanifest')).bytes.toString('utf8')) as Manifest;
     for (const icon of manifest.icons) {
@@ -86,6 +98,7 @@ describe('service worker delivery', () => {
     const precache = JSON.parse(code.match(/const PRECACHE = (\[[^\]]*\]);/)?.[1] ?? 'null') as string[];
     assert.ok(precache.includes('/offline.html'));
     assert.ok(precache.includes('/manifest.webmanifest'));
+    assert.ok(precache.includes('/manifest-dark.webmanifest'));
     assert.ok(precache.some((url) => /^\/assets\/.+\.js$/.test(url)), 'the app bundle is precached');
     assert.equal(precache.some((url) => url.startsWith('/api/')), false, 'no API URL is precached');
     assert.equal(precache.includes('/index.html'), false, 'navigations are network-first, not precached');

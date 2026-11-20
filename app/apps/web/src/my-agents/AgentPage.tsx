@@ -13,6 +13,7 @@ import { readKeyModelsAgain, setKeyModelPrice } from '../ai/api';
 import { modelLine } from './agentLabel';
 import { addAgentMemory, deleteAgentMemory, deleteMyAgent, editAgentMemory, getAgentMemory, updateMyAgent } from './api';
 import './my-agents.css';
+import { writeNow } from '../ui/focusField';
 
 // One agent's page (F-036 AG-1, #857; mockup AiAgents), the same for Assistant: who it is, its name and saved instructions, its Ask me
 // first switch, its model behind More (it starts on its connection's default, #1419), what it remembers and Delete. Its schedules are
@@ -373,7 +374,7 @@ function Remembers({ agent }: { agent: MyAgent }) {
   const form = (
     <form className="agp__memory-form" onSubmit={(event) => void submit(event)}>
       <label className="ui-vh" htmlFor="memory-text">What {agent.name} should remember</label>
-      <textarea id="memory-text" className="agp__input agp__text" rows={2} value={text} maxLength={AGENT_LIMITS.memoryItem} autoFocus onChange={(event) => setText(event.target.value)} />
+      <textarea id="memory-text" className="agp__input agp__text" rows={2} value={text} maxLength={AGENT_LIMITS.memoryItem} autoFocus={writeNow} onChange={(event) => setText(event.target.value)} />
       <div className="aset__actions">
         <Button type="submit" variant="primary" busy={busy} disabled={!text.trim()}>Save</Button>
         {editing ? <Button variant="danger" disabled={busy} onClick={() => void remove(items!.find((item) => item.id === editing)!)}>Delete</Button> : null}

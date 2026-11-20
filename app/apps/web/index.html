@@ -48,6 +48,12 @@
       var t = localStorage.getItem('flux.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
       if (localStorage.getItem('flux.kreska') === 'off') document.documentElement.dataset.kreska = 'off';
     } catch (e) {}
+    // An installed Android app paints its navigation bar from the manifest's colours, which cannot follow the theme: the dark
+    // theme links the dark manifest (#1544). src/app/theme.ts keeps this link current when the theme changes.
+    try {
+      var shown = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (shown === 'dark') document.querySelector('link[rel="manifest"]').setAttribute('href', '/manifest-dark.webmanifest');
+    } catch (e) {}
   </script>
 </head>
 <body>

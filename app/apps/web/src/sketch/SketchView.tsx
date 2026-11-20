@@ -31,6 +31,7 @@ import { ClientChanges } from '../assistant/ClientChanges';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 import '../editing/editing.css';
+import { writeNow } from '../ui/focusField';
 
 export interface Editing {
   id: string;
@@ -1012,7 +1013,7 @@ function TitleEditor({ sketch, onDone }: { sketch: SketchDetail; onDone(title: s
   const done = useRef(false);
   const finish = (title: string | null) => { if (done.current) return; done.current = true; onDone(title?.trim() || null); };
   return (
-    <input className="sk-title-edit" value={value} maxLength={200} aria-label="Map name" autoFocus onFocus={(event) => event.currentTarget.select()}
+    <input className="sk-title-edit" value={value} maxLength={200} aria-label="Map name" autoFocus={writeNow} onFocus={(event) => event.currentTarget.select()}
       onChange={(event) => setValue(event.target.value)} onBlur={() => finish(value)}
       onKeyDown={(event) => {
         if (event.key === 'Enter') { event.preventDefault(); finish(value); }

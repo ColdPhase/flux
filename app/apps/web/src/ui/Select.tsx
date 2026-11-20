@@ -8,6 +8,7 @@ import { MEDIA, useMediaQuery } from './motion';
 import { Overlay } from './Overlay';
 import { usePop } from './pop';
 import './select.css';
+import { useBackLayer } from './backLayer';
 
 // The one select of the application (#695, Prostota "menus"): a button that shows the chosen option and opens its
 // choices, replacing every native <select>, whose system list ignores the tokens, the dark theme and the phone sheet.
@@ -143,6 +144,8 @@ export function Select({ value, onChange, children, placeholder, name, required,
     setOpen(false);
     if (restoreFocus && !sheet) button.current?.focus({ preventScroll: true });
   };
+  // The popover (not the phone's sheet, an Overlay with its own) closes on Back first (#1545).
+  useBackLayer(open && !sheet, () => close(false));
   const openAt = (at?: number) => {
     if (disabled || open || !choices.length) return;
     const target = button.current;

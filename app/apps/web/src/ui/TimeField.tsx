@@ -8,6 +8,7 @@ import { formatTime, parseTime, timeSteps } from './pickerText';
 import { usePop } from './pop';
 import './select.css';
 import './picker.css';
+import { useBackLayer } from './backLayer';
 
 // The one time field of the application (#1251, Prostota "Date and time pickers"): a text field you can type in ("9:00",
 // "9 pm", "21:15") with a chevron that opens the day in 30-minute steps. It replaces `<input type="time">`, whose popup the
@@ -77,6 +78,7 @@ export function TimeField({ value, onChange, className, disabled, ref, onKeyDown
     setOpen(false);
     if (restoreFocus && !sheet) input.current?.focus({ preventScroll: true });
   };
+  useBackLayer(open && !sheet, () => close(false));
   const openList = () => {
     if (disabled || open) return;
     // A tap does not focus a button in Safari, and a phone must not raise its keyboard for a list: the sheet's opener is the chevron.

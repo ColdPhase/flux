@@ -16,6 +16,7 @@ import { WebSources } from '../app/WebSources';
 import { useShellData } from '../app/data';
 import { plainWords } from '../work/messageWords';
 import { shownWords, stepWords, useLiveRun, useReducedMotion } from './liveRun';
+import { focusOnOpen } from '../ui/focusField';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: its working line and its Stop are the owner's alone, and its answer is the owner's
@@ -86,7 +87,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, chang
   const dismiss = () => {
     const inside = holds();
     onDismiss();
-    if (inside && composerId) requestAnimationFrame(() => document.getElementById(composerId)?.focus({ preventScroll: true }));
+    if (inside && composerId) requestAnimationFrame(() => focusOnOpen(document.getElementById(composerId), { preventScroll: true }));
   };
   const working = isWorking(run);
   const ended = endedText(run, changed);

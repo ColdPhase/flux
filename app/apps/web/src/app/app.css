@@ -612,7 +612,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .top__topic { display: none; }
 }
 @media (max-width: 680px) {
-  .app__main { border: 0; border-radius: 0; margin: 0; }
+  /* The phone's page is the whole screen: no raised card (its inset hairline drew a light frame around a dark screen, #1544), and nothing of the
+     sidebar's colour at the edges. */
+  .app__main { border: 0; border-radius: 0; margin: 0; box-shadow: none; }
+  body:has(.app), .app { background: var(--bg); }
   .top { padding-left: 8px; padding-right: 8px; }
 }
 /* ---------- Coarse pointers: 44px targets ---------- */
