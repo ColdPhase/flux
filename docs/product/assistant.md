@@ -32,6 +32,7 @@ own.
   (AG-5). Other people's messages, web pages and project content are data, never instructions.
 - `/ai` uses only what the conversation's audience can see, so Show everyone never publishes
   anything private (AG-4). AI in a DM between people shows both of them one line (AG-4).
+- Any participant of a DM can turn AI off in it; then no agent of anyone reads it (AG-4, C-73).
 - Deleting anything and changing other people's things always wait for the owner's OK.
 - Only the owner approves. Approving, editing or skipping a waiting item, and accepting a
   decision, are done only by the owner (or the person the item waits for) in their own signed-in
@@ -262,6 +263,16 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   receives their messages. `/ai` works in a DM's threads too (#1016): the answer is a card in the
   thread panel that only the asker sees, Show everyone posts it as a reply in that thread, the
   model reads that thread and nothing else, and the line appears in the DM's main line.
+  **Your agent reads your DMs from its private chat** ([C-73](decisions.md), #1591, founder decision 2026-11-20): asked in
+  its private chat (a request or a schedule of that chat), it searches and reads the DMs its owner is in, their files' text
+  included; a run anywhere else, a server agent's task and a local client read no DM but, for a run in one, that one. Each DM
+  it is given words of shows the same line once for that run, to everyone in it ("Hubert used AI here (Claude)").
+- **AI off in a DM ([C-73](decisions.md), #1591).** Any participant can turn off AI in a DM (⋯ › People and privacy, "Turn
+  off AI in this conversation"). It is each person's own choice: AI stays off while at least one participant has it, and
+  each withdraws only their own. While it is off, no agent of anyone reads the DM by any path, as in an encrypted space:
+  `/ai` there and in its threads is refused, a run that read it stops, and search, retrieval, `flux_read_file`, summaries
+  and local clients over MCP find nothing of it. People's own search of it still works, words and meaning: the optional
+  local embedder is an index like BM25, not AI, so its rows keep their vectors (founder decision, 2026-11-20). Its header says "AI off · turned off by Marek" and a line records each change.
 - **How an answer is written (#1247).** An agent's words, in its private chat, in a card and after Show
   everyone, are drawn by the one message renderer, the same as a person's message. The agent may use
   exactly this small subset of Markdown, where it helps: `**bold**`, `*italic*`, `` `inline code` ``, a
@@ -388,7 +399,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Wiki | Create and edit pages, with Undo. Undo of a page the agent started deletes it, while only that agent has written it and nothing uses it (no link to it, no message that cited it, no call on it, no one typing in it). Deleting a page always waits for the owner's OK |
 | Map | Add thoughts and link them to tasks |
 | Decisions | Propose; never accept |
-| Search | Everything the owner can see, in spaces with AI on, ranked by BM25 ([AG-12](#ag-12--finding-older-messages-f-042)); a DM, and the text of the files sent in it, only in a run in that DM |
+| Search | Everything the owner can see, in spaces with AI on, ranked by BM25 ([AG-12](#ag-12--finding-older-messages-f-042)); a DM, and the text of the files sent in it, only in a run in that DM, or the owner's DMs with AI on from the private chat (C-73) |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
 | Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's; on an API key in pi, Flux's `flux_web_search`, run by the Flux server through the key's provider's hosted search, #1441), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
@@ -516,7 +527,9 @@ This replaces the workspace AI lock (F-029) under F-037.
   ([encryption](encrypted-workspaces.md#moving-to-per-space-encryption-f-037)).
 - While AI is off in a space, no agent, server or local, reads, writes or answers there. Its
   content never reaches a model, including through search or a schedule, and the Owner field
-  offers no agents there.
+  offers no agents there. Its rows are still embedded by the optional local embedder, which is an index like
+  BM25 and not AI (founder decision, Hubert, 2026-11-20, [C-73](decisions.md), migration 0110): people's search there
+  stays hybrid, and no agent's search, its vector half included, reaches the space.
 - One server check covers every AI path and fails closed. Turning AI off stops the agents' runs
   in that space, cancels their queued work there and deletes nothing. A run in progress is asked to
   stop at once and its next check refuses, so it makes no further change; what it had already
@@ -566,7 +579,8 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_search`** searches the spaces the agent may read now (its owner's rights, spaces with AI on), with any of the
   words, ranked by BM25 inside Flux's database, with Polish and English stemming and accents folded. It covers space
   messages, the Wiki (pages and materials), tasks, decisions and maps, the text inside the files people sent (PDF, Word, Markdown, text, CSV, and scans and pictures when OCR is on;
-  [C-63](decisions.md), #1382, [C-70](decisions.md)), and DM messages and the text of the files sent in a DM (founder decision, 2026-11-20, #1590, [C-64](decisions.md) point 3) only within a run in that DM. It takes
+  [C-63](decisions.md), #1382, [C-70](decisions.md)), and DM messages and the text of the files sent in a DM (founder decision, 2026-11-20, #1590, [C-64](decisions.md) point 3) only within a run in that DM,
+  or, in the owner's private chat, the DMs its owner is in ([C-73](decisions.md), #1591); never a DM whose AI is off. It takes
   `in` (a space, a conversation, a task's discussion), `from` (an author's id, or a person's or an agent's name, #1410),
   `after` / `before` (a date or a time), `kind`
   and `limit` (ten unless asked, at most 25). Each hit names its place, its author as people see them ([C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160), its time, a link
@@ -594,7 +608,8 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   an encrypted space and one the caller may not read, under the same reach and the same AI switch as a search.
 - **Where a search reaches** is the run's own place, as before ([C-12, C-37](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override); founder decision, 2026-11-12, #1324): a run in a space or a thread or a task's discussion searches that space,
   because its answer may be shown to everyone who reads it; a run in a DM searches that DM and nothing else, while its owner is
-  one of its people; a private chat and the owner's own Claude Code or Codex search every space their owner reaches. The
+  one of its people; a private chat and the owner's own Claude Code or Codex search every space their owner reaches, and the private chat
+  also the DMs its owner is in now, with AI on (C-73); a local client reaches no DM. The
   agent cannot name a place outside its reach: it is one answer with a place that is not there.
 - **The brief** keeps the latest 20 messages (founder, 2026-11-12) and, when older ones were left out, says that they were
   and that the two tools find them; a run that has the two tools is also told, in one line, to search before it says it does
@@ -610,7 +625,7 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   says so, how many messages remain and the `next` to go on with. It reads what the caller may read now, as search does: a lost
   grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member, or
   "Stefan Kowal (removed)" for someone who left the company or was removed, #1424) are reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
-  a run in it, while its owner is one of its people; an encrypted space never.
+  a run in it or in its owner's private chat, while its owner is one of its people and its AI is on (C-73); an encrypted space never.
 - **The Wiki is the space's knowledge base, reached with tools, and the agent cites what it uses**
   ([C-62](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), founder decision, Hubert, 2026-11-13, #1381). The brief says
   nothing of the Wiki's pages; the descriptions of `flux_list_docs`, `flux_get_doc` and `flux_search` tell the agent that a how, what or why question about the
@@ -637,7 +652,7 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   words around them. A decision's reasons are drawn by the message renderer (lists, `#12`, `[[Page]]`); plain one-line places (the Inbox, a card's
   reason, a change line, a notification, a push) show plain words, and no surface shows a mark's id.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
-  turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
+  turned off, a DM whose AI was turned off (C-73), a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
 - **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the
   vectors. Nothing is embedded through a person's own connection.
 

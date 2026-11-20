@@ -750,7 +750,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Tasks › Board shows one status at a time** (see Tasks and the task panel): the status row, then the chosen status's column at full width,
     with no sideways scroll.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
-  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, its AI section (C-73) and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
   task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
@@ -2664,7 +2664,25 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   runs no AI (Settings › AI's "AI is off on this server") does not offer it, and typed anyway the bar says "AI is off on this server." with nothing
   to press. A guest is never offered it; typed, it says who can change that: "Guests don't have AI. An admin can make you a member."
   In a space with AI off, `/ai` shows one line, "AI is off in this space",
-  and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
+  and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)",
+  also when Ada's agent read the DM from her private chat (once for that request, C-73).
+- **AI off in a direct message** ([C-73](../../product/decisions.md), [#1591](https://github.com/ColdPhase/flux/issues/1591), founder decision
+  2026-11-20). No new control: ⋯ › **People and privacy** has an **AI** section between the people and Leave conversation, a short note and one
+  secondary button, the panel's own type and spacing:
+  - AI on: "Anyone here can turn off AI. Then nobody's agent can read this conversation, and /ai doesn't work here." and **Turn off AI in this
+    conversation**.
+  - Off by you alone: "You turned off AI. Nobody's agent can read this conversation, and /ai doesn't work here." and **Turn AI back on**; off by
+    you and others: "You and Marek turned off AI. It stays off while any of you keeps it off." and **Turn AI back on** (it takes back only yours).
+  - Off by others: "Marek turned off AI. Only they can turn it back on." and **Turn off AI in this conversation** (yours is added to theirs).
+  - No section in an encrypted company, where AI is always off.
+  - **The header** says it where the conversation's second line is: the phone's title row shows "AI off · turned off by Marek" in place of
+    "Messages"; the computer's header shows it as the line under the name ("Only you, Basia and Ola · AI off · turned off by Marek" in a group).
+    The reader's own choice reads "by you".
+  - **Lines** in the conversation, as the line "used AI here" (the lock glyph, `--t3`, centred, no notification, never unread): "Marek turned off
+    AI in this conversation", "Marek turned AI back on", and while someone else keeps it, "Marek took back their AI off · AI stays off, turned off
+    by Ada". The reader's own reads "You …".
+  - `/ai` there, and in its threads, says one line under the field, "AI is off in this conversation · turned off by Marek. Remove /ai to send
+    these words as a message.", and keeps the words.
 - **The assistant's suggestions are in the `/` menu, under `/ai`** (founder decision, Hubert,
   2026-11-12, #1224). There is no row of chips above or below the composer: the field, its
   attachments and the audience line stay as they are. Typing `/` lists the actions as before, and the

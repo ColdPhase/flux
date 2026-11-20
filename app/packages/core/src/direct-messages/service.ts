@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   DM_LIMITS,
+  dmAiOffNames,
   RECEIPT_LIMITS,
   WORK_LIMITS,
   type AgentColour,
@@ -113,13 +114,14 @@ function toSummary(record: DmRecord, self: string): DmSummary {
     createdBy: record.createdBy, version: record.version, createdAt: record.createdAt.toISOString(),
     lastMessageAt: iso(record.lastMessageAt), lastMessageBody: record.lastMessageBody,
     ...(record.lastMessageVia ? { lastMessageVia: record.lastMessageVia } : {}),
+    ...(record.aiOff?.length ? { aiOff: record.aiOff } : {}),
   };
 }
 
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
     ...(record.files?.length ? { files: record.files } : {}),
-    threadRootId: record.threadRootId, replyCount: record.replyCount, lastReplyAt: iso(record.lastReplyAt), ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
+    threadRootId: record.threadRootId, replyCount: record.replyCount, lastReplyAt: iso(record.lastReplyAt), ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind !== 'text' ? { notice: record.kind } : {}),
     ...(record.editedAt && !record.removedAt ? { editedAt: record.editedAt.toISOString() } : {}), ...(record.removedAt ? { removedAt: record.removedAt.toISOString() } : {}) };
 }
 
@@ -548,6 +550,29 @@ export function createDmUseCases(uow: DmUnitOfWork) {
         const renamed = toSummary(await found(ports, dm.id), principal.id);
         await ports.events.record(principal, dm.workspaceId, 'dm.changed.v1', dm.id, { op: 'renamed' });
         return renamed;
+      });
+    },
+
+    /**
+     * C-73 (#1591): the caller turns AI off in this conversation (`off: true`), or withdraws their own choice. Any participant may turn it
+     * off; each withdraws only their own, so AI stays off while anyone has it. A change posts its line and, when AI goes off, stops the
+     * runs that read the conversation. Repeating the current choice changes nothing. An encrypted company has AI always off and no switch.
+     */
+    async setAiOff(principal: Principal, dmId: string, command: { off?: unknown }): Promise<DmSummary> {
+      const self = person(principal);
+      if (typeof command?.off !== 'boolean') throw new InvalidInputError('off must be true or false');
+      const off = command.off;
+      return uow.run(async (ports) => {
+        await ports.access.requireDm(principal, 'dm.write', dmId, { lock: true });
+        const dm = await found(ports, dmId);
+        const outcome = await ports.dms.setAiOff(dm.workspaceId, dm.id, self, off);
+        if (outcome === 'sealed') throw new ConflictError('AI is always off in an encrypted space', 'WORKSPACE_ENCRYPTED_AI_OFF');
+        if (outcome === 'same') return toSummary(dm, self);
+        const now = await found(ports, dm.id);
+        await ports.dms.postAiLine(dm.id, dm.workspaceId, self, off ? 'ai_off' : 'ai_on', off ? '' : dmAiOffNames(now.aiOff ?? []));
+        if (off) await ports.dms.stopAiRuns(dm.id);
+        await ports.events.record(principal, dm.workspaceId, 'dm.changed.v1', dm.id, { op: off ? 'ai_off' : 'ai_on' });
+        return toSummary(now, self);
       });
     },
 

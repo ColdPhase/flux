@@ -224,6 +224,8 @@ export function askError(error: unknown): string {
     case 'PERSONAL_RUN_NO_AGENT': return 'Your agent isn’t available. Check it in Settings › AI.';
     case 'PERSONAL_RUN_NO_PROJECT_ACCESS': return 'Your assistant can’t read this project yet.';
     case 'PERSONAL_RUN_IN_FLIGHT': return 'Your assistant is already working on many requests. Try again when one is done.';
+    // C-73 (#1591): someone in this direct message turned AI off; the server's line names who.
+    case 'DM_AI_OFF': return `${error.message}.`;
     default: return error.status === 403 ? 'You no longer have access to this space, so you can’t ask here.' : error.status === 404 ? 'This conversation is no longer available to you.' : 'Your assistant couldn’t start. Try again.';
   }
 }

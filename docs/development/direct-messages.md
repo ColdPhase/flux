@@ -66,7 +66,7 @@ Migration `0010_direct_messages.sql` adds three tables.
 ## Events and the stream
 
 Every change records exactly one event in its transaction: `dm.created.v1`,
-`dm.message_sent.v1`, `dm.message_edited.v1`, `dm.message_removed.v1` (#1006) or `dm.changed.v1` (rename, leave or rejoin, with `data.op`). The object is
+`dm.message_sent.v1`, `dm.message_edited.v1`, `dm.message_removed.v1` (#1006) or `dm.changed.v1` (rename, leave, rejoin, `ai_used`, `ai_off` or `ai_on`, with `data.op`). The object is
 the DM id, and the data never contains message text. The event type is `dm`, so `authorizeEvent`
 checks `dm.read`. `recordEvent` then writes `event_audience` rows for exactly the participants at
 that moment. Delivery and replay check the current participant row again, so:
@@ -91,6 +91,7 @@ accept `Idempotency-Key` through `app/apps/server/src/http/commands.ts`. A repla
 | `PATCH /api/v1/dms/:dmId` | Rename a group: `{ title }` with `If-Match` or `expectedVersion` (`428` when missing, `409 VERSION_CONFLICT` when stale). A 1:1 DM has no title (`422`). |
 | `POST /api/v1/dms/:dmId/messages` | `{ body, clientMessageId }` returns `201`. A retry with the same `clientMessageId` returns the original message. When the message answers what its author was asked or mentioned in this conversation, the answer also names the Inbox items it took out (`answered`, `note:<id>` keys; [needs you](needs-you.md), #1249). The same id with other content returns `409 IDEMPOTENCY_CONFLICT`. A 1:1 whose other person is gone answers `409 DM_RECIPIENT_LEFT` / `DM_RECIPIENT_UNAVAILABLE`. |
 | `POST /api/v1/dms/:dmId/leave` | `204`. Access ends on the next request. Leaving again answers `404`, because the DM is invisible by then. |
+| `PUT` / `DELETE /api/v1/dms/:dmId/ai-off` | `200` with the DM summary. The caller turns AI off here, or withdraws their own choice ([C-73](../product/decisions.md), #1591): `aiOff` lists who keeps it off, each change posts an `ai_off` / `ai_on` line and records `dm.changed.v1` (`op` `ai_off` / `ai_on`); turning off stops the runs that read the conversation. Repeating the current choice changes nothing. `409 WORKSPACE_ENCRYPTED_AI_OFF` in an encrypted company. |
 
 Leaving a group is final unless someone starts a new conversation with the person. Participants
 cannot be added to an existing group in this slice, so a new person never sees earlier messages.

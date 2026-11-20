@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { aiModelSeesPictures, ASSISTANT_RUN_CHANGED_EVENT, RUNTIME_RUN_LIMITS, type AssistantRunEndReason, type MessageFile } from '@flux/contracts';
-import { ForbiddenError, NotFoundError } from '../access/errors.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type {
   AgentBrief, MessageSource,
@@ -12,7 +12,7 @@ import { announce, updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
 import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
-import { placeAllows, spaceSwitchAllows } from './place.js';
+import { placeAllows, aiSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
 import { chatFilesOf } from './chat-files.js';
 import { briefPrivateText, runtimeBrief, type BriefInput } from './brief.js';
@@ -195,7 +195,11 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
   if (projectId !== null) {
     await ports.access.requireSpaceAi(projectId, { lock: true, epoch: run.aiEpoch! });
     await ports.access.requireProject({ kind: 'agent', id: run.agentId }, 'read', projectId);
-  } else if (dmId !== null) await ports.access.requireDm({ kind: 'human', id: run.ownerUserId }, dmId);
+  } else if (dmId !== null) {
+    await ports.access.requireDm({ kind: 'human', id: run.ownerUserId }, dmId);
+    // C-73 (#1591): a conversation whose AI went off since the last check gives the run none of its words (its stop is on its way).
+    if ((await ports.runs.dmAiOffBy(dmId, { lock: true })).length) throw new ConflictError('AI is off in this conversation', 'DM_AI_OFF');
+  }
   const brief = await ports.runs.agentBrief(run.agentId);
   const dm = dmId !== null && isPrivateAnswer(run) ? await latestMessages((limit) => ports.runs.dmMessages(dmId, limit, run.dmThreadRootId)) : { messages: [], leftOut: false };
   const turns = projectId === null && dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
@@ -235,7 +239,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
     // A key run (#1441): the same checks as a key run in the worker, and API keys in pi on this server.
     if (key) return (await key.check(ports, run, stage, lock)) ?? (runtime?.enabled && runtime.keys && tokens ? null : 'unavailable');
     // AG-10, first: AI on in the run's space, at the epoch the run was admitted under.
-    if (!(await spaceSwitchAllows(ports, run, lock))) return 'ai_off';
+    if (!(await aiSwitchAllows(ports, run, lock))) return 'ai_off';
     // A request already sent keeps its connection: choosing another for the next one does not touch it. A deleted agent has no setup.
     if (!(await ports.runs.enablement(run.ownerUserId, { lock, agentId: run.agentId }))) return 'revoked';
     const owner: Principal = { kind: 'human', id: run.ownerUserId };
@@ -334,7 +338,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const end = async (changes: RunChanges) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, changes)).status as RuntimeRunOutcome });
         if (current.stopRequestedAt) {
           // F-029: a stop request the turn-off sweep made says so.
-          return end(ended((await spaceSwitchAllows(ports, current, false)) ? 'stopped' : 'ai_off', 'before_dispatch', free));
+          return end(ended((await aiSwitchAllows(ports, current, false)) ? 'stopped' : 'ai_off', 'before_dispatch', free));
         }
         const refusal = await checked(ports, current, 'before_dispatch', true);
         if (refusal) return end(ended(refusal, 'before_dispatch', free));
@@ -355,7 +359,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         return uow.run(async (ports) => {
           const current = await ports.runs.findRun(run.id, { lock: true });
           if (!current || current.status !== 'dispatching') return 'skipped';
-          const why = current.stopRequestedAt ? ((await spaceSwitchAllows(ports, current, false)) ? 'stopped' : 'ai_off') : 'unavailable';
+          const why = current.stopRequestedAt ? ((await aiSwitchAllows(ports, current, false)) ? 'stopped' : 'ai_off') : 'unavailable';
           return (await updateAndAnnounce(ports, run.id, ended(why, 'before_dispatch', free))).status;
         });
       }

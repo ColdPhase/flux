@@ -300,6 +300,16 @@ export interface PersonalRunRepository {
    * that thread: its root and its replies, and nothing else of the DM.
    */
   dmMessages(dmId: string, limit: number, threadRootId?: string | null): Promise<MessageSource[]>;
+  /**
+   * C-73 (#1591): the current participants of a direct message who turned AI off there, in the order they did; empty while AI is on.
+   * `lock` holds the conversation's row (share), so a change that is committing is waited for.
+   */
+  dmAiOffBy(dmId: string, options?: { lock?: boolean }): Promise<{ id: string; name: string }[]>;
+  /**
+   * C-73: whether AI is off in a direct message this run reads: its own (`dmId`), or one whose words its private chat was given (the line
+   * "used AI here" it left there). The one question every check of the run asks besides a space's switch.
+   */
+  readsDmWithAiOff(run: { id: string; ownerUserId: string; dmId: string | null }, options?: { lock?: boolean }): Promise<boolean>;
   /** Whether a message is a root (not a reply, not the line "used AI here") of this direct message: the only thing a thread can hang on (#1016). */
   isDmThreadRoot(dmId: string, messageId: string): Promise<boolean>;
   /** What the owner and this agent said last in their private chat, oldest first: the earlier turns of a chat (#842). */

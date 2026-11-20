@@ -1,6 +1,6 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
 import { DomainError, keepPrivateText, requireSpaceAi, resultCites } from '@flux/core';
-import { personalRunRows, personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { dmAiRows, personalRunRows, personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
 // A personal run's MCP token at the MCP route (F-022 "Agent connection and permissions", F-027 A2/AST-8,
@@ -60,6 +60,8 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
   if (await rows.assistantConnectionId(row.ownerUserId, row.agentId) !== claims.connectionId) throw runEnded();
   // AG-10: the run works only while AI is on in its space, at the epoch it was admitted under.
   if (row.projectId !== null) await requireSpaceAi(accessReader(tx), row.projectId, { lock: options.lock ?? false, ...(row.aiEpoch !== null ? { epoch: row.aiEpoch } : {}) });
+  // C-73 (#1591): and while nobody has turned AI off in a direct message it reads (its own, or one its private chat was given words of).
+  if (await dmAiRows(tx).readsAiOff({ id: row.id, ownerUserId: row.ownerUserId, dmId: row.dmId }, { lock: options.lock ?? false })) throw runEnded();
   return row;
 }
 

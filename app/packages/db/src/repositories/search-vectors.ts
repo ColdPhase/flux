@@ -130,17 +130,15 @@ export function searchVectorRows(db: Database) {
     },
 
     /**
-     * Writes vectors for rows that have not changed since they were claimed and may still be embedded. The rows and their spaces'
-     * AI policies are locked first (share), so an edit or a turned-off AI that is committing waits for this write or is seen by
-     * it: a vector of old words, or of a space whose AI is off, is never left behind.
+     * Writes vectors for rows that have not changed since they were claimed and may still be embedded. The rows are locked first
+     * (share), so an edit that is committing waits for this write or is seen by it: a vector of old words is never left behind. A
+     * place's AI switch does not decide it (C-73, migration 0110): the local embedder is an index like BM25, and agents' access is
+     * decided at each search.
      */
     async store(vectors: { id: string; hash: string; vector: number[] }[]): Promise<number> {
       if (!vectors.length) return 0;
       const ids = JSON.stringify(vectors.map((item) => item.id));
       return db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT a.project_id FROM project_ai_policies a WHERE a.project_id IN (
-            SELECT d.project_id FROM search_documents d WHERE d.id IN (SELECT value::bigint FROM jsonb_array_elements_text(${ids}::jsonb)))
-          ORDER BY a.project_id FOR SHARE`);
         const current = (await tx.execute(sql`SELECT d.id::text AS id, ${WORDS_HASH} AS hash FROM search_documents d
           WHERE d.id IN (SELECT value::bigint FROM jsonb_array_elements_text(${ids}::jsonb)) AND ${ELIGIBLE}
           ORDER BY d.id FOR SHARE OF d`)).rows as { id: string; hash: string }[];

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { youLabel } from '../docs/format';
 import { useNavigate, useRevalidator } from 'react-router';
-import { leaveDm } from '../api/direct-messages';
+import { leaveDm, setDmAiOff } from '../api/direct-messages';
+import { dmAiOffNames } from '@flux/contracts';
+import { useShellData } from './data';
 import { Avatar, Button } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
 import { AddToDoc } from '../docs/AddToDoc';
@@ -17,7 +19,9 @@ import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
 export function Details({ view, dm = null, onBack }: {
   view: Exclude<DetailsView, OwnedView>;
   /** The open direct message (#107): its other people and audience line. */
-  dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; meId: string; people: string[]; peopleIds: string[]; audience: string } | null;
+  dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; meId: string; people: string[]; peopleIds: string[]; audience: string;
+    /** C-73: who turned AI off here; empty while it is on. */
+    aiOff: { id: string; name: string }[]; workspaceId: string } | null;
   onBack: () => void;
 }) {
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
@@ -39,12 +43,46 @@ export function Details({ view, dm = null, onBack }: {
             {dm.people.map((name, index) => <li key={`${name}-${index}`} className="details__person"><Avatar name={name} id={dm.peopleIds[index]} size="md" /><b>{name}</b></li>)}
           </ul>
         </section>
+        <DmAi id={dm.id} meId={dm.meId} aiOff={dm.aiOff} workspaceId={dm.workspaceId} />
         <LeaveDm id={dm.id} kind={dm.kind} />
       </div>
     );
   }
   // Only a direct message has a panel of its own; every other place has no Details (#871, #1419).
   return null;
+}
+
+/**
+ * "AI off" in this conversation (C-73, #1591): anyone in it can turn it off, and each takes back only their own, so AI stays off while
+ * anyone keeps it. An encrypted company has AI always off and no switch.
+ */
+function DmAi({ id, meId, aiOff, workspaceId }: { id: string; meId: string; aiOff: { id: string; name: string }[]; workspaceId: string }) {
+  const revalidator = useRevalidator();
+  const { workspaces } = useShellData();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (workspaces.find((space) => space.id === workspaceId)?.encryption) return null;
+  const mine = aiOff.some((person) => person.id === meId);
+  const others = aiOff.filter((person) => person.id !== meId);
+  async function change(off: boolean) {
+    setBusy(true); setError('');
+    try { await setDmAiOff(id, off); revalidator.revalidate(); }
+    catch { setError(off ? 'Could not turn off AI. Try again.' : 'Could not turn AI back on. Try again.'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <section className="details__sec" aria-labelledby="details-dm-ai">
+      <h4 id="details-dm-ai">AI</h4>
+      <p className="details__ai">
+        {!aiOff.length ? 'Anyone here can turn off AI. Then nobody’s agent can read this conversation, and /ai doesn’t work here.'
+          : mine && !others.length ? 'You turned off AI. Nobody’s agent can read this conversation, and /ai doesn’t work here.'
+          : mine ? `You and ${dmAiOffNames(others)} turned off AI. It stays off while any of you keeps it off.`
+          : `${dmAiOffNames(others)} turned off AI. Only ${others.length === 1 ? 'they' : 'each of them'} can turn it back on.`}
+      </p>
+      <Button variant="secondary" busy={busy} onClick={() => void change(!mine)}>{mine ? 'Turn AI back on' : 'Turn off AI in this conversation'}</Button>
+      {error ? <p role="alert">{error}</p> : null}
+    </section>
+  );
 }
 
 /** Leaving a DM (#107) ends access at once, so it asks first and says what happens. */

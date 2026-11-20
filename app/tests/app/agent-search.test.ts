@@ -14,7 +14,8 @@ import { assistantScene, human, type AssistantScene, type Message } from './supp
 // engine and the CLIs' runs both reach them through a run token). Access is the owner's rights at the moment of the call, nothing stored: a lost
 // grant, a space whose AI was turned off, an owner who became a guest or left, an edited, removed or deleted message show in the very next call,
 // on the same token. A run reaches its own place (C-12, C-37): a space's run that space, a run in a direct message that direct message, a private
-// chat and a client every space their owner reaches. Encrypted spaces are other workspaces: never found. No model is called.
+// chat and a client every space their owner reaches, and a private chat its owner's direct messages too (C-73). Encrypted spaces are other
+// workspaces: never found. No model is called.
 
 type Hit = { kind: string; id: string; link: string; place: { type: string; id: string; name: string } | null; conversationId?: string; sequence?: number;
   version?: number; number?: number; status?: string; title?: string; snippet?: string; author?: { kind: string; id: string; name: string }; at: string;
@@ -326,8 +327,9 @@ describe('flux_search and flux_read_around: the owner\'s rights at the moment of
       const everywhere = await search(chat.token, { q: 'czujnik sensor kalibracja' });
       assert.deepEqual(new Set(everywhere.results.map((item) => item.place?.id)), new Set([lamp.id, open.id]), 'every space its owner reads, and not the one it is not in');
       assert.ok(!JSON.stringify(everywhere).includes('tajny'));
-      assert.deepEqual((await search(chat.token, { q: 'zamówienie diody' })).results, [], 'a private chat finds no direct message either');
-      assert.equal(failure((await call(chat.token, 'flux_read_around', { messageId: dmMessage })).message), 'MESSAGE_NOT_FOUND');
+      // C-73 (#1591): a private chat also finds the direct messages its owner is in, and reads around them.
+      assert.deepEqual(new Set((await search(chat.token, { q: 'zamówienie diody' })).results.map((item) => item.place?.id)), new Set([dm, otherDm]), 'its owner\'s direct messages');
+      assert.equal((await around(chat.token, { messageId: dmMessage })).dmId, dm);
       assert.ok(!JSON.stringify(await search(chat.token, { q: 'czujnik private thought' })).includes('private thought'), 'a private map is never found');
     });
 

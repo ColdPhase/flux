@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { and, asc, count, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, isNull, lte, not } from 'drizzle-orm';
 import { AGENT_SEARCH_LIMITS, removedName } from '@flux/contracts';
 import { agentHit, agentSearchAudiences, agentSearchPlan, AGENT_SEARCH_KINDS, authorLabel, authorsNamed, DomainError, evaluateProject, InvalidInputError, isAuthorName,
   NotFoundError, type AgentHit, type AgentSearchPlan, type AuthorCandidate, type SearchAudience } from '@flux/core';
-import { accessReader, dmAuthorName, fileTextRows, removedInDm, schema, searchRows, visibleFilter, type Database, type QueryVectors, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
+import { accessReader, dmAiOffSql, dmAuthorName, fileTextRows, removedInDm, schema, searchRows, visibleFilter, type Database, type QueryVectors, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
 import { conversationStore } from '../conversation/store.js';
 import { policySearchAccess } from '../search/adapters.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
@@ -12,13 +12,15 @@ import { textPageEnd } from './domain-reads.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 import { reachesChatFile, reachesDmFile } from './chat-files.js';
+import { agentReachesDm, chatReachesDms, givenDm } from './dm-reach.js';
 
 // `flux_search` and `flux_read_around` (F-042, AG-12, #1290): how an agent, on the server's engine or in the owner's Claude Code or Codex, finds
 // what lies outside the messages it was given. Both are the owner's rights at the moment of the call, nothing stored: the audiences come from the
 // access policy on every call (a grant lost, a space whose AI was turned off, a person who left: the very next call shows it), the BM25 index
 // applies them in the same statement, and a hit is told only to someone who could open it. A run reaches its own place only (C-12, C-37): a
 // space's run searches that space, a run in a direct message searches that direct message, a private chat and a local client search every
-// space their owner reaches. Encrypted spaces are other workspaces, so no audience of an agent is ever one of them.
+// space their owner reaches, and a private chat also the direct messages its owner is in (C-73). No direct message whose AI is off is ever
+// an agent's audience. Encrypted spaces are other workspaces, so no audience of an agent is ever one of them.
 
 const SEARCH = 'Search everything you may read in Flux at once: messages, Wiki pages, tasks, decisions, maps and the text inside files people sent (PDF, Word, Markdown, text, CSV), best match first. Any of your words match, '
   + 'Polish and English forms alike. Search before you say you do not know or that something was not discussed, and whenever the answer may be older than the '
@@ -73,11 +75,17 @@ const messageNotFound = () => new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
 
 interface Where { audiences: SearchAudience<SQL>[]; place: AgentSearchPlan['place']; conversationId: string | null; dmId: string | null }
 
-/** The direct message of a run in it, as its owner sees it: one audience, which is empty once the owner is no longer one of its people. */
-async function dmAudience(ctx: FluxAgentReadContext, dmId: string): Promise<SearchAudience<SQL>> {
+/**
+ * The direct messages a run may search, as its owner sees them: the one it is in, or (a private chat, C-73) every one its owner is in. One
+ * audience, empty once the owner is no longer one of its people, and never a conversation whose AI any of its people turned off.
+ */
+async function dmAudience(ctx: FluxAgentReadContext, dmId: string | null): Promise<SearchAudience<SQL>> {
   const visible = await visibleFilter({ kind: 'human', id: ctx.connection.ownerUserId }, ctx.workspaceId, 'dm', ctx.tx);
-  return { type: 'dm', workspaceId: ctx.workspaceId, condition: and(visible, eq(schema.dms.id, dmId))! };
+  return { type: 'dm', workspaceId: ctx.workspaceId, condition: and(visible, dmId === null ? undefined : eq(schema.dms.id, dmId), not(dmAiOffSql(schema.dms.id)))! };
 }
+
+/** The direct message a hit belongs to (a message of it, or the text of a file sent there): what the hit gives the run words of. */
+const dmOfHit = (row: SearchRowRecord) => (row.kind === 'dm_message' || (row.kind === 'file' && !row.projectId)) ? row.parentId : null;
 
 /** The space, conversation, task discussion or direct message an `in` names, within what the caller reaches. Anything else is one answer. */
 async function within(ctx: FluxAgentReadContext, id: string): Promise<{ projectId: string; conversationId: string | null }> {
@@ -100,12 +108,18 @@ async function whereToSearch(ctx: FluxAgentReadContext, claims: FluxMcpClaims, i
     if (in_ !== undefined && in_ !== run.dmId) throw placeNotFound();
     return { audiences: [await dmAudience(ctx, run.dmId)], place: { type: 'dm', id: run.dmId }, conversationId: null, dmId: run.dmId };
   }
-  const audiences = agentSearchAudiences(await policySearchAccess(ctx.tx).audiences(ctx.principal)).filter((audience) => audience.workspaceId === ctx.workspaceId);
+  const spaces = agentSearchAudiences(await policySearchAccess(ctx.tx).audiences(ctx.principal)).filter((audience) => audience.workspaceId === ctx.workspaceId);
+  // C-73 (#1591): a private chat also searches the direct messages its owner is in, with AI on; `in` may name one of them.
+  const chat = await chatReachesDms(ctx, claims);
+  if (chat && in_ !== undefined && await agentReachesDm(ctx, claims, in_)) {
+    return { audiences: [await dmAudience(ctx, in_)], place: { type: 'dm', id: in_ }, conversationId: null, dmId: in_ };
+  }
+  const audiences = chat ? [...spaces, await dmAudience(ctx, null)] : spaces;
   const bound = run?.projectId ?? claims.boundProjectId ?? null;
   if (in_ === undefined) return { audiences, place: bound ? { type: 'project', id: bound } : null, conversationId: null, dmId: null };
   const found = await within(ctx, in_);
   if (bound !== null && found.projectId !== bound) throw placeNotFound();
-  return { audiences, place: { type: 'project', id: found.projectId }, conversationId: found.conversationId, dmId: null };
+  return { audiences: spaces, place: { type: 'project', id: found.projectId }, conversationId: found.conversationId, dmId: null };
 }
 
 /** A hit's author as people see them in its space (#1160): a person by name while they can read it, an agent with whose it is. */
@@ -216,7 +230,9 @@ async function search(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z
   const hits = (await told(ctx, page)).map((hit, index) => (page[index]!.kind === 'work' && sizes.get(hit.id) ? { ...hit, discussion: { messages: sizes.get(hit.id)! } } : hit));
   // Everything told is held to the access it was read under until its bytes are handed over (the delivery fence of the route).
   for (const projectId of new Set(page.flatMap((row) => row.projectId && row.kind !== 'dm_message' ? [row.projectId] : []))) claims.dispatch?.project(projectId, 'project.read');
-  if (where.dmId && page.length) claims.dispatch?.dm(where.dmId);
+  // Each direct message a hit gives words of: its line for a private chat's read (AG-4, C-73), and the route's check at delivery. In
+  // id order, so two searches that lock the same conversations for their lines never wait for each other.
+  for (const dmId of [...new Set(page.flatMap((row) => dmOfHit(row) ?? []))].sort()) await givenDm(ctx, claims, dmId);
   return { results: hits, ...(rows.length > plan.limit ? { more: true } : {}),
     ...(hits.length ? (byAuthor ? { note: BY_AUTHOR } : {}) : { note: NO_MATCH }) };
 }
@@ -244,12 +260,8 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
     return withAgentLabels(tx, found.projectId, ctx.workspaceId, { aroundMessageId: input.messageId, projectId: found.projectId, conversationId: found.conversationId,
       messages: await messagesForAgents(tx, found.projectId, read.messages), hasMoreBefore: read.hasMoreBefore, hasMoreAfter: read.hasMoreAfter });
   }
-  // A direct message is read only in a run in it, by its owner while they are one of its people.
-  const [member] = claims.run?.dmId === found.dmId
-    ? await tx.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-      .where(and(eq(schema.dmParticipants.dmId, found.dmId), eq(schema.dmParticipants.userId, ctx.connection.ownerUserId))).for('share')
-    : [];
-  if (!member) throw messageNotFound();
+  // A direct message is read only in a run in it or its owner's private chat, while they are one of its people and its AI is on (C-73).
+  if (!await agentReachesDm(ctx, claims, found.dmId)) throw messageNotFound();
   const from = Math.max(1, found.sequence - input.before);
   const to = found.sequence + input.after;
   const m = schema.dmMessages;
@@ -257,7 +269,7 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
     .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
     .where(and(eq(m.dmId, found.dmId), eq(m.kind, 'text'), isNull(m.removedAt), gte(m.sequence, from), lte(m.sequence, to))).orderBy(asc(m.sequence));
   const [dm] = await tx.select({ next: schema.dms.nextSequence }).from(schema.dms).where(eq(schema.dms.id, found.dmId));
-  claims.dispatch?.dm(found.dmId);
+  await givenDm(ctx, claims, found.dmId);
   const removed = await removedInDm(tx, found.dmId, rows.map((row) => row.authorId));
   return { aroundMessageId: input.messageId, dmId: found.dmId,
     messages: rows.map((row) => ({ id: row.id, sequence: row.sequence, createdAt: row.createdAt.toISOString(),
@@ -330,11 +342,11 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
   const fileId = input.fileId.toLowerCase();
   const file = await rows.locate(ctx.workspaceId, fileId);
   if (!file) {
-    // A file sent in a direct message (#1590, C-64 (3)): read only in a run in that conversation, by its owner while they are one of its people.
+    // A file sent in a direct message (#1590, C-64 (3)): read as the conversation's messages are (C-73): a run in it or its owner's private chat, AI on.
     const dm = await rows.locateDm(ctx.workspaceId, fileId);
     if (dm) {
       if (!await reachesDmFile(ctx, claims, dm)) throw fileNotFound();
-      claims.dispatch?.dm(dm.dmId);
+      await givenDm(ctx, claims, dm.dmId);
       return pageOfFile(rows, claims, dm, { fileId: dm.fileId, name: dm.name, dmId: dm.dmId, messageId: dm.messageId, ...(dm.pages !== null ? { pages: dm.pages } : {}),
         ...(dm.ocr ? { ocr: true, note: ocrNote(claims, dm.pages !== null) } : {}) }, false, input.offset);
     }

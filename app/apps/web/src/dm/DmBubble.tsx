@@ -67,11 +67,18 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
   const { className: touchClass, ...touchHandlers } = touch.props;
   const label = shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`;
   // AI used in this conversation (#842, F-036 AG-4): one line for both people, naming the company that receives the conversation.
-  if (message?.notice === 'ai_used') {
+  // A change of someone's "AI off" here (C-73, #1591) is the same kind of line: who did it, and who still keeps AI off.
+  if (message?.notice) {
+    const who = mine ? 'You' : name.split(/\s+/)[0] || name;
+    const line = message.notice === 'ai_used' ? `${mine ? 'You' : name} used AI here (${message.body})`
+      : message.notice === 'ai_off' ? `${who} turned off AI in this conversation`
+      : message.body ? `${who} took back ${mine ? 'your' : 'their'} AI off · AI stays off, turned off by ${message.body}`
+      : `${who} turned AI back on`;
     return (
-      <li id={`${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`} tabIndex={-1} className="dm-notice" data-message-id={message.id} data-sequence={message.sequence} aria-label="AI was used here">
+      <li id={`${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`} tabIndex={-1} className="dm-notice" data-message-id={message.id} data-sequence={message.sequence}
+        aria-label={message.notice === 'ai_used' ? 'AI was used here' : 'AI in this conversation changed'}>
         {day ? <MessageDay as="p" label={day} /> : null}
-        <p className="dm-notice__line"><Icon name="lock" size={12} />{mine ? 'You' : name} used AI here ({message.body})</p>
+        <p className="dm-notice__line"><Icon name="lock" size={12} />{line}</p>
       </li>
     );
   }

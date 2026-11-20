@@ -25,7 +25,7 @@ import { ComposerMenu } from '../app/ComposerMenu';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useClearOfToast, useMediaQuery, useToast } from '../ui';
-import { dmTitle, othersIn } from './names';
+import { aiOffLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
 import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
@@ -339,6 +339,8 @@ function DmContent({ initial }: { initial: Dm }) {
   async function askAgent() {
     const prompt = draft.replace(/^\/ai\s*/, '').trim();
     const state = askState(assistant.status, false, workspace?.role === 'guest');
+    // C-73 (#1591): while anyone here keeps AI off, no agent reads this conversation; the words stay in the field.
+    if (dm.aiOff?.length) { setAskFailure(`${aiOffLine(dm.aiOff, me.user.id).replace('AI off', 'AI is off in this conversation')}. Remove /ai to send these words as a message.`); return; }
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this conversation.'); return; }
     if (state.kind !== 'ready') { setAskFailure(state.note); if (state.action === 'connect') openConnectAi(); return; }
     const active = captureScope();
@@ -546,12 +548,13 @@ function DmContent({ initial }: { initial: Dm }) {
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value, position) => { menu.change(position); change(value); }}
             onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title} · / actions`, `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
-            fieldProps={{ 'aria-describedby': asking ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
+            fieldProps={{ 'aria-describedby': asking && !dm.aiOff?.length ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
               'aria-activedescendant': menu.open ? `dm-composer-menu-${menu.options[menu.active]!.id}` : undefined }}
             menu={<ComposerMenu open={menu.open} id="dm-composer-menu" options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />}
             attach={asking || recipientGone ? null : composer}
             sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
-          {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
+          {/* While AI is off here (C-73) nobody's agent answers, so there is no audience to name: the line under the field says why. */}
+          {asking && !dm.aiOff?.length ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : null}
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />

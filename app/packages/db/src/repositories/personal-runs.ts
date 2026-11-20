@@ -8,6 +8,7 @@ import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 import { personalRunWebReadRows } from './personal-run-web-reads.js';
+import { dmAiRows } from './dm-ai.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
 import { companyGuestSql, isCompanyGuest } from './access.js';
@@ -449,6 +450,14 @@ export function personalRunRows(db: DbExecutor) {
       const files = await fileRows(db).runFiles(rows.filter((row) => row.files > 0).map((row) => row.id));
       return rows.reverse().map((row) => ({ prompt: row.prompt, answer: row.answer ?? '', ...(files.get(row.id)?.length ? { files: files.get(row.id)! } : {}) }));
     },
+
+    /** C-73 (#1591): who turned AI off in this direct message, in the order they did. */
+    async dmAiOffBy(dmId: string, options: { lock?: boolean } = {}) {
+      return (await dmAiRows(db).offBy([dmId], options)).get(dmId) ?? [];
+    },
+
+    /** C-73: AI is off in the run's own direct message or in one its private chat was given words of. */
+    readsDmWithAiOff: (run: { id: string; ownerUserId: string; dmId: string | null }, options: { lock?: boolean } = {}) => dmAiRows(db).readsAiOff(run, options),
 
     /** Whether a message is a root of this DM, not a reply and not the line "used AI here": the only thing a thread hangs on (#1016). */
     async isDmThreadRoot(dmId: string, messageId: string) {

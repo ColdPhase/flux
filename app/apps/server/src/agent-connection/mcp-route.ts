@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import { enforce, evaluateProject, isUuid, requireSpaceAi, SpaceAiOffError } from '@flux/core';
-import { agentConnectionWorkspaceId, commitWithoutFlush, loadActor, accessReader, schema, type Database, type QueryVectors, type Transaction } from '@flux/db';
-import { and, eq } from 'drizzle-orm';
+import { agentConnectionWorkspaceId, commitWithoutFlush, dmAiRows, loadActor, accessReader, type Database, type QueryVectors, type Transaction } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpTools, type FluxMcpTools } from './mcp-tools.js';
@@ -135,11 +134,10 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, accessReader(tx), { lock: true, known: actor }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Project unavailable');
       }
-      // A direct message's words (a run in it, #1290) go out only while its owner is still one of its people.
+      // A direct message's words (a run in it, #1290, or its owner's private chat, C-73) go out only while its owner is still one of its
+      // people and nobody there has turned AI off (C-73, #1591): the same question every read asked, asked again as the bytes leave.
       for (const dmId of [...d.dms].sort()) {
-        const [member] = await tx.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-          .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, ownerUserId))).for('share');
-        if (!member) throw new Error('Direct message unavailable');
+        if (!await dmAiRows(tx).readable(dmId, grant.connection.workspaceId, ownerUserId)) throw new Error('Direct message unavailable');
       }
     } };
     return fenceResponse(await handler.fetch(request), fence);

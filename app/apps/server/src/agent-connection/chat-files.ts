@@ -1,6 +1,7 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { FluxAgentReadContext, FluxMcpClaims } from './context.js';
+import { agentReachesDm } from './dm-reach.js';
 
 /** What of a stored file decides whether a run reaches it as a file of an agent's chat. */
 export interface ChatFileFacts { workspaceId: string; agentId?: string | null; runId?: string | null; uploaderId: string | null }
@@ -24,14 +25,11 @@ export async function reachesChatFile(ctx: FluxAgentReadContext, claims: FluxMcp
 }
 
 /**
- * Whether this call reaches a file sent in a direct message (#1590, C-64 (3)): only a run in that conversation (`/ai` in it or in its thread), while the
- * run's owner is one of its people now, exactly as it reaches the conversation's messages (AG-4). A run in a space, the owner's private chat, another
- * conversation and a local client reach none, and are told the same "not there" as for a file that does not exist. The participant row is read
- * `FOR SHARE`, so a person removed at the same moment waits for this read to end.
+ * Whether this call reaches a file sent in a direct message (#1590, C-64 (3)): exactly as it reaches the conversation's messages, by the one
+ * question of C-73 (`agentReachesDm`): a run in that conversation (`/ai` in it or in its thread) or its owner's private chat, while the owner is one
+ * of its people and nobody there has turned AI off. A run in a space, another conversation and a local client reach none, and are told the same
+ * "not there" as for a file that does not exist. The conversation's row is held `FOR SHARE` until the call ends.
  */
 export async function reachesDmFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, file: { workspaceId: string; dmId: string }): Promise<boolean> {
-  if (claims.run?.dmId !== file.dmId || file.workspaceId !== ctx.workspaceId) return false;
-  const p = schema.dmParticipants;
-  const [member] = await ctx.tx.select({ userId: p.userId }).from(p).where(and(eq(p.dmId, file.dmId), eq(p.userId, ctx.connection.ownerUserId))).for('share');
-  return !!member;
+  return file.workspaceId === ctx.workspaceId && agentReachesDm(ctx, claims, file.dmId);
 }

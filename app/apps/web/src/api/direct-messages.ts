@@ -1,5 +1,5 @@
 import {
-  IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagePath, dmMessagesPath, dmObservationsPath, dmPath, dmReadersPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
+  IDEMPOTENCY_KEY_HEADER, dmAiOffPath, dmLeavePath, dmMessagePath, dmMessagesPath, dmObservationsPath, dmPath, dmReadersPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
   type Dm, type DmMessage, type DmSummary, type DmTaskCopyPreview, type DmTaskCopyPreviewCommand, type DmTaskCopyResult, type DmThread,
   type MessageReadersResult, type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type SentDmMessage, type Workspace, WORKSPACES_PATH,
 } from '@flux/contracts';
@@ -54,3 +54,5 @@ export const previewDmTaskCopy = (id: string, body: DmTaskCopyPreviewCommand, si
 export const copyDmToTask = (id: string, body: { messageId: string; excerpt: string; projectId: string; token: string; clientCommandId: string }, idempotencyKey: string) =>
   request<DmTaskCopyResult>(dmTaskCopiesPath(id), { method: 'POST', body, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
 export const leaveDm = (id: string) => request<null>(dmLeavePath(id), { method: 'POST' });
+/** C-73 (#1591): turns AI off here for the caller, or withdraws their own choice; anyone else's stays. */
+export const setDmAiOff = (id: string, off: boolean) => request<DmSummary>(dmAiOffPath(id), { method: off ? 'PUT' : 'DELETE' });

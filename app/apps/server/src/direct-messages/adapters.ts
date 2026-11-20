@@ -1,4 +1,5 @@
-import { accessPorts, dmRows, fileRows, messageChangeRows, needsYouRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
+import { ASSISTANT_RUN_CHANGED_EVENT } from '@flux/contracts';
+import { accessPorts, dmAiRows, dmRows, fileRows, messageChangeRows, needsYouRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import { eq, and, isNotNull, or } from 'drizzle-orm';
 import {
   createDmUseCases,
@@ -37,6 +38,14 @@ export function dmRepository(db: DbExecutor): DmRepository {
     },
     async editMessage(message, body) { await changes.editDm(message, body); },
     async removeMessage(message) { await changes.removeDm(message); },
+    /** C-73: the turn-off's sweep, and each stopped run's owner told, as AG-10's sweep tells them. */
+    async stopAiRuns(dmId) {
+      const swept = await dmAiRows(db).stopRuns(dmId);
+      for (const run of swept) {
+        await recordEvent(eventPorts(db), { kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
+      }
+      return swept.length;
+    },
     /**
      * The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. A conversation nobody has written in
      * is listed only for the person who started it (persona round 6): the others see it with its first message, never an empty "No
