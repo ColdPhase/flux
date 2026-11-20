@@ -898,7 +898,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S21 | Every space shows Conversation, Tasks, Map and Wiki from the start. |
 | S22 | Notifications are one level (Only what needs me, Everything, Nothing), Email me too to one or more confirmed addresses, this device, and Quiet hours as one row. |
 | S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (what left again, such as a task whose creation was undone, is no longer counted) (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field, and in the conversation's own composer while it is empty, where it opens: personas-36; with words in it End stays the field's), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"; a task's discussion read in its panel is viewed there, so the same discussion opened as a thread shows New only above what the panel did not show, personas-36); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. Coming back to a place you left (Back, the way back) is coming back to a screen you have seen: a New divider that would stand inside that screen is not drawn, because it would push down what you were reading ([#1335](https://github.com/ColdPhase/flux/issues/1335)); above the screen or below it, it stays. |
-| P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
+| P1 | **Home** has three parts: Waiting for you (the top three, with Open Inbox), **New messages** (the conversations with something new, only while there is one; founder direction, Hubert, 2026-11-19, [#1548](https://github.com/ColdPhase/flux/issues/1548)) and Continue where you left off. Every row is clickable and ends in an arrow, except a New messages row, which ends in its time and the unread dot as a Messages row does. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Discuss writes in the decision's one discussion, a thread on its card that its panel also shows (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)). Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
 | P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Ada's Planner is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); accepting it changes that card in place, with who accepted it and when on the card, and adds no line (founder decision D, #1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
@@ -1228,6 +1228,22 @@ Community garden sensors, Rain barrel monitor and Tool library.
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
   without Accept; an agent run is one row, "Ada's Planner · 3 things wait for you". A blocked task's row keeps
   what it waits for under its title, as the Inbox does ("Waiting for Basia Wrona · the new seals", persona round 6).
+- **New messages** (founder direction, Hubert, 2026-11-19, [#1548](https://github.com/ColdPhase/flux/issues/1548): Maurycy, on his phone,
+  "Na home powinny być wiadomości"; accepted in the session). It stands under Waiting for you (on the phone under the My tasks and My map rows, which keep their place) and lists the conversations that have something
+  new: every space and every direct message you are in with unread messages, newest first. A row is a Messages row: the space's tile or the
+  person's face, the name, a one-line preview in `--t2` (in a space it starts with the sender's first name, as a notice's does: "Maja: I moved
+  the calibration notes…"), the time of the newest message in `--t3` and the unread dot (the 8 px `--inv` dot of the Spaces list). The name is `--t1` and 600, as an unread
+  row's. Like a Messages row, and unlike the other Home rows, it ends in the time and the dot and has no arrow. A click or tap opens the conversation at its first new message (S23). It has the Home card's heading
+  ("New messages", with the number of conversations that have news as a quiet number, like "Waiting for you 5") and the Home rows (`home__row`) of Waiting for you,
+  with no other control.
+  - **Muted places are left out** (the existing Mute space / Mute conversation in ⋯; no new setting). **A read conversation leaves Home**: the
+    full list stays in Spaces (phone) and the sidebar (computer), so Home never repeats it. **Nothing new means no part at all**: no heading,
+    no empty line, and Home looks as before. A new message adds or moves its row to the top, and reading the conversation removes it, on
+    this device and on the others. Computer and phone alike.
+  - **At most five rows**, then **Show all** (the same small quiet text button as Open Inbox, in the heading's slot), to the Spaces
+    list, which holds the Messages under the spaces on the phone; the heading's count is the number of conversations with news. Home lists spaces and direct messages (not an agent's chat).
+  - **The Inbox does not change.** It holds only what needs you (principle 2): decisions, questions, blocked tasks, mentions and agent work
+    waiting for an OK. Nothing in New messages counts as what needs you, and it never adds to the Inbox's count or the tab's "(N)".
 - **Continue where you left off** holds what you last worked on, such as a task with its state
   ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what waits in your Inbox
   (the count of "Waiting for you", its three rows and the items beyond them: a decision, a task, a question) is not offered again
@@ -1404,7 +1420,7 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   `--t2`, each at most two lines with an ellipsis. The close × (`IconButton`, 44 px on touch)
   is at the top right. The buttons are a row under the text, 32 px high:
   - anything said in a direct message (a message, or a question asked there): **Reply** (outline) and **Open** (text button);
-  - a mention, a question, a task, a decision or an agent: **Open** (outline);
+  - a mention, a question, a task, a decision, an agent or a new message in a space (C-65, #1550): **Open** (outline);
   - a call: **Join**, the card's one primary button, and the title says who started it or invited you,
     and where ("Maja started a call in Tool library", "Maja invited you to a call in Tool library").
 - **One at a time.** A newer notice replaces the one shown, in place and without motion. Notices
@@ -1417,7 +1433,7 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **Calm.** Nothing for your own actions, and nothing for the place you are looking at (the space
   or the direct message on screen). On the Inbox, nothing for what the Inbox lists as an item (a question, a mention or an answer,
   a task given to you, a decision, a call to join, an agent's run): it arrives in the list in front of you (personas-33); a plain
-  direct message or a reply in a thread still shows its notice there. It follows your level and quiet hours; Nothing shows none. It
+  direct message, a reply in a thread or a new message in a space (C-65) still shows its notice there. It follows your level and quiet hours; Nothing shows none. It
   is announced politely (`role=status`) and never takes focus. Tab reaches its buttons (the actions, then
   Close), and Escape inside it closes it and gives focus back to where it came from.
 - **Motion** is the surfaces' ([motion](../motion.md#how-the-rules-apply-to-existing-motion)): it
@@ -1662,7 +1678,8 @@ A person's sound (a popover under their face in the strip; the same two rows und
 
 Founder decisions, Hubert, 2026-11-10 and 2026-11-12 ([#1231](https://github.com/ColdPhase/flux/issues/1231)).
 The line under the last message of an author's group (a space, a thread, a direct message) is the
-time and, under your own messages, small faces of the people who have read them. It is supporting
+time and, under your own messages, small faces of the people who have read them. A face is also a line of its own under a message in
+the middle of a group (below). It is supporting
 information: it reads as part of the conversation, never as a log line, and it never has text such as
 "Seen by …" on screen.
 
@@ -1687,10 +1704,15 @@ information: it reads as part of the conversation, never as a log line, and it n
   `--line`, `--fs-glyph` weight 600 in `--t2`, 16 px high and at least 16 wide with 2 px side padding:
   a circle for "+2", a pill when the number needs room. The row never grows: not taller and not wider than 3 faces and
   one such circle, in a space of 5 people or of 500, at every width.
-- **Each reader appears once**, under the newest group of your messages they have fully read (every
-  message of the group must have been in view, as before). Older groups that they also read show
-  nothing for them, so the faces move down the conversation as people read on, and a group nobody
-  has newly reached shows its time only.
+- **Each reader appears once**, under the newest message of yours they have read (founder report, Hubert, 2026-11-19,
+  [#1551](https://github.com/ColdPhase/flux/issues/1551), which replaces "under the newest group fully read": a message sent after
+  the one they had read hid the receipt, as if it were taken back). A receipt never disappears: it moves down as they read on, even in the
+  middle of a group, and a message nobody has newly reached shows its time only (under the group's last message) or nothing (inside it).
+  Older messages that they also read show nothing for them. A message counts as read when it was in view, as before; only the newest 20
+  messages of yours are asked about.
+- **In the middle of a group** the face row stands alone under that bubble: the same 16 px faces, `--fs-xs` × 1.5 high, 5 px under the bubble and
+  at the bubble's edge, with no time. The next bubble of the group keeps its 4 px, so the group reads as one with a face row inside it, not
+  as two groups; when the reader reads on, the row moves down and the space it took goes with it.
 - **A direct message with one person** shows their single face, never "+N". A group message uses the
   same row as a space.
 - **The list** answers "who exactly, and when". On the computer the faces are one button: hovering
@@ -1714,7 +1736,7 @@ information: it reads as part of the conversation, never as a log line, and it n
   and Ada", "Seen by Maurycy, Ada, Jonas and 47 others"); the faces and the "+N" are decoration for
   the screen reader. The list is a dialog named "Seen by", its rows are plain list items, and Escape
   returns focus to the button.
-- **Load rules** (#862): the server answers per group only the count and the 3 newest readers; the
+- **Load rules** (#862): the server answers per message (one request run each, #1551) only the count and the 3 newest readers; the
   list is a separate request made when it is opened; faces come from the receipts already read
   for the newest groups, updated by the live event `project.messages_observed.v1`; the 8 s look
   runs only while the live stream is down.
@@ -2128,7 +2150,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   (the phone has only the header's Back).
 - **Notifications:** "The Inbox always shows everything that waits for you."
   - **Tell me about** is one level. Only what needs me covers decisions, questions, blocked tasks,
-    mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
+    mentions and agents waiting for you. Everything adds every new message in your spaces (a push and a notice, never an Inbox item or an email; founder report, Hubert, 2026-11-19, [#1550](https://github.com/ColdPhase/flux/issues/1550), C-65), the calls started in them, and task updates. Nothing
     shows only the count on the Inbox.
   - **Where:** Email me too, On this device, **Hide previews** ([below](#hide-previews), #1346) and Quiet hours
     ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change). **Sounds** is one more row in its own card under it (below).

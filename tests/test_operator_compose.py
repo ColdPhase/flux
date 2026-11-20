@@ -132,7 +132,7 @@ class OperatorComposeTest(unittest.TestCase):
         source_only = {"FLUX_MAILPIT_PORT", "FLUX_DEV_PORT", "FLUX_DEMO_OWNER_PASSWORD", "FLUX_DEMO_PARTNER_PASSWORD",
                        "FLUX_AGENT_RUNTIME", "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS",
                        "FLUX_AGENT_RUNTIME_IDLE_DAYS", "FLUX_RUNTIME_MANAGER_SECRET", "FLUX_RUNTIME_SECRET_1",
-                       "FLUX_RUNTIME_MAX_RUNS", "FLUX_RUNTIME_MEMORY", "FLUX_RUNTIME_CPUS", "FLUX_EMBEDDINGS", "FLUX_CALLS"}
+                       "FLUX_RUNTIME_MAX_RUNS", "FLUX_RUNTIME_MEMORY", "FLUX_RUNTIME_CPUS", "FLUX_EMBEDDINGS", "FLUX_CALLS", "FLUX_CALLS_PUBLIC_IP"}
         self.assertEqual(set(self.env) - referenced, source_only, "unexpected unconsumed template variable")
         consumers = "".join((ROOT / name).read_text() for name in ("docker/compose.source.yaml", "docker/compose.dev.yaml", "flux",
                                                                     "docker/compose.runtime.yaml"))

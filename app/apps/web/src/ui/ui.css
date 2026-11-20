@@ -581,7 +581,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 
 /* A space's icon in its tile (F-040, #1227): the tile keeps its size, radius and fill; an emoji sits in its middle at two thirds of
    the tile at every tile size (the tile is its size container), and a picture fills it with the tile's radius and hairline. */
-:where(.side__pj, .proj-index__tile, .create__tile, .ov-tile, .sr__ic--project, .spset__tile) { position: relative; container-type: size; }
+:where(.side__pj, .proj-index__tile, .home__tile, .create__tile, .ov-tile, .sr__ic--project, .spset__tile) { position: relative; container-type: size; }
 .space-face--emoji { font-size: 66cqh; line-height: 1; font-weight: 400; }
 .space-face--pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit;
   outline: 1px solid var(--line); outline-offset: -1px; }

@@ -43,7 +43,7 @@ const t = schema.notificationAddressTokens;
 const ob = schema.notificationEmails;
 const CURSOR = 'generator';
 
-type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval' | 'call';
+type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval' | 'call' | 'message';
 type SourceType = 'workspace' | 'project' | 'dm';
 
 export interface StoredPreferenceRow {
@@ -213,6 +213,12 @@ export function notificationFactRows(db: DbExecutor) {
   };
   return {
     names,
+    /** Of these people, who chose "Everything" (only they get a `message` push, C-65): a person who never changed anything is at the default, Only what needs me. */
+    async everythingLevel(userIds: string[]) {
+      if (!userIds.length) return new Set<string>();
+      const p = schema.notificationPreferences;
+      return new Set((await db.select({ id: p.userId }).from(p).where(and(inArray(p.userId, userIds), eq(p.level, 'everything')))).map((row) => row.id));
+    },
     async sealedWorkspace(workspaceId: string) {
       const [row] = await db.select({ name: schema.workspaces.name, encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
       return row?.encrypted ? { name: row.name } : null;
@@ -268,8 +274,11 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(schema.projectDecisionDiscussions.conversationId, message.conversationId)));
       const askee = !bound ? null : bound.proposedByKind === 'human' ? bound.proposedById
         : (await db.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, bound.proposedById)))[0]?.owner ?? null;
+      // A task's one discussion is on the task's card, not a message of the space's stream (only its first message can open one).
+      const [task] = message.sequence === 1 ? await db.select({ id: schema.projectTaskDiscussions.workId }).from(schema.projectTaskDiscussions)
+        .where(eq(schema.projectTaskDiscussions.conversationId, message.conversationId)).limit(1) : [];
       return {
-        asked: asked ?? null, ...(bound ? { decision: { title: bound.title, askee } } : {}),
+        asked: asked ?? null, ...(bound ? { decision: { title: bound.title, askee } } : {}), ...(task ? { inTask: true } : {}),
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },

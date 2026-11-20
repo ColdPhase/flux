@@ -391,6 +391,20 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
   });
 
+  test('a new message notice in A is content-free ("Ada wrote in Garden club"), linking the message by ids only (C-65, migration 0100)', async () => {
+    // At Everything the generator writes sealedNotificationTitle('message', …) for a sealed workspace; the database accepts exactly that form.
+    const url = `/projects/${ids.A.project}/conversations/${randomUUID()}#message-${randomUUID()}`;
+    const insert = (title: string, body: string, link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin, in_inbox)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'message', $4, $5, $6, false, false) RETURNING id`, [ben.id, A, ids.A.project, title, body, link]);
+    assert.equal(sealedNotificationTitle('message', 'Ada', 'Garden club'), 'Ada wrote in Garden club');
+    const accepted = await insert(sealedNotificationTitle('message', 'Ada', 'Garden club'), '', url);
+    assert.equal(accepted.rows.length, 1, 'the content-free message notice is stored');
+    await assert.rejects(insert('Ada wrote in a secret project', '', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
+    await assert.rejects(insert('Ada wrote in Garden club', 'the words themselves', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a body');
+    await assert.rejects(insert('secret words wrote in Garden club', '', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a free who');
+    await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
+  });
+
   test('a decision notice in A links the decision over its space\'s conversation by ids only, and the old Tasks form is refused (migration 0086)', async () => {
     const decision = randomUUID();
     const insert = (link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin)

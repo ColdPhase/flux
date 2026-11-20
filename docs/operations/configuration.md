@@ -45,6 +45,7 @@ exists. A wrong value stops the service at start with a message that names the v
 | [`FLUX_BACKGROUND_KEY_HOST_FILE`](#flux_background_key_host_file) | AI providers | empty; made by `./flux up` |
 | [`FLUX_BACKUP_DIR`](#flux_backup_dir) | Source checkout, launcher and checks | `backups/` in the checkout |
 | [`FLUX_CALLS`](#flux_calls) | Live media: LiveKit and TURN | `off` |
+| [`FLUX_CALLS_PUBLIC_IP`](#flux_calls_public_ip) | Live media: LiveKit and TURN | empty |
 | [`FLUX_COWORK_WATCHDOG_SECONDS`](#flux_cowork_watchdog_seconds) | Source checkout, launcher and checks | `300` |
 | [`FLUX_DB_CONNECT_TIMEOUT_MS`](#flux_db_connect_timeout_ms) | Database | `1500` |
 | [`FLUX_DB_MEMORY`](#flux_db_memory) | Memory limits | `768m` |
@@ -347,7 +348,7 @@ Calls and screen sharing. `FLUX_CALLS=on` is all: `./flux` layers `compose.live.
 
 **Type** `on`, `off` · **Default** `off` · **Used by** `./flux`
 
-`on` makes `./flux` layer `docker/compose.live.yaml` (the LiveKit media server) on every command, write `FLUX_LIVEKIT_API_KEY` and `FLUX_LIVEKIT_API_SECRET` once, use the origin's host as `FLUX_LIVEKIT_DOMAIN` and keep `FLUX_LIVEKIT_PUBLIC_IP` at the IPv4 address that host resolves to. `./flux up` prints the address and the ports to open. `off` removes the media server at the next `./flux up`, and the app offers no calls. Example: `on`.
+`on` makes `./flux` layer `docker/compose.live.yaml` (the LiveKit media server) on every command, write `FLUX_LIVEKIT_API_KEY` and `FLUX_LIVEKIT_API_SECRET` once, use the origin's host as `FLUX_LIVEKIT_DOMAIN` and keep `FLUX_LIVEKIT_PUBLIC_IP` at the IPv4 address that host resolves to (`FLUX_CALLS_PUBLIC_IP` and `FLUX_LIVEKIT_DOMAIN` of your own replace both). `./flux up` prints the address and the ports to open. `off` removes the media server at the next `./flux up`, and the app offers no calls. Example: `on`.
 
 ### `FLUX_LIVEKIT_API_KEY`
 
@@ -361,17 +362,23 @@ LiveKit API key, shared by the API and the SFU. Rotate with the secret. `./flux`
 
 LiveKit API secret. `./flux` writes it when `FLUX_CALLS=on`.
 
+### `FLUX_CALLS_PUBLIC_IP`
+
+**Type** IPv4 address · **Default** empty · **Used by** `./flux`
+
+The public address browsers send media to, when the server's own lookup of the origin's name would give another one (split-horizon DNS, a proxy on another machine). Set, `./flux up` keeps it, checks only that it is IPv4, looks nothing up and writes it as `FLUX_LIVEKIT_PUBLIC_IP`. Empty, the address is what the media name resolves to on the server ([calls](calls.md#split-horizon-dns-or-a-proxy-on-another-machine)). Example: `203.0.113.20`.
+
 ### `FLUX_LIVEKIT_PUBLIC_IP`
 
 **Type** IP address · **Default** **required** · **Used by** livekit (live-media overlay, TURN overlay)
 
-Public media address advertised to browsers in ICE candidates. With `FLUX_CALLS=on`, `./flux up` sets it to the address the origin's host resolves to. Example: `203.0.113.20`.
+Public media address advertised to browsers in ICE candidates. With `FLUX_CALLS=on`, `./flux up` writes it: `FLUX_CALLS_PUBLIC_IP` when that is set, else the address the media name resolves to. Do not set it by hand there. Example: `203.0.113.20`.
 
 ### `FLUX_LIVEKIT_DOMAIN`
 
 **Type** DNS name · **Default** **required** · **Used by** livekit (live-media overlay)
 
-Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./flux` uses the origin's host and ignores this line. Example: `media.example.org`.
+Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, empty means the origin's host; a value of yours is kept. Example: `media.example.org`.
 
 ### `FLUX_LIVEKIT_MEDIA_CIDR`
 

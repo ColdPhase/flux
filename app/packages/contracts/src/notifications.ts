@@ -8,9 +8,10 @@
  * them live at a task, map, doc or conversation (#62): one quiet signal per invitation. `approval` is
  * one of your agents waiting for your OK (F-036 item 10, #1186): a change it prepared under Ask me
  * first, or one about other people's things, sent once for each run (or local client) that starts waiting. `call` is someone starting a
- * call in one of your spaces (F-041): Inbox always, push only at "Everything", never email.
+ * call in one of your spaces (F-041): push only at "Everything", never an Inbox item, never email. `message` is a new message in a space you are in
+ * (C-65, #1550) that is neither addressed to you nor in a thread you follow: the same, push and notice only, at "Everything".
  */
-export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'approval', 'call'] as const;
+export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'approval', 'call', 'message'] as const;
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
 /**
