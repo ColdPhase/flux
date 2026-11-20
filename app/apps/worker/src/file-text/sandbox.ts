@@ -88,7 +88,7 @@ export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSan
   // `reads` binds the child in the kernel too, where it has Landlock (sandbox.c).
   const limits = JSON.stringify({ pages: FILE_TEXT_LIMITS.pages, chars: FILE_TEXT_LIMITS.chars, fileBytes: FILE_TEXT_LIMITS.fileBytes, zipEntries: FILE_TEXT_LIMITS.zipEntries,
     zipDirectoryBytes: FILE_TEXT_LIMITS.zipDirectoryBytes, xmlBytes: FILE_TEXT_LIMITS.xmlBytes, extraBytes: FILE_TEXT_LIMITS.extraBytes, cpuSeconds: FILE_TEXT_LIMITS.cpuSeconds, pdfjs, reads,
-    pictures: { ...FILE_TEXT_LIMITS.pictures, ...(tess ? { ocrSide: FILE_TEXT_LIMITS.ocr.side } : {}) } });
+    pictures: { ...FILE_TEXT_LIMITS.pictures, ...(tess ? { ocrSide: FILE_TEXT_LIMITS.ocr.side, ocrPageBytes: FILE_TEXT_LIMITS.ocr.pageBytes } : {}) } });
   // One picture's OCR has bounds of its own: more time, CPU and memory than reading a text layer, one picture at a time (C-70).
   const ocr = FILE_TEXT_LIMITS.ocr;
   const ocrLimits = tess ? JSON.stringify({ ...JSON.parse(limits), extraBytes: ocr.extraBytes, cpuSeconds: ocr.cpuSeconds,
@@ -159,8 +159,6 @@ function ocrPackages(): { core: string; pol: string; eng: string } | null {
 }
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-/** A grey page for OCR (C-70), as pdf.ts bounds it. */
-const OCR_PAGE_BYTES = 4 * 1024 * 1024;
 /**
  * The child's pictures as this process keeps them: only well-formed ones within the bounds (C-69). A child that misbehaved can at worst hand
  * over a PNG of the right size that is not the page; the API serves it only as a picture of that file, to whoever may read the file.
@@ -181,7 +179,9 @@ function checkedPictures(value: unknown): PagePicture[] {
     total += bytes.length;
     // The page OCR reads (C-70): a PNG within its own bound, or none; Leptonica checks it again.
     const grey = typeof ocr === 'string' ? Buffer.from(ocr, 'base64') : null;
-    const ocrPage = grey && grey.length >= 33 && grey.length <= OCR_PAGE_BYTES && grey.subarray(0, 8).equals(PNG) ? grey : null;
+    // Its header must not claim more than OCR's own side either: a misbehaving child cannot hand Tesseract a page larger than the bound.
+    const ocrPage = grey && grey.length >= 33 && grey.length <= FILE_TEXT_LIMITS.ocr.pageBytes && grey.subarray(0, 8).equals(PNG)
+      && grey.readUInt32BE(16) >= 1 && grey.readUInt32BE(20) >= 1 && grey.readUInt32BE(16) <= FILE_TEXT_LIMITS.ocr.side && grey.readUInt32BE(20) <= FILE_TEXT_LIMITS.ocr.side ? grey : null;
     kept.push({ page: page as number, width: width as number, height: height as number, png: bytes, ...(ocrPage ? { ocr: ocrPage } : {}) });
   }
   return kept;

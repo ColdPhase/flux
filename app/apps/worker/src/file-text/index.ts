@@ -49,6 +49,12 @@ export async function startFileText(options: FileTextOptions) {
   /** OCR of one picture (C-70), one child at a time: its text, or null when there is none confident enough or it could not be read. */
   const recognise = async (fileId: string, bytes: Uint8Array) => {
     const found = await sandbox.recognise(bytes);
+    if (!found.ok && found.reason === 'unconfined') {
+      // As for any read: nothing is read without the sandbox, and the job stays (never marked as read by OCR with nothing found).
+      off = true;
+      log('Files are not searched: no file is read without its sandbox', { reason: found.detail ?? 'the child could not confine itself' });
+      throw new Error('The file-text sandbox could not confine its child');
+    }
     if (!found.ok && found.reason !== 'empty') log('A picture could not be read by OCR', { file: fileId, reason: found.reason, detail: found.detail });
     return found.ok ? found.text : null;
   };

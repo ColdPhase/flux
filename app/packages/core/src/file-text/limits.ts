@@ -49,7 +49,9 @@ export const FILE_TEXT_LIMITS = {
    * nothing). While the switch is on, the worker queues at most `batch` files that OCR has yet to read whenever its queue is empty.
    */
   ocr: { side: 2480, pixels: 24_000_000, timeoutMs: 60_000, cpuSeconds: 60, memoryBytes: 384 * 1024 * 1024, extraBytes: 384 * 1024 * 1024,
-    outputBytes: 1024 * 1024, confidence: 60, words: 3, batch: 50 },
+    outputBytes: 1024 * 1024, confidence: 60, words: 3, batch: 50,
+    /** The most one scan page's grey PNG for OCR may be (a dense A4 page at 300 dpi is about 0.4 MB). */
+    pageBytes: 4 * 1024 * 1024 },
   /** A job is claimed for this long (a worker that died leaves it to be claimed again) and tried this many times. */
   leaseMs: 2 * 60_000,
   attempts: 3,

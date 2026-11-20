@@ -11,7 +11,9 @@ import type { Extracted, PagePicture } from './text.js';
 export interface PdfLimits { pages: number; chars: number; pictures?: PictureLimits }
 export interface PictureLimits { pages: number; side: number; pixels: number; pictureBytes: number; totalBytes: number; untilMs: number;
   /** With OCR on (C-70): each page is also given grey, at most this many px on its long side, for OCR alone (never stored). */
-  ocrSide?: number }
+  ocrSide?: number;
+  /** The most one such page's PNG may be (C-70). */
+  ocrPageBytes?: number }
 
 interface TextItem { str?: string; hasEOL?: boolean }
 interface PdfPage {
@@ -104,7 +106,7 @@ async function pagePictures(pdfjs: PdfJs, bytes: Uint8Array, limits: PictureLimi
             const scaled = { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
             // The page OCR reads: bounded like a stored picture, a page over it is simply not read by OCR.
             const grey = limits.ocrSide ? encodePng(scaleDown(toGrey(pixels), limits.ocrSide)) : null;
-            const ocr = grey && grey.length <= OCR_PAGE_BYTES && ocrTotal + grey.length <= limits.totalBytes ? grey.toString('base64') : null;
+            const ocr = grey && grey.length <= (limits.ocrPageBytes ?? 0) && ocrTotal + grey.length <= limits.totalBytes ? grey.toString('base64') : null;
             if (ocr) ocrTotal += grey!.length;
             pictures.push({ page: number, ...scaled, png: png.toString('base64'), ...(ocr ? { ocr } : {}) });
           }
@@ -115,9 +117,6 @@ async function pagePictures(pdfjs: PdfJs, bytes: Uint8Array, limits: PictureLimi
   } finally { await task.destroy().catch(() => undefined); }
   return pictures;
 }
-
-/** The most one page's grey PNG for OCR may be (C-70): a dense A4 page at 300 dpi is about 0.4 MB. */
-const OCR_PAGE_BYTES = 4 * 1024 * 1024;
 
 /** A decoded picture of the page, or null when PDF.js has none under that name in time. */
 function objectOf(page: PdfPage, id: string): Promise<unknown> {
