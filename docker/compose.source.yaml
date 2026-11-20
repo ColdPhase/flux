@@ -256,6 +256,8 @@ services:
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
       # The same web switch as the API (#954): `off` offers no run its provider's web search.
       FLUX_WEB_READS: ${FLUX_WEB_READS:-on}
+      # OCR of scans and pictures (C-70): off unless the operator turns it on.
+      FLUX_FILE_OCR: ${FLUX_FILE_OCR:-off}
       # The agent runtime (F-022 AIM-3): the worker reconciles slot bindings through runtime-manager.
       FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
       FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}

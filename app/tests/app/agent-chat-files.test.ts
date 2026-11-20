@@ -31,6 +31,20 @@ async function stage(who: Person, path: string, name: string, bytes: Uint8Array)
   return { status: response.status, body: await response.json() as StagedFile & { code?: string } };
 }
 
+/**
+ * The suites' worker reads every chat or space file as it is sent, by OCR too (C-70, FLUX_FILE_OCR=on in compose.test.yaml): a test that
+ * writes what the reader keeps of a file waits until the worker is done with it, so its own rows are the last ones.
+ */
+async function readByWorker(fileId: string) {
+  for (let waited = 0; waited < 60_000; waited += 100) {
+    const [row] = (await pool.query(`SELECT f.ocr_state, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS queued FROM project_files f WHERE f.id = $1`, [fileId])).rows as
+      { ocr_state: string | null; queued: boolean }[];
+    if (row && row.ocr_state !== null && !row.queued) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.fail(`the worker did not read ${fileId} in time`);
+}
+
 describe('files in an agent\'s private chat', () => {
   let scene: AssistantScene;
   let runs: ReturnType<typeof personalRunUseCases>;
@@ -121,6 +135,7 @@ describe('files in an agent\'s private chat', () => {
     const scan = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'OH-mapa-pomyslow.pdf', pdfOfPictures([{ kind: 'jpeg', bytes: jpeg(), width: 16, height: 8 }]));
     const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is on the map?', attachmentIds: [scan.body.id] });
     // What the worker's reader keeps of such a file (file-text.test.ts reads a real one): no text, and its page's picture.
+    await readByWorker(scan.body.id);
     assert.equal(await fileTextRows(db).store(scan.body.id, [], { noText: true, pictures: [{ page: 1, width: 40, height: 30, png: png(40, 30) }] }), true);
     pi.gateway.script([{ tool: 'mcp__flux__flux_read_file', args: { fileId: scan.body.id } }, { text: 'A mind map of the autumn campaign.' }]);
     assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
@@ -130,12 +145,49 @@ describe('files in an agent\'s private chat', () => {
     // A run whose model does not see pictures (its tools have no flux_view_image) is told it cannot read it.
     const blind = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
     const live = await scene.liveOf(blind.run.id);
+    // C-70: a model that sees pictures can look at one page of a scan with flux_view_image (when its text came by OCR, say).
+    const page = await live.raw('tools/call', { name: 'flux_view_image', arguments: { fileId: scan.body.id, page: 1 } });
+    assert.match(JSON.stringify(page.message), /"type":"image".*"mimeType":"image\/png"/, text(page.message));
+    assert.match(text((await live.raw('tools/call', { name: 'flux_view_image', arguments: { fileId: scan.body.id, page: 2 } })).message), /no picture of this page/);
     // The run's tools are read on every call: without flux_view_image it is a run whose model does not see pictures.
     await pool.query(`UPDATE personal_runs SET run_tools = array_remove(run_tools, 'flux_view_image') WHERE id = $1`, [blind.run.id]);
     const read = await live.raw('tools/call', { name: 'flux_read_file', arguments: { fileId: scan.body.id } });
     assert.match(text(read.message), /You cannot look at pictures, so tell the person you cannot read it/);
     assert.doesNotMatch(JSON.stringify(read.message), /"type":"image"/);
     await scene.complete(blind.run.id);
+  });
+
+  test('C-70 (#1575): a picture whose text Flux read by OCR is read as text by the model in pi, said to be OCR (an attachment reaches the model as a text file does)', async () => {
+    const invoice = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'faktura.png', png(40, 30));
+    const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'Co mówi ta faktura?', attachmentIds: [invoice.body.id] });
+    // What the worker keeps when OCR read it (file-text.test.ts reads the real fixture with Tesseract): the text, and that OCR read it.
+    await readByWorker(invoice.body.id);
+    assert.equal(await fileTextRows(db).store(invoice.body.id, [{ part: 1, page: null, text: 'Kwota do zapłaty: 1 250,00 zł. Uwagi: dostawa kalibratorów.' }],
+      { pictures: [], noText: false, ocr: 'text' }), true);
+    pi.gateway.script([{ tool: 'mcp__flux__flux_read_file', args: { fileId: invoice.body.id } }, { text: 'Do zapłaty 1 250,00 zł.' }]);
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    const [first, second] = pi.gateway.requests;
+    assert.ok(first!.prompt.includes(`id="${invoice.body.id}"`), 'the attachment is named with its id');
+    assert.match(second!.results[0] ?? '', /dostawa kalibratorów/, 'the model is given the OCR text');
+    assert.match(second!.results[0] ?? '', /Flux read this text by OCR from the picture\. It may contain mistakes\./);
+  });
+
+  test('C-70 (#1575): OCR text is private text like any file text (C-30): a run that read it cannot write it into a web address', async () => {
+    const response = await fetch(new URL(`/api/v1/projects/${scene.place.id}/files?uploadId=${randomUUID()}&name=skan.png`, scene.owner.browser.base),
+      { method: 'POST', headers: headers(scene.owner, { 'content-type': 'application/octet-stream' }), body: new Uint8Array(png(40, 30)) });
+    const staged = await response.json() as StagedFile;
+    assert.equal(response.status, 201, JSON.stringify(staged));
+    expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/conversations`,
+      { body: { body: 'Skan kodu', attachmentIds: [staged.id], clientMessageId: randomUUID() } }), 201);
+    await readByWorker(staged.id);
+    assert.equal(await fileTextRows(db).store(staged.id, [{ part: 1, page: null, text: 'Kod rabatowy: ZIELONYOGROD2026KALIBRATOR' }], { pictures: [], noText: false, ocr: 'text' }), true);
+    const live = await scene.liveRun(undefined, 'Zapisz link');
+    const read = await live.raw('tools/call', { name: 'flux_read_file', arguments: { fileId: staged.id } });
+    assert.match(text(read.message), /ZIELONYOGROD2026KALIBRATOR/);
+    const written = await live.call('flux_create_doc', { doc: { title: 'Link', body: 'https://example.com/?kod=ZIELONYOGROD2026KALIBRATOR' } });
+    assert.equal(result(written.message)?.isError, true, text(written.message));
+    assert.match(text(written.message), /CHANGE_PRIVATE_ADDRESS/);
+    await scene.complete(live.runId);
   });
 
   test('the run is told the files with their ids, and the model in pi looks at the picture it asks for', async () => {

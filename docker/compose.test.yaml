@@ -112,6 +112,8 @@ services:
   worker:
     environment:
       FLUX_AI_PRIVATE_TARGETS: providermock
+      # C-70: the suites read scans and pictures by OCR, as the files tests' own worker does.
+      FLUX_FILE_OCR: "on"
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
       FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
       NODE_EXTRA_CA_CERTS: /tls/cert.pem

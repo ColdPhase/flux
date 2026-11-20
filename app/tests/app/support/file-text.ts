@@ -94,7 +94,7 @@ export function docxBytes(paragraphs: string[], extra: { table?: string[][]; tex
 }
 
 /** One page of an image-only PDF (C-69): a picture of RGB or grey pixels (Flate), or a JPEG (DCT), drawn over the whole page, and no text. */
-export type PicturePage = { kind: 'rgb' | 'grey'; width: number; height: number } | { kind: 'jpeg'; bytes: Buffer; width: number; height: number };
+export type PicturePage = { kind: 'rgb' | 'grey'; width: number; height: number } | { kind: 'jpeg'; bytes: Buffer; width: number; height: number; grey?: boolean };
 /**
  * A PDF whose pages are pictures only (#1557: what macOS's "Quartz PDFContext" makes of an exported map, a scan): no font, no text. A Flate
  * picture is a pattern of bands, so a scaled-down copy can be checked by its colours: RGB pictures have a red left half and a blue right one.
@@ -108,7 +108,7 @@ export function pdfOfPictures(pages: PicturePage[]): Buffer {
   const pagesId = pages.length * 3 + 1;
   for (const page of pages) {
     let image: number;
-    if (page.kind === 'jpeg') image = add(stream(`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>`, page.bytes));
+    if (page.kind === 'jpeg') image = add(stream(`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /${page.grey ? 'DeviceGray' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode >>`, page.bytes));
     else {
       const channels = page.kind === 'rgb' ? 3 : 1;
       const raw = Buffer.alloc(page.width * page.height * channels);
