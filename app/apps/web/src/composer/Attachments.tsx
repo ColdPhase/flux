@@ -53,7 +53,7 @@ export const typeLine = (file: { name: string; size: number }, detail?: string) 
 export function FileRow({ file }: { file: MessageFile }) {
   // A video is one because the server read its bytes (C-61), not because of its name; its poster, when the sender's browser drew one,
   // stands in for the page icon.
-  const format = file.video ? 'video' : previewFormat(file.name);
+  const format = file.video ? 'video' : previewFormat(file.name, file.size);
   const [clicked, setClicked] = useState(false);
   // A search result for this file (C-63) opens its preview too, at the page that matched.
   const link = useFileLink(file.id);

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { accessPorts, fileRows, schema } from '@flux/db';
 import { createAgent, createFileUseCases, type Principal } from '@flux/core';
-import { FILE_LIMITS, imageTypeOf, type CreatedThought, type Sketch, type SketchDetail, type StagedFile } from '@flux/contracts';
+import { imageTypeOf, type CreatedThought, type Sketch, type SketchDetail, type StagedFile } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
 import { sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
@@ -159,7 +159,8 @@ test('other uploaders, other projects, private maps, agents and non-images canno
   }
   // Size limit: the stored-file limit refuses a larger image by its declared length, before any byte is staged.
   // (Sending the bytes would race the early 413 against the client's write, as in stored-files.test.ts.)
-  assert.deepEqual(await declaredUpload(f.writer, f.place.id, FILE_LIMITS.fileBytes + 1), { status: 413, code: 'FILE_TOO_LARGE' });
+  // (The test stack's file cap is 8 MiB, FLUX_FILE_MAX_MIB; a map's image is held to 5 MiB where it is placed, #1549.)
+  assert.deepEqual(await declaredUpload(f.writer, f.place.id, 8 * 1024 * 1024 + 1), { status: 413, code: 'FILE_TOO_LARGE' });
   // Stored files belong to a project: a private map refuses the image and keeps it staged.
   const mine = expectStatus(await f.writer.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/sketches`, { body: { title: 'Mine', scope: 'private' } }), 201) as Sketch;
   const privateMap = await place(f.writer, mine.id, { fileId: staged.id });

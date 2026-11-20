@@ -62,7 +62,8 @@ export async function startFileText(options: FileTextOptions) {
   const readOne = async (job: NonNullable<Awaited<ReturnType<typeof rows.claim>>>) => {
     const started = Date.now();
     if (sandbox.ocr && isOcrPicture(job.name)) return readPicture(job, started);
-    const format = fileTextFormat(job.name);
+    // A file over the text bound (#1549) is finished as one that is not text by its name: found by its name.
+    const format = job.size <= FILE_TEXT_LIMITS.fileBytes ? fileTextFormat(job.name) : null;
     const bytes = format ? await read(job.fileId) : null;
     if (format && (!bytes || bytes.length !== job.size)) throw new Error('The stored file is missing or is not the size it was stored with');
     const result = format && bytes ? await sandbox.extract(bytes, format) : null;

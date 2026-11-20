@@ -56,6 +56,7 @@ exists. A wrong value stops the service at start with a message that names the v
 | [`FLUX_EMBEDDINGS`](#flux_embeddings) | Local embeddings (optional) | `off` |
 | [`FLUX_EMBEDDINGS_CPUS`](#flux_embeddings_cpus) | Local embeddings (optional) | `1` |
 | [`FLUX_EMBEDDINGS_MEMORY`](#flux_embeddings_memory) | Local embeddings (optional) | `6g` |
+| [`FLUX_FILE_MAX_MIB`](#flux_file_max_mib) | Files and video | `25` |
 | [`FLUX_FILE_OCR`](#flux_file_ocr) | Files and video | `off` |
 | [`FLUX_FIXTURE_TOKEN`](#flux_fixture_token) | Source checkout, launcher and checks | **required** (source); release: empty |
 | [`FLUX_GITHUB_APP_ID`](#flux_github_app_id) | GitHub App (optional) | empty |
@@ -333,13 +334,19 @@ Ping, session recheck and polling interval of the live WebSocket stream. Keep it
 
 ## Files and video
 
-Every file is at most 5 MiB, except a video, which has its own limit. See [requirements](requirements.md) for the disk.
+A file is at most `FLUX_FILE_MAX_MIB` and a video at most `FLUX_VIDEO_MAX_MIB`; a picture and every file of an encrypted space stay at 5 MiB. See [requirements](requirements.md) for the disk.
+
+### `FLUX_FILE_MAX_MIB`
+
+**Type** integer, 1–1024 MiB · **Default** `25` · **Used by** api (release, source)
+
+The largest file one person can send in a space, a direct message or an agent chat (#1549, C-61): a PDF, a document, a deck, an archive. A file over 5 MiB is streamed to and from the `files` volume like a video, so the API's memory does not grow with this setting, and each one counts against the volume. One message's files together (videos apart) are at most four times this. A picture stays at 5 MiB (it is cleaned whole), and so does every file of an encrypted space. The app says the limit in words ("Files can be up to 25 MB on this server"). An upload of this size must get through your reverse proxy: its body limit must be at least this (nginx: `client_max_body_size`). Other values stop the API. Example: `100`.
 
 ### `FLUX_VIDEO_MAX_MIB`
 
 **Type** integer, 1–1024 MiB · **Default** `200` · **Used by** api (release, source)
 
-The largest video one person can send (#1352, C-61). MP4, WebM and MOV files that a browser plays natively play inside Flux and seek without loading in full (the server answers HTTP range requests from disk); they are stored as sent, never converted, and each counts against the `files` volume. Every other file stays at 5 MiB, and in an encrypted space a video is an ordinary 5 MiB file that downloads. A video is a stream and an upload of this size must get through your reverse proxy: its body limit must be at least this (nginx: `client_max_body_size`). Other values stop the API. Example: `500`.
+The largest video one person can send (#1352, C-61). MP4, WebM and MOV files that a browser plays natively play inside Flux and seek without loading in full (the server answers HTTP range requests from disk); they are stored as sent, never converted, and each counts against the `files` volume. Every other file has `FLUX_FILE_MAX_MIB`, and in an encrypted space a video is an ordinary 5 MiB file that downloads. A video is a stream and an upload of this size must get through your reverse proxy: its body limit must be at least this (nginx: `client_max_body_size`). Other values stop the API. Example: `500`.
 
 ### `FLUX_FILE_OCR`
 

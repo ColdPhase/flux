@@ -58,10 +58,10 @@ export function registerAgentFileActions(tools: AgentToolRegistry, db: Database)
   tools.forAccess('write', { operation: OPERATION, classes: AGENT_OPERATION_CLASSES[OPERATION] }).registerTool('flux_attach_file', {
     title: 'Attach a file to your answer',
     // Short on purpose: a run's tool definitions travel with every request.
-    description: 'Attach a file to your answer, as your asker would attach one: `path` of a file you made in your working directory, or a text file\'s `content` with its `name`. HTML, PDF, CSV, Markdown, JSON, text, pictures and more, at most 5 MB. Your asker sees it and can show it to everyone.',
+    description: 'Attach a file to your answer, as your asker would attach one: `path` of a file you made in your working directory, or a text file\'s `content` with its `name`. HTML, PDF, CSV, Markdown, JSON, text, pictures and more: at most 5 MB in your private chat, in a space up to the server\'s file limit. Your asker sees it and can show it to everyone.',
     inputSchema: z.strictObject({ ...actionInput(),
       path: z.string().min(1).max(512).optional(),
-      content: z.string().min(1).max(FILE_LIMITS.fileBytes).optional(),
+      content: z.string().min(1).max(FILE_LIMITS.wholeBytes).optional(),
       name: z.string().min(1).max(FILE_LIMITS.nameChars).optional().describe('The file name people see, with its extension.') }),
     annotations,
   }, async (args, call) => {
@@ -120,7 +120,7 @@ async function attachInChat(db: Database, current: FileServices, input: { client
   const again = facts.files.find((file) => file.id === id);
   if (again) return toolResult({ attached: again.name, size: again.size, replayed: true });
   if (facts.files.length >= FILE_LIMITS.messageFiles) refuse(`An answer carries at most ${FILE_LIMITS.messageFiles} files.`);
-  const { body } = await runFileBody(db, current, claims, run.id, facts.row!.engine, input, FILE_LIMITS.fileBytes);
+  const { body } = await runFileBody(db, current, claims, run.id, facts.row!.engine, input, FILE_LIMITS.wholeBytes);
   let received: Awaited<ReturnType<typeof receiveRunOwnFile>>;
   try { received = await receiveRunOwnFile(current.storage, current.options, input.name, body); }
   catch (error) { body.destroy(); if (error instanceof DomainError) refuse(error.message); throw error; }
@@ -166,7 +166,7 @@ function registerClientFile(tools: AgentToolRegistry, db: Database) {
       + '`encoding` "base64" the bytes of any other file, at most 5 MB). It is checked as your owner\'s own upload. The result gives its `fileId`: '
       + 'name it in `attachmentIds` of flux_start_conversation or flux_reply_in_conversation within 7 days. Until then only your owner sees it.',
     inputSchema: z.strictObject({ ...actionInput(),
-      content: z.string().min(1).max(Math.ceil(FILE_LIMITS.fileBytes / 3) * 4 + 4),
+      content: z.string().min(1).max(Math.ceil(FILE_LIMITS.wholeBytes / 3) * 4 + 4),
       encoding: z.enum(['text', 'base64']).optional().describe('How `content` is written: text (the default) or base64.'),
       name: z.string().min(1).max(FILE_LIMITS.nameChars).describe('The file name people see, with its extension.') }),
     annotations,
@@ -237,7 +237,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   // staged under the same id. Approve itself reads nothing.
   if (!claims.approval) {
     if (facts.attached >= FILE_LIMITS.messageFiles) refuse(`An answer carries at most ${FILE_LIMITS.messageFiles} files.`);
-    const { body, size } = await runFileBody(db, current!, claims, runId!, facts.engine, input, Math.max(FILE_LIMITS.fileBytes, files.limits().videoBytes));
+    const { body, size } = await runFileBody(db, current!, claims, runId!, facts.engine, input, Math.max(files.limits().fileBytes, files.limits().videoBytes));
     try { staged = await files.stage({ kind: 'human', id: claims.ownerUserId }, input.projectId, { uploadId, name }, body, size); }
     catch (error) {
       body.destroy();

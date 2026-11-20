@@ -1,4 +1,3 @@
-import { FILE_LIMITS } from '@flux/contracts';
 import { EMBED_TEXT_LIMIT } from '../search/embeddings.js';
 
 /**
@@ -6,8 +5,11 @@ import { EMBED_TEXT_LIMIT } from '../search/embeddings.js';
  * sender chose (apps/worker/src/file-text); a file over one keeps what was read in time, and a file that cannot be read is found by its name.
  */
 export const FILE_TEXT_LIMITS = {
-  /** The file as the upload allows it. */
-  fileBytes: FILE_LIMITS.fileBytes,
+  /**
+   * The largest file whose text is read (#1549): the child holds the file whole, within its memory below. A larger file (an operator may allow
+   * files up to 1 GiB) is found by its name, as a file that cannot be read is.
+   */
+  fileBytes: 64 * 1024 * 1024,
   /** A PDF's pages read, from the first. */
   pages: 100,
   /** The text kept of one file, in characters; what lies beyond is not searched (the preview shows all of it). */
