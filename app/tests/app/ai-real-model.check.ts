@@ -274,7 +274,7 @@ async function searchWithoutSearch(engine: Engine): Promise<Attempt> {
       check('the run had no web search tool (an OpenAI-compatible endpoint has none)', 'outcome', !(row.run_tools ?? []).includes('flux_web_search'), row.run_tools),
       check('nothing was recorded as searched', 'outcome', searches.length === 0, searches),
       check('the answer says it could not search the web', 'outcome',
-        /nie (?:moge|mam|jestem w stanie|udalo (?:mi )?sie)[^.]{0,80}(?:wyszuk|przeszuk|internet|sieci)|(?:wyszukiw|przeszukiw)[^.]{0,60}(?:niedostepn|nie jest dostepn)|brak (?:dostepu|mozliwosci|narzedzia)[^.]{0,60}(?:wyszuk|internet|sieci)/.test(fold(own)), own.slice(0, 600)),
+        /nie (?:moge|mam|jestem w stanie|udalo (?:mi )?sie)[^.]{0,80}(?:wyszuk|przeszuk|internet|sieci|stron)|(?:wyszukiw|przeszukiw)[^.]{0,60}(?:niedostepn|nie jest dostepn)|brak (?:dostepu|mozliwosci|narzedzia)[^.]{0,60}(?:wyszuk|internet|sieci)/.test(fold(own)), own.slice(0, 600)),
       check('every address the answer gives as a source was read in this run', 'outcome', cited.every((url) => read.has(url)), { cited, read: [...read] }),
       check('the answer is in Polish', 'outcome', isPolish(answer)),
     ],
@@ -733,7 +733,7 @@ const scenarios: Record<string, Scenario> = {
     const blind = [
       check('the run was not offered flux_view_image (its model is not known to see pictures)', 'outcome', !(row.run_tools ?? []).includes('flux_view_image'), row.run_tools),
       check('the answer invents nothing about the photo (no beds, beans or lettuce)', 'outcome', !/fasol|salat|bean|lettuce/.test(answer), row.answer_body),
-      check('the answer says it cannot see the photo', 'outcome', /nie (?:moge|mam|widze|jestem w stanie)|nie da sie|brak (?:mozliwosci|dostepu)|tylko nazw|nazwe pliku|nazwy pliku/.test(answer), row.answer_body),
+      check('the answer says it cannot see the photo', 'outcome', /nie (?:moge|mam|widze|ogladam|jestem w stanie)|nie da sie|brak (?:mozliwosci|dostepu)|(?:widze|znam) tylko (?:nazw|plik)|nazwe pliku|nazwy pliku/.test(answer), row.answer_body),
     ];
     return { checks: [
       check('the run completed with an answer', 'outcome', row.status === 'completed' && !!row.answer_body, { status: row.status, endReason: row.end_reason }),
