@@ -50,6 +50,10 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     { body: { title: 'Secret private battery map', scope: 'private' } }), 201);
   const connection = await createConnection(pool, browser, { agentId });
   const connectionId = connection.id;
+  // The owner lives in Warsaw: every instant a tool returns is in that zone with its offset (C-57, #1563), and one the agent passes back as
+  // it was given (a map's updatedAt to read on, a recorded checkpoint) is the same moment, not another one.
+  await pool.query(`UPDATE auth_users SET time_zone = 'Europe/Warsaw' WHERE id = $1`, [connection.ownerUserId]);
+  const zoned = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}\+0[12]:00$/;
 
   // A local OAuth client fixture exercises the provider's real authorization-code
   // and PKCE endpoints without fetching external client metadata in Docker CI.
@@ -109,7 +113,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     const own = refs.find((row) => row.checkpoint.id === id); assert.ok(own, `${kind} is indexed by its canonical ID`);
     assert.ok(!JSON.stringify(refs).includes('Battery lasts four hours.'), 'metadata omits bodies');
     if (kind === 'conversation') assert.equal(own.checkpoint.sequence, 1);
-    if (kind === 'map') assert.equal(own.checkpoint.version, 1);
+    if (kind === 'map') { assert.equal(own.checkpoint.version, 1); assert.match(String(own.checkpoint.updatedAt), zoned, 'the checkpoint\'s time is the owner\'s'); }
     if (kind === 'doc') assert.equal(own.state, null, 'a page has no publication state');
     recorded.push(own.checkpoint);
   }
@@ -198,6 +202,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const mapPage = toolValue((await mcp(bearer, 29, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, limit: 1 } })).message);
   assert.equal((mapPage.thoughts as unknown[]).length, 1);
   assert.equal((mapPage.thoughtPage as { nextOffset: number }).nextOffset, 1);
+  assert.match(String(mapPage.updatedAt), zoned, 'the map\'s updatedAt is in the owner\'s zone, and reading on with it works');
   const mapNext = toolValue((await mcp(bearer, 30, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, limit: 1, offset: 1, expectedUpdatedAt: mapPage.updatedAt } })).message);
   assert.equal((mapNext.thoughts as unknown[]).length, 1);
   expect(await browser.request('POST', `/api/v1/sketches/${map.id}/thoughts`, { body: { text: 'A later observation', x: 0, y: 200 } }), 201);

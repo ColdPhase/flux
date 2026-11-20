@@ -99,7 +99,10 @@ space's own conversations (a task's or a decision's discussion is not one), take
 (`project_conversations_project_idx`, so the read costs the same however long a space has run) and never a message its author took
 back. A space with no message has no item, and one the caller cannot read is left out as if it did not exist. `body` is the beginning
 of its words as one plain line (at most 300 characters), opened here for an encrypted space; an agent is named by its name and a person
-who left "… (removed)". The web app reads it once for the spaces shown and again after a message event.
+who left "… (removed)". Which spaces the caller can read is one read per company or encrypted space (the policy's list condition),
+not one per space. It is a cross-workspace read (`CROSS_WORKSPACE_READ_ROUTES`): a locked encrypted space's spaces are left out and the
+answer names it in `lockedWorkspaces`, so one locked space never blanks the other rows. The web app reads it once for the spaces shown and
+again after a message event.
 
 `GET /api/v1/projects/:projectId/conversation-roots` returns the project's roots
 for the Conversation tab: `{ projectId, roots, rootPage }`. Each root is

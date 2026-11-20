@@ -8,7 +8,7 @@ import { addMember, expectStatus, grant, person, project, workspace, type Person
 // read. A task's discussion is not the space's conversation; a space the caller cannot read is not told of; a space with no message has no item.
 
 describe('space previews: the newest message of each readable space', () => {
-  let ada: Person; let ben: Person; let cleo: Person;
+  let ada: Person; let ben: Person; let cleo: Person; let dan: Person;
   let open: Project; let empty: Project; let closed: Project;
   const names = new Map<string, string>();
   const start = async (who: Person, projectId: string, body: string) =>
@@ -19,14 +19,16 @@ describe('space previews: the newest message of each readable space', () => {
     (expectStatus(await who.browser.request('GET', `${SPACE_PREVIEWS_PATH}?projectIds=${ids.join(',')}`), 200) as SpacePreviewsResponse).items;
 
   before(async () => {
-    [ada, ben, cleo] = await Promise.all(['Ada Preview', 'Ben Preview', 'Cleo Preview'].map(person));
+    [ada, ben, cleo, dan] = await Promise.all(['Ada Preview', 'Ben Preview', 'Cleo Preview', 'Dan Preview'].map(person));
     names.set(ada.id, 'Ada Preview'); names.set(ben.id, 'Ben Preview');
     const ws = await workspace(ada, 'Preview club');
     for (const member of [ben, cleo]) await addMember(ada, ws.id, member, 'member');
+    await addMember(ada, ws.id, dan, 'guest');
     open = await project(ada, ws.id, 'Open lamp', 'workspace');
     empty = await project(ada, ws.id, 'Quiet shelf', 'workspace');
     closed = await project(ada, ws.id, 'Closed desk', 'restricted');
     await grant(ada, closed.id, ben, 'contributor');
+    await grant(ada, closed.id, dan, 'contributor');
   });
 
   test('the newest message of the space, a reply in a thread included, with who wrote it and the beginning of its words', async () => {
@@ -52,6 +54,8 @@ describe('space previews: the newest message of each readable space', () => {
     const talk = await start(ada, closed.id, 'Desk plans for the closed group');
     assert.deepEqual((await read(cleo, [closed.id, open.id])).map((item) => item.projectId), [open.id], 'Cleo has no grant on the closed space');
     assert.deepEqual((await read(ben, [closed.id])).map((item) => item.body), ['Desk plans for the closed group']);
+    // A guest reads only the spaces they were added to, not the ones everyone of the company is in (F-037).
+    assert.deepEqual((await read(dan, [open.id, closed.id])).map((item) => item.projectId), [closed.id], 'a guest is told only of their own spaces');
     const later = await reply(ada, talk.id, 'Wrong place, ignore this.');
     expectStatus(await ada.browser.request('DELETE', `/api/v1/conversations/${talk.id}/messages/${later.id}`), 200);
     assert.deepEqual((await read(ben, [closed.id])).map((item) => item.body), ['Desk plans for the closed group'], 'the message its author took back is not shown');

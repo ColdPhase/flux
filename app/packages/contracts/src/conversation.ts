@@ -1,6 +1,7 @@
 import { ownerInLabel } from './names.js';
 import type { SearchTarget } from './search.js';
 import type { AgentColour } from './agents.js';
+import type { LockedWorkspaceRef } from './encryption.js';
 
 /** Project conversations and materials are visible only through current project access. */
 export const projectConversationsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversations`;
@@ -445,4 +446,5 @@ export interface SpacePreview {
   files: number;
 }
 
-export interface SpacePreviewsResponse { items: SpacePreview[] }
+/** A locked encrypted space's spaces are left out, and the answer names it (F-030 `lockedWorkspaces`), as every cross-workspace read does. */
+export interface SpacePreviewsResponse { items: SpacePreview[]; lockedWorkspaces?: LockedWorkspaceRef[] }

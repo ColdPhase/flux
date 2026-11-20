@@ -256,7 +256,8 @@ class HomeInboxNav(unittest.TestCase):
             self.no_sideways_scroll(page)
             shot(page, f"inbox-question-390-{'dark' if dark else 'light'}")
             page.goto("/")
-            expect(page.locator(".home__row", has_text="Mount the box at 40 cm, or at 60 cm?")).to_be_visible()
+            # Its row in Waiting for you; its conversation's newest message is also under New messages (#1566), a part of its own.
+            expect(page.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Mount the box at 40 cm, or at 60 cm?")).to_be_visible()
             self.no_sideways_scroll(page)
 
     def test_03b_long_answers_wrap_and_never_overlap(self) -> None:
@@ -290,7 +291,7 @@ class HomeInboxNav(unittest.TestCase):
         shot(page, "question-long-answers-390-inbox")
         # Home's row for it never scrolls sideways.
         page.goto("/")
-        expect(page.locator(".home__row", has_text="Which calibration should I apply before the dawn log?")).to_be_visible()
+        expect(page.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Which calibration should I apply before the dawn log?")).to_be_visible()
         self.no_sideways_scroll(page)
         # Answer it so the next tests start from the same queue.
         page.goto("/inbox")
