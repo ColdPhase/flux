@@ -50,7 +50,8 @@
 #   On Hubert's host since 2026-11-20 also `flux-qwen` (Qwen3.8-27B on llama.cpp, vision via mmproj): FLUX_AI_MODEL_CONTAINER=flux-qwen
 #   FLUX_AI_MODEL_KEY_FILE=/run/api-key. A running container is never stopped or restarted, only attached and detached.
 # FLUX_AI_PI_MODEL: the model id the pi people type when the endpoint lists none Flux accepts (llama.cpp without --alias), default qwen-local.
-# Other settings: FLUX_AI_SCENARIOS (space-separated, default all), FLUX_AI_ENGINES (claude codex pi; add or choose anthropic), FLUX_AI_ATTEMPTS (2), FLUX_AI_SEED (42), FLUX_AI_EVIDENCE_DIR,
+# Other settings: FLUX_AI_SCENARIOS (space-separated, default all), FLUX_AI_ENGINES (claude codex pi; add or choose anthropic), FLUX_AI_ATTEMPTS (2),
+# FLUX_AI_RUN_WAIT_SECONDS (how long one run may take, 2700), FLUX_AI_SEED (42), FLUX_AI_EVIDENCE_DIR,
 # FLUX_TEST_PORT / FLUX_TEST_MAILPIT_PORT (18780 / 18781). Needs internet only to build the images and install the pinned Claude Code.
 # Run it alone under the shared Docker lock: a local model is slow, and the run takes hours.
 set -eu

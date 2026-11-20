@@ -36,5 +36,6 @@ services:
       FLUX_AI_EVIDENCE: /evidence
       FLUX_AI_ATTEMPTS: ${FLUX_AI_ATTEMPTS:-2}
       FLUX_AI_PI_MODEL: ${FLUX_AI_PI_MODEL:-}
+      FLUX_AI_RUN_WAIT_SECONDS: ${FLUX_AI_RUN_WAIT_SECONDS:-2700}
     volumes:
       - ${FLUX_AI_EVIDENCE_DIR:?Set by scripts/check_ai_real_model.sh}:/evidence:z
