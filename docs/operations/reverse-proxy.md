@@ -224,7 +224,7 @@ references: [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/re
 The same whole-origin rule with nginx. Put this in a file under `/etc/nginx/conf.d/` (the `map`
 block must be at `http` level, which `conf.d` files are): pass every path, keep `Host`, forward WebSocket upgrades,
 replace the client's `X-Forwarded-For` with the address nginx sees, and let request bodies through
-(nginx accepts 1 MiB by default; Flux takes files up to 5 MiB and a video up to [`FLUX_VIDEO_MAX_MIB`](configuration.md#flux_video_max_mib), 200 MiB by default).
+(nginx accepts 1 MiB by default; Flux takes a file up to [`FLUX_FILE_MAX_MIB`](configuration.md#flux_file_max_mib), 25 MiB by default, and a video up to [`FLUX_VIDEO_MAX_MIB`](configuration.md#flux_video_max_mib), 200 MiB by default).
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -240,8 +240,8 @@ server {
     ssl_certificate     /etc/letsencrypt/live/flux.example.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/flux.example.org/privkey.pem;
 
-    # Files up to 5 MiB, and videos up to FLUX_VIDEO_MAX_MIB (200 MiB by default), are accepted by Flux; nginx's default is 1 MiB.
-    # Keep this at least as large as FLUX_VIDEO_MAX_MIB, or a video fails with 413 from nginx.
+    # Files up to FLUX_FILE_MAX_MIB (25 MiB by default) and videos up to FLUX_VIDEO_MAX_MIB (200 MiB by default) are accepted by Flux;
+    # nginx's default is 1 MiB. Keep this at least as large as the larger of the two, or an upload fails with 413 from nginx.
     client_max_body_size 210m;
 
     location / {

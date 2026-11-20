@@ -74,7 +74,7 @@ async function canonical(input: Uint8Array): Promise<CleanPicture> {
         // Lossless WebP at the least effort (review of #1343): libwebp's lossless encoder at effort 2 took 1.4 GiB for a 155 KB, 40 MP file
         // and the API was killed at its 1.5 GiB limit; at effort 0 it is about 0.6 GiB, like a lossy one.
         : walked.lossless ? image.webp({ lossless: true, effort: 0, exact: true }) : image.webp({ quality: 85, alphaQuality: 100 })).toBuffer({ resolveWithObject: true });
-    if (written.data.byteLength > FILE_LIMITS.fileBytes) return refused('too_large');
+    if (written.data.byteLength > FILE_LIMITS.wholeBytes) return refused('too_large');
     // What libvips wrote is checked the way a file from outside is: one picture, of the size it says.
     const again = cleanPicture(written.data);
     if (!again.ok || again.type !== walked.type || again.frames !== 1 || again.width !== written.info.width || again.height !== written.info.height) return refused('broken');

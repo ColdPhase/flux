@@ -1,3 +1,4 @@
+import { FILE_LIMITS } from '@flux/contracts';
 /**
  * What a file is, from its name alone (#348): the page icon's pictogram and mono label, and the word
  * in "type · size". Only a display hint: a photo is shown as one only after its bytes are checked.
@@ -52,8 +53,15 @@ const SOURCE = ['txt', 'log', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'go'
   'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'css', 'scss', 'xml', 'ino', 'lua', 'r', 'pl', 'diff', 'patch', 'svg'];
 const PREVIEW: Record<string, PreviewFormat> = { html: 'html', htm: 'html', pdf: 'pdf', md: 'markdown', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv',
   ...Object.fromEntries(SOURCE.map((extension) => [extension, 'text' as const])) };
-/** By name. A video is never one by its name: the server says it is (`MessageFile.video`, C-61), after reading its bytes. */
-export const previewFormat = (name: string): PreviewFormat | null => PREVIEW[extensionOf(name)] ?? null;
+/**
+ * By name. A video is never one by its name: the server says it is (`MessageFile.video`, C-61), after reading its bytes. With `size`, a file drawn
+ * as text or as a page (everything but a PDF) previews up to `FILE_LIMITS.wholeBytes` and a larger one only downloads (#1549); a PDF is drawn by
+ * pages at any size.
+ */
+export const previewFormat = (name: string, size = 0): PreviewFormat | null => {
+  const format = PREVIEW[extensionOf(name)] ?? null;
+  return format && format !== 'pdf' && size > FILE_LIMITS.wholeBytes ? null : format;
+};
 
 /** Named like a photo (a hint only; the bytes decide). */
 export const looksLikePhoto = (name: string) => PHOTO.has(extensionOf(name));

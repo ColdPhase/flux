@@ -21,9 +21,9 @@ import { FILE_LIMITS, PICTURE_BOUNDS, pictureBounds, type ThoughtImageType } fro
  * - Anything after the picture's own end (a ZIP or a page appended to make a polyglot) is cut, and a file whose structure does not parse
  *   to its end is refused.
  *
- * Pure and synchronous over at most `FILE_LIMITS.fileBytes`; every loop advances by at least one byte.
+ * Pure and synchronous over at most `FILE_LIMITS.wholeBytes`; every loop advances by at least one byte.
  */
-export const PICTURE_LIMITS = { bytes: FILE_LIMITS.fileBytes, side: PICTURE_BOUNDS.side, pixels: PICTURE_BOUNDS.pixels, frames: 500,
+export const PICTURE_LIMITS = { bytes: FILE_LIMITS.wholeBytes, side: PICTURE_BOUNDS.side, pixels: PICTURE_BOUNDS.pixels, frames: 500,
   /** The pixels of every frame of an animation together. */
   framePixels: 200_000_000,
   /**

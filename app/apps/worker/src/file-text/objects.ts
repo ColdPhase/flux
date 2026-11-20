@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
-import { FILE_LIMITS } from '@flux/contracts';
+import { FILE_TEXT_LIMITS } from '@flux/core';
 
 /**
  * The bytes of a stored file of a plain space, read-only, by the API's layout (`attachments/objects/<2>/<id>`, apps/server/src/files/storage.ts), without
@@ -24,7 +24,7 @@ export function readFromDisk(filesDir: string): ReadStoredFile {
       const file = await open(join(objects, id.slice(0, 2), id), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       try {
         const stat = await file.stat();
-        if (!stat.isFile() || stat.size < 1 || stat.size > FILE_LIMITS.fileBytes) return null;
+        if (!stat.isFile() || stat.size < 1 || stat.size > FILE_TEXT_LIMITS.fileBytes) return null;
         const bytes = Buffer.alloc(stat.size);
         let offset = 0;
         while (offset < bytes.length) {
