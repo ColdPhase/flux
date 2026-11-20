@@ -1,0 +1,1 @@
+- A reader's face stays under the newest message of yours they have read, also in the middle of a group, and moves down as they read on; sending another message no longer hides that the person read the earlier one ([#1551](https://github.com/ColdPhase/flux/issues/1551)).

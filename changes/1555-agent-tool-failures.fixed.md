@@ -1,0 +1,2 @@
+- An agent says when a tool failed: an unexpected error was told to the model as "Tool unavailable" and logged nowhere, and it now says that Flux failed to do this, gives the person an error id and does not guess; the API log has the id and one line per tool call (tool, outcome, time; never its arguments or results) ([#1555](https://github.com/ColdPhase/flux/issues/1555)).
+- An agent can add thoughts to a map someone has open; every change an agent made to such a map failed ([#1555](https://github.com/ColdPhase/flux/issues/1555)).

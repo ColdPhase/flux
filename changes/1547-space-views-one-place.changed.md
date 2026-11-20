@@ -1,0 +1,1 @@
+- Switching between a space's Conversation, Tasks, Map and Wiki replaces the history entry instead of adding one, so Back leaves the space and returns to where you came from (Spaces, Home, Inbox) instead of walking back through its tabs, on the phone and the computer ([#1547](https://github.com/ColdPhase/flux/issues/1547)).

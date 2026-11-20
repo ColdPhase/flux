@@ -1,0 +1,1 @@
+- A drag from a connection dot to empty space always makes a thought and never turns into connect mode; such a drag no longer keeps a movement lease on the thought it started from, which could refuse the next drag with a false "Another collaborator is moving a selected thought" ([#1588](https://github.com/ColdPhase/flux/issues/1588)).

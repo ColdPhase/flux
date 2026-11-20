@@ -1,0 +1,1 @@
+- A picture the server could not read says "Can't be read" and every other refusal says "Can't be sent", and the limits line under a draft names the pictures' 5 MB when the operator's file cap is above it; before, a 14.9 MB picture said "Can't be read" beside a line that said pictures can be 5 MB ([#1601](https://github.com/ColdPhase/flux/pull/1601)).

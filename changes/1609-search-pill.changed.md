@@ -1,0 +1,1 @@
+- The phone's search fields are one flat pill: no shadow, the magnifier inside, a clear × while there is text and Cancel outside as plain text, in Search, the Tasks toolbar, the Wiki's Find a page, the map's Find a map and the people and message finders; the computer and the tablet keep their own ([#1609](https://github.com/ColdPhase/flux/pull/1609)).

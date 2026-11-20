@@ -1,0 +1,1 @@
+- The on-screen keyboard comes only when you tap a field: choosing a tab of the Create sheet, opening an agent's chat and the map's and the Wiki's pickers no longer put the cursor in a field on a touch screen ([#1546](https://github.com/ColdPhase/flux/issues/1546)).

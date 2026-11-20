@@ -1,0 +1,1 @@
+- `./flux` works with quoted values in `docker/.env` (`FLUX_PROJECT='flux'`), read as Compose reads them; before, such a line stopped every `./flux` command ([#1541](https://github.com/ColdPhase/flux/issues/1541)).

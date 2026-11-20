@@ -1,0 +1,1 @@
+- A task another tab makes reaches the Tasks Board even when the shell's re-read answers before its loading is drawn ([#1583](https://github.com/ColdPhase/flux/pull/1583)).

@@ -1,0 +1,1 @@
+- In dark mode the area under the app, around the phone's home indicator, is the page's dark background instead of a white strip, and the installed app's navigation bar is dark too ([#1544](https://github.com/ColdPhase/flux/issues/1544)).
