@@ -165,7 +165,7 @@ class PmEssentials(unittest.TestCase):
         row = page.locator(f'.sk-li-t[data-id="{self.ids["thought"]}"]')
         expect(row).to_be_visible()
         row.click()
-        page.get_by_role("button", name=re.compile("^More")).first.click()
+        page.get_by_role("treeitem", name=re.compile(re.escape(THOUGHT))).get_by_role("button", name="More actions", exact=True).click()
         item = page.get_by_role("button", name="Make a task")
         expect(item).to_be_visible()
         item.click()
