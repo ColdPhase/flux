@@ -230,8 +230,9 @@ async function search(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z
   const hits = (await told(ctx, page)).map((hit, index) => (page[index]!.kind === 'work' && sizes.get(hit.id) ? { ...hit, discussion: { messages: sizes.get(hit.id)! } } : hit));
   // Everything told is held to the access it was read under until its bytes are handed over (the delivery fence of the route).
   for (const projectId of new Set(page.flatMap((row) => row.projectId && row.kind !== 'dm_message' ? [row.projectId] : []))) claims.dispatch?.project(projectId, 'project.read');
-  // Each direct message a hit gives words of: its line for a private chat's read (AG-4, C-73), and the route's check at delivery.
-  for (const dmId of new Set(page.flatMap((row) => dmOfHit(row) ?? []))) await givenDm(ctx, claims, dmId);
+  // Each direct message a hit gives words of: its line for a private chat's read (AG-4, C-73), and the route's check at delivery. In
+  // id order, so two searches that lock the same conversations for their lines never wait for each other.
+  for (const dmId of [...new Set(page.flatMap((row) => dmOfHit(row) ?? []))].sort()) await givenDm(ctx, claims, dmId);
   return { results: hits, ...(rows.length > plan.limit ? { more: true } : {}),
     ...(hits.length ? (byAuthor ? { note: BY_AUTHOR } : {}) : { note: NO_MATCH }) };
 }

@@ -14,7 +14,8 @@ export async function agentReachesDm(ctx: FluxAgentReadContext, claims: FluxMcpC
   const run = claims.run;
   if (!run) return false;
   if (run.dmId !== dmId && (run.dmId !== null || run.projectId !== null || !(await dmAiRows(ctx.tx).chatRun(run.id)))) return false;
-  return dmAiRows(ctx.tx).readable(dmId, ctx.workspaceId, ctx.connection.ownerUserId);
+  // A private chat's read will leave its line there: the row is held for that update from the start (see `readable`).
+  return dmAiRows(ctx.tx).readable(dmId, ctx.workspaceId, ctx.connection.ownerUserId, { line: run.dmId !== dmId });
 }
 
 /** Whether this call is a private chat's, whose search also covers its owner's direct messages (C-73). */
@@ -31,6 +32,9 @@ export async function givenDm(ctx: FluxAgentReadContext, claims: FluxMcpClaims, 
   const run = claims.run;
   if (run && run.dmId !== dmId) {
     const chat = await dmAiRows(ctx.tx).chatRun(run.id);
+    // Asked again with the row held for the line (a search's hits were not locked when it read them): a turn-off that committed since
+    // gets no line and no words, rather than "used AI here" under "turned off AI".
+    if (chat && !await dmAiRows(ctx.tx).readable(dmId, chat.workspaceId, chat.ownerUserId, { line: true })) throw new Error('Direct message unavailable');
     if (chat && await dmAiRows(ctx.tx).postReadLine(chat, dmId, aiCompany(chat.engine, chat.provider))) {
       await recordEvent(eventPorts(ctx.tx), { kind: 'human', id: chat.ownerUserId }, chat.workspaceId, 'dm.changed.v1', dmId, { op: 'ai_used' });
     }

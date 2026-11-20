@@ -58,11 +58,13 @@ export function dmAiRows(db: DbExecutor) {
 
     /**
      * Whether its owner may give this conversation's words to an agent now: they take part in it and nobody has AI off there. Holds the
-     * conversation's row (share) until the transaction ends, so a turn-off that is committing waits for the read or is seen by it.
+     * conversation's row (share) until the transaction ends, so a turn-off that is committing waits for the read or is seen by it. A
+     * private chat's read (`line`) holds it for the update its line's sequence takes, from the start: two first reads of one
+     * conversation that each held it shared and then both updated it would wait for each other (a deadlock).
      */
-    async readable(dmId: string, workspaceId: string, ownerUserId: string): Promise<boolean> {
+    async readable(dmId: string, workspaceId: string, ownerUserId: string, options: { line?: boolean } = {}): Promise<boolean> {
       const rows = await db.execute(sql`SELECT d.id FROM dms d JOIN dm_participants p ON p.dm_id = d.id AND p.user_id = ${ownerUserId}
-        WHERE d.id = ${dmId}::uuid AND d.workspace_id = ${workspaceId}::uuid FOR SHARE OF d`);
+        WHERE d.id = ${dmId}::uuid AND d.workspace_id = ${workspaceId}::uuid ${options.line ? sql`FOR NO KEY UPDATE OF d` : sql`FOR SHARE OF d`}`);
       if (!rows.rows.length) return false;
       return !(await db.execute(sql`SELECT 1 FROM dm_ai_off WHERE dm_id = ${dmId}::uuid LIMIT 1`)).rows.length;
     },
