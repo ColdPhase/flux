@@ -30,7 +30,9 @@
 # Blocked with a reason), wiki (starts a page and saves its next version, Undo and Approve; answers from an old page and from a saved source
 # as the upgrade converted it), decision (proposes one, answers in its discussion, Skip), files (a PDF's text, and a scan read by OCR:
 # FLUX_FILE_OCR=on in the check stack), dm (C-73: finds a word in the owner's DM from the private chat with the "used AI here" line; with AI
-# off by the other person nothing of the DM reaches the model, checked on what the provider was sent), summary (`/ai` summarises and makes a
+# off by the other person nothing of the DM reaches the model, checked on what the provider was sent), pins (C-74, #1615: from a new thread the
+# owner asks what is pinned in a space; the agent reads the pins with flux_list_pinned, or flux_search's pinned hits, and gives the pinned
+# date and budget, not the unpinned older ones), summary (`/ai` summarises and makes a
 # task), task (a task given to the agent: Done or handed back by "What it may do"), link (reads a page a person posted), search (Polish law,
 # no link: searches and reads), injection (a page's prompt injection: C-30 and approvals), schedule (a schedule in plain words, Run now),
 # ask (one agent asks another with <ask>), others (nobody else prompts an agent), picture (#1217: finds a photo and attaches it to its answer,
@@ -103,7 +105,7 @@ installer="flux-agent-runtime-install:$project"
 network="${project}_default"
 model_started=""
 model_attached=""
-scenarios="${FLUX_AI_SCENARIOS:-map mapedit tasks task blocked wiki decision files dm summary link search injection schedule ask others picture vision}"
+scenarios="${FLUX_AI_SCENARIOS:-map mapedit tasks task blocked wiki decision files dm pins summary link search injection schedule ask others picture vision}"
 engines="${FLUX_AI_ENGINES:-claude codex pi}"
 has_engine() { case " $engines " in *" $1 "*) return 0;; esac; return 1; }
 
