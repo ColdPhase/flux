@@ -1,5 +1,5 @@
 -- An API-key run that never reached Flux's model gateway ends `gateway_unreachable` (#1556), not `crashed` reported as a provider failure.
--- v0.2.2's migrations are 0100 to 0110; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
+-- v0.2.2's migrations are 0100 to 0112; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
 -- Existing runs keep their end reasons; only the allowed set grows.
 -- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
 SET LOCAL lock_timeout = '5s';

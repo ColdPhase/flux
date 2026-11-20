@@ -1,5 +1,5 @@
 -- A saved source (a "material") is a Wiki page, and the kind goes (#1508, C-71; founder decision on #1419 item 20, data half on #1424).
--- v0.2.2's migrations are 0100 to 0110; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
+-- v0.2.2's migrations are 0100 to 0112; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
 -- Every row stays: a material keeps its id, its versions (title, text, link, author, time), the messages and tasks that cite a version,
 -- its search rows and its events; it is now read, edited and exported as a page of its space's Wiki. A version's link (`url`, sealed in an
 -- encrypted space) stays on the version: the page shows it, and each later version keeps it (docs.ts `append`).

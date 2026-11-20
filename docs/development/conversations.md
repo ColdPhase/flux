@@ -266,8 +266,10 @@ when); `PUT` and `DELETE` on `…/pins/:messageId` (`?part=prompt|answer` for a 
 - **What.** A message of that conversation that is not deleted (a direct message's `kind = 'text'`); anything else is `404 MESSAGE_NOT_FOUND`.
   Pinning twice and unpinning what is not pinned change nothing and record nothing.
 - **Rows.** `message_pins` (migration 0112, `@flux/db` `messagePinRows`): ids and the pinner only, never words, so an encrypted space's list opens
-  its words as its stream does. The delete of a message takes its pin in the same transaction (`messageChangeRows`); removing a space, a direct
-  message, an agent or a run cascades.
+  its words as its stream does. The delete of a message takes its pin in the same transaction (`messageChangeRows`), as does the Undo that
+  takes an agent's message back to its marker (`assistantRemovalRows`); removing a space, a direct message, an agent or a run cascades. A pin
+  outlives the person who pinned it: deleting that person sets `pinned_by` to null, `PinnedMessage.pinnedBy` is then `null` ("Pinned by a
+  former member"), the export's `pinned.by` is `null` and `flux_list_pinned` says "Former member".
 - **Events.** `project.pins_changed.v1` (object the space), `dm.pins_changed.v1` (the direct message), `person.pins_changed.v1` (the agent's owner,
   data `agentId`), data `{ messageId }`. No notification, no line, no Inbox item.
 

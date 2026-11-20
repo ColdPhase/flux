@@ -39,7 +39,7 @@ const baseExportSchema = {
         files: list(object({ id, name: text, size: { type: 'integer', minimum: 1 } })),
         via: text,
         contribution: object({ kind: { enum: ['blocker', 'handoff', 'came_of_it'] } }),
-        pinned: object({ by: ref('actor'), at: time }) },
+        pinned: object({ by: nullable(ref('actor')), at: time }) },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
     docVersion: object({ version: count, title: text, body: text, url: nullable(text), reason: text, author: ref('actor'), createdAt: time }),

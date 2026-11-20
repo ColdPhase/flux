@@ -388,7 +388,14 @@
                 "type": "string"
               },
               "by": {
-                "$ref": "#/definitions/actor"
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/actor"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [

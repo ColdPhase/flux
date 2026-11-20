@@ -1948,7 +1948,7 @@ export const agentChatMessages = pgTable('agent_chat_messages', {
 /**
  * 0112 (C-74, #1615): a pinned message. The conversation is one of a space, a direct message or a person's chat with their own agent, and
  * the message one of its own (in an agent's chat a run's request or answer, or one of the agent's lines). Pinned at most once; the row goes
- * with the conversation, the message, the run and the person who pinned it. Never the words.
+ * with the conversation, the message and the run, and outlives the person who pinned it (`pinnedBy` then empty). Never the words.
  */
 export const messagePins = pgTable('message_pins', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1961,7 +1961,7 @@ export const messagePins = pgTable('message_pins', {
   runId: uuid('run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   runPart: text('run_part', { enum: ['prompt', 'answer'] }),
   agentChatMessageId: uuid('agent_chat_message_id').references(() => agentChatMessages.id, { onDelete: 'cascade' }),
-  pinnedBy: text('pinned_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  pinnedBy: text('pinned_by').references(() => authUsers.id, { onDelete: 'set null' }),
   pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex('message_pins_project_message_idx').on(table.projectMessageId).where(sql`${table.projectMessageId} IS NOT NULL`),

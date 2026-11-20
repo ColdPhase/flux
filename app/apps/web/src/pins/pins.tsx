@@ -3,10 +3,19 @@ import { PINS_CHANGED_EVENTS, type PinnedMessage, type PinPart, type PinPlace } 
 import { useStreamEvents } from '../api/stream';
 import { getPins, setPin } from './api';
 import { useToast } from '../ui';
+import { FORMER_MEMBER, youLabel } from '../docs/format';
 
 // Pinned messages (C-74, #1615): one list per conversation, the same for everyone in it. The shell reads the list of the place it shows (a
 // space, a direct message, an agent's chat) once and keeps it here, so the header's count, each message's "Pinned by" line, the ⋯ menu's
 // Pin / Unpin and the Pinned panel all read the same list. The stream's event (ids only) reads it again on every screen that shows it.
+
+/**
+ * Who pinned a message, as the "Pinned by" line and the panel name them: "Ada Kowalska (you)" for the reader, "Stefan Kowal (removed)" as the
+ * server names a removed person, and "a former member" once that person is deleted, because the pin is the conversation's and stays.
+ */
+export const pinnerLabel = (pin: PinnedMessage, meId: string) => (pin.pinnedBy ? youLabel(pin.pinnedBy.name, pin.pinnedBy.id === meId) : FORMER_PINNER);
+/** "Former member" (`FORMER_MEMBER`) inside a sentence: "Pinned by a former member". */
+export const FORMER_PINNER = `a ${FORMER_MEMBER.toLowerCase()}`;
 
 /** The key of one pinned message in its list: an agent's chat pins a run's request and its answer apart. */
 export const pinKey = (messageId: string, part?: PinPart) => (part ? `${messageId}:${part}` : messageId);

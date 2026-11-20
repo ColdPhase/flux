@@ -12,7 +12,8 @@ on `./flux upgrade --check` shows the plan of the next one.
 Also in this release: files in a direct message are found by the people in it and read by `/ai` there, anyone in a direct message can turn
 AI off in it, your agent can search your direct messages from its private chat, saved sources are Wiki pages, a local llama.cpp model is
 chosen by the id it names, and on the phone Back closes what sits on top first, a space's tabs are one place, no keyboard opens of its
-own accord, the dark theme has dark edges and the search fields are one flat pill.
+own accord, the dark theme has dark edges and the search fields are one flat pill. And a message can be pinned in any conversation, with
+one pinned list that everyone in it sees.
 
 Documentation: <https://coldphase.github.io/flux/>. Flux is open source under the AGPL-3.0.
 
@@ -43,21 +44,30 @@ cd /srv/flux
   v0.2.2 on estimates it at about 20 MB/s), and the PDFs that `0103` and the files that `0109` queue are read in the background after the
   upgrade, not during it. The migrations themselves took 15 s on a synthetic dataset of 400,000 messages, 70,000 files and a million events
   ([what changes for existing data](#what-changes-for-existing-data)).
-- **Every service now runs under an init process.** `./flux upgrade` recreates `db`, `api` and `worker` once on it (one clean PostgreSQL restart), the keyring as at every upgrade (so every encrypted space is locked
-  until an admin of the space unlocks it) and, with calls on, `livekit`, whose new limits apply on that recreate.
+- **Every long-running service now runs under an init process.** v0.2.2 adds one to `db`, `api`, `worker`, the HTTPS proxy, the
+  embeddings server and the media server (`livekit`); the keyring and the agent runtime had one already. `./flux upgrade` recreates `db`,
+  `api` and `worker` once on it (one clean PostgreSQL restart), the keyring as at every upgrade (so every encrypted space is locked until an
+  admin of the space unlocks it) and, when they are on, the HTTPS proxy, the embeddings server and `livekit`, whose new limits apply on that
+  recreate.
 - **The database image moves to PostgreSQL 18.7** (security release of 2026-11-12), the same major as 18.6: your data directory starts on it
   as it is, with no dump and restore; the pins of `pgvector` and `pg_search` are unchanged. `./flux upgrade` pulls it before the downtime.
-- **No setting is renamed or removed** (`docker/env-changes.txt` is unchanged), so your `docker/.env` keeps working as it is. `docker/.env`
-  values in single or double quotes (`FLUX_PROJECT='flux'`) are now read as Compose reads them; before, such a line stopped every `./flux`
-  command ([#1541](https://github.com/ColdPhase/flux/issues/1541)).
+- **No setting is renamed or removed** (`docker/env-changes.txt` is unchanged), so your `docker/.env` keeps working as it is; only the
+  default file limit grows, from 5 MiB to 25 MiB ([below](#new-settings-and-their-defaults)). `docker/.env` values in single or double
+  quotes (`FLUX_PROJECT='flux'`) are now read as Compose reads them; before, such a line stopped every `./flux` command
+  ([#1541](https://github.com/ColdPhase/flux/issues/1541)).
+- **Two launcher fixes start half way through this upgrade.** `./flux upgrade` on a v0.2.1 server is started by v0.2.1's launcher, which
+  checks and downloads the release, asks, takes the backup and only then hands over to v0.2.2's launcher. The quoted values above and
+  `FLUX_LIVEKIT_DOMAIN` ([below](#new-settings-and-their-defaults)) are read the new way only from that hand-over on: a quoted
+  `FLUX_PROJECT` still stops v0.2.1's launcher before it changes anything, so remove its quotes for this one upgrade.
 
 ### New settings and their defaults
 
-All are optional; an old `docker/.env` that sets none of them behaves as before.
+All are optional. An old `docker/.env` that sets none of them behaves as before with one difference: the largest file grows from 5 MiB to
+25 MiB, because `FLUX_FILE_MAX_MIB` is `25` when it is not set. Set `FLUX_FILE_MAX_MIB=5` to keep v0.2.1's limit.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `FLUX_CALLS_PUBLIC_IP` | empty | **Split-horizon DNS, or a proxy on another machine** ([#1542](https://github.com/ColdPhase/flux/issues/1542)). With `FLUX_CALLS=on`, `./flux up` looked the origin's name up on the server and advertised what it found, which is the proxy's LAN address when internal DNS answers differently than the browsers' DNS. Set the public IPv4 address browsers send media to: it is kept, checked only for being IPv4, never looked up (the origin needs no A record on the server), and printed. Empty: the lookup runs as before. `FLUX_LIVEKIT_DOMAIN` set in `docker/.env` is now the media name instead of being overwritten with the origin's host. [Calls](https://github.com/ColdPhase/flux/blob/main/docs/operations/calls.md#split-horizon-dns-or-a-proxy-on-another-machine). |
+| `FLUX_CALLS_PUBLIC_IP` | empty | **Split-horizon DNS, or a proxy on another machine** ([#1542](https://github.com/ColdPhase/flux/issues/1542)). With `FLUX_CALLS=on`, `./flux up` looked the origin's name up on the server and advertised what it found, which is the proxy's LAN address when internal DNS answers differently than the browsers' DNS. Set the public IPv4 address browsers send media to: it is kept, checked only for being IPv4, never looked up (the origin needs no A record on the server), and printed. Empty: the lookup runs as before. `FLUX_LIVEKIT_DOMAIN` set in `docker/.env` is now the media name instead of being overwritten with the origin's host; v0.2.2's launcher reads it, so it takes effect from the upgrade's hand-over on ([above](#upgrading-from-v021)). [Calls](https://github.com/ColdPhase/flux/blob/main/docs/operations/calls.md#split-horizon-dns-or-a-proxy-on-another-machine). |
 | `FLUX_LIVEKIT_MEMORY` | `512m` | Memory **and swap** of the media server, so a call cannot take memory from the database and the keyring ([#1558](https://github.com/ColdPhase/flux/issues/1558)). A synthetic 16-person call (4 publishing video, 12 receiving, 60 s) measured 75 to 86 MB. |
 | `FLUX_LIVEKIT_CPUS` | `1` | CPU limit of the media server (3 to 9 % of one core in that call). Docker refuses a limit above the server's cores, so one CPU also starts on a 1-core server. |
 | `FLUX_FILE_MAX_MIB` | `25` (1 to 1,024) | The largest file of a plain space, a direct message or an agent's chat; a message's files together may be four times it ([#1549](https://github.com/ColdPhase/flux/issues/1549)). A picture and every file of an encrypted space stay at 5 MiB. Before, every file but a video was at most 5 MiB. |
@@ -98,7 +108,7 @@ Also new, nothing to set: the media server runs with no capabilities, no new pri
 
 ### What changes for existing data
 
-v0.2.1 is at schema 95 and v0.2.2 at schema 111. The migrations below are every one of v0.2.2 (`0096`–`0099`, `0102` and `0108` are
+v0.2.1 is at schema 95 and v0.2.2 at schema 112. The migrations below are every one of v0.2.2 (`0096`–`0099`, `0102` and `0108` are
 not used: the work planned for `0096`–`0099` was renumbered to `0105`–`0107`, and the numbers `0102` and `0108` were not needed). Each
 runs in its own transaction while API and worker are stopped, after the backup, and waits at most 5 s for a table's lock; none deletes a
 v0.2.1 row of yours (`0107` moves saved sources to Wiki pages and keeps every one), and `tests/app/released-databases.test.ts` runs the
@@ -262,6 +272,11 @@ that way, with a line that says so; close the connection and retry.
   runs Flux finds the id in the API log, which also has one line per tool call (tool, outcome, time; never its arguments or results)
   ([#1555](https://github.com/ColdPhase/flux/issues/1555)). The cause of the one that started it is fixed too: adding a thought to a map
   someone had open always failed.
+- **An agent's task that cannot go on ends Blocked, not Done** ([#1612](https://github.com/ColdPhase/flux/issues/1612),
+  [#1614](https://github.com/ColdPhase/flux/pull/1614)). An agent that replied it could not finish a task, without setting the task Blocked
+  itself, had its task marked Done when the run ended. Its brief now tells it to set such a task Blocked, with a blocker that says what it
+  waits for, and never to mark it Done or change its owner; the task then stays Blocked with the agent. When that change waits for the
+  owner's OK (Ask me first on), the task stays as it is until the owner decides: Approve makes it Blocked, Skip ends the run as any other.
 - **A run that never reached the model gateway says so.** Instead of "The AI provider didn't answer", the asker reads that Flux couldn't
   reach its model gateway, so the provider wasn't asked, and what to tell whoever runs Flux; a schedule's history says the same. Every
   run that ends without an answer logs its cause (never words or content), and a runtime started with pi checks once that it reaches the
@@ -296,6 +311,27 @@ that way, with a line that says so; close the connection and retry.
   [configuration](https://github.com/ColdPhase/flux/blob/main/docs/operations/configuration.md#flux_ai_private_targets)), and the model
   server must listen where Flux's containers reach it: a server bound only to the host's `127.0.0.1` is out of their reach.
 
+## Pinned messages
+
+Pin a message in any conversation: a space (its stream and its threads), a direct message (a group too) and your chat with your own agent
+([#1615](https://github.com/ColdPhase/flux/issues/1615), [#1616](https://github.com/ColdPhase/flux/pull/1616), C-74). A pin is the
+conversation's, never one person's, so everyone in it sees the same list.
+
+- **Pin and Unpin** are in the message's ⋯ menu, after Copy text (key `P`), and in its long-press sheet on the phone. Anyone who can write
+  in the conversation can pin or unpin any of its messages; pinning notifies nobody.
+- **A pinned message shows "Pinned by Ada"** above it, a quiet line on its author's side. A pin outlives the person who pinned it: a person
+  removed from the company is "Ada Kowalska (removed)", as everywhere, and once their account is deleted the line reads "Pinned by a former
+  member".
+- **"Pinned · N" lists them**, newest pin first. The header's pin button with the count opens it beside the conversation; on the phone,
+  and on a tablet whose header has no room for the button, it is ⋯ › Pinned. A click brings the message into view, and the list's Unpin
+  removes it.
+- **A pin goes with its message**: a deleted message, an agent's message that Undo takes back, and a removed direct message, space or agent
+  take their pins; an edited message stays pinned.
+- **Search and agents**: ⌘K lists a pinned match first in Messages and marks it; agents read the list with `flux_list_pinned` and see
+  pinned hits first in `flux_search`, only where they may read. The project export marks a pinned message `pinned`.
+- **After the upgrade nothing is pinned** (migration `0112`, [above](#what-changes-for-existing-data)). A pin stores which message, by whom
+  and when, never its words.
+
 ## Messages, Inbox and spaces
 
 - **A saved source opens inside its space**, with the space's header, its name, Conversation, Tasks, Map and Wiki (Wiki current) and its
@@ -308,12 +344,6 @@ that way, with a line that says so; close the connection and retry.
   ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
 - **Spaces rows say what was said last**: each space shows its newest message and when, as a conversation in Messages does ("Maja: Sent a
   file") ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
-- **Pin a message in any conversation** ([#1615](https://github.com/ColdPhase/flux/issues/1615)): a space, a direct message (a group too) and
-  your chat with your own agent. Pin and Unpin are in the message's ⋯ menu (key `P`) and its long-press sheet; a pin is the conversation's, so
-  everyone in it sees the same list. A pinned message shows "Pinned by Ada" above it, the header's pin button with the count opens "Pinned"
-  beside the conversation (on the phone: ⋯ › Pinned), and a click brings the message into view. ⌘K lists a pinned match first in Messages, and
-  agents read the list with `flux_list_pinned` and see pinned hits first in `flux_search`. Pinning notifies nobody. After the upgrade nothing is
-  pinned (migration `0112`, above).
 - **Anyone in a direct message can turn AI off in it**, as in an encrypted space ([#1591](https://github.com/ColdPhase/flux/issues/1591)).
   "Turn off AI in this conversation" is in the conversation's details; it stays on while at least one person wants it, and each person can
   only withdraw their own choice, so nobody can override someone else's "no AI". While it is on, `/ai` there is refused with a clear line,
@@ -325,6 +355,9 @@ that way, with a line that says so; close the connection and retry.
   are an index like the word search, not an AI company, so a place with AI off is embedded like any other and people's search there stays
   hybrid; the agents are kept out by the access check of each search, not by missing vectors. In v0.2.1 a space with AI off had none. With
   embeddings on, the worker embeds those spaces in the background after the upgrade (founder decision, 2026-11-20; C-73).
+- **The Inbox's toast keeps one line** ([#1601](https://github.com/ColdPhase/flux/pull/1601)). Under the two-column Inbox's open item,
+  "Marked done" stood in two lines, with × beside the words and Undo below, unlike every other toast; it is one line again, and only a
+  toast beside an open Details panel takes two.
 - **Small fixes**: at 200 % the "Task #12 created" notice takes two lines instead of three; offline, a conversation no longer adds "Linked
   work could not be loaded" to the composer's own offline line; the Spaces page's empty states are the one centred empty state
   ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
@@ -333,8 +366,8 @@ that way, with a line that says so; close the connection and retry.
 
 - **The database no longer resets on a timed-out health check** ([#1540](https://github.com/ColdPhase/flux/issues/1540)). A probe that its
   timeout killed was taken by PostgreSQL, as PID 1, for a crashed process of its own, which reset every connection and broke the first
-  migration on a busy server. `db`, `api`, `worker`, the HTTPS proxy and the embeddings server now run under an init process, which reaps
-  the probe.
+  migration on a busy server. `db`, `api`, `worker`, the HTTPS proxy, the embeddings server and the media server now run under an init
+  process, which reaps the probe, as the keyring and the agent runtime already did.
 - **The media server has limits like every other service**, and the runtime manager and egress get swap limits equal to their memory, so
   no long-running service can swap (`FLUX_LIVEKIT_MEMORY`, `FLUX_LIVEKIT_CPUS`: [above](#new-settings-and-their-defaults)).
 - **`./flux` works with quoted values** in `docker/.env` ([#1541](https://github.com/ColdPhase/flux/issues/1541)), **with split-horizon DNS**

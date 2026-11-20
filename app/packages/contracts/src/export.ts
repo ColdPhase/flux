@@ -68,8 +68,8 @@ export interface ProjectExportMessage {
   source: { materialId: string; version: number } | null;
   /** Present only for a saved blocker, a "what came of it" line or a public handoff (#154). */
   contribution?: MessageContribution;
-  /** Present only for a message pinned in its space (C-74, #1615): who pinned it and when. */
-  pinned?: { by: ExportActor; at: string };
+  /** Present only for a message pinned in its space (C-74, #1615): who pinned it (null once that person is deleted) and when. */
+  pinned?: { by: ExportActor | null; at: string };
   createdAt: string;
 }
 

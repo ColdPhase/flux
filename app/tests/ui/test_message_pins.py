@@ -306,6 +306,26 @@ class MessagePins(unittest.TestCase):
         row.click()
         expect(tablet.locator("#details").get_by_role("heading", name="Pinned · 1")).to_be_visible()
 
+    def test_06_a_pin_outlives_the_person_who_pinned_it(self) -> None:
+        # A pin is the conversation's (C-74): once the account of whoever pinned it is deleted, the list answers `pinnedBy: null` and the pin
+        # stays. No route deletes an account, so the answer is given that shape here; message-pins.test.ts deletes the account itself.
+        self.api("ada", "PUT", f"/api/v1/projects/{self.ids['space']}/pins/{self.ids[LOGIN]}")
+        page = self.page("jonas")
+
+        def gone(route) -> None:
+            response = route.fetch()
+            body = response.json()
+            for item in body["items"]:
+                item["pinnedBy"] = None
+            route.fulfill(response=response, json=body)
+
+        page.route(f"**/api/v1/projects/{self.ids['space']}/pins", gone)
+        page.reload()
+        login = self.message(page, LOGIN)
+        expect(login.locator(".pin-line")).to_have_text("Pinned by a former member")
+        page.locator("header.top").get_by_role("button", name="Pinned messages, 1").click()
+        expect(page.locator("#details .pins__row").first.locator(".pins__meta")).to_contain_text("pinned by a former member")
+
 
 if __name__ == "__main__":
     unittest.main()

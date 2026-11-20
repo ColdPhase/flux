@@ -7,7 +7,7 @@ import { youLabel } from '../docs/format';
 import { Button, Icon, useMediaQuery, MEDIA } from '../ui';
 import { AuthorFace } from '../ui/AuthorFace';
 import { plainWords } from '../work/messageWords';
-import { usePins } from './pins';
+import { pinnerLabel, usePins } from './pins';
 import './pins.css';
 
 // "Pinned · N" (C-74, #1615): the conversation's pinned messages in the one detail panel on a computer (S4) and as its sheet on a phone, the
@@ -61,7 +61,7 @@ export function PinnedPanel() {
           {items.map((item) => {
             const words = plainWords(item.body);
             const mine = item.author.kind === 'human' && item.author.id === me.user.id;
-            const by = youLabel(item.pinnedBy.name, item.pinnedBy.id === me.user.id);
+            const by = pinnerLabel(item, me.user.id);
             return (
               <li key={`${item.messageId}:${item.part ?? ''}`} className="pins__row" data-pinned-id={item.messageId}>
                 <button type="button" className="pins__open" onClick={() => open(item)} aria-label={`${youLabel(item.author.name, mine)}: ${words || 'a file'}. Show this message`}>

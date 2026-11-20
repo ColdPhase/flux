@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { dmAiOffPath, dmPath, pinPath, pinsPath, type Conversation, type Dm, type PinnedMessages, type PinPlace, type Project, type SearchResponse } from '@flux/contracts';
+import { dmAiOffPath, dmPath, pinPath, pinsPath, projectExportPath, type Conversation, type Dm, type PinnedMessages, type PinPlace, type Project, type SearchResponse } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { createSealed, lock, passphrase } from './support/encryption.js';
 import { toolValue } from './support/mcp.js';
-import { expectStatus, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { assistantScene, human, result, type AssistantScene, type Message } from './support/assistant-scene.js';
 
 // C-74 (#1615, founder decision 2026-11-20): a pin belongs to the conversation and everyone in it sees the same list. Whoever may write pins and
@@ -48,7 +48,7 @@ describe('pinned messages (C-74, #1615)', () => {
     const root = await start(jonas, `Gateway login ${words}`);
     const message = root.messages[0]!.id;
     const answer = expectStatus(await pin(ada, space(), message), 200) as PinnedMessages;
-    assert.deepEqual(answer.items.map((item) => [item.messageId, item.pinnedBy.id, item.author.id, item.body]), [[message, ada.id, jonas.id, `Gateway login ${words}`]]);
+    assert.deepEqual(answer.items.map((item) => [item.messageId, item.pinnedBy?.id, item.author.id, item.body]), [[message, ada.id, jonas.id, `Gateway login ${words}`]]);
     assert.equal(answer.items[0]!.conversationId, root.id);
     assert.equal(answer.items[0]!.threadRootId, undefined, 'a root is not in a thread');
     // The same list for every reader, the guest who may write too.
@@ -93,6 +93,25 @@ describe('pinned messages (C-74, #1615)', () => {
       const columns = Object.keys(grant);
       await pool.query(`INSERT INTO project_grants (${columns.join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')})`, columns.map((column) => grant[column]));
     }
+  });
+
+  test('a pin outlives the person who pinned it: "a former member" for people, null in the export, "Former member" for an agent', async () => {
+    const pinner = await person('pins-gone');
+    await addMember(scene.lead, scene.ws.id, pinner, 'member');
+    await grant(scene.lead, scene.place.id, pinner, 'contributor');
+    const root = await start(jonas, `Boiler code ${word('gone')}`);
+    const message = root.messages[0]!.id;
+    expectStatus(await pin(pinner, space(), message), 200);
+    await pool.query('DELETE FROM auth_users WHERE id = $1', [pinner.id]);
+    assert.deepEqual((await list(ada, space())).items.map((item) => [item.messageId, item.pinnedBy]), [[message, null]], 'the pin is the conversation\'s and stays');
+    const exported = expectStatus(await scene.lead.browser.request('GET', projectExportPath(scene.place.id)), 200) as { conversations: { messages: { id: string; pinned?: { by: unknown; at: string } }[] }[] };
+    const row = exported.conversations.flatMap((conversation) => conversation.messages).find((item) => item.id === message)!;
+    assert.equal(row.pinned?.by, null);
+    assert.ok(row.pinned?.at);
+    const live = await scene.liveRun();
+    const listed = toolValue((await live.call('flux_list_pinned', { in: scene.place.id })).message) as unknown as PinnedTool;
+    assert.deepEqual(listed.pinned.map((item) => [item.messageId, item.pinnedBy]), [[message, 'Former member']]);
+    await scene.complete(live.runId);
   });
 
   test('a pinned message is marked and first among the messages of people\'s search and of flux_search', async () => {
@@ -145,7 +164,7 @@ describe('pinned messages (C-74, #1615)', () => {
     const words = `Invoice ${word('fv')}`;
     const message = (expectStatus(await jonas.browser.request('POST', `${dmPath(opened.id)}/messages`, { body: { body: words, clientMessageId: randomUUID() } }), 201) as { id: string }).id;
     expectStatus(await pin(ada, place, message), 200);
-    assert.deepEqual((await list(jonas, place)).items.map((item) => [item.messageId, item.body, item.pinnedBy.id]), [[message, words, ada.id]]);
+    assert.deepEqual((await list(jonas, place)).items.map((item) => [item.messageId, item.body, item.pinnedBy?.id]), [[message, words, ada.id]]);
     assert.equal(await events('dm.pins_changed.v1', opened.id), 1);
     assert.equal((await scene.outsider.browser.request('GET', pinsPath(place))).status, 404);
     assert.equal((await pin(scene.outsider, place, message)).status, 404);
