@@ -77,6 +77,10 @@ const listFailure = (provider: AiProviderKind, status: Exclude<AiModelList['stat
   }
 };
 
+/** A list that was read but holds no model Flux can use (#1593): said as it is, never as a list that couldn't be read. */
+const emptyList = (provider: AiProviderKind) =>
+  `${provider === 'openai_compatible' ? 'The endpoint' : AI_PROVIDERS[provider].label} lists no model Flux can use. Type the model id.`;
+
 /** The model's name in the dropdown, with its price or that Flux doesn't know it. */
 function optionText(prices: AiProviderPriceList | null, model: AiListedModel) {
   const name = model.name ?? assistantModelName(model.id);
@@ -202,7 +206,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
       : rejected ? (keyed ? '' : rejected.message)
       : list && list.status !== 'listed' ? (refused ? '' : listFailure(provider as AiProviderKind, list.status))
         : list && dropdown ? `${list.models.length} ${list.models.length === 1 ? 'model' : 'models'} from ${info!.label}.`
-          : list ? listFailure(provider as AiProviderKind, 'unavailable') : '';
+          : list ? emptyList(provider as AiProviderKind) : '';
 
   return <>
     <label>Provider

@@ -49,8 +49,9 @@ Re-checked on 2026-10-03 against the providers' own documentation:
 
 Both are vendor claims. The key formats are not stated on those pages, and none of the three
 providers is exercised with a real key yet. A model id is the owner's free choice
-within `^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$`; OpenRouter's `:online` variants, which add a
-provider-hosted web search, are refused.
+within `^[A-Za-z0-9/][A-Za-z0-9._:/@+-]{0,199}$` (a leading `/` since #1593: a llama.cpp server started
+without `--alias` names its model by its file, `/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`); OpenRouter's `:online`
+variants, which add a provider-hosted web search, are refused.
 
 Every adapter sends the same bounded request: a system prompt, one user message, the output bound, no tools and no retries. The one caller of an adapter
 in a run is `flux_web_search` ([web search](personal-runs.md#web-search-954-1441)), whose request adds the provider's own hosted search and nothing

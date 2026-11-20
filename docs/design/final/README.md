@@ -2604,6 +2604,12 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     disabled until the key changes.
   - A list that can't be read in time shows the plain Model field with "Anthropic's model list
     couldn't be read. Type the model id from Anthropic's documentation." Connect works.
+  - A list that was read but holds no model Flux can use shows the plain Model field with "The endpoint lists no model Flux can
+    use. Type the model id." (the provider's name for a named one), never that it couldn't be read (#1593). A model id may begin
+    with `/`: a llama.cpp server names its model by its file (`/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`), and that id is listed.
+  - A key refused by the check Connect sends (an endpoint's or OpenRouter's key, which no list read first) puts "This key was
+    refused by the endpoint. Check it and try again." above the form, in the form's error style, and keeps the key in its field
+    to be corrected (#1594); "This model can't use tools" is said only when the model was asked and called no tool.
   - An unpriced model shows the two price fields under the Model (as for an own endpoint) with
     "Flux doesn't know this model's price yet. Enter it to use it with a daily budget." Both are needed (0 is a price):
     Connect without them puts "Enter this model's price to use it with a daily budget…" above the form and saves nothing, and the

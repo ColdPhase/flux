@@ -33,6 +33,8 @@ export const OPENROUTER_MODELS = { data: [
   { id: 'openrouter/auto', pricing: { prompt: '-1', completion: '-1' } },
   { id: 'vendor/search-model:online', pricing: { prompt: '0.000001', completion: '0.000001' } },
 ] };
+/** What a llama.cpp server started without `--alias` lists (#1593): its model's id is the file it loaded. The provider mock's `/llama/v1/models`. */
+export const LLAMA_MODEL = '/models/Qwen3.8-27B-UD-Q4_K_XL.gguf';
 const scripted = new Map<string, { omit: Set<string>; fail: boolean; noTools: Set<string> }>();
 
 const ANTHROPIC = [

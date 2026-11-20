@@ -610,8 +610,9 @@ export type PersonalComputeResult =
   /**
    * `billed: 'none'` when the provider documents no charge (e.g. 429, 5xx before work); else `unknown`. `searchRefused`: the provider
    * refused its own web search tool on this key or model (#954), with no charge; the tool loop sends the request again without it.
+   * `keyRefused` (#1594): the provider answered 401 or 403, so the key was refused before the model was asked anything.
    */
-  | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted' | 'no_credits'; billed: 'none' | 'unknown'; searchRefused?: true };
+  | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted' | 'no_credits'; billed: 'none' | 'unknown'; searchRefused?: true; keyRefused?: true };
 
 /**
  * The provider behind the `agent-runtime` port: the adapters of `@flux/agent-runtime`, selected by

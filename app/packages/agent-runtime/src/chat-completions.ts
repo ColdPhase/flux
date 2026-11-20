@@ -148,11 +148,13 @@ export type ChatFailureReason = 'rate_limited' | 'overloaded' | 'provider_error'
  * `none` only when nothing was sent (a refused endpoint); every failure after the request may have
  * reached the provider is `unknown`.
  */
-export function chatFailureOf(error: unknown, signal: AbortSignal): { reason: ChatFailureReason; billed: 'none' | 'unknown' } {
+export function chatFailureOf(error: unknown, signal: AbortSignal): { reason: ChatFailureReason; billed: 'none' | 'unknown'; keyRefused?: true } {
   if (endpointRefusal(error)) return { reason: 'provider_error', billed: 'none' };
   if (signal.aborted) return { reason: 'aborted', billed: 'unknown' };
   if (error instanceof DOMException && error.name === 'TimeoutError') return { reason: 'timeout', billed: 'unknown' };
   if (error instanceof ProviderHttpError) {
+    // The key was refused, not the model (#1594): a 401 or 403 is the provider's answer before any model is asked.
+    if (error.status === 401 || error.status === 403) return { reason: 'provider_error', billed: 'unknown', keyRefused: true };
     if (error.status === 429) return { reason: 'rate_limited', billed: 'unknown' };
     if (error.status === 503 || error.status === 529) return { reason: 'overloaded', billed: 'unknown' };
   }

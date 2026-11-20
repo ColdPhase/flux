@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { listPrice, providerPriceList, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
+import { AI_MODEL_LISTS_PATH, listPrice, providerPriceList, type AiModelList, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
 import { costMicros, shippedPriceList, type Principal, type ToolChecking } from '@flux/core';
 import { apiKeyCheckRows, apiKeySpendToday, createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -10,13 +10,13 @@ import { largestToolCheckMicros, parsePrivateTargets, providerToolCheck } from '
 import { expectStatus, person, workspace, type Person } from './support/people.js';
 import { chooseModel, FakeQueue } from './support/personal-runs.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
-import type { ToolCheckRequest } from './support/key-list-mock.js';
+import { LLAMA_MODEL, type ToolCheckRequest } from './support/key-list-mock.js';
 import { offeredTools, type ToolWire } from './support/tool-answers.js';
 
 // Only models that call tools can be agents, decided by ONE check for every provider (RT-1 rule 2, #1441): when a key is added in Connect AI, and
 // when another model of a key's list is chosen for an agent, the server sends the provider one small request on that model with one tool, `ping`,
-// that the model is asked to call. Called: accepted. Not called, or the request refused or failed: 422 `AI_TOOLS_REQUIRED`, "This model can't use
-// tools. Choose another." The request is charged to the key's day like any other.
+// that the model is asked to call. Called: accepted. Not called, or the request failed after it reached the model: 422 `AI_TOOLS_REQUIRED`, "This
+// model can't use tools. Choose another." A 401 or 403 is the key refused (#1594): 400 `AI_KEY_REFUSED`. The request is charged to the key's day like any other.
 //
 //   (a) the check through the REAL adapters of each wire format against the provider mock (`providermock`, mode `tool`),
 //   (b) Connect AI through the running API, whose check goes to the key-list mock under `/lists/…` (`FLUX_TEST_PROVIDER_LISTS`),
@@ -101,11 +101,18 @@ for (const wire of WIRES) {
     test('a refusal or a failure of the provider refuses the model, and a cost nobody can know counts the most one check can cost', async () => {
       const most = largestToolCheckMicros(price);
       assert.ok(most > 0);
-      for (const patch of [{ status: 500 }, { status: 429 }, { status: 400, errorMessage: 'This model does not support tools.' }, { status: 401 }]) {
+      for (const patch of [{ status: 500 }, { status: 429 }, { status: 400, errorMessage: 'This model does not support tools.' }]) {
         await control('/__reset', {});
         await script(wire.on, { mode: 'status', ...patch });
         assert.deepEqual(await adapters(probeOf(wire)), { callsTools: false, chargedMicros: most }, JSON.stringify(patch));
         assert.equal((await sentWith(wire.key)).length, 1, `${JSON.stringify(patch)}: nothing is sent again`);
+      }
+      // #1594: a 401 or 403 is the key refused, which says nothing of the model.
+      for (const status of [401, 403]) {
+        await control('/__reset', {});
+        await script(wire.on, { mode: 'status', status });
+        assert.deepEqual(await adapters(probeOf(wire)), { callsTools: false, chargedMicros: most, keyRefused: true }, `HTTP ${status}`);
+        assert.equal((await sentWith(wire.key)).length, 1, `HTTP ${status}: nothing is sent again`);
       }
       // An answer that is not even JSON, and one that never comes, are the same refusal.
       await control('/__reset', {});
@@ -198,6 +205,45 @@ describe('Connect AI checks the key\'s model before it saves the key (#1441)', (
     assert.equal(unpriced.status, 422, unpriced.text);
     assert.equal(codeOf(unpriced), 'AI_PRICE_REQUIRED');
     assert.deepEqual((await checksWith(wire.key)).filter((item) => item.model === 'gemini-tc-unpriced'), [], 'no request');
+  });
+
+  test('#1594: a key the endpoint refuses to the check (401, 403) is a refused key, not a model without tools, and nothing is saved', async () => {
+    const wire = WIRES.find((item) => item.provider === 'openai_compatible')!;
+    const was = await saved();
+    for (const status of [401, 403]) {
+      await control('/__reset', {});
+      await script('openai', { mode: 'status', status, errorMessage: 'Invalid API Key' });
+      const refused = await connect(wire, wire.model, { name: `Refused key ${status}` });
+      assert.equal(refused.status, 400, refused.text);
+      assert.equal(codeOf(refused), 'AI_KEY_REFUSED');
+      assert.equal(messageOf(refused), 'This key was refused by the endpoint');
+      assert.equal(refused.text.includes(wire.key), false, 'no key in the refusal');
+      assert.equal((await sentWith(wire.key)).length, 1, 'the one check, sent once');
+    }
+    // OpenRouter's key, too, is tested by no listing before the check: its refusal names OpenRouter.
+    const router = WIRES.find((item) => item.provider === 'openrouter')!;
+    const routed = await connect(router, router.model, { apiKey: `sk-or-v1-${marker.repeat(3)}refused` });
+    assert.equal(routed.status, 400, routed.text);
+    assert.deepEqual([codeOf(routed), messageOf(routed)], ['AI_KEY_REFUSED', 'This key was refused by OpenRouter']);
+    assert.deepEqual(await saved(), was, 'nothing is saved');
+  });
+
+  test('#1593: a llama.cpp server\'s model, named by its file, is listed, a key saves on it, and the check carries that id', async () => {
+    const wire = WIRES.find((item) => item.provider === 'openai_compatible')!;
+    const listed = expectStatus(await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'openai_compatible', baseUrl: `${MOCK}/llama/v1` } }), 200) as AiModelList;
+    assert.equal(listed.status, 'listed');
+    assert.deepEqual(listed.models.map((item) => item.id), [LLAMA_MODEL], 'the path id is listed; an id with a space still is not');
+    await script('openai', { mode: 'tool' });
+    const created = expectStatus(await connect(wire, LLAMA_MODEL, { name: 'Local Qwen' }), 201) as BackgroundComputeConnection;
+    assert.equal(created.model, LLAMA_MODEL);
+    assert.deepEqual((await sentWith(wire.key)).map((item) => (item.body as { model?: string }).model), [LLAMA_MODEL], 'the check asks for the listed id');
+    assert.deepEqual((await pool.query('SELECT model, calls_tools FROM api_key_checks WHERE connection_id = $1', [created.id])).rows, [{ model: LLAMA_MODEL, calls_tools: true }]);
+    // Still no spaces, quotes or a leading flag-like dash.
+    for (const model of ['/models/two words.gguf', '-models/x.gguf', '/models/"x".gguf']) {
+      const refused = await connect(wire, model);
+      assert.deepEqual([refused.status, codeOf(refused)], [400, 'AI_MODEL_INVALID'], model);
+    }
+    expectStatus(await owner.browser.request('DELETE', `${path}/${created.id}`), 204);
   });
 
   test('a key its provider refuses is refused before any check is sent', async () => {

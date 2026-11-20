@@ -37,6 +37,8 @@ export function keyFailure(error: unknown) {
     if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
     // The model is refused, not the key (RT-1 rule 2, #1441): the key stays in its field for another model, so only the reason is said.
     if (error.code === 'AI_TOOLS_REQUIRED') return error.message;
+    // A key its provider refused to the check (#1594: an endpoint's or OpenRouter's, which no list read first): it stays to be corrected.
+    if (error.code === 'AI_KEY_REFUSED') return `${error.message.replace(/\.$/, '')}. Check it and try again.`;
     // So is a daily budget below one request (v0.2.1 release gate, J31): the key stays in its field and only the budget changes.
     if (error.code?.startsWith('AI_BUDGET')) return `${error.message.replace(/\.$/, '')}.`;
     // Provider, model, endpoint and price refusals carry a safe, specific reason.
@@ -113,12 +115,12 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     };
     setBusy(true); setError('');
     // A model that cannot use tools, or a budget below one request, is refused with the key still good: the key stays in its field, so another
-    // model or budget can be chosen.
+    // model or budget can be chosen. A refused key stays too, to be corrected where it was typed (#1594).
     let keepKey = false;
     try {
       onAdded(await connectBackgroundCompute(command));
     } catch (cause) {
-      keepKey = cause instanceof ApiError && (cause.code === 'AI_TOOLS_REQUIRED' || !!cause.code?.startsWith('AI_BUDGET'));
+      keepKey = cause instanceof ApiError && (cause.code === 'AI_TOOLS_REQUIRED' || cause.code === 'AI_KEY_REFUSED' || !!cause.code?.startsWith('AI_BUDGET'));
       if (cause instanceof ApiError && cause.code?.startsWith('AI_BUDGET')) setMore(true);
       setError(keyFailure(cause)); focusError.current = true;
     }

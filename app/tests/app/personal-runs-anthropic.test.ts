@@ -104,14 +104,16 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   });
 
   test('SDK retries are off: every failure is exactly one request; once sent, the charge is unknown', async () => {
-    const cases: [number, string, Record<string, string>, { reason: string; billed: string }][] = [
+    const cases: [number, string, Record<string, string>, { reason: string; billed: string; keyRefused?: true }][] = [
       [429, 'rate_limit_error', { 'retry-after': '0' }, { reason: 'rate_limited', billed: 'unknown' }],
       [529, 'overloaded_error', {}, { reason: 'overloaded', billed: 'unknown' }],
       [500, 'api_error', {}, { reason: 'provider_error', billed: 'unknown' }],
       // 503 is "overloaded" on every wire format (F-020 PROV-6), as 529 is.
       [503, 'api_error', {}, { reason: 'overloaded', billed: 'unknown' }],
       [400, 'invalid_request_error', {}, { reason: 'provider_error', billed: 'unknown' }],
-      [401, 'authentication_error', {}, { reason: 'provider_error', billed: 'unknown' }],
+      // A refused key is said as one (#1594): the provider answered before any model was asked.
+      [401, 'authentication_error', {}, { reason: 'provider_error', billed: 'unknown', keyRefused: true }],
+      [403, 'permission_error', {}, { reason: 'provider_error', billed: 'unknown', keyRefused: true }],
     ];
     for (const [status, type, headers, expected] of cases) {
       seen = [];

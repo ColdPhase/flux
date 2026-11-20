@@ -53,7 +53,7 @@ import { endedWithWebSources } from './web-sources.js';
 import { sourcesShown } from './cites.js';
 import { unreadAgentChats } from './agent-chat.js';
 import { takeAsk } from '../agent-tasks/ask.js';
-import { toolsRequired, type ToolChecking } from '../ai/tool-check.js';
+import { toolCheckRefusal, type ToolChecking } from '../ai/tool-check.js';
 import { isPrivateAnswer, placeOf } from './ports.js';
 import { chatFilesOf } from './chat-files.js';
 import { aiCompany } from './place.js';
@@ -374,7 +374,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const checked = await toolChecking.check({ provider: connection.provider, baseUrl: connection.baseUrl, model: connection.model, price: connection.price,
       key: { connectionId: connection.id } });
     await toolChecking.record({ connectionId: connection.id, model: connection.model, callsTools: checked.callsTools, chargedMicros: checked.chargedMicros });
-    if (!checked.callsTools) throw toolsRequired();
+    const refusal = toolCheckRefusal(connection.provider, checked);
+    if (refusal) throw refusal;
   }
 
   /**

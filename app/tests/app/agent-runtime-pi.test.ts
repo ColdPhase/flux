@@ -317,6 +317,14 @@ describe('pi\'s launcher templates and the protocol (#1441)', () => {
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', provider: 'openrouter', modelToken }).ok, false, 'no model');
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'm', modelToken }).ok, false, 'no provider');
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: '--flag', provider: 'openai', modelToken }).ok, false);
+    // #1593: a llama.cpp server's model is named by its file, as long as any id Flux saves a key on; pi finds it in its models file by that id.
+    const llama = '/models/Qwen3.8-27B-UD-Q4_K_XL.gguf';
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: llama, provider: 'openai_compatible', modelToken }).ok, true);
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: `/${'m'.repeat(199)}`, provider: 'openai_compatible', modelToken }).ok, true);
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: `/${'m'.repeat(200)}`, provider: 'openai_compatible', modelToken }).ok, false);
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: '/models/two words.gguf', provider: 'openai_compatible', modelToken }).ok, false);
+    assert.deepEqual(gatewayProvider('openai_compatible', 'http://runtime-egress:8081', llama, false).models.map((model) => model.id), [llama]);
+    assert.deepEqual(piArgs('brief', llama).slice(piArgs('brief', llama).indexOf('--model'), piArgs('brief', llama).indexOf('--model') + 2), ['--model', llama]);
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'sonnet', modelToken }).ok, false);
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'sonnet', provider: 'anthropic' }).ok, false);
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'Upper/Case' }).ok, false);

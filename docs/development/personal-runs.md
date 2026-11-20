@@ -147,8 +147,9 @@ connect-time tool check of RT-1 (one request with one `ping` tool) will use them
   `ping` (`maxTokens` 256, low effort, "Call the ping tool now") through the provider's own adapter, and the model is accepted when the answer
   holds a call of `ping`. Connect AI sends it with the key being added (`connect`, after the listing, the price and the budget checks; a key whose
   model has no price is not saved, #1424; another model of the key without a price waits for the first agent put on it), and `pick` sends it when an agent is put on a model of a key that has no passing
-  row in `api_key_checks`. Not called, or the request refused or failed: `AI_TOOLS_REQUIRED` (422), "This model can't use tools. Choose
-  another." The request's cost is the provider's usage at the model's price (the request's largest cost when the usage is unknown, nothing
+  row in `api_key_checks`. Not called, or the request failed after it reached the model: `AI_TOOLS_REQUIRED` (422), "This model can't use
+  tools. Choose another." A 401 or 403 (the adapters' `keyRefused`, #1594) is the key refused: `AI_KEY_REFUSED` (400), "This key was refused
+  by the endpoint" or by the named provider, since an endpoint's and OpenRouter's key is tested by no listing before the check. The request's cost is the provider's usage at the model's price (the request's largest cost when the usage is unknown, nothing
   when the provider documents no charge) and counts on the key's day through `apiKeySpendToday`.
 - **Tests.** `provider-tool-calling.test.ts` (AST-8.1: every wire format against documented-shape
   fixtures in `support/provider-tool-fixtures.ts`, a local mock server) and `personal-runs-tools.test.ts` (an API-key run through the real

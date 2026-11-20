@@ -79,8 +79,11 @@ export const isAiProviderKind = (value: unknown): value is AiProviderKind =>
 /** "OpenRouter · vendor/model". Names the selected connection only (PROV-2). */
 export const aiConnectionLabel = (provider: AiProviderKind, model: string) => `${AI_PROVIDERS[provider].label} · ${model}`;
 
-/** A model id is the owner's free choice within these bounds: no spaces, controls or quotes. */
-export const AI_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
+/**
+ * A model id is the owner's free choice within these bounds: no spaces, controls or quotes. It may begin with `/` (#1593): a llama.cpp
+ * server names its model by the file it loaded (`/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`). The id travels only in a JSON body and is shown as text.
+ */
+export const AI_MODEL_ID_PATTERN = /^[A-Za-z0-9/][A-Za-z0-9._:/@+-]{0,199}$/;
 /** An owner-set base URL (`openai_compatible` only). */
 export const AI_BASE_URL_MAX_LENGTH = 2048;
 /** $1,000 per 1M tokens, in micro-dollars: far above any listed model, so a typo cannot pass silently. */

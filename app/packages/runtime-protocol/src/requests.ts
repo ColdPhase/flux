@@ -86,7 +86,7 @@ const SHAPES: Record<SupervisorRequestKind, Fields> = {
   login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
     cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
   run: { required: { bindingId, client: engine, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },
-    optional: { model: str(KEY_MODEL_ID, 128), webSearch: yes, provider: oneOf(KEY_PROVIDERS), pictures: yes, modelToken: str(MODEL_GATEWAY_TOKEN, 51) } },
+    optional: { model: str(KEY_MODEL_ID, 200), webSearch: yes, provider: oneOf(KEY_PROVIDERS), pictures: yes, modelToken: str(MODEL_GATEWAY_TOKEN, 51) } },
   stop: { required: { bindingId, runId: str(UUID, 36) } },
   logout: { required: { bindingId, bootId: str(UUID, 36), client } },
   release: { required: { bindingId } },
