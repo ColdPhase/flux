@@ -48,6 +48,8 @@ export function resultOf(run: RunRecord, timeZone: string, now: Date): { state: 
       }
       if (run.endReason === 'sign_in_again' || run.stoppedAtStage === 'before_dispatch' && run.engine === 'runtime' && !run.dispatchedAt && !run.endReason)
         return { state: 'failed', line: `Sign in to ${run.provider === 'openai' ? 'ChatGPT' : 'Claude'} again` };
+      // #1556: the provider was never asked; the path inside the server is broken.
+      if (run.endReason === 'gateway_unreachable') return { state: 'failed', line: 'Flux couldn\'t reach its model gateway' };
       return { state: 'failed', line: 'Couldn\'t run' };
     case 'provider_failed':
       if (run.endReason === 'credits') return { state: 'skipped', line: 'Skipped: API credits used up' };

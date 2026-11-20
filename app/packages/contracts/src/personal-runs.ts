@@ -132,11 +132,12 @@ export const RUN_TOKEN_LIMITS = {
  * nothing was changed and no other model was tried. `ai_off` (F-029, #614): AI is turned off in the run's
  * workspace; nothing was posted. `budget` (#854): the API key's one daily budget is used; the agent pauses until the
  * next day. `credits` (CA-3): the provider's API credits ran out; nothing switches to another connection. `no_room` (#860): not
- * an end but a wait: the request stays queued until the server has room for another agent.
+ * an end but a wait: the request stays queued until the server has room for another agent. `gateway_unreachable` (#1556): an API-key run
+ * could not connect to Flux's model gateway, so the provider was never asked; whoever runs Flux fixes the path.
  */
 export const ASSISTANT_RUN_END_REASONS = [
   'sign_in_again', 'plan_limit', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'mcp_results_too_large',
-  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused', 'model_unavailable', 'ai_off', 'budget', 'credits', 'no_room',
+  'local_tool', 'slot_busy', 'unknown', 'max_turns', 'refused', 'model_unavailable', 'ai_off', 'budget', 'credits', 'no_room', 'gateway_unreachable',
 ] as const;
 export type AssistantRunEndReason = (typeof ASSISTANT_RUN_END_REASONS)[number];
 

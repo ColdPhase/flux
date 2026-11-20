@@ -113,7 +113,10 @@ async function relayRun(res: ServerResponse, call: NonNullable<ManagerConfig['ca
   });
   const outcome = await call(target, request, { onRun: (frame) => { if (!res.writableEnded) res.write(encodeFrame(frame)); } });
   finished = true;
-  log({ event: 'request', kind: 'run', outcome: outcome.ok ? (outcome.result.kind === 'run' ? outcome.result.outcome : 'protocol') : outcome.code, ms: Date.now() - started });
+  // A run that ended without an answer names why, when the slot knows (#1556): the class of the engine's error and its last event type.
+  const cause = outcome.ok && outcome.result.kind === 'run' ? outcome.result.cause : undefined;
+  log({ event: 'request', kind: 'run', outcome: outcome.ok ? (outcome.result.kind === 'run' ? outcome.result.outcome : 'protocol') : outcome.code,
+    ...(cause ? { error: cause.error, lastEvent: cause.lastEvent } : {}), ms: Date.now() - started });
   // A transport failure travels as the slot's own `internal` (the run's frames already told what was seen).
   const code: SupervisorError = outcome.ok ? 'internal' : (SUPERVISOR_ERRORS as readonly string[]).includes(outcome.code) ? outcome.code as SupervisorError : 'internal';
   res.end(encodeFrame(outcome.ok ? { t: 'result', result: outcome.result } : { t: 'error', code }));

@@ -26,6 +26,7 @@ import { registerAgentPictureActions } from '../agent-connection/picture-actions
 import { registerAgentQuestionActions } from '../agent-connection/agent-questions.js';
 import { registerAgentGithubActions } from '../agent-connection/github-actions.js';
 import { registerAgentProposal } from '../agent-connection/mcp-tools.js';
+import { failedToolId, recordToolCall, TOOL_FAILED, toolError } from '../agent-connection/tool-results.js';
 import type { Provider as GithubProvider } from '../github/adapters.js';
 import { workUseCases } from '../work/adapters.js';
 
@@ -81,12 +82,20 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
   // and nothing is rebuilt from guessed fields or a bootstrap (R2).
   if (change.runId && call.tool === 'flux_create_unit' && (call.view !== ASSISTANT_UNIT_CREATE_VIEW || !ASSISTANT_UNIT_CREATE_INPUT.safeParse(call.args).success))
     return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This hand-off can no longer be applied. Ask again' };
-  const output = await tool({ ...call.args, assistantCall: call }, { claims });
+  const started = performance.now();
+  let output: ToolOutput;
+  try { output = await tool({ ...call.args, assistantCall: call }, { claims }); } catch (error) { output = toolError(error); }
+  // The owner's Approve is a tool call like the run's own: one line, and an error inside Flux is logged with its id (#1555).
+  recordToolCall({ tool: call.tool, operation: change.operation, runId: change.runId, connectionId: claims.connectionId, changeId: change.id,
+    ms: performance.now() - started }, output);
   if (!output.isError) return { ok: true };
+  const failed = failedToolId(output);
+  if (failed) return { ok: false, code: TOOL_FAILED, error: `Flux failed to make this change because of an error inside Flux (error id ${failed}). Tell whoever runs Flux` };
+  const text = output.content?.[0]?.text ?? '';
   try {
-    const parsed = JSON.parse(output.content?.[0]?.text ?? '{}') as { code?: string; error?: string };
-    return { ok: false, code: parsed.code ?? 'MCP_TOOL_UNAVAILABLE', error: parsed.error ?? 'Not applied' };
-  } catch { return { ok: false, code: 'MCP_TOOL_UNAVAILABLE', error: 'Not applied' }; }
+    const parsed = JSON.parse(text) as { code?: string; error?: string };
+    return { ok: false, code: parsed.code ?? TOOL_FAILED, error: parsed.error ?? 'Not applied' };
+  } catch { return { ok: false, code: 'NOT_APPLIED', error: text.slice(0, 500) || 'Not applied' }; }
 }
 const stale = (code: string) => /VERSION_CONFLICT|STALE|CHANGED|DOC_UNCHANGED/.test(code) && code !== 'ASSISTANT_CHANGE_UNAVAILABLE';
 /** A target or a named task that is not there is no change since the ask: it is said as what it is (GONE). */

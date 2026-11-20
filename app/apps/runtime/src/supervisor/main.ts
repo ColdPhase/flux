@@ -3,7 +3,8 @@ import { chmod, chown, lstat, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { url as inspectorUrl } from 'node:inspector';
 import { totalmem } from 'node:os';
-import { parseRuntimeEngines, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
+import { MODEL_GATEWAY_ORIGIN, parseRuntimeEngines, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
+import { probeGateway } from './gateway-probe.js';
 import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
 import { hostProblem } from './requirements.js';
@@ -100,6 +101,12 @@ async function start() {
   server.listen(RUNTIME_PORTS.supervisor, '0.0.0.0', () => {
     // Only the health check reads it, as root. The container's /tmp is new at each start, so nobody can have put anything here first.
     void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, pi: config.pi, capacity, landlock: sandbox.setup?.abi ?? 0 })));
+    // API-key agents reach their model only through the gateway on runtime-egress (#1556): a blocked path is one line now, not a person's failed run.
+    if (config.pi) void probeGateway(MODEL_GATEWAY_ORIGIN).then((outcome) => {
+      if (outcome === 'ok') console.log(JSON.stringify({ event: 'gateway_probe', slot, outcome }));
+      else console.error(JSON.stringify({ event: 'gateway_probe', slot, outcome: 'unreachable', error: outcome,
+        message: `This runtime cannot reach the model gateway at ${MODEL_GATEWAY_ORIGIN}: API-key agents will fail until it can (check firewalls between the runtime and runtime-egress).` }));
+    });
   });
   const stop = () => { server.close(); process.exit(0); };
   process.on('SIGTERM', stop);

@@ -382,6 +382,59 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_materials WHERE id = $1`, [page.docId])).rows[0].n, 0, 'the untouched page is gone');
   });
 
+  test('#1555: a run adds thoughts to a space map with existing thoughts, open live or not, linked or not, under Ask me first on and off', async () => {
+    for (const live of [false, true]) {
+      const sketch = await map(owner);
+      const existing = [];
+      for (let index = 0; index < 6; index++) existing.push(await thought(owner, sketch.id, `Idea ${index + 1}`));
+      // Someone has the map open (live editing is on by default): its room exists, and an agent's change goes through the live journal.
+      if (live) await pool.query(`INSERT INTO map_live_heads (sketch_id, workspace_id, generation) VALUES ($1, $2, $3)`, [sketch.id, ws.id, randomUUID()]);
+      for (const mayDo of ['act', 'ask'] as const) {
+        await setMayDo(mayDo);
+        for (const linked of [false, true]) {
+          const run = await liveRun();
+          const words = `${live ? 'Live' : 'Plain'} ${mayDo} ${linked ? 'linked' : 'alone'}`;
+          const sent: Message = (await run.call('flux_add_thought', { mapId: sketch.id, thought: { text: words, x: 120, y: 80,
+            ...(linked ? { linkFrom: { thoughtId: thoughtId(existing[2]!) } } : {}) } })).message;
+          assert.notEqual(result(sent)?.isError, true, `${words}: ${text(sent)}`);
+          if (mayDo === 'ask') {
+            assert.ok(waits(sent), `${words}: ${text(sent)}`);
+            const [waiting] = (await pool.query(`SELECT id FROM assistant_changes WHERE run_id = $1 AND state = 'waiting'`, [run.runId])).rows as { id: string }[];
+            expectStatus(await owner.browser.request('POST', assistantChangeActionPath(waiting!.id, 'apply'), { body: {} }), 200);
+            assert.equal((await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [waiting!.id])).rows[0].state, 'applied_after_wait', words);
+          } else assert.equal((JSON.parse(text(sent)) as { linkId: string | null }).linkId !== null, linked, words);
+          const made = (await pool.query(`SELECT id FROM sketch_thoughts WHERE sketch_id = $1 AND text = $2`, [sketch.id, words])).rows as { id: string }[];
+          assert.equal(made.length, 1, `${words}: the thought is on the map`);
+          if (linked) assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_links WHERE to_id = $1`, [made[0]!.id])).rows[0].n, 1, words);
+          await complete(run.runId);
+        }
+      }
+    }
+  });
+
+  test('#1555: an error inside a change tool reaches the model as a failure with an error id, never its words, and nothing is written', async () => {
+    const sketch = await map(owner);
+    await thought(owner, sketch.id, 'Existing idea');
+    const marker = `boom-${randomUUID()}`;
+    await pool.query(`CREATE OR REPLACE FUNCTION test_1555_boom() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.text = '${marker}' THEN RAISE EXCEPTION 'secret words of the space: %', NEW.text; END IF; RETURN NEW; END $$`);
+    await pool.query(`CREATE TRIGGER test_1555_boom BEFORE INSERT ON sketch_thoughts FOR EACH ROW EXECUTE FUNCTION test_1555_boom()`);
+    try {
+      const run = await liveRun();
+      const sent: Message = (await run.call('flux_add_thought', { mapId: sketch.id, thought: { text: marker, x: 0, y: 0 } })).message;
+      assert.equal(result(sent)?.isError, true);
+      const failure = JSON.parse(text(sent)) as { code: string; error: string };
+      assert.equal(failure.code, 'TOOL_FAILED');
+      assert.match(failure.error, /error inside Flux \(error id [0-9a-f-]{36}\)\. Tell the person it failed/);
+      assert.ok(!text(sent).includes('secret') && !text(sent).includes(marker), 'the error\'s words never reach the model');
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_thoughts WHERE sketch_id = $1`, [sketch.id])).rows[0].n, 1, 'nothing was written');
+      await complete(run.runId);
+    } finally {
+      await pool.query('DROP TRIGGER IF EXISTS test_1555_boom ON sketch_thoughts');
+      await pool.query('DROP FUNCTION IF EXISTS test_1555_boom()');
+    }
+  });
+
   test('AST-6.3: a worker killed after two committed changes leaves a message with exactly those two changes once recovery ends the run', async () => {
     const run = await liveRun();
     await run.call('flux_create_task', { task: { title: 'Committed one' } });
