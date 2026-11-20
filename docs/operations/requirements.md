@@ -55,7 +55,7 @@ the research's own run gave 0.75 against 0.60).
 | **Disk** | 2.3 GB for the model, about 26 MiB of PostgreSQL per 10,000 rows | The model is downloaded on the first start into the `embeddings` volume. Vectors (half precision, 2 KiB each, no index) grow with the rows. Each search reads the vectors of every row the person may see, about 1 ms per 1,000 of them, so at 100,000 rows give `FLUX_DB_MEMORY` room for them (about 260 MiB) to stay in memory. |
 | **Network** | outbound HTTPS to `huggingface.co` on the first start | Nothing leaves the server afterwards: every text is embedded in the container. |
 
-Encrypted spaces and spaces with AI off are never embedded, and nothing is embedded through a person's own AI connection. Turning
+Encrypted spaces are never embedded (a space or a conversation with AI off is, because the embedder runs on your own server and is an index like BM25, not an AI company), and nothing is embedded through a person's own AI connection. Turning
 it off again deletes every vector.
 
 ## Software
