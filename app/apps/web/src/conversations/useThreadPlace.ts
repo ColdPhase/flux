@@ -30,6 +30,9 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   // thread at its root, whole (#436). The pane is made again for each thread.
   const [leftOff, setLeftOff] = useState(conversation?.unreadFrom);
   const unreadFrom = typeof leftOff === 'string' ? leftOff : null;
+  // A root nobody has answered yet is what the person came to read: it opens at its top, whole, not at its end (a long question under the sheet's
+  // head row, v0.2.2 phone audit #1568). Kept as it was when the thread opened, so a first reply that arrives never moves a reader off the root.
+  const [unanswered] = useState(() => !thread.messages.some((message) => message.sequence > 1));
   const hash = useLocation().hash;
   // The root is the stream's message; the thread arrives only at its replies.
   const arrived = conversation && hash.startsWith('#message-') && hash.slice('#message-'.length) !== rootMessageId ? hash.slice('#message-'.length) : null;
@@ -74,8 +77,8 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
       stopUnread.current = openAtUnread(feed, columnRef.current);
     }
     if (stopUnread.current) return;
-    feed.scrollTop = revealed && leftOff === null ? feed.scrollHeight : 0;
-  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff, hash]);
+    feed.scrollTop = revealed && leftOff === null && !unanswered ? feed.scrollHeight : 0;
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff, hash, unanswered]);
   // Genuine replies arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.
