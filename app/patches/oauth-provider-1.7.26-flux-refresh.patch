@@ -8,7 +8,7 @@ diff --git a/dist/authorize-Dvegxay_.mjs b/dist/authorize-Dvegxay_.mjs
 +		// Flux #310: provenance belongs to a minted authorization-code family, never shared consent.
 +		sessionId,
 +		authorizationCodeId,
-@@ -1767 +1770,7 @@ function grantRevokedDuringIssuance() {
+@@ -1767 +1770,9 @@ function grantRevokedDuringIssuance() {
 -async function invalidateRefreshFamily(ctx, clientId, userId) {
 +async function invalidateRefreshFamily(ctx, clientId, userId, refreshToken) {
 +	// Flux #152: a client/user pair can contain several independent connections.
@@ -17,15 +17,17 @@ diff --git a/dist/authorize-Dvegxay_.mjs b/dist/authorize-Dvegxay_.mjs
 +	const family = refreshToken.authorizationCodeId ? {
 +		field: "authorizationCodeId", value: refreshToken.authorizationCodeId
 +	} : { field: "id", value: refreshToken.id };
-@@ -1783 +1792 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
++	// Access tokens name their refresh row in refreshId; a legacy family is that one row.
++	const accessFamily = refreshToken.authorizationCodeId ? family : { field: "refreshId", value: refreshToken.id };
+@@ -1783 +1794 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
 -			}
-+			}, family
-@@ -1795 +1804 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
++			}, accessFamily
+@@ -1795 +1806 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
 -		}]
 +		}, family]
-@@ -2153,0 +2163 @@ async function createUserTokens(ctx, opts, params) {
+@@ -2153,0 +2165 @@ async function createUserTokens(ctx, opts, params) {
 +		authorizationCodeId: params.authorizationCodeId,
-@@ -2486,0 +2497,8 @@ async function handleRefreshTokenGrant(ctx, opts) {
+@@ -2486,0 +2499,8 @@ async function handleRefreshTokenGrant(ctx, opts) {
 +			// Cached rotation responses must recheck Flux's current connection authority.
 +			const user = await ctx.context.internalAdapter.findUserById(refreshToken.userId);
 +			if (!user) throw new APIError("BAD_REQUEST", { error: "invalid_grant" });
@@ -34,12 +36,12 @@ diff --git a/dist/authorize-Dvegxay_.mjs b/dist/authorize-Dvegxay_.mjs
 +				sessionId: refreshToken.sessionId, authorizationCodeId: refreshToken.authorizationCodeId,
 +				resources: resources ?? refreshToken.resources, metadata: parseClientMetadata(client.metadata)
 +			});
-@@ -2499 +2517 @@ async function handleRefreshTokenGrant(ctx, opts) {
+@@ -2499 +2519 @@ async function handleRefreshTokenGrant(ctx, opts) {
 -		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId);
 +		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId, refreshToken);
-@@ -6341 +6359 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
+@@ -6341 +6361 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
 -		if (refreshToken.clientId === clientId) await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
 +		if (refreshToken.clientId === clientId) await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);
-@@ -6362 +6380 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
+@@ -6362 +6382 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
 -		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
 +		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);

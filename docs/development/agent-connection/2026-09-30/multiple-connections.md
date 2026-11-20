@@ -120,7 +120,8 @@ rows remain stored, but new authorization requests never consult them.
 `app/patches/oauth-provider-1.7.26-flux-refresh.patch` (ported from 1.7.6 in #877; the move to 1.7.19 changed only the name of the bundle chunk; the move to 1.7.26 changed the surrounding code and the chunk name, and its ten hunks were applied again by hand to the same effect) is applied by the locked pnpm
 configuration to the exact pinned provider artifact. It restricts replay cleanup
 to `authorizationCodeId`; a legacy row without that lineage can invalidate only
-itself. It also checks current connection authority before serving a cached
+itself (and the access tokens issued from it: 1.7.26 deletes access tokens by their own
+`authorizationCodeId`, so the legacy case matches them by `refreshId`). It also checks current connection authority before serving a cached
 rotation response. The observed MCP wrapper enables a reuse window, so a valid
 immediate refresh retry returns the same rotated token; the regression explicitly
 expires that window before testing family invalidation. Reconnect creates a fresh
