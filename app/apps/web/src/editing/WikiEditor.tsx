@@ -672,7 +672,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
       meta={<>{state}<span role="status">{people.length ? ` · ${hereToo(people)}` : ''}</span></>}
       metaData={{ 'data-live-status': shared?.status ?? (ordinary ? 'ordinary' : 'connecting'), 'data-live-pending': (shared?.pendingCount ?? (local?.dirty ? 1 : 0)) + (earlyTyped ? 1 : 0) }}
       faces={<Faces people={people} />}
-      shown={{ title, body: () => view?.state.doc.toString() ?? doc.body, version: savedVersion, current: true }}>
+      shown={{ title, body: () => view?.state.doc.toString() ?? doc.body, version: savedVersion, current: true, url: doc.url }}>
       <div ref={parent} className="doc-prose wiki-editor" data-live-wiki-editor={shared ? '' : undefined}
         data-live-generation={shared?.head?.generation} data-live-sequence={shared?.head?.sequence} data-live-command={shared?.lastLocalCommand ?? undefined}
         data-live-input-revision={shared?.inputRevision} data-live-command-revision={shared?.sealedRevision}

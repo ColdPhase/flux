@@ -9,6 +9,7 @@ import { actionScene, approveWaiting, toolFailure, waits } from './support/mcp-a
 import { expect, toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
+import { savePage } from './support/pages.js';
 
 async function bounded<T>(pending: Promise<T>, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -40,8 +41,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   assert.ok(Number.isSafeInteger(item.number) && item.number > 0, 'the native task has a real project number');
   const activeControl = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`,
     { body: { title: `${query} active human control` } }), 201) as unknown as WorkItem;
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/materials`,
-    { body: { clientMutationId: randomUUID(), title: `${query} historical text`, body: query } }), 201);
+  await savePage(f.owner, f.projectId, { title: `${query} historical text`, body: query });
   const search = async (type?: string) => expect(await f.owner.request('GET', `/api/v1/search?${new URLSearchParams({
     q: query, place: `project:${f.projectId}`, ...(type ? { type } : {}),
   })}`), 200) as unknown as SearchResponse;
@@ -75,7 +75,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
     assert.deepEqual(answer.items.filter((hit) => hit.kind === 'work').map((hit) => hit.target),
       [{ type: 'work', projectId: f.projectId, id: activeControl.id }]);
     assert.equal(answer.next, null);
-    if (!type) assert.equal(answer.items.filter((hit) => hit.kind === 'material').length, 1, 'ordinary historical text remains searchable');
+    if (!type) assert.equal(answer.items.filter((hit) => hit.kind === 'doc').length, 1, 'ordinary historical text remains searchable');
   }
   assert.deepEqual(expect(await f.undo(item, commandId.toUpperCase()), 200), reverted);
   const changed = expect(await f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,

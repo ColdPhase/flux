@@ -23,10 +23,9 @@ if (phase === 'prepare') {
   const project = await browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name: 'Persistent project' } });
   assert.equal(project.status, 201);
   const projectId = (project.json as { id: string }).id;
-  const published = await browser.request('POST', `/api/v1/projects/${projectId}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Persistence', body: 'Stored material' } });
+  const published = await browser.request('POST', `/api/v1/projects/${projectId}/docs`, { body: { title: 'Persistence', body: 'Stored material' } });
   assert.equal(published.status, 201, published.text);
-  const materialId = (published.json as { materialId: string; fileId: string; fileHex: string }).materialId;
+  const materialId = (published.json as { id: string }).id;
   const fileBytes = Buffer.from([0, 255, 3, 128, 10, 42]);
   const uploaded = await fetch(new URL(`/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=restart.bin`, browser.base), {
     method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: browser.cookieHeader(), origin: browser.defaultOrigin }, body: fileBytes,

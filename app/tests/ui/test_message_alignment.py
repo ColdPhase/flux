@@ -53,11 +53,10 @@ class MessageAlignment(unittest.TestCase):
             "name": "Garden sensors", "visibility": "workspace",
         })
         cls.project = project["id"]
-        material = cls.post(owner, f"/api/v1/projects/{cls.project}/materials", {
+        material = cls.post(owner, f"/api/v1/projects/{cls.project}/docs", {
             "title": "Readings from the raised beds", "body": "Bed 4 dries earlier than bed 2.",
-            "clientMutationId": str(uuid.uuid4()),
         })
-        cls.source = {"materialId": material["materialId"], "version": material["version"]}
+        cls.source = {"materialId": material["id"], "version": material["version"]}
         cls.roots, cls.replies = {}, {}
         for key in NAMES:
             cls.roots[key] = cls.post(contexts[key], f"/api/v1/projects/{cls.project}/conversations", {
@@ -262,7 +261,7 @@ class MessageAlignment(unittest.TestCase):
                 expect(root.get_by_role("button", name=re.compile(r"^2 replies"))).to_be_focused()
                 if who == "ada" and not phone and not dark:
                     card.click()
-                    expect(page).to_have_url(re.compile(f"/docs/sources/{self.source['materialId']}/versions/1$"))
+                    expect(page).to_have_url(re.compile(f"/docs/{self.source['materialId']}(/versions/1)?$"))
                 page.context.close()
 
     def test_01b_quoted_messages_are_semantic_blocks_without_markers(self):

@@ -73,8 +73,8 @@ class NotAvailable(unittest.TestCase):
         page = self.page()
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Orchard Makers"}, status=201)["id"]
         space = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Orchard plans", "visibility": "restricted"}, status=201)["id"]
-        material = self.api(page, "POST", f"/api/v1/projects/{space}/materials", {
-            "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only.", "clientMutationId": str(uuid.uuid4())}, status=201)
+        material = self.api(page, "POST", f"/api/v1/projects/{space}/docs", {
+            "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only."}, status=201)
         type(self).state.update(space=space, material=material.get("id") or material.get("materialId") or (material.get("material") or {}).get("id") or "")
 
     def gone_pages(self) -> list[tuple[str, str, str]]:
@@ -139,44 +139,16 @@ class NotAvailable(unittest.TestCase):
         self.assertIsNotNone(head)
         self.assertLessEqual(abs(head["x"] - column["x"]), 2, "the body starts at the column's left edge")
 
-    def test_03_a_wiki_page_that_exists_is_in_the_apps_type_scale(self) -> None:
+    def test_03_a_page_by_its_id_opens_in_its_spaces_wiki(self) -> None:
+        """#1508: every saved source is a Wiki page; its address by id alone (what a citation carries) opens the page in its space's Wiki."""
         self.world()
         page = self.page()
         page.goto(f"/materials/{self.state['material']}")
-        article = page.locator("article.material-view")
-        expect(article).to_be_visible()
-        # Named by its space, as the space's other Wiki pages are (round 15 look-3 F5).
-        expect(page.get_by_role("heading", level=1)).to_have_text("Orchard plans")
-        expect(page.locator(".top__crumb")).to_have_count(0)
-        sizes = article.evaluate("""(root) => Object.fromEntries([['title', 'h2'], ['meta', '.material-view__meta'], ['body', '.material-view__body']].map(([key, sel]) => [key, getComputedStyle(root.querySelector(sel)).fontSize]))""")
-        tokens = page.evaluate("""() => Object.fromEntries(['--fs-xl', '--fs-sm', '--fs-base'].map((name) => {
-          const probe = document.createElement('span'); probe.style.fontSize = `var(${name})`; document.body.append(probe);
-          const size = getComputedStyle(probe).fontSize; probe.remove(); return [name, size]; }))""")
-        self.assertEqual((sizes["title"], sizes["meta"], sizes["body"]), (tokens["--fs-xl"], tokens["--fs-sm"], tokens["--fs-base"]), "title, meta and body use the type tokens")
-        # A minute, not seconds: "Saved 13 Nov 2026, 09:00".
-        expect(article.locator(".material-view__meta").last).to_contain_text(re.compile(r"Saved .*\d{1,2}:\d{2}$"))
-
-    def test_03b_the_way_back_from_a_wiki_page_is_a_target_32_px_with_a_mouse_and_44_with_a_finger(self) -> None:
-        """#1424: "Back to the conversation" was a 151 x 18.6 px line of text at every touch window; it is a real target now (--ctl), and the
-        page's own rhythm stays: the article does not grow by the target's extra height."""
-        self.world()
-        for phone, minimum in ((False, 32), (True, 44)):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                page.goto(f"/materials/{self.state['material']}")
-                back = page.get_by_role("link", name="Back to the conversation")
-                expect(back).to_be_visible()
-                box = back.bounding_box()
-                self.assertIsNotNone(box)
-                self.assertGreaterEqual(box["height"], minimum - 0.1, box)
-                self.assertGreaterEqual(box["width"], minimum - 0.1, box)
-                # The target never covers the line under it: the page's own 10 px gap lies between them.
-                meta = page.locator(".material-view__meta").first.bounding_box()
-                self.assertIsNotNone(meta)
-                self.assertAlmostEqual(meta["y"] - (box["y"] + box["height"]), 10, delta=1, msg="the page's 10 px gap, no overlap")
-                self.assertGreaterEqual(box["y"], 0, "the target is not cut at the top of the page")
-                back.click() if not phone else back.tap()
-                expect(page).to_have_url(re.compile(rf"/projects/{self.state['space']}$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.state['space']}/docs/{self.state['material']}$"))
+        expect(page.locator("article.wiki-page")).to_be_visible()
+        expect(page.locator(".wiki-title")).to_contain_text("Probe datasheet notes")
+        expect(page.locator(".wiki-body")).to_contain_text("Dry 3.1 V, wet 1.4 V.")
+        expect(page.locator("article.material-view")).to_have_count(0)
 
     def test_04_an_inbox_item_whose_read_fails_for_now_is_not_called_gone(self) -> None:
         """A 503 on an Inbox item's read says "This couldn't be loaded" with Try again, never the not-available page (#1369, #1371)."""

@@ -8,7 +8,7 @@ The checks use the audit's own in-page measurement (`visual_consistency_audit.ME
 - the offline page is Geist, a 20 px title at 600 and a button with radius 10 at 32 px (44 on touch);
 - Search's field and its Close share one height on a tablet, Close is a 44 px target, and the field shows the focus ring of README §2;
 - Mine on the Tasks board is a system button (radius 10, 44 px on touch), not a circle or a pill;
-- a material opened directly has a token-sized title (it drew the browser's 1.5em h2, 21 px), and the notification address tick is a 44 px
+- a saved source opened directly opens as its space's Wiki page (#1508), and the notification address tick is a 44 px
   target on touch. (The Inbox's filter counts of #1380 went with the filters, #1367.);
 - on a phone the small quiet controls reach a 44 px hit area without growing: "Seen by" under a message, a space's name in Settings › Company
   and "Open in Conversation" in a task; and the times in a task's activity are Geist, not Geist Mono (which spreads "17:48" into "17 : 48").
@@ -61,8 +61,8 @@ class TypeTokens(unittest.TestCase):
         cls.work = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/work", {"title": "Calibrate the probes", "owner": {"kind": "human", "id": cls.me("ada")}})["id"]
         # The task has a discussion (Kai's first message), so its Details show "Open in Conversation" and a timed line.
         cls.api("kai", "POST", f"/api/v1/work/{cls.work}/discussion", {"body": "The probes drift after rain.", "clientMessageId": str(uuid.uuid4())})
-        cls.material = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Probe datasheet notes",
-                                                                                         "body": "The capacitive probe drifts with humidity."})["materialId"]
+        cls.material = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/docs", {"title": "Probe datasheet notes",
+                                                                                         "body": "The capacitive probe drifts with humidity."})["id"]
         mine = cls.api("kai", "POST", f"/api/v1/projects/{cls.project}/conversations", {"body": "@Ada Kowalska the rota is in the Wiki now.", "clientMessageId": str(uuid.uuid4())})
         theirs = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/conversations", {"body": "Thanks, I will read it.", "clientMessageId": str(uuid.uuid4())})
         # Kai reads both, so the line under Ada's message carries his face.
@@ -162,13 +162,12 @@ class TypeTokens(unittest.TestCase):
             self.assertGreaterEqual(look["height"], 44 if touch else 32, look)
             self.assertEqual([flag for flag in self.flags(page, "b", "e") if "Mine" in flag], [])
 
-    def test_05_a_material_title_and_the_address_tick(self) -> None:
+    def test_05_a_page_by_its_id_and_the_address_tick(self) -> None:
+        # A saved source opened directly is a Wiki page since #1508: it opens in its space's Wiki, in the Wiki's own type.
         page = self.page()
         page.goto(f"/materials/{self.material}")
-        title = page.get_by_role("heading", name="Probe datasheet notes")
-        expect(title).to_be_visible()
-        self.assertEqual(title.evaluate("e => getComputedStyle(e).fontSize"), "20px", "the title is --fs-xl, not the browser's 1.5em h2")
-        self.assertEqual([flag for flag in self.flags(page, "d") if "material-view" in flag], [])
+        expect(page).to_have_url(re.compile(rf"/docs/{self.material}$"))
+        expect(page.locator(".wiki-title")).to_contain_text("Probe datasheet notes")
         page = self.page(touch=True)
         page.goto("/settings/notifications")
         tick = page.get_by_role("checkbox", name=re.compile("^Notification email to")).first

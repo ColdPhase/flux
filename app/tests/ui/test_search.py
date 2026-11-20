@@ -102,7 +102,7 @@ class SearchJourney(unittest.TestCase):
     def groups(self, dialog) -> list[str]:
         return dialog.locator(".jump__sh").all_inner_texts()
 
-    GROUP_OF = {"work": "Tasks", "decision": "Decisions", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Wiki",
+    GROUP_OF = {"work": "Tasks", "decision": "Decisions", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files",
                 "thought": "Thoughts", "sketch": "Thoughts", "project": "Spaces", "person": "People"}
 
     def ranked_groups(self, page: Page, query: str) -> list[str]:
@@ -143,9 +143,9 @@ class SearchJourney(unittest.TestCase):
                      "Nia, can you check the sensor angle before Friday?",
                      "Kalibracja czujników jest zaplanowana na piątek."]:
             self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)
-        material = self.api(ari, "POST", f"/api/v1/projects/{p}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Sensor comparison",
+        material = self.api(ari, "POST", f"/api/v1/projects/{p}/docs", {"title": "Sensor comparison",
                                                                            "body": "The capacitive option drifts with humidity in the bedroom."}, status=201)
-        self.api(ari, "PATCH", f"/api/v1/materials/{material['materialId']}", {"clientMutationId": str(uuid.uuid4()), "expectedVersion": 1,
+        self.api(ari, "PATCH",f"/api/v1/docs/{material['id']}", {"expectedVersion": 1,
                                                                               "body": "The infrared option wins on battery life and needs no calibration."}, status=200)
         self.api(nia, "POST", f"/api/v1/projects/{p}/work", {"title": "Mount the infrared sensor in the lamp base", "outcome": "A base that hides the sensor"}, status=201)
         rule = self.api(ari, "POST", f"/api/v1/projects/{p}/decisions", {"title": "Use the infrared sensor at night", "rationale": "It passed the hallway test at 5 lux."}, status=201)
@@ -157,7 +157,7 @@ class SearchJourney(unittest.TestCase):
         self.api(ari, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Did the spare sensor arrive at your place?", "clientMessageId": str(uuid.uuid4())}, status=201)
         olek = self.page("olek")
         open_thread = self.api(olek, "POST", f"/api/v1/projects/{notes['id']}/conversations", {"body": "The workshop is on Thursday, bring a sensor kit.", "clientMessageId": str(uuid.uuid4())}, status=201)
-        type(self).ids = {"workspace": ws["id"], "lamp": p, "thread": thread["id"], "material": material["materialId"], "rule": rule["id"],
+        type(self).ids = {"workspace": ws["id"], "lamp": p, "thread": thread["id"], "material": material["id"], "rule": rule["id"],
                           "sketch": sketch["id"], "thought": thought["thought"]["id"], "dm": dm["id"], "open_thread": open_thread["id"], "doc": doc["id"]}
 
     # ---------------------------------------------------------------- Search
@@ -239,7 +239,7 @@ class SearchJourney(unittest.TestCase):
         expect(option).to_contain_text("humidity")
         expect(option).not_to_contain_text("Material")
         dialog.locator("[role=option].sr").first.click()
-        expect(page).to_have_url(re.compile(rf"/docs/sources/{self.ids['material']}/versions/1$"))
+        expect(page).to_have_url(re.compile(rf"/docs/{self.ids['material']}/versions/1$"))
         # A decision is listed as a decision (its own group) and opens as one, over its space's conversation (v0.2.1 personas round).
         dialog, field = self.jump(page, "use the infrared")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · Accepted")

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import type { Conversation, ConversationMessage, ConversationRootWindow, Material, Project, WorkItem, Workspace } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRootWindow, Project, WorkItem, Workspace } from '@flux/contracts';
 import { Browser, register, uniqueEmail, type ClientResponse } from './support/http.js';
+import { savePage } from './support/pages.js';
 
 // One project conversation (UI116-1, 2026-10-02): the stream of roots, their reply counts and the
 // cursor window, read under current project access only.
@@ -60,8 +61,7 @@ describe('project conversation roots', () => {
   });
 
   test('roots from several people come oldest first with their thread sizes, and a retried start adds no root', async () => {
-    const material = expect(await partner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
-      { body: { clientMutationId: randomUUID(), title: 'Lux table', body: '38% at 5 lux' } }), 201) as Material;
+    const material = await savePage(partner.browser, project.id, { title: 'Lux table', body: '38% at 5 lux' });
     const first = await start(owner, 'Should the lamp react to gestures in the dark?');
     const key = randomUUID();
     const command = { body: 'Camera numbers are in the lux table', clientMessageId: key, source: { materialId: material.materialId, version: 1 } };

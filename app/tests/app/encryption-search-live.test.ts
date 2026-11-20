@@ -46,7 +46,17 @@ async function writeSet(ws: string, side: 'A' | 'B') {
   const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: 'Sensor field notes', body: 'Notes about the sensor and the lamp enclosure.' }, 201) as unknown as Doc & { currentVersion?: number };
   expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${doc.id}`, { body: { body: 'Notes about the sensor and the lamp enclosure. Presentation outline follows.' },
     headers: { ...key(), 'if-match': `"${doc.currentVersion ?? doc.version}"` } }), 200, 'doc PATCH');
-  await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: 'Datasheet', body: 'Reference sheet for the distance sensor', url: 'https://example.test/sheet' }, 201);
+  // A saved source of v0.2.1 after migration 0107 (#1508): a page whose second version carries the link it was saved with, sealed in A as
+  // v0.2.1 sealed it (no API writes a link). Search reads it as a Wiki page, the link's words included, in A as in B.
+  const sheet = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: 'Datasheet', body: 'Reference sheet for the distance sensor' }, 201) as unknown as Doc;
+  const linked = await sealFor(db as never, 'project_material_versions', ws, { title: 'Datasheet', body: 'Reference sheet for the distance sensor',
+    url: 'https://example.test/sheet', reason: '' }, { materialId: sheet.id, version: 2 }) as { title: string; body: string; url: string; reason: string };
+  await pool.query(`INSERT INTO project_material_versions (workspace_id, project_id, material_id, version, title, body, url, reason, author_id)
+    VALUES ($1, $2, $3, 2, $4, $5, $6, $7, $8)`, [ws, project.id, sheet.id, linked.title, linked.body, linked.url, linked.reason, ada.id]);
+  await pool.query('UPDATE project_materials SET current_version = 2 WHERE id = $1', [sheet.id]);
+  const kept = expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${sheet.id}`, { body: { body: 'Reference sheet for the distance sensor, with the pinout' },
+    headers: { ...key(), 'if-match': '"2"' } }), 200, 'a former source edited as a page') as Doc;
+  assert.deepEqual([kept.version, kept.url], [3, 'https://example.test/sheet'], 'the next version keeps the link');
   const outline = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: 'Presentation outline', scope: 'project', projectId: project.id }, 201);
   await post(ada, `/api/v1/sketches/${outline.id}/thoughts`, { text: 'Open with the lamp story.', x: 0, y: 0 }, 201);
   const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: 'Sensing options', scope: 'project', projectId: project.id }, 201);
@@ -107,7 +117,7 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
       { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: 'sensor lamp' }, { q: 'lamp camera' }, { q: '"sensor" "lamp"' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
       { q: 'sensor -camera' }, { q: 'camera or privacy' }, { q: 'ensor' }, { q: 'omparison' }, { q: 'presentation' }, { q: 'present' }, { q: '#1' }, { q: 'workshop' },
       { q: 'the' }, { q: 'ultrasonic' }, { q: 'ultra' }, { q: 'zzzz' }, { q: 'sensor', type: 'doc' }, { q: 'sensor', type: 'message' }, { q: 'sensor', type: 'work' },
-      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: '"field" "notes"' }, { q: 'sunlight' },
+      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: '"field" "notes"' }, { q: 'sunlight' }, { q: 'pinout' }, { q: 'sheet', type: 'doc' },
       // Any of the words: one that is nowhere does not hide the others, and a word with a typo in a title still finds it.
       { q: 'sensor zeppelin' }, { q: 'zeppelin camera' }, { q: 'camera privacy workshop' }, { q: 'sensor lamp camera zeppelin' }, { q: 'comparisn sensor' },
     ];

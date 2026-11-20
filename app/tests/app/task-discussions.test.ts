@@ -5,7 +5,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
 import { candidatesFor, ConflictError, createTaskDiscussionUseCases, InvalidInputError, NotFoundError } from '@flux/core';
 import type { GeneratorEvent } from '@flux/core';
-import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
+import { projectExportPath, type Conversation, type ConversationMessage, type Page,
   type ConversationSummary, type ProjectExport, type ReturnSummary, type SearchResponse, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { taskDiscussionInTransaction, taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
@@ -14,6 +14,7 @@ import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js'
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { guardFinalEventPhase } from './support/final-events.js';
 import { db, pool } from './support/db.js';
+import { savePage } from './support/pages.js';
 
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['root-owner', 'root-writer', 'root-reader', 'root-outsider'].map(person));
@@ -150,17 +151,13 @@ test('durable task retries recheck access and conflict on changed payload, task 
 test('current material citations are exact; restricted or invalid first sends leave no synthetic thread', async () => {
   const f = await scene();
   const elsewhere = await project(f.owner, f.ws.id, 'Other restricted sources', 'restricted');
-  const material = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${elsewhere.id}/materials`, {
-    body: { title: 'Private source', body: 'Do not cross the project ceiling.', clientMutationId: randomUUID() },
-  }), 201) as Material;
+  const material = await savePage(f.owner.browser, elsewhere.id, { title: 'Private source', body: 'Do not cross the project ceiling.' });
   const before = await f.counts();
   assert.equal((await f.writer.browser.request('POST', f.path, { body: { body: 'Invalid cited contribution',
     clientMessageId: randomUUID(), source: { materialId: material.materialId, version: 1 } } })).status, 404);
   assert.equal((await f.writer.browser.request('POST', f.path, { body: { body: '  ', clientMessageId: randomUUID() } })).status, 400);
   assert.deepEqual(await f.counts(), before);
-  const own = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/materials`, {
-    body: { title: 'Authorized source', body: 'Actual visible trial.', clientMutationId: randomUUID() },
-  }), 201) as Material;
+  const own = await savePage(f.owner.browser, f.place.id, { title: 'Authorized source', body: 'Actual visible trial.' });
   const sent = expectStatus(await f.writer.browser.request('POST', f.path, { body: { body: 'The measured first contribution.',
     clientMessageId: randomUUID(), source: { materialId: own.materialId, version: own.version } } }), 201) as ConversationMessage;
   assert.deepEqual((await f.read()).root, sent);

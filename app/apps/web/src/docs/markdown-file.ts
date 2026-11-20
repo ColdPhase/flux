@@ -75,8 +75,9 @@ export async function readMarkdownFile(file: File): Promise<ImportedPage> {
 }
 
 /** The page as one Markdown file: `# Title`, a blank line, then the saved text. */
-export function pageMarkdown(title: string, body: string) {
-  const text = body.trimEnd();
+export function pageMarkdown(title: string, body: string, url: string | null = null) {
+  // A former saved source's link (#1508) closes the file, as it closes the page and its file in a space's export.
+  const text = [body.trimEnd(), url ? `<${url}>` : ''].filter(Boolean).join('\n\n');
   return text ? `# ${title}\n\n${text}\n` : `# ${title}\n`;
 }
 

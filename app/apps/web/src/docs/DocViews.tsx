@@ -134,7 +134,7 @@ function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice:
   return (
     <PageFrame docId={doc.id} title={shown.title} headings={headings} onHeading={go}
       meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author, meId)}</>}
-      shown={{ title: shown.title, body: () => shown.body, version: shown.version, current: shown.version === doc.version }}
+      shown={{ title: shown.title, body: () => shown.body, version: shown.version, current: shown.version === doc.version, url: shown.url }}
       notices={notice} onBodyClick={onClick}>
       {shown.body.trim()
         ? <><DocProse html={shown.html} onReady={setProse} />

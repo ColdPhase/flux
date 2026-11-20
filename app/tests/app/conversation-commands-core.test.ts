@@ -7,8 +7,6 @@ import {
   normalizeConversationWindow,
   normalizeMessage,
   normalizeRootWindow,
-  optionalBody,
-  optionalUrl,
   positiveVersion,
   requiredText,
 } from '@flux/core';
@@ -19,8 +17,6 @@ import {
 
 /** A refusal: an `InvalidInputError` with its stable code and the exact message. */
 const refusal = (message: string) => ({ name: 'InvalidInputError', code: 'INVALID_INPUT', message });
-/** A refusal whose message is not part of the rule under test. */
-const anyRefusal = { name: 'InvalidInputError', code: 'INVALID_INPUT' };
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 /** The n-th well-formed lowercase UUID. */
@@ -57,29 +53,6 @@ describe('requiredText', () => {
   });
 });
 
-describe('optionalBody', () => {
-  test('gives an empty string for undefined', () => {
-    assert.equal(optionalBody(undefined), '');
-  });
-
-  test('keeps the text untrimmed', () => {
-    assert.equal(optionalBody('  hi \n'), '  hi \n');
-    assert.equal(optionalBody('   '), '   ');
-    assert.equal(optionalBody(''), '');
-  });
-
-  test('refuses a value that is not a string, null included', () => {
-    for (const value of [null, 5, true, {}, ['a']]) {
-      assert.throws(() => optionalBody(value), refusal('Body must be at most 100000 characters'), JSON.stringify(value));
-    }
-  });
-
-  test('accepts 100000 characters and refuses one more', () => {
-    assert.equal(optionalBody('a'.repeat(100_000)).length, 100_000);
-    assert.throws(() => optionalBody('a'.repeat(100_001)), refusal('Body must be at most 100000 characters'));
-  });
-});
-
 describe('positiveVersion', () => {
   test('accepts 1 and larger safe integers', () => {
     assert.equal(positiveVersion(1, 'version'), 1);
@@ -93,44 +66,6 @@ describe('positiveVersion', () => {
     for (const [name, value] of cases) {
       assert.throws(() => positiveVersion(value, 'expectedVersion'), refusal('expectedVersion must be a positive integer'), name);
     }
-  });
-});
-
-describe('optionalUrl', () => {
-  test('null, undefined and an empty string give null', () => {
-    assert.equal(optionalUrl(null), null);
-    assert.equal(optionalUrl(undefined), null);
-    assert.equal(optionalUrl(''), null);
-  });
-
-  test('returns the normalized href', () => {
-    assert.equal(optionalUrl('https://EXAMPLE.test'), 'https://example.test/');
-    assert.equal(optionalUrl('http://example.test'), 'http://example.test/');
-    assert.equal(optionalUrl('https://example.test/a%20b?q=1#top'), 'https://example.test/a%20b?q=1#top');
-  });
-
-  test('refuses a scheme other than http and https', () => {
-    for (const url of ['ftp://example.test/file', 'javascript:alert(1)', 'mailto:a@example.test', 'file:///etc/passwd', 'data:text/plain,hi']) {
-      assert.throws(() => optionalUrl(url), refusal('URL must be an HTTP or HTTPS URL'), url);
-    }
-  });
-
-  test('refuses text that is not a URL', () => {
-    for (const url of ['not a url', 'example.test', '/relative/path']) {
-      assert.throws(() => optionalUrl(url), refusal('URL must be an HTTP or HTTPS URL'), url);
-    }
-  });
-
-  test('accepts 2048 characters and refuses one more', () => {
-    const prefix = 'https://example.test/';
-    const longest = prefix + 'a'.repeat(2048 - prefix.length);
-    assert.equal(longest.length, 2048);
-    assert.equal(optionalUrl(longest), longest);
-    assert.throws(() => optionalUrl(`${longest}a`), refusal('URL must be at most 2048 characters'));
-  });
-
-  test('refuses a value that is not a string', () => {
-    for (const value of [5, true, {}, ['https://example.test/']]) assert.throws(() => optionalUrl(value), anyRefusal, JSON.stringify(value));
   });
 });
 

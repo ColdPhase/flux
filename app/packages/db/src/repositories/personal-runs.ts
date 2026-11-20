@@ -570,7 +570,7 @@ export function personalRunRows(db: DbExecutor) {
         const v = schema.projectMaterialVersions;
         const rows = await db.select({ id: m.id, projectId: m.projectId, version: v.version, title: v.title }).from(m)
           .innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
-          .where(and(eq(m.workspaceId, scope.workspaceId), eq(m.kind, 'doc'), inArray(m.id, docs), within(m.projectId)));
+          .where(and(eq(m.workspaceId, scope.workspaceId), inArray(m.id, docs), within(m.projectId)));
         // Only a page cited by section is read whole, for its headings.
         const sectioned = rows.filter((row) => refs.some((ref) => ref.kind === 'doc' && ref.id === row.id && ref.section));
         const bodies = new Map<string, string>();

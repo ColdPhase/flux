@@ -24,8 +24,8 @@ class OverviewWorkJourney(unittest.TestCase):
         ws = api(cls.context, "POST", "/api/v1/workspaces", {"name": "Riverside makers"}, 201)["id"]
         cls.project = api(cls.context, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": "Library lighting measurements", "visibility": "restricted"}, 201)["id"]
         cls.root = f"/api/v1/projects/{cls.project}"
-        cls.material = api(cls.context, "POST", cls.root + "/materials", {"title": "Shield measurement notes", "body": "First measured cable and shield", "clientMutationId": str(uuid.uuid4())}, 201)["materialId"]
-        api(cls.context, "PATCH", f"/api/v1/materials/{cls.material}", {"title": "Shield measurement notes, revised", "body": "Second measured cable and shield", "expectedVersion": 1, "clientMutationId": str(uuid.uuid4())})
+        cls.material = api(cls.context, "POST", cls.root+"/docs", {"title": "Shield measurement notes", "body": "First measured cable and shield"}, 201)["id"]
+        api(cls.context, "PATCH",f"/api/v1/docs/{cls.material}", {"title": "Shield measurement notes, revised", "body": "Second measured cable and shield", "expectedVersion": 1})
         thread = api(cls.context, "POST", cls.root + "/conversations", {"body": "Compare the earliest measurements before ordering another sensor.", "source": {"materialId": cls.material, "version": 1}, "clientMessageId": str(uuid.uuid4())}, 201)
         cls.conversation = thread["id"]; cls.m0 = thread["messages"][0]["id"]
         cls.m1 = api(cls.context, "POST", f"/api/v1/conversations/{cls.conversation}/messages", {"body": "Keep both low-light runs linked to their original notes.", "clientMessageId": str(uuid.uuid4())}, 201)["id"]

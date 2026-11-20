@@ -527,7 +527,7 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
     case 'dm_message':
       for (const r of await rowsOf(db, 'dm_messages', sql`SELECT id, workspace_id, body FROM dm_messages WHERE id = ANY(${uuids(ids)}) AND removed_at IS NULL`)) found.set(String(r.id), { title: '', body: str(r.body) });
       break;
-    case 'material': case 'doc': {
+    case 'doc': {
       const versions = rows.map((row) => row.version ?? 0);
       for (const r of await rowsOf(db, 'project_material_versions', sql`SELECT v.material_id, v.version, v.workspace_id, v.title, v.body, v.url
         FROM project_material_versions v JOIN unnest(${uuids(rows.map((row) => row.object_id))}, ${sql.param(versions)}::int[]) AS k(id, version)
@@ -567,7 +567,7 @@ async function docsOf(db: DbExecutor, workspaceId: string, placeholders: Placeho
   for (const [kind, rows] of byKind) {
     const content = await contentOf(db, kind, rows);
     for (const row of rows) {
-      const found = content.get(kind === 'material' || kind === 'doc' ? `${row.object_id}:${row.version}` : row.object_id);
+      const found = content.get(kind === 'doc' ? `${row.object_id}:${row.version}` : row.object_id);
       if (!found) continue;
       docs.push({ id: row.id, key: row.doc_key, kind: row.kind, audience: row.audience_key, workspaceId, projectId: row.project_id, objectId: row.object_id,
         parentId: row.parent_id, version: row.version, status: row.status,
@@ -770,7 +770,7 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
     ON r.workspace_id = coalesce(w.company_workspace_id, w.id) WHERE w.id = ${index.workspaceId}::uuid AND r.user_id = ANY(${sql.param(humans)}::text[])`)).map((r) => r.user_id)) : new Set<string>();
   const agentIds = ids((doc) => (doc.author?.kind === 'agent' ? doc.author.id : null)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
   const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, ${cleanName(sql`name`)} AS name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
-  const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));
+  const materialIds = ids((doc) => (doc.kind === 'doc' ? doc.objectId : null));
   const versions = materialIds.length ? new Map((await get<{ id: string; current_version: number }>(sql`SELECT id::text AS id, current_version FROM project_materials WHERE id = ANY(${uuids(materialIds)})`)).map((r) => [r.id, Number(r.current_version)])) : new Map<string, number>();
   // A file hit opens its message (the SQL path reads it beside the row).
   const fileIds = ids((doc) => (doc.kind === 'file' ? doc.objectId : null));

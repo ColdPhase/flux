@@ -428,7 +428,6 @@
                       "type": "string",
                       "enum": [
                         "doc",
-                        "material",
                         "work",
                         "decision"
                       ]
@@ -1934,7 +1933,7 @@
     },
     {
       "name": "flux_list_materials",
-      "title": "List project sources",
+      "title": "List Wiki pages by id",
       "operation": null,
       "classes": [],
       "annotations": {
@@ -2127,7 +2126,6 @@
             "type": "string",
             "enum": [
               "doc",
-              "material",
               "work",
               "decision",
               "conversation",
@@ -2313,7 +2311,7 @@
     },
     {
       "name": "flux_read_material",
-      "title": "Read a project material",
+      "title": "Read a Wiki page by id",
       "operation": null,
       "classes": [],
       "annotations": {
@@ -2452,7 +2450,6 @@
                               "type": "string",
                               "enum": [
                                 "doc",
-                                "material",
                                 "work",
                                 "decision"
                               ]
@@ -2982,7 +2979,6 @@
             "enum": [
               "message",
               "doc",
-              "material",
               "file",
               "task",
               "decision",

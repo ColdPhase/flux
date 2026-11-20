@@ -9,6 +9,7 @@ import { password } from '../support/people.js';
 import { startClientModelMock, type MockPlan, type MockStep, type MockTurn } from '../support/client-model-mock.js';
 import { expect } from '../support/mcp.js';
 import { claudeBin, cleanClientHome, clientEvents, connectClient, connectionOfClient, seedOauthClient, sh, startFluxProxy, type ClientHome, type ClientSpec } from '../support/mcp-client-harness.js';
+import { savePage } from '../support/pages.js';
 
 /**
  * #160 AC-2 (supported onboarding) with the REAL pinned Codex and Claude Code clients, clean configurations, no vendor account
@@ -46,8 +47,7 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Onboarding' } }), 201);
     const project = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'Sensor study', visibility: 'restricted' } }), 201);
     const projectId = String(project.id);
-    const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`,
-      { body: { clientMutationId: randomUUID(), title: 'Release plan', body: 'Step one: measure. Step two: compare.' } }), 201);
+    const plan = await savePage(owner, projectId, { title: 'Release plan', body: 'Step one: measure. Step two: compare.' });
     const connections: Record<string, { id: string; agentId: string; clientId: string }> = {};
     // Nothing is created beforehand: the person's Allow on the consent page makes each client's agent and connection (#859).
     for (const spec of specs) connections[spec.key] = { id: '', agentId: '', clientId: await seedOauthClient(pool, spec) };
@@ -104,7 +104,7 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
             switch (turn.outputs.length) {
               case 0: return flux('flux_bootstrap', { projectId, clientSessionId });
               case 1: return flux('flux_acknowledge_playbook', { clientSessionId, ...loaded });
-              case 2: return flux('flux_project_orientation', { projectId, kind: 'material' });
+              case 2: return flux('flux_project_orientation', { projectId, kind: 'doc' });
               case 3: return flux('flux_create_task', { projectId, clientCommandId: randomUUID(), task: { title } });
               case 4: return flux('flux_bootstrap', { projectId, clientSessionId });
               default: return { text: 'Started.' };
@@ -147,7 +147,7 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
               case 3:
                 assert.equal(boot.trusted.playbook.digest, loaded.digest);
                 return emit(`text(JSON.stringify(await tools.mcp__flux__flux_acknowledge_playbook(${JSON.stringify({clientSessionId,...loaded})})));`);
-              case 4: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_project_orientation({projectId:${JSON.stringify(boot.project.id)},kind:'material'})));`);
+              case 4: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_project_orientation({projectId:${JSON.stringify(boot.project.id)},kind:'doc'})));`);
               case 5: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_create_task(${JSON.stringify({
                 projectId:boot.project.id,clientCommandId:randomUUID(),task:{title},
               })})));`);

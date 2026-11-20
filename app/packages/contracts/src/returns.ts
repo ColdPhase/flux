@@ -44,13 +44,12 @@ export interface ReturnPoint {
   canRestore: boolean;
 }
 
-export type ReturnItemKind = 'decision' | 'work' | 'question' | 'message' | 'material' | 'sketch' | 'doc';
+export type ReturnItemKind = 'decision' | 'work' | 'question' | 'message' | 'sketch' | 'doc';
 
 /** Where an item came from; the client turns it into a link. */
 export type ReturnSource =
   | { type: 'work' | 'decision'; id: string; projectId: string }
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
-  | { type: 'material'; projectId: string; materialId: string; version: number }
   | { type: 'sketch'; sketchId: string; projectId: string | null }
   /** A project doc (#112): `since` is the last version before these changes, so the client can show what changed. */
   | { type: 'doc'; projectId: string; docId: string; version: number; since: number | null };

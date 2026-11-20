@@ -49,10 +49,10 @@ class MessageWorkJourney(unittest.TestCase):
         api(owner, "POST", cls.root + "/work", {"title": "Related only; not made from either message", "related": [sources[0]]}, 201)
         long = api(owner, "POST", cls.root + "/conversations", {"body": "Library installation notes from the first measurement", "clientMessageId": str(uuid.uuid4())}, 201)
         cls.long_conversation = long["id"]; cls.long_messages = [long["messages"][0]["id"]]
-        cls.material = api(owner,"POST",cls.root+"/materials",{"title":"Shield measurements","body":"Compare the same cable and shield across both runs.","clientMutationId":str(uuid.uuid4())},201)
+        cls.material = api(owner,"POST",cls.root+"/docs",{"title":"Shield measurements","body":"Compare the same cable and shield across both runs."},201)
         for index in range(140):
             command={"body": f"Measurement note {index + 2}: compare the shield, cable and standby current before ordering.", "clientMessageId": str(uuid.uuid4())}
-            if index==139:command["source"]={"materialId":cls.material["materialId"],"version":cls.material["version"]}
+            if index==139:command["source"]={"materialId":cls.material["id"],"version":cls.material["version"]}
             cls.long_messages.append(api(owner, "POST", f"/api/v1/conversations/{long['id']}/messages", command, 201)["id"])
         cls.first_work = api(owner, "POST", cls.root + "/work", {"title": "Revisit the first measurement", "sources": [{"type": "message", "id": cls.long_messages[0]}]}, 201)
         cls.last_work = api(owner, "POST", cls.root + "/work", {"title": "Revisit the latest measurement", "sources": [{"type": "message", "id": cls.long_messages[-1]}]}, 201)
@@ -316,7 +316,7 @@ class MessageWorkJourney(unittest.TestCase):
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
         page=self.page();material_reads=[];native_recoveries=[];holding=[True]
-        material_path=f"**/api/v1/materials/{self.material['materialId']}/versions/{self.material['version']}"
+        material_path=f"**/api/v1/materials/{self.material['id']}/versions/{self.material['version']}"
         def hold_material(route):
             if not holding[0]:route.continue_();return
             response=route.fetch();self.assertEqual(response.status,200)

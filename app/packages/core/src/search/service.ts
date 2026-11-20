@@ -154,7 +154,7 @@ function toResult(row: SearchRow, marks: SearchMarks | null, reader: string): Se
   const marked = (text: SearchRow['title']) => (marks ? markSearchWords(text, marks) : text);
   const main = marked(source.textIsTitle && row.snippet ? row.snippet : row.title);
   return {
-    id: `${row.kind}:${row.objectId}${row.version !== null && (row.kind === 'material' || row.kind === 'doc') ? `:${row.version}` : ''}`,
+    id: `${row.kind}:${row.objectId}${row.version !== null && row.kind === 'doc' ? `:${row.version}` : ''}`,
     kind: row.kind,
     label: source.label(row),
     title: main.length ? main : [{ text: 'Untitled', match: false }],

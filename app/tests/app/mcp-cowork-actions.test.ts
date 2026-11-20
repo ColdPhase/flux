@@ -7,6 +7,7 @@ import { pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { savePage } from './support/pages.js';
 
 // The co-work MCP tools (#153): unit creation and unit claims over the real OAuth bearer, the registry and the same
 // internal compositions. Not real-client evidence.
@@ -51,8 +52,7 @@ async function scene() {
   };
   const task = async (title: string) => expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title } }), 201) as WorkItem;
-  const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
+  const material = await savePage(hubert.browser, p.id, { title: 'Review criteria', body: 'Exact current revision' });
   const units = async () => (await pool.query('SELECT id, work_id, role, assignment_connection_id, state, version FROM cowork_units WHERE workspace_id=$1 ORDER BY id',
     [ws.id])).rows;
   return { hubert, marek, ws, p, connect, task, material, units };

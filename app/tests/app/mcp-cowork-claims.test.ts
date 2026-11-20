@@ -10,6 +10,7 @@ import { db, pool } from './support/db.js';
 import { agentConnection, approveWaiting, toolFailure, waits } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
+import { savePage, editPage } from './support/pages.js';
 
 // Unit claims over MCP (#153, cowork-coordination.md "Unit claims over MCP", 2026-10-06): real OAuth bearers claim,
 // renew, release with a checkpoint, complete and transfer their units through the registered tools, the unchanged
@@ -55,8 +56,7 @@ async function scene() {
   const patchTask = async (item: { id: string; version: number }, body: Record<string, unknown>) => expectStatus(await hubert.browser.request('PATCH',
     `/api/v1/work/${item.id}`, { body, headers: { 'if-match': `"${item.version}"` } }), 200) as WorkItem;
   const material = async (title: string) => {
-    const created = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
-      { body: { clientMutationId: randomUUID(), title, body: 'Exact first revision' } }), 201) as { materialId: string; version: number };
+    const created = await savePage(hubert.browser, p.id, { title, body: 'Exact first revision' }) as { materialId: string; version: number };
     return { materialId: created.materialId, version: created.version };
   };
   const unit = async (id: string) => (await pool.query(`SELECT state, version, generation, assignment_connection_id, lease_id, lease_session_id,
@@ -299,8 +299,7 @@ test('release writes a typed checkpoint under the live fence; the next holder, e
 
   // The source changes after the checkpoint: the historical checkpoint does not block a new claim, and it comes back
   // with the source versions it recorded, so the holder can see what changed.
-  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/materials/${source.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: source.version, body: 'A later revision' } }), 200);
+  await editPage(f.hubert.browser, source.materialId, { expectedVersion: source.version, body: 'A later revision' });
   const resumed = toolValue(await claimTool(codex, root.unitId, released.version)) as Claim;
   assert.deepEqual([resumed.state, resumed.generation, resumed.checkpointId], ['claimed', 3, released.checkpointId]);
   assert.deepEqual({ ...resumed.checkpoint!, createdAt: null }, { id: released.checkpointId, ...checkpoint, sources: [source], createdAt: null });

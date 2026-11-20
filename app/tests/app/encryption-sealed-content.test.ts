@@ -24,7 +24,7 @@ let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
 const kinds = ['project', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'cameOfIt', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
-  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName', 'mention'] as const;
+  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'mapTitle', 'thought', 'linkLabel', 'fileName', 'mention'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -62,17 +62,16 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
     headers: { ...key(), 'if-match': `"${task.version}"` } }), 200, 'task rename') as { version: number };
   expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: c.blocker },
     headers: { ...key(), 'if-match': `"${renamed.version}"` } }), 200, 'task blocked');
-  // S2a-2b: a doc with a PATCH and an added section, a material with an edit-free link, and a map with a thought and a labelled link.
+  // S2a-2b: a doc with a PATCH and an added section, a second page a message could cite (a saved source until #1508), and a map with a thought and a labelled link.
   const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: c.docTitle, body: c.docBody }, 201);
   const patched = expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${doc.id}`, { body: { body: `${c.docBody}\n\n${c.docEdit}` },
     headers: { ...key(), 'if-match': `"${doc.currentVersion ?? doc.version}"` } }), 200, 'doc PATCH') as { currentVersion?: number; version?: number };
   await post(ada, `/api/v1/docs/${doc.id}/sections`, { from: { type: 'decision', id: decision.id } }, 200, { 'if-match': `"${patched.currentVersion ?? patched.version}"` });
-  const material = await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: c.materialTitle, body: c.materialBody,
-    url: `https://example.test/${c.materialUrl}` }, 201);
+  const material = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: c.materialTitle, body: c.materialBody }, 201);
   const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${c.thought} two`, x: 200, y: 0 }, 201);
   await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: (one.thought as { id: string }).id, toId: (two.thought as { id: string }).id, label: c.linkLabel.slice(0, 60) }, 201);
   ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), finished: String(finished.id),
-    task: String(task.id), doc: String(doc.id), material: String(material.materialId ?? material.id), sketch: String(sketch.id), thought: String((one.thought as { id: string }).id) };
+    task: String(task.id), doc: String(doc.id), material: String(material.id), sketch: String(sketch.id), thought: String((one.thought as { id: string }).id) };
 }
 
 /** Every row of every table of the public schema, as text. */
@@ -220,7 +219,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
-  test('docs, materials and maps read back opened; live Wiki and live maps are offered for A as for B (S2b)', async () => {
+  test('docs, a page by its id and maps read back opened; live Wiki and live maps are offered for A as for B (S2b)', async () => {
     for (const side of ['A', 'B'] as const) {
       const c = canaries[side]; const id = ids[side];
       const doc = expectStatus(await ben.browser.request('GET', `/api/v1/docs/${id.doc}`), 200, `${side}: doc`) as { title: string; body: string };
@@ -228,8 +227,8 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.ok(doc.body.includes(c.docEdit) && doc.body.includes(c.decision), `${side}: the PATCH and the added section are in the doc`);
       const versions = JSON.stringify(expectStatus(await ben.browser.request('GET', `/api/v1/docs/${id.doc}/versions`), 200));
       assert.ok(versions.includes(c.docTitle), `${side}: versions list opened titles`);
-      const material = expectStatus(await ben.browser.request('GET', `/api/v1/materials/${id.material}`), 200, `${side}: material`) as { title: string; body: string; url: string };
-      assert.deepEqual([material.title, material.body, material.url], [c.materialTitle, c.materialBody, `https://example.test/${c.materialUrl}`]);
+      const material = expectStatus(await ben.browser.request('GET', `/api/v1/materials/${id.material}`), 200, `${side}: page by id`) as { title: string; body: string; url: string | null };
+      assert.deepEqual([material.title, material.body, material.url], [c.materialTitle, c.materialBody, null]);
       const map = JSON.stringify(expectStatus(await ben.browser.request('GET', `/api/v1/sketches/${id.sketch}`), 200, `${side}: map`));
       for (const text of [c.mapTitle, c.thought, c.linkLabel.slice(0, 60)]) assert.ok(map.includes(text), `${side}: the map shows ${text.slice(0, 20)}`);
       for (const text of [doc.title, map]) assert.equal(/fx1\.[1-9]/.test(text), false, `${side}: no envelope reaches a reader`);

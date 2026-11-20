@@ -8,8 +8,6 @@ import { useShellData } from '../app/data';
 import { Button, EmptyState, Icon, prefersReducedMotion, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
-import { listProjectSources } from '../materials/api';
-import { sourcePath } from '../materials/loader';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
@@ -17,10 +15,7 @@ import { holdTyping } from './typeAhead';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
 import { useFitInWindow } from '../ui/pickerPlace';
-import { RefLink, useFollow } from '../place/origin';
 
-/** A saved source is a page by its own address, followed as a reference: its way back returns to the Wiki it was opened from. */
-const isSource = (to: string) => /\/docs\/sources\//.test(to);
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
 // quiet row: "Saved · just now · Jonas is here too", the faces of the people writing, Contents (≡) and ⋯. The title is the
@@ -78,7 +73,8 @@ export function scrollPage(scroller: HTMLElement, top: () => number | null, plac
 }
 
 export interface ContentsHeading { id: string; text: string; level: number }
-export interface ShownPage { title: string; body: () => string; version: number; current: boolean }
+/** `url`: the link of a page that was a saved source (#1508), under its text in every version. */
+export interface ShownPage { title: string; body: () => string; version: number; current: boolean; url?: string | null }
 
 export interface PageFrameProps {
   docId: string;
@@ -134,6 +130,8 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
       {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
       {notices}
       {/* The cards and chips in the page are links: a click opens what they refer to. */}
+      {/* A former saved source's link (#1508), under the title and above the text: a short text leaves the editor's room below it. */}
+      {shown.url ? <p className="wiki-source"><a className="ui-link" href={shown.url} target="_blank" rel="noreferrer">Open source link</a></p> : null}
       <div className="wiki-body" onClick={onBodyClick}>{children}</div>
     </article>
   );
@@ -148,14 +146,11 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   // The pages read when the switcher opened; until then (and after it closes) the Wiki's own list.
   const [fresh, setFresh] = useState<DocSummary[] | null>(null);
   const docs = fresh ?? loaded;
-  // The space's saved sources are Wiki pages by their own address (#1419 item 20): listed here too, opening at their page (round 15 look-3 F5).
-  const [sources, setSources] = useState<{ id: string; title: string }[]>([]);
   const button = useRef<HTMLButtonElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   // A saved source is a page by its own address: it is followed as a reference, so its way back returns to this Wiki (round 15 confirm S2).
-  const follow = useFollow();
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
@@ -168,7 +163,6 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
     const controller = new AbortController();
     reading.current = controller;
     listProjectDocs(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setFresh(items); }, () => undefined);
-    listProjectSources(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setSources(items.map((item) => ({ id: item.materialId, title: item.title }))); }, () => undefined);
   }, [project.id]);
   useEffect(() => {
     if (!open) return;
@@ -178,8 +172,9 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   }, [open, read]);
   // A page deleted while the list is open leaves it at once (#1021): the event names the space, so the list is read again.
   useStreamEvents(userId, (event) => { if (open && event.kind === 'project.doc_deleted.v1' && event.objectId === project.id) read(); });
-  const pages = useMemo(() => [...docs.map((doc) => ({ id: doc.id, title: doc.title, to: docUrl(project.id, doc.id) })),
-    ...sources.map((source) => ({ id: source.id, title: source.title, to: sourcePath(project.id, source.id) }))].sort((a, b) => collator.compare(a.title, b.title)), [docs, sources, project.id]);
+  // Every page of the space, the former saved sources among them (#1508), by title.
+  const pages = useMemo(() => docs.map((doc) => ({ id: doc.id, title: doc.title, to: docUrl(project.id, doc.id) }))
+    .sort((a, b) => collator.compare(a.title, b.title)), [docs, project.id]);
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(doc.title).includes(needle)) : pages;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -204,18 +199,18 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
             <Icon name="search" size={15} />
             <input ref={findRef} type="text" placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query}
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); void (isSource(shown[0].to) ? follow : navigate)(shown[0].to); } }} />
+              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); void navigate(shown[0].to); } }} />
           </label>
           <ul className="wiki-menu__list" aria-label="Pages">
-            {shown.map((doc) => { const Row = isSource(doc.to) ? RefLink : Link; return (
+            {shown.map((doc) => (
               <li key={doc.id}>
-                <Row className="wiki-menu__row" to={doc.to} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
+                <Link className="wiki-menu__row" to={doc.to} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
                   onClick={() => close(false)}>
                   <span className="wiki-menu__t">{doc.title}</span>
                   {doc.id === docId ? <Icon name="check" size={15} /> : null}
-                </Row>
+                </Link>
               </li>
-            ); })}
+            ))}
           </ul>
           {needle && !shown.length ? <p className="wiki-menu__empty" role="status">No page matches “{query.trim()}”.</p> : null}
           <div className="wiki-menu__sep" />
@@ -372,7 +367,7 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
   useEffect(() => { if (open) surface.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus(); }, [open, exporting]);
   const fileName = pageFileName(shown.title, shown.current ? undefined : shown.version);
   const page = () => {
-    saveBlob(new Blob([pageMarkdown(shown.title, shown.body())], { type: 'text/markdown;charset=utf-8' }), fileName);
+    saveBlob(new Blob([pageMarkdown(shown.title, shown.body(), shown.url)], { type: 'text/markdown;charset=utf-8' }), fileName);
     close();
     toast({ message: `Downloaded ${fileName}.`, tone: 'success' });
   };

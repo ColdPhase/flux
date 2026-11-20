@@ -180,7 +180,7 @@ export function notificationFactRows(db: DbExecutor) {
       const v = schema.projectMaterialVersions;
       const [doc] = await db.select({ title: v.title }).from(pmat)
         .innerJoin(v, and(eq(v.materialId, pmat.id), eq(v.version, pmat.currentVersion)))
-        .where(and(eq(pmat.id, session.docId), eq(pmat.projectId, session.projectId), eq(pmat.kind, 'doc')));
+        .where(and(eq(pmat.id, session.docId), eq(pmat.projectId, session.projectId)));
       if (doc) anchor = { type: 'doc', label: doc.title };
     }
     return anchor;

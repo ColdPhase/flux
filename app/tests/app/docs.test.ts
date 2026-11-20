@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { DomainError, type Principal } from '@flux/core';
-import type { Agent, Conversation, Decision, Doc, DocPreview, DocSummary, DocVersion, DocVersionSummary, Material, MaterialVersion, Page, Project, Workspace, WorkItem } from '@flux/contracts';
+import type { Agent, Conversation, Decision, Doc, DocPreview, DocSummary, DocVersion, DocVersionSummary, MaterialVersion, Page, Project, ProjectExport, Workspace, WorkItem } from '@flux/contracts';
 import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
@@ -82,10 +82,27 @@ describe('project docs with immutable versions, links and backlinks', () => {
 
     // The database refuses to rewrite a version, even outside the API.
     await assert.rejects(pool.query("UPDATE project_material_versions SET body = 'rewritten' WHERE material_id = $1 AND version = 1", [doc.id]), /immutable/);
-    // Docs are edited through the doc API only and are not listed as materials.
-    assert.equal(code(await patch(owner, `/api/v1/materials/${doc.id}`, { clientMutationId: randomUUID(), expectedVersion: 3, body: 'x' })), 'USE_DOC_API');
-    const materials = json<Page<Material>>(await get(owner, `/api/v1/projects/${lamp.id}/materials`), 200);
-    assert.ok(materials.items.every((item) => item.materialId !== doc.id));
+  });
+
+  test('a page that was a saved source keeps its link: shown with every version, kept by each save, in its export (#1508)', async () => {
+    // A v0.2.1 saved source after migration 0107: a page whose versions carry the link it was saved with. No API writes a link, so the
+    // row is written as v0.2.1's saved-source command wrote it, then read and edited as a page.
+    const page = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'VL53L5CX datasheet', body: 'Range 4 m' }), 201);
+    assert.equal(page.url, null, 'a page made in the Wiki has no link');
+    await pool.query(`INSERT INTO project_material_versions (workspace_id, project_id, material_id, version, title, body, url, author_id)
+      SELECT workspace_id, project_id, material_id, 2, title, 'Range 4 m, 8x8 zones', 'https://example.com/vl53l5cx', author_id
+      FROM project_material_versions WHERE material_id = $1 AND version = 1`, [page.id]);
+    await pool.query('UPDATE project_materials SET current_version = 2 WHERE id = $1', [page.id]);
+    const read = json<Doc>(await get(viewer, `/api/v1/docs/${page.id}`), 200);
+    assert.deepEqual([read.version, read.body, read.url], [2, 'Range 4 m, 8x8 zones', 'https://example.com/vl53l5cx']);
+    const edited = json<Doc>(await patch(owner, `/api/v1/docs/${page.id}`, { body: 'Range 4 m, 8x8 zones, 60 Hz' }, ifMatch(2)), 200);
+    assert.deepEqual([edited.version, edited.url], [3, 'https://example.com/vl53l5cx'], 'the next version keeps the link nobody can edit');
+    assert.equal(json<DocVersion>(await get(viewer, `/api/v1/docs/${page.id}/versions/1`), 200).url, null, 'an earlier version keeps its own');
+    assert.equal(json<MaterialVersion>(await get(viewer, `/api/v1/materials/${page.id}/versions/3`), 200).url, 'https://example.com/vl53l5cx');
+    const exported = json<ProjectExport>(await get(owner, `/api/v1/projects/${lamp.id}/export`), 200);
+    assert.deepEqual(exported.docs.find((item) => item.id === page.id)!.versions.map((version) => version.url),
+      [null, 'https://example.com/vl53l5cx', 'https://example.com/vl53l5cx']);
+    assert.equal('materials' in exported, false, 'the export has one list of pages');
   });
 
   test('a person never types a version\'s reason or state; the server words a cause it has checked (#942)', async () => {

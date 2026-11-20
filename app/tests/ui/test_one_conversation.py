@@ -202,9 +202,9 @@ class OneConversationJourney(unittest.TestCase):
             self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"})
             self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["short"]}, "role": "contributor"})
             short = self.page("short")
-            material = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"title": "Lux table", "body": "38% of gestures at 5 lux, 97% at 200 lux.", "clientMutationId": str(uuid.uuid4())}, status=201)
+            material = self.api(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Lux table", "body": "38% of gestures at 5 lux, 97% at 200 lux."}, status=201)
             root = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": TARGET_ROOT, "clientMessageId": str(uuid.uuid4()),
-                                                                                  "source": {"materialId": material["materialId"], "version": material["version"]}}, status=201)
+                                                                                  "source": {"materialId": material["id"], "version": material["version"]}}, status=201)
             for index in range(1, 9):
                 writer = short if index == 8 else jonas if index % 2 else ada
                 self.api(writer, "POST", f"/api/v1/conversations/{root['id']}/messages", {"body": f"Reply {index}: the reading corner stays quiet at this light level.", "clientMessageId": str(uuid.uuid4())}, status=201)

@@ -12,6 +12,7 @@ import { coWorkUnitTransitionInTransaction } from '../../apps/server/src/co-work
 import { coWorkUnitCreateInTransaction } from '../../apps/server/src/co-work/units.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/locks.js';
+import { savePage, editPage } from './support/pages.js';
 
 // The holder's unit completion and transfer (#153) over real #152 runtimes/grants/ledger and PostgreSQL. Units are
 // created and claimed only through the production compositions. Bearer bindings are trusted fixtures. Not a public
@@ -52,8 +53,7 @@ async function world() {
     const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
     return { who, connection: created, claims, runtimeId: runtime.id };
   };
-  const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
+  const material = await savePage(hubert.browser, p.id, { title: 'Review criteria', body: 'Exact current revision' });
   /** A message of a project's conversation: an outcome a unit can name. */
   const message = async (body: string, inProject: Project = p) => (expectStatus(await hubert.browser.request('POST',
     `/api/v1/projects/${inProject.id}/conversations`, { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation).messages[0]!;
@@ -199,8 +199,7 @@ test('a versioned outcome must be readable now: an unknown, foreign, stale or Gi
   const first = f.own.finish({ ...f.fence, outcome: { type: 'material', id: w.material.materialId, version: 1 } });
   const done = await f.own.run(first);
   assert.deepEqual(done.outcomeRef, { type: 'material', id: w.material.materialId, version: 1 });
-  expectStatus(await w.hubert.browser.request('PATCH', `/api/v1/materials/${w.material.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Revision two' } }), 200);
+  await editPage(w.hubert.browser, w.material.materialId, { expectedVersion: 1, body: 'Revision two' });
   await rejects(f.own.run(first), 'COWORK_OUTCOME_UNAVAILABLE');
 });
 

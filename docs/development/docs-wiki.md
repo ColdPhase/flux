@@ -10,21 +10,23 @@ the project.
 
 ## Reusing #36 materials
 
-A doc **is** a #36 project material of `kind = 'doc'` (migration `0013_docs.sql`). Its versions
-are the same `project_material_versions` snapshots, with a new `reason` column. There is no second
-version table.
+A doc **is** a row of `project_materials` (migration `0013_docs.sql`). Its versions are the same
+`project_material_versions` snapshots, with a `reason` column. There is no second version table.
+Since v0.2.2 every row is a page: the saved sources of #36 (`kind = 'material'`) were converted by
+migration `0107` and the kind is gone (#1508, C-71).
 
-- A message cites a doc version exactly as it cites a material:
-  `source: { materialId: <docId>, version: 3 }`. The citation keeps reading version 3 after
-  later edits; `GET /api/v1/materials/:id/versions/:version` still serves it, and the web app
-  opens it in the doc reader. A saved source (`kind = 'material'`) is a page of its space's Wiki at
-  `/projects/:id/docs/sources/:materialId[/versions/:n]`, inside the space's own header and tabs; the web
-  address `/materials/:id` (what a message, a work link or a search result carries) only goes there,
-  keeping where it was followed from (v0.2.2, #1563).
-- A database trigger rejects `UPDATE` on `project_material_versions`, so no version (of a doc or
-  a material) is ever rewritten, even outside the API.
-- `GET /api/v1/projects/:id/materials` lists only `kind = 'material'`; `PATCH /api/v1/materials/:id`
-  on a doc is `409 USE_DOC_API`. Docs change only through the doc API below.
+- A message cites a version of a page: `source: { materialId: <docId>, version: 3 }`. The
+  citation keeps reading version 3 after later edits; `GET /api/v1/materials/:id[/versions/:version]`
+  serves a page by its id, and the web address `/materials/:id[/versions/:n]` (what a message, a work
+  link or an older link carries) goes to the page in its space's Wiki, keeping where it was followed from.
+- A database trigger rejects `UPDATE` on `project_material_versions`, so no version is ever
+  rewritten, even outside the API.
+- A page that was a saved source keeps the link it was saved with (`project_material_versions.url`,
+  sealed in an encrypted space): `DocVersion.url`, shown between the title and the text as "Open source link".
+  `docRows().append` copies the previous version's link to each new version, so a save, a restore or a
+  shared-text save never drops it; nothing else writes one. Every other page has `url: null`.
+- Pages change only through the doc API below; the saved-source routes (`GET`/`POST
+  /api/v1/projects/:id/materials`, `PATCH /api/v1/materials/:id`) are gone (#1508).
 - People write docs through this API (`403 DOC_NEEDS_PERSON` for an agent principal); agents with
   a project grant read them. Since #152 (migration `0043`), an agent can also start and edit docs,
   but only under its owner's standing grant over MCP

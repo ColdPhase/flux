@@ -73,7 +73,6 @@ export interface ReturnConversation {
   /** The decision this conversation is the discussion of (#1424): its title, and who its questions ask (`threadAskee`). */
   decision?: { title: string; askee: string | null } | null;
 }
-export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }
 export interface ReturnSketch { id: string; workspaceId: string; projectId: string | null; title: string }
 /** A project doc (#112) as it reads now: its current version and that version's reason. */
 export interface ReturnDoc { id: string; projectId: string; title: string; version: number; reason: string }
@@ -116,7 +115,6 @@ export interface ReturnRepository {
   conversations(ids: string[]): Promise<Map<string, ReturnConversation>>;
   /** The time of the user's latest message per conversation (participation and replies). */
   lastPosts(userId: string, conversationIds: string[]): Promise<Map<string, Date>>;
-  materials(ids: string[]): Promise<Map<string, ReturnMaterial>>;
   sketches(ids: string[]): Promise<Map<string, ReturnSketch>>;
   docs(ids: string[]): Promise<Map<string, ReturnDoc>>;
   /**

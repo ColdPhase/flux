@@ -109,8 +109,8 @@ class ReturnToOrigin(unittest.TestCase):
             return api(cls.contexts[who], "POST", f"/api/v1/conversations/{conversation}/messages", {"body": body, "clientMessageId": str(uuid.uuid4()), **extra}, 201)
 
         cls.start, cls.reply = staticmethod(start), staticmethod(reply)
-        cls.material = api(ada, "POST", root + "/materials", {"title": "Sensor shortlist", "body": "Three ToF boards and one camera, ranked by how they read in the dark.", "clientMutationId": str(uuid.uuid4())}, 201)
-        cite = {"materialId": cls.material["materialId"], "version": cls.material["version"]}
+        cls.material = api(ada, "POST", root+"/docs", {"title": "Sensor shortlist", "body": "Three ToF boards and one camera, ranked by how they read in the dark."}, 201)
+        cite = {"materialId": cls.material["id"], "version": cls.material["version"]}
         cls.wiki_message = None
         for index in range(1, FILLERS + 1):
             who = "ada" if index % 2 else "jonas"
@@ -286,7 +286,7 @@ class ReturnToOrigin(unittest.TestCase):
         self.assert_same(before, self.offset(page, feed, target), "the message stays where it was when something arrives below")
         history = page.evaluate("history.length")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
-        expect(page).to_have_url(re.compile(r"/docs/sources/[0-9a-f-]{36}/versions/1$"))
+        expect(page).to_have_url(re.compile(r"/docs/[0-9a-f-]{36}(/versions/1)?$"))
         expect(page.get_by_role("heading", name="Sensor shortlist")).to_be_visible()
         self.assertEqual(page.evaluate("history.length"), history + 1, "following a reference adds one history entry")
         back = self.origin_back(page, "Conversation")
@@ -324,7 +324,7 @@ class ReturnToOrigin(unittest.TestCase):
         shot(page, f"592-wiki-card-returned-{engine}-{size}")
         # Forward leads to the object again, with its way back.
         page.go_forward()
-        expect(page).to_have_url(re.compile(r"/docs/sources/"))
+        expect(page).to_have_url(re.compile(r"/docs/"))
         expect(self.origin_back(page, "Conversation")).to_have_count(1)
 
     def test_01_wiki_card_back_by_the_control(self):
@@ -413,7 +413,7 @@ class ReturnToOrigin(unittest.TestCase):
         url, history = page.url, page.evaluate("history.length")
         self.reply("jonas", self.thread, f"A late reply while you read the shortlist ({engine}, {size}).")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
-        expect(page).to_have_url(re.compile(r"/docs/sources/[0-9a-f-]{36}/versions/1$"))
+        expect(page).to_have_url(re.compile(r"/docs/[0-9a-f-]{36}(/versions/1)?$"))
         back = self.origin_back(page, "Thread")
         expect(back).to_have_count(1)
         shot(page, f"592-thread-wiki-destination-{engine}-{size}")

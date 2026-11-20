@@ -61,7 +61,7 @@ export function agentExecutionRows(tx: DbExecutor) {
         // The page is no longer a doc of this project (#941).
         const table = schema.projectMaterials;
         const [row] = await tx.select({ id: table.id }).from(table).where(and(eq(table.id, condition.id),
-          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId), eq(table.kind, 'doc'))).for('share');
+          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId))).for('share');
         return !row;
       }
       if (condition.kind === 'thought') {
@@ -78,7 +78,7 @@ export function agentExecutionRows(tx: DbExecutor) {
         // Still this project's doc, at exactly the version the command produced (a later edit is stale).
         const table = schema.projectMaterials;
         const [row] = await tx.select({ version: table.currentVersion }).from(table).where(and(eq(table.id, condition.id),
-          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId), eq(table.kind, 'doc'))).for('share');
+          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId))).for('share');
         return row?.version === condition.version;
       }
       if (condition.kind === 'message') {

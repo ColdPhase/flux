@@ -10,6 +10,7 @@ import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/ser
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
 import { createConnection } from './support/mcp-actions.js';
+import { savePage, editPage } from './support/pages.js';
 
 // Real native API/runtime/grant/SQL ledger composition. The bearer binding and
 // policy callbacks are trusted fixtures, not model activation or complete native
@@ -32,8 +33,7 @@ async function fixture(seconds = 30) {
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
   const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title: 'One bounded native unit' } }), 201) as WorkItem;
-  const source = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Current source', body: 'Current exact revision' } }), 201) as { materialId: string };
+  const source = await savePage(owner.browser, p.id, { title: 'Current source', body: 'Current exact revision' });
   const unitId = randomUUID();
   await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
     lineageTaskId: work.id, runId: randomUUID(), unitKey: unitId, role: 'execute', assignmentConnectionId: connection.id });
@@ -139,8 +139,7 @@ test('current grant revoke, source edit and wrong actual client deny successful 
   const f = await fixture(); await f.run();
   await assert.rejects(db.transaction((tx) => coWorkClaimInTransaction(tx, { ...f.claims, clientId: 'foreign-actual-client' }, f.command, f.policy)),
     (error: unknown) => error instanceof DomainError);
-  expectStatus(await f.owner.browser.request('PATCH', `/api/v1/materials/${f.source.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Changed current source' } }), 200);
+  await editPage(f.owner.browser, f.source.materialId, { expectedVersion: 1, body: 'Changed current source' });
   await rejects(f.run(), 'SOURCE_VERSION_CONFLICT');
   const separate = await fixture(); await separate.run();
   await pool.query('UPDATE agent_connections SET revoked_at = now() WHERE id = $1', [separate.connection.id]);

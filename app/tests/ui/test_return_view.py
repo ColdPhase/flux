@@ -173,7 +173,7 @@ class ReturnViewJourney(unittest.TestCase):
         task = self.api(ari, "POST", f"/api/v1/projects/{p}/work", {"title": "Mount the PIR sensor in the lamp base", "owner": {"kind": "human", "id": NIA["id"]}}, status=201)
         lens = self.api(ari, "POST", f"/api/v1/projects/{p}/work", {"title": "Order the wide-angle lens"}, status=201)
         self.api(ari, "PATCH", f"/api/v1/work/{lens['id']}", {"status": "blocked"}, status=200, headers={"if-match": '"1"'})
-        self.api(ari, "POST", f"/api/v1/projects/{p}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Low-light test plan", "body": "5 lux, 20 gestures, two people"}, status=201)
+        self.api(ari, "POST", f"/api/v1/projects/{p}/docs", {"title": "Low-light test plan", "body": "5 lux, 20 gestures, two people"}, status=201)
         self.api(ari, "POST", f"/api/v1/workspaces/{self.workspace_id}/sketches", {"title": "Sensing options", "scope": "project", "projectId": p}, status=201)
         type(self).ids = {"question": question, "pivot": pivot["id"], "task": task["id"]}
 

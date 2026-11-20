@@ -10,7 +10,7 @@ import type { DbExecutor } from './push.js';
 import { openAliased, openRows, sealOf, sealRow } from '../sealing.js';
 
 /**
- * Drizzle rows for project docs (issue #112): #36 materials of kind `doc` and their immutable
+ * Drizzle rows for project docs (issue #112): the rows of `project_materials` (every one a page since #1508) and their immutable
  * versions. They satisfy the `DocRepository` port of `packages/core/src/docs/ports.ts`
  * structurally and make no access decisions; list filters come from the policy's
  * `visibleFilter`. Versions are only inserted; the database also rejects updates to them.
@@ -44,7 +44,7 @@ function toDoc(row: MaterialRow) {
 
 function toVersion(row: VersionRow, snapshot: SnapshotRow | null = null) {
   return {
-    docId: row.materialId, projectId: row.projectId, version: row.version, title: row.title, body: row.body,
+    docId: row.materialId, projectId: row.projectId, version: row.version, title: row.title, body: row.body, url: row.url,
     reason: row.reason, author: actor(row.authorId, row.authorAgentId), createdAt: row.createdAt,
     ...(snapshot ? { contributors: snapshot.contributors, liveSnapshot: { generation: snapshot.generation,
       fromSequence: snapshot.fromSequence, toSequence: snapshot.toSequence } } : {}),
@@ -80,8 +80,8 @@ export function docRows(db: DbExecutor) {
   }
 
   async function find(id: string, options: { lock?: boolean } = {}) {
-    if (options.lock) await db.select({ id: m.id }).from(m).where(and(eq(m.id, id), eq(m.kind, 'doc'))).for('update');
-    const [row] = await joined().where(and(eq(m.id, id), eq(m.kind, 'doc')));
+    if (options.lock) await db.select({ id: m.id }).from(m).where(eq(m.id, id)).for('update');
+    const [row] = await joined().where(eq(m.id, id));
     return row ? (await map([row]))[0]! : null;
   }
 
@@ -97,17 +97,17 @@ export function docRows(db: DbExecutor) {
   }
   return {
     async locate(id: string) {
-      const [row] = await db.select({ projectId: m.projectId }).from(m).where(and(eq(m.id, id), eq(m.kind, 'doc')));
+      const [row] = await db.select({ projectId: m.projectId }).from(m).where(eq(m.id, id));
       return row ?? null;
     },
 
-    list: (projectId: string, window: Window) => paged(and(eq(m.projectId, projectId), eq(m.kind, 'doc'))!, window),
+    list: (projectId: string, window: Window) => paged(eq(m.projectId, projectId), window),
 
     find,
 
     async version(id: string, version: number) {
-      const [row] = await db.select({ version: v, snapshot: s }).from(v).innerJoin(m, eq(m.id, v.materialId)).leftJoin(s, savedSnapshot)
-        .where(and(eq(v.materialId, id), eq(v.version, version), eq(m.kind, 'doc')));
+      const [row] = await db.select({ version: v, snapshot: s }).from(v).leftJoin(s, savedSnapshot)
+        .where(and(eq(v.materialId, id), eq(v.version, version)));
       if (!row) return null;
       const [opened] = await openRows(db, 'project_material_versions', [row.version]);
       return toVersion(opened!, row.snapshot);
@@ -123,15 +123,18 @@ export function docRows(db: DbExecutor) {
 
     async insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: Actor }, first: NewVersion) {
       const by = columns(doc.createdBy);
-      await db.insert(m).values({ id: doc.id, workspaceId: doc.workspaceId, projectId: doc.projectId, createdBy: by.human, createdByAgentId: by.agent, kind: 'doc' });
+      await db.insert(m).values({ id: doc.id, workspaceId: doc.workspaceId, projectId: doc.projectId, createdBy: by.human, createdByAgentId: by.agent });
       await db.insert(v).values(await versionRow(doc.workspaceId, { workspaceId: doc.workspaceId, projectId: doc.projectId, materialId: doc.id, version: 1, ...versionValues(first) }) as typeof v.$inferInsert);
       return (await find(doc.id))!;
     },
 
     async append(id: string, next: NewVersion) {
-      const [updated] = await db.update(m).set({ currentVersion: sql`${m.currentVersion} + 1`, updatedAt: new Date() }).where(and(eq(m.id, id), eq(m.kind, 'doc'))).returning();
+      const [updated] = await db.update(m).set({ currentVersion: sql`${m.currentVersion} + 1`, updatedAt: new Date() }).where(eq(m.id, id)).returning();
+      // A page that was a saved source keeps its link on every version (#1508): nobody edits it, so the next version carries it.
+      const [previous] = await openRows(db, 'project_material_versions', await db.select().from(v)
+        .where(and(eq(v.materialId, id), eq(v.version, updated!.currentVersion - 1))));
       await db.insert(v).values(await versionRow(updated!.workspaceId, { workspaceId: updated!.workspaceId, projectId: updated!.projectId, materialId: id,
-        version: updated!.currentVersion, ...versionValues(next) }) as typeof v.$inferInsert);
+        version: updated!.currentVersion, ...versionValues(next), url: previous?.url ?? null }) as typeof v.$inferInsert);
       return (await find(id))!;
     },
 
@@ -163,7 +166,7 @@ export function docRows(db: DbExecutor) {
       await db.execute(sql`UPDATE project_task_notices SET sources = COALESCE((SELECT jsonb_agg(item) FROM jsonb_array_elements(sources) AS item
           WHERE NOT (item->>'id' = ${docId} AND item->>'type' IN ('doc', 'material'))), '[]'::jsonb)
         WHERE project_id = ${scope.projectId} AND EXISTS (SELECT 1 FROM jsonb_array_elements(sources) AS item WHERE item->>'id' = ${docId} AND item->>'type' IN ('doc', 'material'))`);
-      await db.delete(m).where(and(eq(m.id, docId), eq(m.kind, 'doc')));
+      await db.delete(m).where(eq(m.id, docId));
       // The shared text's connections hear of it on commit and find the page gone (their access ends: "revoked").
       await db.execute(sql`SELECT pg_notify(${EDITING_CHANNEL}, ${docId})`);
       await fence.mark();

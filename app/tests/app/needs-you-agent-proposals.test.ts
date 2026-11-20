@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { accessReader, agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent } from '@flux/core';
-import type { Material, NeedsYouResponse, Project, Workspace } from '@flux/contracts';
+import type { NeedsYouResponse, Project, Workspace } from '@flux/contracts';
 import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 import { createConnection } from './support/mcp-actions.js';
+import { savePage } from './support/pages.js';
 
 // #661: a suggestion an agent makes through MCP is a "Needs you" item for the person who connected the agent.
 const store = agentProposalUseCases(agentProposalRepository(db, {
@@ -25,8 +26,7 @@ test('an agent suggestion reaches its owner in Needs you, can be answered, and h
   expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: other.email, role: 'member' } }), 201);
   const project = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Sensors', visibility: 'restricted' } }), 201) as Project;
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Desk agent', owner: 'self' } }), 201) as { id: string };
-  const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
+  const material = await savePage(owner.browser, project.id, { title: 'Low light', body: 'Sensor A misses dim scenes' });
   const connection = await createConnection(pool, owner.browser, { agentId: agent.id }) as { id: string };
   const proposal = await store.create({ connectionId: connection.id, ownerUserId: owner.id, agentId: agent.id,
     computeSource: 'user_operated_claude_code' as const },
@@ -61,8 +61,7 @@ test('C-50, #1095: what a guest\'s own agent suggested is kept and hidden from N
   const ws = expectStatus(await owner.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Guest suggestions' } }), 201) as Workspace;
   const project = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Sensors', visibility: 'restricted' } }), 201) as Project;
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Desk agent', owner: 'self' } }), 201) as { id: string };
-  const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
+  const material = await savePage(owner.browser, project.id, { title: 'Low light', body: 'Sensor A misses dim scenes' });
   const connection = await createConnection(pool, owner.browser, { agentId: agent.id }) as { id: string };
   const proposal = await store.create({ connectionId: connection.id, ownerUserId: owner.id, agentId: agent.id, computeSource: 'user_operated_claude_code' as const },
     { projectId: project.id, source: { materialId: material.materialId, version: 1 }, clientCommandId: randomUUID(),

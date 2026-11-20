@@ -13,11 +13,11 @@ import type { LockedWorkspaceRef } from './encryption.js';
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
-export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
+export type SearchKind = 'project' | 'message' | 'dm_message' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
 
 /** Filter values of `type`: one kind, with project and direct messages together and sketches with their thoughts. */
-export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'file' | 'work' | 'decision' | 'sketch' | 'person';
-export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'file', 'work', 'decision', 'sketch', 'person'];
+export type SearchFilterType = 'project' | 'message' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'person';
+export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'file', 'work', 'decision', 'sketch', 'person'];
 
 export const SEARCH_LIMITS = { query: 200, pageDefault: 20, pageMax: 50 } as const;
 
@@ -46,7 +46,6 @@ export function searchTargetPath(target: SearchTarget): string {
     case 'project': return `/projects/${target.projectId}`;
     case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
-    case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
     // A match in the page as it is now opens the page itself, where it is read and edited; only an earlier version opens as a saved one (round 15).
     case 'doc': return `/projects/${target.projectId}/docs/${target.docId}${target.current ? '' : `/versions/${target.version}`}`;
     // A file (C-63) opens its message with its preview open, at the page that matched for a PDF.
@@ -82,13 +81,12 @@ export type SearchPlace =
   | { type: 'private' }
   | { type: 'workspace'; id: string; name: string };
 
-/** The exact object a result opens. Material results open the version that matched. */
+/** The exact object a result opens. A Wiki page's result opens the version that matched. */
 export type SearchTarget =
   /** A project (#465) opens its home; it is found by its name, for whoever may open the project. */
   | { type: 'project'; projectId: string }
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'dm_message'; dmId: string; messageId: string }
-  | { type: 'material'; projectId: string; materialId: string; version: number }
   /** A doc (#112) at the version that matched; `current` when that is the page as it is now, which then opens itself. */
   | { type: 'doc'; projectId: string; docId: string; version: number; current?: true }
   /** A file someone sent (C-63): its message, with its preview open at `page` (a PDF's page where the match is). */

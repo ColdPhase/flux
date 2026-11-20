@@ -166,7 +166,7 @@ export function assistantRemovalRows(db: DbExecutor) {
     async untouchedDoc(input: { docId: string; agentId: string; ownerUserId: string }): Promise<{ ok: true; version: number } | Refused> {
       const doc = await first<{ id: string; projectId: string; agentId: string | null; version: number }>(db, sql`
         SELECT id, project_id AS "projectId", created_by_agent_id AS "agentId", current_version AS version
-        FROM project_materials WHERE id = ${input.docId} AND kind = 'doc' FOR UPDATE`);
+        FROM project_materials WHERE id = ${input.docId} FOR UPDATE`);
       if (!doc) return gone();
       if (doc.agentId !== input.agentId) return foreign();
       // An agent's version has no person (`author_id` is NULL), so a comparison with the owner is NULL for it: COALESCE keeps that from hiding it.

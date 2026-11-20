@@ -31,7 +31,7 @@ const MAX_ITEMS = 40;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const RELEVANT = new Set([
-  'project.conversation_created.v1', 'project.message_sent.v1', 'project.material_created.v1', 'project.material_updated.v1',
+  'project.conversation_created.v1', 'project.message_sent.v1',
   'project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1',
   'sketch.created.v1', 'sketch.changed.v1', 'project.doc_created.v1', 'project.doc_updated.v1',
 ]);
@@ -217,7 +217,6 @@ export function createReturnUseCases(ports: ReturnPorts) {
       switch (event.kind) {
         case 'project.work_created.v1': case 'project.work_updated.v1': { const work = id('workId'); if (work) add(`work:${work}`, 'work', event); break; }
         case 'project.decision_proposed.v1': case 'project.decision_accepted.v1': { const decision = id('decisionId'); if (decision) add(`decision:${decision}`, 'decision', event); break; }
-        case 'project.material_created.v1': case 'project.material_updated.v1': { const material = id('materialId'); if (material) add(`material:${material}`, 'material', event); break; }
         case 'sketch.created.v1': case 'sketch.changed.v1': add(`sketch:${event.objectId}`, 'sketch', event); break;
         case 'project.doc_created.v1': case 'project.doc_updated.v1': { const doc = id('docId'); if (doc) add(`doc:${doc}`, 'doc', event); break; }
         case 'project.conversation_created.v1': case 'project.message_sent.v1': {
@@ -230,9 +229,9 @@ export function createReturnUseCases(ports: ReturnPorts) {
       }
     }
     const ids = (prefix: string) => [...groups.keys()].filter((item) => item.startsWith(`${prefix}:`)).map((item) => item.slice(prefix.length + 1));
-    const [work, decisions, messages, materials, sketches, docs] = await Promise.all([
+    const [work, decisions, messages, sketches, docs] = await Promise.all([
       returns.work(ids('work')), returns.decisions(ids('decision')),
-      returns.messages(messageIds), returns.materials(ids('material')), returns.sketches(ids('sketch')), returns.docs(ids('doc')),
+      returns.messages(messageIds), returns.sketches(ids('sketch')), returns.docs(ids('doc')),
     ]);
     const extraDecisions = [...decisions.values()].map((item) => item.supersedesId ?? item.supersededById)
       .filter((id): id is string => !!id && !decisions.has(id));
@@ -346,16 +345,6 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const step = needsYou ? { priority: 4, text: 'Decide on the proposed decision',
           reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. You can accept it.` } : undefined;
         items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step });
-        continue;
-      }
-
-      if (group.kind === 'material') {
-        const item = materials.get(objectId);
-        if (!item || !inProject(item.projectId)) continue;
-        const created = group.events.some((event) => event.kind === 'project.material_created.v1');
-        items.push({ ...base, kind: 'material', text: `${created ? 'New material' : 'Updated material'}: ${item.title}`,
-          detail: created ? null : `Now version ${item.version}`, needsYou: false,
-          source: { type: 'material', projectId: item.projectId, materialId: item.id, version: item.version } });
         continue;
       }
 

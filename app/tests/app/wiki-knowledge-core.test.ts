@@ -220,7 +220,7 @@ describe('what a result carries to be cited (C-62)', () => {
     assert.equal(agentHit(row({ kind: 'work', objectId: TASK, workNumber: 12, status: 'open' }), null).cite, `[task:${TASK}]`);
     assert.equal(agentHit(row({ kind: 'decision', objectId: DECISION, status: 'accepted' }), null).cite, `[decision:${DECISION}]`);
     assert.equal(agentHit(row({ kind: 'message', objectId: MESSAGE, parentId: CONVERSATION, sequence: 4 }), null).cite, `[message:${MESSAGE}]`);
-    for (const kind of ['sketch', 'thought', 'material', 'dm_message'] as const) assert.equal('cite' in agentHit(row({ kind }), null), false, kind);
+    for (const kind of ['sketch', 'thought', 'dm_message'] as const) assert.equal('cite' in agentHit(row({ kind }), null), false, kind);
   });
   test('the mark of an object is the one the answer is read by', () => {
     for (const kind of ['doc', 'task', 'decision', 'message'] as const) assert.deepEqual(fluxMarks(`See ${citeMark(kind, DOC)}.`).map((mark) => mark.key), [`${kind}:${DOC}`]);
