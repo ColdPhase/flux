@@ -800,6 +800,14 @@ die_if_v01_refused() {
   die "Flux v0.2 does not upgrade this database (see the message above). Its data is untouched, but v0.1's API and worker are stopped now. To go on with v0.1, check out its v0.1.0 files again and run ./flux up; to start v0.2, install it fresh as the message says."
 }
 
+# A keyring that refused to start, or locked itself because its swap limit was reset while it ran (#1559, `systemctl daemon-reload`), says why
+# in its log: its last such line, when no "ready" came after it. Encrypted spaces stay locked then; everything else works, so this only warns.
+keyring_notice() {
+  keyring_line=$(compose_main logs --no-color --no-log-prefix keyring 2>/dev/null | grep -E '^Flux keyring (ready|refuses to start|locked itself)' | tail -n 1) || true
+  case "$keyring_line" in 'Flux keyring refuses'*|'Flux keyring locked'*) warn "$keyring_line" ;; esac
+  return 0
+}
+
 start_main() {
   check_runtime_switch
   if calls_on; then calls_settings; fi
@@ -817,13 +825,14 @@ start_main() {
     # host requirement, #860) stays red: this fails with its one message and the fix, and Flux is not reported healthy.
     compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress runtime-1 \
       || { refused=$(runtime_refusal); [ -z "$refused" ] || die "$refused"
-        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; die_if_v01_refused; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; die_if_v01_refused; keyring_notice; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
   else
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
-      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die_if_v01_refused; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die_if_v01_refused; keyring_notice; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
     stop_runtime
     remove_idle_runtime_networks
   fi
+  keyring_notice
   embeddings_on || remove_when_off embeddings "Local embeddings are off: removing their container (the downloaded model stays in its volume)."
   https_on || remove_when_off proxy "The bundled HTTPS proxy is off (the origin is not https, or FLUX_TRUSTED_PROXIES names your own proxy): removing it (its certificates stay in its volume)."
   calls_on || remove_when_off livekit "Calls are off: removing the media server."

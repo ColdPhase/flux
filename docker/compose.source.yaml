@@ -63,6 +63,9 @@ services:
     build:
       context: database
     image: *postgres-image
+    # An init process as PID 1 (#1540): the health check's `pg_isready` that its timeout killed was reparented to PostgreSQL's postmaster
+    # (PID 1 without this), which reaped a child it did not start, took its exit code 2 for a crash and reset every backend, `migrate`'s too.
+    init: true
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flux}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
@@ -193,6 +196,8 @@ services:
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
     # Memory equal to memory+swap: this container cannot page keys or content to a swap device (F-030).
+    # An init process as PID 1 (#1540): it reaps a health probe that its timeout orphaned, and passes signals on.
+    init: true
     mem_limit: ${FLUX_API_MEMORY:-1536m}
     memswap_limit: ${FLUX_API_MEMORY:-1536m}
     ulimits:
@@ -259,6 +264,8 @@ services:
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
+    # An init process as PID 1 (#1540): it reaps a health probe that its timeout orphaned, and passes signals on.
+    init: true
     mem_limit: ${FLUX_WORKER_MEMORY:-512m}
     memswap_limit: ${FLUX_WORKER_MEMORY:-512m}
     ulimits:
@@ -341,6 +348,7 @@ services:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["node", "apps/runtime/dist/manager/main.js"]
     mem_limit: 128m
+    memswap_limit: 128m
     pids_limit: 64
     restart: unless-stopped
     environment:
@@ -357,6 +365,7 @@ services:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["node", "apps/runtime/dist/egress/main.js"]
     mem_limit: 128m
+    memswap_limit: 128m
     pids_limit: 128
     restart: unless-stopped
     environment:

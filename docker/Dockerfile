@@ -5,7 +5,9 @@ ARG TARGETARCH
 ARG CODEX_TAG=rust-v0.160.1
 # Every Node stage uses one base, pinned by digest alone: node:24.22.2-alpine3.24 (Alpine 3.24.4), the node:24-alpine index read
 # 2026-11-10 (#1179). Dependabot cannot follow a pin without a tag; bump it by hand in every `FROM node@sha256:` line here and in
-# live-editing-calibration.Dockerfile (docs/agents/ci-and-releases.md#security-scanning).
+# live-editing-calibration.Dockerfile (docs/agents/ci-and-releases.md#security-scanning). Time-zone data (#1338): Node's own is 2026e and
+# PostgreSQL's 2026f (Cuba keeps -04 until 2027-11-07). Re-checked 2026-11-20: node:24-alpine is 24.22.3 (sha256:116b800c…, 2026-11-10), still
+# 2026e (`node -p process.versions.tz`), and nodejs.org lists no newer 24.x. When a Node 24 has 2026f or later, bump the pin below.
 FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS runtime-hardening-build
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c

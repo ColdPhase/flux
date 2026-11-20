@@ -6,7 +6,8 @@ import { join } from 'node:path';
  * (`packages/core/src/encryption/swap.ts`); the keyring may import only Node built-ins, so the rule is repeated here and
  * `tests/app/encryption-keyring.test.ts` runs both over the same inputs. Passes when the cgroup forbids swap (v2
  * `memory.swap.max` = 0, v1 memsw = limit), when `/proc/swaps` lists no device but `zram`, or with
- * `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap`. An unreadable file fails its case.
+ * `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap`. An unreadable file fails its case. It runs at start, then every minute and before every
+ * authenticated request (`createKeyring` in `./server.ts`, #1559): `systemctl daemon-reload` resets a running container's swap limit.
  */
 export type SwapFileReader = (path: string) => string | null;
 

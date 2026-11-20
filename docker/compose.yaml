@@ -15,6 +15,9 @@ services:
     # Flux's database image (F-042): PostgreSQL 18 with pg_search, built by the release from docker/database/Dockerfile.
     image: ${FLUX_RELEASE_DATABASE_IMAGE:?run Flux with ./flux, which names the images}
     restart: unless-stopped
+    # An init process as PID 1 (#1540): the health check's `pg_isready` that its timeout killed was reparented to PostgreSQL's postmaster
+    # (PID 1 without this), which reaped a child it did not start, took its exit code 2 for a crash and reset every backend, `migrate`'s too.
+    init: true
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flux}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -126,6 +129,8 @@ services:
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
     # Memory equal to memory+swap: no swap for this container (F-030); core dumps off.
+    # An init process as PID 1 (#1540): it reaps a health probe that its timeout orphaned, and passes signals on.
+    init: true
     mem_limit: ${FLUX_API_MEMORY:-1536m}
     memswap_limit: ${FLUX_API_MEMORY:-1536m}
     ulimits:
@@ -178,6 +183,8 @@ services:
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
+    # An init process as PID 1 (#1540): it reaps a health probe that its timeout orphaned, and passes signals on.
+    init: true
     mem_limit: ${FLUX_WORKER_MEMORY:-512m}
     memswap_limit: ${FLUX_WORKER_MEMORY:-512m}
     ulimits:

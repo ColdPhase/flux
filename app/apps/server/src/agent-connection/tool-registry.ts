@@ -10,6 +10,7 @@ import { refusedPrivateAddress } from './run-private-text.js';
 import { refusedCredential } from './run-credentials.js';
 import { boundRunResult } from './run-token.js';
 import { convertedOnce } from './tool-schema.js';
+import { recordToolCall, toolError } from './tool-results.js';
 
 /**
  * The run-private view of a change tool (F-027 A3, R2): an assistant run cites no sources (the run is its authority), its project
@@ -163,13 +164,21 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
         definitions.set(name, {
           config: { title: config.title, description: config.description, inputSchema: convertedOnce(config.inputSchema),
             ...(config.annotations ? { annotations: config.annotations } : {}) },
-          invoke(input, claims) {
-            // A run on the owner's Claude Code or Codex never sends its CLI's own login out through Flux (coordinator decision on #1437, RT-7):
-            // not as a change, and not in a read either (a web address `flux_read_web` would fetch, a search).
-            const output = claims.dispatch.run('tool', name, run
-              ? async () => (await refusedCredential(db, claims.run!.id, input as Record<string, unknown>)) ?? handler(input as Record<string, unknown>, { claims })
-              : () => handler(input as Record<string, unknown>, { claims }));
-            return run ? Promise.resolve(output).then((result) => boundRunResult(db, claims.run!.id, result as { content?: unknown }, name)) : output;
+          async invoke(input, claims) {
+            const started = performance.now();
+            // Whatever a tool throws instead of answering is an error inside Flux: told as such and logged, never the SDK's raw message (#1555).
+            let result: ToolOutput;
+            try {
+              // A run on the owner's Claude Code or Codex never sends its CLI's own login out through Flux (coordinator decision on #1437, RT-7):
+              // not as a change, and not in a read either (a web address `flux_read_web` would fetch, a search).
+              result = await claims.dispatch.run('tool', name, run
+                ? async () => (await refusedCredential(db, claims.run!.id, input as Record<string, unknown>)) ?? handler(input as Record<string, unknown>, { claims })
+                : () => handler(input as Record<string, unknown>, { claims })) as ToolOutput;
+              if (run) result = await boundRunResult(db, claims.run!.id, result as { content?: unknown }, name) as ToolOutput;
+            } catch (error) { result = toolError(error); }
+            recordToolCall({ tool: name, operation: effect?.operation ?? null, runId: claims.run?.id ?? null, connectionId: claims.connectionId,
+              ms: performance.now() - started }, result);
+            return result;
           },
         });
         entries.set(name, { name, title: config.title, access, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });

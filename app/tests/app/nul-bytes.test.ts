@@ -21,7 +21,10 @@ test('an agent\'s tool call with a NUL character is told it is invalid input, no
   const refused = toolError(Object.assign(new Error('Failed query'), { cause: Object.assign(new Error('invalid byte sequence'), { code: '22021' }) }));
   assert.equal(refused.isError, true);
   assert.deepEqual(JSON.parse(refused.content[0]!.text), { code: 'INVALID_INPUT', error: 'Text cannot contain a NUL character' });
-  assert.deepEqual(JSON.parse(toolError(new Error('anything else')).content[0]!.text), { code: 'MCP_TOOL_UNAVAILABLE', error: 'Tool unavailable' });
+  const failed = JSON.parse(toolError(new Error('anything else')).content[0]!.text) as { code: string; error: string };
+  assert.equal(failed.code, 'TOOL_FAILED');
+  assert.match(failed.error, /^Flux failed to do this because of an error inside Flux \(error id [0-9a-f-]{36}\)\./);
+  assert.ok(!failed.error.includes('anything else'), 'the error\'s own words never reach the model');
 });
 
 test('a name with a NUL character is refused with 400 on the routes that store one, and nothing changes', async () => {
