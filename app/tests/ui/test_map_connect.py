@@ -1,4 +1,4 @@
-"""#349 (F-026, P12 and S15): drag a thought's dot to connect; the phone only views and adds."""
+"""#349 (F-026, P12 and S15): drag a thought's dot to connect; since #1600 the phone arranges and connects by finger as well."""
 from __future__ import annotations
 
 import os
@@ -210,12 +210,12 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
         expect(tools.get_by_role('button', name='Create task from selected thoughts')).to_have_count(0)  # #867
 
-    def test_05_phone_views_and_adds_only(self):
+    def test_05_phone_selects_one_arranges_and_adds(self):
         for scheme in ('light', 'dark'):
             with self.subTest(scheme=scheme):
                 page = self.page(PHONE, scheme, touch=True)
                 sketch = self.scene(page)
-                expect(page.get_by_text('Connect and arrange on a computer')).to_be_visible()
+                expect(page.get_by_text('Connect and arrange on a computer')).to_have_count(0)
                 add = page.get_by_role('button', name='Thought', exact=True)
                 expect(add).to_be_visible()
                 self.assertGreaterEqual(add.evaluate('el => el.offsetHeight'), 44)
@@ -225,18 +225,23 @@ class MapConnectJourney(unittest.TestCase):
                 for name in ('Connect', 'Change shape', 'Select several'):
                     expect(tools.get_by_role('button', name=name, exact=True)).to_have_count(0)
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), PHONE['width'])
-                # Tapping selects one thought at a time; dragging does not arrange it.
+                # Tapping selects one thought at a time, which shows its two dots; a drag arranges it (S15 amended, #1600).
                 node = page.locator('.sk-node', has_text=A)
                 node.tap()
                 page.locator('.sk-node', has_text=B).tap()
                 expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
-                before = {t['text']: (t['x'], t['y']) for t in self.stored(page, sketch)['thoughts']}
+                expect(page.locator('.sk-dot.is-on')).to_have_count(2)
+                before = {t['id']: (t['x'], t['y']) for t in self.stored(page, sketch)['thoughts']}
                 box = page.locator('.sk-node', has_text=B).bounding_box()
-                page.mouse.move(box['x'] + 20, box['y'] + 10)
+                page.mouse.move(box['x'] + box['width'] / 2, box['y'] + 10)
                 page.mouse.down()
-                page.mouse.move(box['x'] + 120, box['y'] + 120, steps=6)
+                page.mouse.move(box['x'] + box['width'] / 2 - 60, box['y'] + 70, steps=6)
                 page.mouse.up()
-                self.assertEqual(before, {t['text']: (t['x'], t['y']) for t in self.stored(page, sketch)['thoughts']})
+                after = self.eventually(page, sketch, lambda s: any((t['x'], t['y']) != before[t['id']] for t in s['thoughts']))
+                moved = {t['id']: (t['x'], t['y']) for t in after['thoughts']}
+                b = self.ids[B]
+                self.assertGreater(moved[b][1], before[b][1] + 30, 'the thought moved on the shared map')
+                self.assertEqual({k: v for k, v in moved.items() if k != b}, {k: v for k, v in before.items() if k != b})
                 shot(page, f'map-connect-phone-390-{scheme}')
                 add.tap()
                 draft = page.get_by_role('form', name='New thought draft')
@@ -315,7 +320,7 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.get_by_role('form', name='New thought draft')).to_have_count(0)
         self.assertEqual(len(self.stored(page, sketch)['links']), 1)
 
-    def test_09_narrowing_to_a_phone_cancels_a_pending_connection(self):
+    def test_09_narrowing_to_a_phone_keeps_a_pending_connection(self):
         page = self.page({'width': 820, 'height': 1180})
         sketch = self.scene(page)
         page.locator('.sk-node', has_text=A).click()
@@ -323,17 +328,10 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.locator('.sk-status')).to_contain_text('Choose the thought to link to')
         page.set_viewport_size(PHONE)
         expect(page.get_by_role('button', name='Thought', exact=True)).to_be_visible()
+        # The phone connects too (S15 amended, #1600): the connection armed on the wider screen is finished there.
         page.locator('.sk-node', has_text=B).click()
-        expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
-        page.wait_for_timeout(500)
-        self.assertEqual(self.stored(page, sketch)['links'], [], 'phone mode never links')
-        # Wider again: linking still works.
-        page.set_viewport_size({'width': 820, 'height': 1180})
-        page.locator('.sk-node', has_text=A).click()
-        page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Connect', exact=True).click()
-        page.locator('.sk-node', has_text=B).click()
-        expect(page.locator('.sk-status')).to_contain_text('Linked')
         self.assertEqual(len(self.eventually(page, sketch, lambda s: len(s['links']) == 1)['links']), 1)
+        expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
 
     def test_10_phone_named_sheets_keep_secondary_actions_and_restore_focus(self):
         page = self.page(PHONE, touch=True)
@@ -378,14 +376,15 @@ class MapConnectJourney(unittest.TestCase):
         shot(page, 'map-phone-plain-draft-390-light')
         draft.get_by_role('button', name='Cancel', exact=True).tap()
         options = open_map_options(page, touch=True)
-        for name in ('Fit the map to the view', 'Zoom out', 'Zoom in'):
-            control = options.get_by_role('button', name=name, exact=True)
-            expect(control).to_be_visible()
-            self.assertGreaterEqual(control.evaluate('el => el.offsetHeight'), 44)
-            self.assertGreaterEqual(control.bounding_box()['height'], 44 - 1 / 64)
+        control = options.get_by_role('button', name='Fit the map to the view', exact=True)
+        expect(control).to_be_visible()
+        self.assertGreaterEqual(control.evaluate('el => el.offsetHeight'), 44)
+        self.assertGreaterEqual(control.bounding_box()['height'], 44 - 1 / 64)
+        # Two fingers zoom the phone's map, not buttons (S15, founder direction, Hubert, 2026-11-20).
+        for name in ('Zoom out', 'Zoom in'):
+            expect(options.get_by_role('button', name=name, exact=True)).to_have_count(0)
         shot(page, 'map-phone-options-390-light')
-        options.get_by_role('button', name='Zoom in', exact=True).tap()
-        options.get_by_role('button', name='Fit the map to the view', exact=True).tap()
+        control.tap()
         options.get_by_role('button', name='Close map options', exact=True).tap()
         expect(page.get_by_role('button', name='Map options', exact=True)).to_be_focused()
         show_map_as(page, 'List', touch=True)
@@ -451,7 +450,8 @@ class MapConnectJourney(unittest.TestCase):
                 expect(draft).to_contain_text('Top level')
                 expect(draft).not_to_contain_text('Connected to')
                 # The phone shows the computer's plane, so the dashed frame of a new thought is drawn where it will land; no connection is drawn.
-                expect(page.locator('.sk-wire, .sk-dot')).to_have_count(0)
+                # (The selected thought keeps its dots, #1600: only a drag from one would connect.)
+                expect(page.locator('.sk-wire')).to_have_count(0)
                 expect(page.locator('.sk-ghost--draft')).to_have_count(1 if entry in ('primary', 'keyboard', 'paste-text', 'paste-image', 'wide-draft') else 0)
                 if entry in ('primary', 'keyboard', 'list-keyboard'):
                     draft.get_by_label('Thought text').fill(f'Plain addition from {entry}')

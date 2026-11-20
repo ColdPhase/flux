@@ -60,8 +60,8 @@ them into columns. A phone or a map beside docked Details shows that plane with 
 from Fit's floor to 150 %; the person's place on it is remembered per person, map and device, and Fit frames a map only the first time
 it is opened on that device, or when asked. The controls follow the device and window (*viewport*, `MEDIA.phone`): a computer keeps
 its toolbar, zoom and Fit at any pane width and never gets the phone's Map options sheet or Thought button; the phone's header pills and
-Thought float over the plane, which scrolls under them, and Fit leaves room for them. Connecting and arranging stay computer-only on
-the phone (S15).
+Thought float over the plane, which scrolls under them, and Fit leaves room for them. The phone arranges and connects by finger as the
+computer does (S15, #1600) and zooms only with two fingers or a double tap: its Map options hold Fit, not zoom buttons.
 
 ## Input modes
 

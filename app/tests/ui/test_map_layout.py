@@ -77,10 +77,10 @@ class MapLayoutJourney(unittest.TestCase):
         return tasks[1]
 
     def assert_hint_inside_pane(self, page):
-        """F-026: one line of hint above the tools on a computer, the phone's note and Add button on a phone;
+        """F-026: one line of hint above the tools on a computer, the phone's bottom row with its Thought button on a phone;
         the long keyboard help stays attached to the map for assistive technology."""
         phone = page.viewport_size['width'] <= 640
-        hint = page.locator('.sk-phone__note' if phone else '.sk-hint')
+        hint = page.locator('.sk-phone__row' if phone else '.sk-hint')
         expect(hint).to_be_in_viewport(ratio=1)
         self.assertTrue(hint.evaluate('el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1'),
             'all hint text wraps inside its own box')
