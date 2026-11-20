@@ -475,6 +475,12 @@ signed nor drafted. The draft's notes carry the "Upgrades from" line of the vers
 compares every released migration file with its tag and fails in Actions when the tags are missing. No PR check runs the matrix: it builds and runs a whole
 installation per release, and is part of release acceptance ([evaluation](evaluation.md#at-release-acceptance)).
 
+A pull request that touches the database ([`database-checks.yml`](../../.github/workflows/database-checks.yml), C-68, #1552: `app/packages/db/**`,
+the migrator, the released fixtures or the database image) runs `./scripts/check_application.sh` with only `released-databases.test.ts` and
+`schema-in-use.test.ts`: every released database upgraded to the head has a fresh install's schema and keeps its values, and nothing in the
+schema is unused. It is path-filtered, so it is not a required check; in the release, leg 2 of `smoke_artifacts.sh` compares the upgraded
+installation's schema with a fresh one the candidate's migrator builds beside it.
+
 ## Evidence for completion
 
 A delivery task reports the workflow PR, successful/failing run evidence, effective

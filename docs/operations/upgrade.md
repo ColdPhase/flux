@@ -1,6 +1,7 @@
 # Upgrade
 
 ```sh
+cd /srv/flux && ./flux upgrade --check    # the plan, changing nothing
 cd /srv/flux && ./flux upgrade            # the latest release; or ./flux upgrade v0.2.2 for that one
 ```
 
@@ -46,6 +47,29 @@ operators: the engineering side is in [upgrade compatibility](../development/upg
    [`docker/env-changes.txt`](../../docker/env-changes.txt); `./flux upgrade` moves a renamed setting to its new name and prints
    what it did, and reports a removed one by name and reason, and the release notes list the same changes.
 
+## See the plan first
+
+`./flux upgrade --check` (with a VERSION or `--file flux.tar.gz` like the upgrade itself) changes nothing and keeps Flux running
+([#1552](https://github.com/ColdPhase/flux/issues/1552), C-68). It downloads and checks the release as step 1 below, reads the new
+release's migrations from its image, and prints:
+
+```text
+Flux v0.2.2 (checked against its signed SHA256SUMS):
+From schema 104 to schema 106.
+Migrations (2), each in its own transaction, in this order:
+  0105_file_size_setting
+  0106_remove_unused_schema
+      removes: DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence
+Backup first: database 180 MB and files 2310 MB before compression, into backups; about 3 min with API and worker stopped.
+Nothing was changed. Run ./flux upgrade to do it.
+```
+
+"removes" lists what each migration drops, as it is written in it. Every release's migrations are tested to keep the data of
+every earlier release and to leave a database whose schema is exactly a fresh install's ([upgrade compatibility](../development/upgrade-compatibility.md)).
+The time is a rough figure for the backup at about 20 MB/s; the migrations themselves usually take seconds.
+
+## The upgrade
+
 `./flux upgrade` moves the instance in this folder to a newer release ([#1471](https://github.com/ColdPhase/flux/issues/1471),
 founder decision 5):
 
@@ -77,8 +101,8 @@ engine, see [requirements](requirements.md#software)). The launcher checks it be
 an upgrade, because a launcher that finds an old one after the backup has stopped API and worker reports `UPGRADE FAILED`
 with the way back.
 
-The downtime is the backup and the migration. It prints
-`Upgraded <project> from schema A to B` and keeps the backup.
+The downtime is the backup and the migration. It prints each migration as it is applied (`Applied migration 0105_file_size_setting.sql`)
+and ends with one line, `Upgraded <project> from schema A to B`, and keeps the backup.
 
 The image checks the database's migration ledger before it migrates: every recorded version must
 be a file of the image. If it refuses, keep the backup and restore its matching image and database.

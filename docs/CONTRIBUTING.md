@@ -88,6 +88,11 @@ repository checks. You do not need Node.js or PostgreSQL on your computer.
    ([architecture](development/architecture.md)) and tests under `app/tests/app`.
    A UI change matches the [final design](design/final/README.md): its tokens,
    components, screens and rules.
+   A change to the database is a new migration written for the data that real
+   installations hold: it converts rows instead of assuming an empty database, removes
+   what a redesign replaces (tables, columns, functions and their rows) in the same
+   change, and leaves a schema equal to a fresh install's; the PR says how existing data
+   moves ([upgrade compatibility](development/upgrade-compatibility.md#what-you-must-do-when-you-change-the-schema)).
 5. Run the checks below, commit your changes, and push your branch to your fork.
 6. Open a PR against `ColdPhase/flux:main` and complete the PR template. Use a
    draft PR if the change is still being developed.
