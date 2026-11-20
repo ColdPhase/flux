@@ -374,9 +374,8 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertEqual(page.locator(".tb-col:visible").count(), 1, "one status at a time")
         first = column.get_by_role("heading", level=3).first
         expect(first).to_be_visible()
-        top = self.box(first)["y"]
-        print(f"phone tasks: the first task starts at {top}px")
-        self.assertLessEqual(top, 400, "the first task starts within 400px: the header, the views, the control row and the status row")
+        # Measured 252 px on Chromium at 375 x 667 (2026-11-20): the status row took the place of the column's own header.
+        self.assertLessEqual(self.box(first)["y"], 360, "the first task starts within 360px: the header, the views, the control row and the status row")
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), SE["width"])
         shot(page, "346-tasks-phone")
 
