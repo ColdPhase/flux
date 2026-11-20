@@ -56,10 +56,12 @@ export async function startFileText(options: FileTextOptions) {
     }
     if (result && !result.ok && result.reason === 'crashed') log('A file could not be read', { file: job.fileId, reason: result.reason, detail: result.detail });
     const split = result?.ok ? splitIntoParts(result.segments, { partChars: FILE_TEXT_LIMITS.partChars, maxChars: FILE_TEXT_LIMITS.chars }) : null;
-    // A file that cannot be read (or one that is not text by its name) is finished without text: its name row stays.
-    await rows.store(job.fileId, split?.parts ?? []);
+    // A file that cannot be read (or one that is not text by its name) is finished without text: its name row stays. A PDF without text
+    // keeps its pages' pictures instead, for the agents whose model sees pictures (C-69, #1557).
+    const pictures = result && !result.ok ? result.pictures ?? [] : [];
+    await rows.store(job.fileId, split?.parts ?? [], { pictures, noText: format === 'pdf' && !!result && !result.ok && result.reason === 'empty' });
     console.log(JSON.stringify({ job: 'file.text', file: job.fileId, ms: Date.now() - started, outcome: result ? (result.ok ? 'read' : result.reason) : 'skipped',
-      parts: split?.parts.length ?? 0, chars: split?.chars ?? 0, ...(split?.truncated ? { truncated: true } : {}) }));
+      parts: split?.parts.length ?? 0, chars: split?.chars ?? 0, ...(split?.truncated ? { truncated: true } : {}), ...(pictures.length ? { pictures: pictures.length } : {}) }));
   };
 
   const tick = async () => {

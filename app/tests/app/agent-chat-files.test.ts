@@ -9,7 +9,8 @@ import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapter
 import { db, pool } from './support/db.js';
 import { expectStatus, removeMember, type Person } from './support/people.js';
 import { assistantScene, human, result, text, type AssistantScene } from './support/assistant-scene.js';
-import { png } from './support/pictures.js';
+import { jpeg, png } from './support/pictures.js';
+import { pdfOfPictures } from './support/file-text.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { mcp } from './support/mcp.js';
 import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
@@ -114,6 +115,27 @@ describe('files in an agent\'s private chat', () => {
     assert.equal(result(unread.message)?.isError, true);
     assert.doesNotMatch(text(unread.message), /Mondays/);
     await scene.complete(space.runId);
+  });
+
+  test('C-69 (#1557): the model in pi reads a PDF without text as pictures of its pages; a model that does not see pictures is told why', async () => {
+    const scan = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'OH-mapa-pomyslow.pdf', pdfOfPictures([{ kind: 'jpeg', bytes: jpeg(), width: 16, height: 8 }]));
+    const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is on the map?', attachmentIds: [scan.body.id] });
+    // What the worker's reader keeps of such a file (file-text.test.ts reads a real one): no text, and its page's picture.
+    assert.equal(await fileTextRows(db).store(scan.body.id, [], { noText: true, pictures: [{ page: 1, width: 40, height: 30, png: png(40, 30) }] }), true);
+    pi.gateway.script([{ tool: 'mcp__flux__flux_read_file', args: { fileId: scan.body.id } }, { text: 'A mind map of the autumn campaign.' }]);
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    const [, second] = pi.gateway.requests;
+    assert.equal(second!.images, 1, 'the model is given the page as a picture');
+    assert.match(second!.results[0] ?? '', /This PDF has no text \(a scan or a picture\)\. Pictures of page 1 follow/);
+    // A run whose model does not see pictures (its tools have no flux_view_image) is told it cannot read it.
+    const blind = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
+    const live = await scene.liveOf(blind.run.id);
+    // The run's tools are read on every call: without flux_view_image it is a run whose model does not see pictures.
+    await pool.query(`UPDATE personal_runs SET run_tools = array_remove(run_tools, 'flux_view_image') WHERE id = $1`, [blind.run.id]);
+    const read = await live.raw('tools/call', { name: 'flux_read_file', arguments: { fileId: scan.body.id } });
+    assert.match(text(read.message), /You cannot look at pictures, so tell the person you cannot read it/);
+    assert.doesNotMatch(JSON.stringify(read.message), /"type":"image"/);
+    await scene.complete(blind.run.id);
   });
 
   test('the run is told the files with their ids, and the model in pi looks at the picture it asks for', async () => {

@@ -32,6 +32,15 @@ export const FILE_TEXT_LIMITS = {
   memoryBytes: 320 * 1024 * 1024,
   extraBytes: 256 * 1024 * 1024,
   heapMb: 160,
+  /**
+   * A PDF without text (a scan, an exported map, slides saved as pictures; C-69, #1557): the picture of each of its first `pages` pages, the
+   * largest one drawn on it, at most `side` pixels on its long side (Anthropic's advice for the sharpest picture a model is sent, docs.claude.com
+   * "Vision", read 2026-11-20), as a PNG of at most `pictureBytes`; a picture of more than `pixels` is not decoded, and the pictures of one file
+   * stop at `totalBytes`. No page is begun after `untilMs` of the child's life (the text read included), so a long scan keeps the pages made
+   * in time instead of losing all of them to the 20-second bound (measured: ten pages of 16 million pixels took 6.6 s on one core). The child's output then may hold them as base64 (`outputBytes` with `pictureOutputBytes`).
+   */
+  pictures: { pages: 10, side: 1568, pixels: 16_000_000, pictureBytes: 3_600_000, totalBytes: 20 * 1024 * 1024, untilMs: 12_000 },
+  pictureOutputBytes: 28 * 1024 * 1024,
   /** A job is claimed for this long (a worker that died leaves it to be claimed again) and tried this many times. */
   leaseMs: 2 * 60_000,
   attempts: 3,

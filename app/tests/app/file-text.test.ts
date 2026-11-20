@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import type { Conversation, SearchResponse, SearchResult, StagedFile } from '@flux/contracts';
+import { conversationMessagePath, conversationPath, type Conversation, type SearchResponse, type SearchResult, type StagedFile } from '@flux/contracts';
 import { startFileText } from '../../apps/worker/src/file-text/index.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
 import { connectionString, db, pool } from './support/db.js';
 import { createSealed, passphrase, unlock } from './support/encryption.js';
-import { docxBytes, pdfBytes } from './support/file-text.js';
+import { docxBytes, pdfBytes, pdfOfPictures, type PicturePage } from './support/file-text.js';
 import { jpeg } from './support/pictures.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed } from './support/space-ai.js';
@@ -251,6 +251,47 @@ describe('agents find the text inside files and read an excerpt of it (C-63)', (
     assert.equal(pdfText.nextOffset, null);
     // A file of a space the connection does not reach, an unknown file and a file that is not a file are one answer.
     for (const fileId of [hidden.fileIds[0]!, randomUUID()]) assert.equal(toolFailure((await call('flux_read_file', { fileId })).message).code, 'FILE_NOT_FOUND');
+  });
+
+  test('C-69 (#1557): a PDF of pictures only is marked "no text" for people and gives an agent the pictures of its pages, a few a call', async () => {
+    const pages: PicturePage[] = [{ kind: 'rgb', width: 2000, height: 1400 }, { kind: 'jpeg', bytes: jpeg(), width: 16, height: 8 },
+      { kind: 'grey', width: 800, height: 600 }, { kind: 'grey', width: 400, height: 300 }];
+    const sent = await send(lead, spaceId, [{ name: 'OH-mapa-pomyslow.pdf', bytes: pdfOfPictures(pages) }]);
+    await settled(sent.fileIds);
+    const fileId = sent.fileIds[0]!;
+    assert.deepEqual((await pool.query('SELECT no_text FROM project_files WHERE id = $1', [fileId])).rows[0], { no_text: true });
+    const kept = (await pool.query('SELECT page, width, height, png FROM file_page_pictures WHERE file_id = $1 ORDER BY page', [fileId])).rows as
+      { page: number; width: number; height: number; png: Buffer }[];
+    assert.deepEqual(kept.map((row) => [row.page, row.width, row.height]), [[1, 1568, 1098], [2, 16, 8], [3, 800, 600], [4, 400, 300]],
+      'each page\'s picture, the long side at most 1,568 px');
+    for (const row of kept) {
+      assert.ok(row.png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'a PNG');
+      assert.equal(row.png.readUInt32BE(16), row.width);
+    }
+    assert.equal(kept[0]!.png[25], 2, 'a colour page stays RGB');
+    assert.equal(kept[2]!.png[25], 0, 'a grey scan is a grey PNG');
+    // People: the message's file says it has no text.
+    const thread = expectStatus(await member.browser.request('GET', conversationPath(sent.conversation.id)), 200) as Conversation;
+    assert.equal(thread.messages[0]!.files?.[0]?.noText, true);
+
+    // An agent (a local client sees pictures): the first three pages' pictures, then the fourth.
+    const first = (await call('flux_read_file', { fileId })).message as { result: { content: { type: string; text?: string; data?: string; mimeType?: string }[]; isError?: boolean } };
+    assert.notEqual(first.result.isError, true, JSON.stringify(first).slice(0, 500));
+    const told = JSON.parse(first.result.content[0]!.text!) as { noText: boolean; nextOffset: number | null; note: string; body: string };
+    assert.equal(told.noText, true);
+    assert.equal(told.body, '');
+    assert.equal(told.nextOffset, 3);
+    assert.match(told.note, /^This PDF has no text \(a scan or a picture\)\. Pictures of pages 1, 2, 3 follow; continue with nextOffset/);
+    const images = first.result.content.slice(1);
+    assert.deepEqual(images.map((part) => [part.type, part.mimeType]), [['image', 'image/png'], ['image', 'image/png'], ['image', 'image/png']]);
+    assert.ok(Buffer.from(images[0]!.data!, 'base64').equals(kept[0]!.png), 'the stored picture, as it is');
+    const rest = (await call('flux_read_file', { fileId, offset: 3 })).message as { result: { content: { type: string; text?: string }[] } };
+    assert.equal((JSON.parse(rest.result.content[0]!.text!) as { nextOffset: number | null }).nextOffset, null);
+    assert.deepEqual(rest.result.content.slice(1).map((part) => part.type), ['image']);
+    // Deleting the message deletes the file, and its pictures with it.
+    const removed = await lead.browser.request('DELETE', conversationMessagePath(sent.conversation.id, sent.messageId));
+    assert.ok(removed.status === 200 || removed.status === 204, removed.text);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM file_page_pictures WHERE file_id = $1', [fileId])).rows[0].n, 0);
   });
 
   test('a space whose AI is turned off is reached by nobody: its file is not read', async () => {
