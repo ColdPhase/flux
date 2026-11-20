@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { conversationMessagePath, conversationPath, type Conversation, type SearchResponse, type SearchResult, type StagedFile } from '@flux/contracts';
+import { conversationMessagePath, conversationPath, dmFilesPath, type Conversation, type SearchResponse, type SearchResult, type StagedFile } from '@flux/contracts';
+import { FILE_TEXT_LIMITS } from '@flux/core';
+import { fileTextRows } from '@flux/db';
 import { startFileText } from '../../apps/worker/src/file-text/index.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
@@ -193,6 +195,25 @@ describe('the text inside files, found by people and agents (C-63)', () => {
     const hit = found.find((item) => titleOf(item) === `${name}.pdf`)!;
     assert.deepEqual({ ...hit.target }, { type: 'file', projectId: space.id, conversationId: sent.conversation.id, messageId: sent.messageId, fileId: sent.fileIds[0]! });
     assert.deepEqual((await search(outsider, name)).items, [], 'and nobody outside the space finds them');
+    // A direct message's files of the encrypted workspace (C-64 (3), 0109) get no row and no job either, and OCR's batch (C-70, 0104) never queues
+    // a file of it, so none of them ever has an OCR state or a page's picture (C-69, 0103).
+    const peer = await person('Sealed DM peer');
+    await addMember(owner, sealed.id, peer, 'member');
+    const dm = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${sealed.id}/dms`, { body: { participantIds: [peer.id] } }), 201) as { id: string };
+    const dmFiles = await Promise.all([{ name: `${name} dm.pdf`, bytes: pdfOfPictures([{ kind: 'grey', width: 64, height: 64 }]) }, { name: `${name} dm.jpg`, bytes: jpeg() }].map(async (file) => {
+      const response = await fetch(new URL(`${dmFilesPath(dm.id)}?uploadId=${randomUUID()}&name=${encodeURIComponent(file.name)}`, owner.browser.base), {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: owner.browser.cookieHeader(), origin: owner.browser.defaultOrigin }, body: Buffer.from(file.bytes) });
+      assert.equal(response.status, 201, await response.clone().text());
+      return (await response.json() as StagedFile).id;
+    }));
+    expectStatus(await owner.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: '', clientMessageId: randomUUID(), attachmentIds: dmFiles } }), 201);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM search_documents WHERE object_id = ANY($1::text[])', [dmFiles])).rows[0].n, 0, 'no row of a DM file');
+    const all = [...sent.fileIds, ...dmFiles];
+    await fileTextRows(db).queueOcr(FILE_TEXT_LIMITS.ocr.batch);
+    assert.equal(await jobs(all), 0, 'nothing of the encrypted workspace is queued, by a trigger or by OCR');
+    assert.deepEqual((await pool.query(`SELECT count(*) FILTER (WHERE f.ocr_state IS NOT NULL OR f.no_text)::int AS read,
+        (SELECT count(*)::int FROM file_page_pictures p WHERE p.file_id = ANY($1::uuid[])) AS pictures FROM project_files f WHERE f.id = ANY($1::uuid[])`, [all])).rows[0],
+      { read: 0, pictures: 0 });
   });
 });
 

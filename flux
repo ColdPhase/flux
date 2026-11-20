@@ -81,6 +81,7 @@ compose_main() {
     set -- -f "$COMPOSE_HTTPS" "$@"
   fi
   if calls_on; then calls_env; set -- -f "$COMPOSE_LIVE" "$@"; fi
+  ocr_worker_memory
   release_images_env
   FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
@@ -104,6 +105,7 @@ compose_main_all() (
 # A release has no development stack (its files are not shipped): down, reset and clean have nothing to do for it there.
 compose_dev() {
   if from_release; then return 0; fi
+  ocr_worker_memory
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
     docker --log-level error compose --project-directory "$FLUX_ROOT/docker" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
@@ -124,6 +126,29 @@ env_value() {
 }
 env_file_has() { [ -f "$ENV_FILE" ] && grep -q "^$1=." "$ENV_FILE"; }
 embeddings_on() { [ "$(env_value FLUX_EMBEDDINGS)" = on ]; }
+# OCR (C-70) reads each picture in a child of the worker that may hold 384 MiB (FILE_TEXT_LIMITS.ocr in packages/core), besides the
+# worker's own memory (measured peak 111 MB): with FLUX_FILE_OCR=on the worker has at least 1 GiB, and a smaller FLUX_WORKER_MEMORY
+# (the settings file's 512m) is raised to 1g. A size Compose reads otherwise (a fraction, bytes) is left to it. OCR_WORKER_MEMORY_FROM keeps
+# the operator's value for the one line `up` and `upgrade` print about it (say_ocr_worker_memory).
+ocr_worker_memory() {
+  [ "$(env_value FLUX_FILE_OCR)" = on ] || return 0
+  size=$(env_value FLUX_WORKER_MEMORY | tr 'A-Z' 'a-z'); size=${size%b}
+  case "$size" in
+    '') mib=512 ;;
+    *[!0-9]*[mg]|*[!0-9mg]*|[mg]) return 0 ;;
+    *g) mib=$((${size%g} * 1024)) ;;
+    *m) mib=${size%m} ;;
+    *) return 0 ;;
+  esac
+  [ "$mib" -lt 1024 ] || return 0
+  OCR_WORKER_MEMORY_FROM=$(env_value FLUX_WORKER_MEMORY)
+  export FLUX_WORKER_MEMORY=1g
+}
+say_ocr_worker_memory() {
+  ocr_worker_memory
+  [ -n "${OCR_WORKER_MEMORY_FROM+x}" ] || return 0
+  say "OCR is on: the worker gets 1g of memory instead of FLUX_WORKER_MEMORY=${OCR_WORKER_MEMORY_FROM:-512m} (its reader may hold 384 MiB)."
+}
 
 # --- The origin's parts (#1471). FLUX_PUBLIC_ORIGIN is scheme://host[:port], without a path; an IPv6 host is in brackets.
 origin_hostport() { o=$(public_origin); o=${o#*://}; printf '%s' "${o%%/*}"; }
@@ -817,6 +842,7 @@ start_main() {
   # Compose leaves a running container alone: a runtime that refused starts again, so it looks at the host again (#860).
   if runtime_on && [ -n "$(runtime_refusal)" ]; then compose_main --profile runtime rm -fs runtime-1 >/dev/null 2>&1 || true; fi
   say "Migrating and starting..."
+  say_ocr_worker_memory
   # files-init gives the non-root API and worker their files volume; `up` then waits for
   # PostgreSQL, runs the one-shot migration and starts API and worker only if it succeeded.
   compose_main --profile setup run --rm files-init >/dev/null
@@ -1751,6 +1777,7 @@ upgrade_apply() {
   compose_main --profile setup run --rm files-init >/dev/null || upgrade_failed "preparing the files volume failed"
   say "Migrating from schema $UPGRADE_FROM_SCHEMA to $to_schema..."
   compose_main run --rm migrate || upgrade_failed "the migration failed"
+  say_ocr_worker_memory
   # From here the new version may accept work, even if a later check fails.
   UPGRADE_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \

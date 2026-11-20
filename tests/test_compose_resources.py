@@ -10,6 +10,7 @@ Standard library only (no YAML parser), like the other Compose tests.
 from __future__ import annotations
 
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -184,6 +185,63 @@ class ComposeResourcesTest(unittest.TestCase):
                 self.assertIsNotNone(match, f"{name}: {service} needs mem_limit and an equal memswap_limit from {variable}")
                 total += mebibytes(match.group(1))
             self.assertLessEqual(total, 3 * 1024, f"{name}: the default limits add up to {total} MiB")
+
+
+
+def launcher_function(name: str) -> str:
+    text = (ROOT / "flux").read_text(encoding="utf-8")
+    start = text.index(f"\n{name}() {{") + 1
+    line = text[start:text.index("\n", start)]
+    return line if line.endswith("}") else text[start:text.index("\n}\n", start) + 3]
+
+
+class OcrWorkerMemoryTest(unittest.TestCase):
+    """C-70 security review P3: an OCR child may hold 384 MiB beside the worker, so with FLUX_FILE_OCR=on `./flux` gives the worker 1 GiB."""
+
+    def worker_memory(self, ocr: str, memory: str | None) -> str:
+        functions = "\n".join(launcher_function(name) for name in ("env_file_value", "env_value", "ocr_worker_memory"))
+        env = {"PATH": "/usr/bin:/bin", "FLUX_FILE_OCR": ocr, "ENV_FILE": "/nonexistent"}
+        if memory is not None:
+            env["FLUX_WORKER_MEMORY"] = memory
+        script = f"set -eu\n{functions}\nocr_worker_memory\nprintf '%s' \"${{FLUX_WORKER_MEMORY-}}\"\n"
+        return subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, check=True).stdout
+
+    def test_ocr_on_raises_a_smaller_worker_to_1g_and_keeps_a_larger_one(self) -> None:
+        for memory, expected in ((None, "1g"), ("", "1g"), ("512m", "1g"), ("768MB", "1g"), ("1023m", "1g"), ("1024m", "1024m"), ("1g", "1g"),
+                                 ("2G", "2G"), ("1536m", "1536m"), ("1.5g", "1.5g")):
+            with self.subTest(memory=memory):
+                self.assertEqual(self.worker_memory("on", memory), expected)
+
+    def test_ocr_off_leaves_the_worker_as_set(self) -> None:
+        for memory, expected in ((None, ""), ("512m", "512m")):
+            with self.subTest(memory=memory):
+                self.assertEqual(self.worker_memory("off", memory), expected)
+
+    def notice(self, ocr: str, memory: str | None) -> str:
+        functions = "\n".join(launcher_function(name) for name in ("say", "env_file_value", "env_value", "ocr_worker_memory", "say_ocr_worker_memory"))
+        env = {"PATH": "/usr/bin:/bin", "FLUX_FILE_OCR": ocr, "ENV_FILE": "/nonexistent"}
+        if memory is not None:
+            env["FLUX_WORKER_MEMORY"] = memory
+        # compose_main has already raised it in this shell before up or upgrade print the line: the line still names the operator's value.
+        script = f"set -eu\n{functions}\nocr_worker_memory\nsay_ocr_worker_memory\n"
+        return subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, check=True).stdout
+
+    def test_up_and_upgrade_say_in_one_line_when_they_raise_it(self) -> None:
+        self.assertEqual(self.notice("on", "512m"),
+                         "OCR is on: the worker gets 1g of memory instead of FLUX_WORKER_MEMORY=512m (its reader may hold 384 MiB).\n")
+        self.assertIn("FLUX_WORKER_MEMORY=512m", self.notice("on", None))
+        for ocr, memory in (("on", "2g"), ("off", "512m")):
+            with self.subTest(ocr=ocr, memory=memory):
+                self.assertEqual(self.notice(ocr, memory), "")
+        text = (ROOT / "flux").read_text(encoding="utf-8")
+        for function in ("start_main", "upgrade_apply"):
+            body = text[text.index(f"\n{function}() {{"):]
+            self.assertIn("  say_ocr_worker_memory\n", body[:body.index("\n}\n")], function)
+
+    def test_every_compose_command_of_the_launcher_applies_it(self) -> None:
+        for function in ("compose_main", "compose_dev"):
+            self.assertIn("ocr_worker_memory\n", launcher_function(function), function)
+        self.assertRegex((DOCKER / "compose.test.yaml").read_text(encoding="utf-8"), r'FLUX_FILE_OCR: "on"[\s\S]*?mem_limit: 1g\n    memswap_limit: 1g')
 
 
 if __name__ == "__main__":

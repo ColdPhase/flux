@@ -356,6 +356,8 @@ class PhoneShellJourney(unittest.TestCase):
 
     def test_10_phone_tasks_has_the_views_and_one_control_row(self):
         # F-026 S-P-Tasks (#346, #868): the views are the row under the title, then one control row (Board | List, Mine, search).
+        # C-66 (#1560, design README "On the phone the Board shows one status at a time"): under the control row the status row, the column's only
+        # header, then the chosen status's column (a tab panel of that row), which opens on To do.
         page = self.page()
         page.goto(f"/projects/{self.project['id']}/tasks")
         expect(page.get_by_role("navigation", name="Space views")).to_be_visible()
@@ -364,9 +366,16 @@ class PhoneShellJourney(unittest.TestCase):
         expect(shape).to_be_visible()
         expect(mine).to_be_visible()
         self.assertGreaterEqual(self.box(mine)["height"], 34)
-        first = page.get_by_role("region", name="To do").get_by_role("heading", level=3).first
+        status = page.get_by_role("tablist", name="Task status")
+        expect(status).to_be_visible()
+        self.assertGreaterEqual(self.box(status)["y"], self.box(mine)["y"] + self.box(mine)["height"] - 1, "the status row is under the control row")
+        column = page.get_by_role("tabpanel", name=re.compile(r"^To do"))
+        expect(column).to_be_visible()
+        self.assertEqual(page.locator(".tb-col:visible").count(), 1, "one status at a time")
+        first = column.get_by_role("heading", level=3).first
         expect(first).to_be_visible()
-        self.assertLessEqual(self.box(first)["y"], 360, "the first task starts within 360px: the header, the views and the control row")
+        # Measured 252 px on Chromium at 375 x 667 (2026-11-20): the status row took the place of the column's own header.
+        self.assertLessEqual(self.box(first)["y"], 360, "the first task starts within 360px: the header, the views, the control row and the status row")
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), SE["width"])
         shot(page, "346-tasks-phone")
 

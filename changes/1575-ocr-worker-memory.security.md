@@ -1,0 +1,1 @@
+- Operators: with `FLUX_FILE_OCR=on`, `./flux` gives the worker at least 1 GiB of memory (a smaller `FLUX_WORKER_MEMORY`, such as the settings file's `512m`, is raised to `1g`, and `./flux up` and `./flux upgrade` say so in one line), so the OCR reader of up to 384 MiB always fits beside the worker ([#1575](https://github.com/ColdPhase/flux/issues/1575)).

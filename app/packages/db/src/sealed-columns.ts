@@ -27,6 +27,10 @@ const ai = [
   'api_key_checks', 'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots',
   'cowork_units', 'personal_run_cites', 'personal_run_pictures', 'personal_run_private_texts', 'personal_run_web_reads', 'personal_run_web_searches',
   'personal_runs',
+  // C-69 (0103, #1557): the pages' pictures of a PDF without text, read only by agents (`flux_view_image`, the file read). The worker writes
+  // them only for a file of a plain space (`fileTextRows.claim` and `store` skip `workspace_sealed`), so a sealed workspace has none. The table
+  // has no workspace path of its own (it is keyed by file), so it carries no `sealed_workspace_no_ai` trigger.
+  'file_page_pictures',
 ] as const;
 const account = [
   'auth_accounts', 'auth_email_claims', 'auth_identity_audit', 'auth_idp_standing', 'auth_link_intents', 'auth_logout_tokens',
@@ -177,7 +181,8 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   sketch_thoughts: { shape: 'an enum', created_by_user_id: 'a user id', edited_by: 'principal ids', source_author_id: 'a user id',
     source_author_name: 'a person\'s name (account data)' },
   sketch_links: { created_by_user_id: 'a user id' },
-  project_files: { uploader_id: 'a user id', state: 'an enum', video_container: 'an enum (mp4, webm or mov): recorded only for a plain space, like the numbers read from the bytes' },
+  project_files: { uploader_id: 'a user id', state: 'an enum', video_container: 'an enum (mp4, webm or mov): recorded only for a plain space, like the numbers read from the bytes',
+    ocr_state: 'an enum (text or none, C-70): set only by the worker, which never reads a file of an encrypted space' },
   doc_live_presence: { actor_id: 'a principal id', session_id: 'a session id', cursor: 'Yjs relative positions in a 5–30 s lease, no text' },
   doc_live_replicas: { owner_kind: 'an enum', actor_id: 'a principal id' },
   doc_live_updates: { actor_id: 'a principal id' },
