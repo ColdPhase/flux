@@ -224,26 +224,26 @@ describe('optional embeddings: off by default, hybrid ranking when on', () => {
     }
   });
 
-  test("an agent's vector path follows the space's AI switch: vectors go in the same transaction and come back when it is on", async () => {
+  test("a space with AI off keeps its vectors and people's hybrid search, and an agent's search, its vector half included, leaves it out (C-73)", async () => {
+    // Founder decision, Hubert, 2026-11-20 (#1591, migration 0110): the local embedder is an index like BM25, not AI.
     const agent = await createAgent(human(ari), ws.id, { name: 'Fieldbot' }, db, accessPorts);
     const bot: Principal = { id: agent.id, kind: 'agent' };
     const hidden = 'Kot śpi na ciepłym parapecie w stacji.';
     try {
       assert.ok((await found(bot, 'cat')).includes(hidden));
       await setSpaceAi(lamp.id, 'blocked');
-      const left = await pool.query(`SELECT 1 FROM search_vectors v JOIN search_documents d ON d.id = v.document_id WHERE d.project_id = $1
-        UNION ALL SELECT 1 FROM search_vector_queue q JOIN search_documents d ON d.id = q.document_id WHERE d.project_id = $1`, [lamp.id]);
-      assert.equal(left.rowCount, 0, 'no vector and nothing queued for a space whose AI is off');
-      assert.ok(!(await found(bot, 'cat')).includes(hidden), 'the agent finds nothing there');
-      assert.ok(!(await found(human(nia), 'cat')).includes(hidden), 'and a person finds it only by its words now');
-      assert.ok((await found(human(nia), 'parapecie')).includes(hidden));
-      // A new message in a space whose AI is off is not queued either.
+      const kept = await pool.query(`SELECT 1 FROM search_vectors v JOIN search_documents d ON d.id = v.document_id WHERE d.project_id = $1`, [lamp.id]);
+      assert.ok(kept.rowCount! > 0, 'the vectors stay when AI goes off');
+      assert.ok(!(await found(bot, 'cat')).includes(hidden), 'the agent finds nothing there, by words or by meaning');
+      assert.ok(!(await found(bot, 'parapecie')).includes(hidden));
+      assert.ok((await found(human(nia), 'cat')).includes(hidden), 'a person still finds it by its meaning');
+      // A new message in a space whose AI is off is embedded like any other.
       const quiet = await say(nia, lampThread.id, 'Kotek wrócił na parapet.');
-      assert.equal(await isQueued(quiet.id), false);
-      await setSpaceAi(lamp.id, 'allowed');
       await settled();
-      assert.ok((await found(bot, 'cat')).includes(hidden), 'embedded again once AI is on');
       assert.equal(await hasVector(quiet.id), true);
+      assert.ok(!(await found(bot, 'kitten')).includes('Kotek wrócił na parapet.'));
+      await setSpaceAi(lamp.id, 'allowed');
+      assert.ok((await found(bot, 'cat')).includes(hidden), 'found again once AI is on');
     } finally {
       await ensureSpaceAiAllowed(lamp.id);
     }
@@ -276,7 +276,7 @@ describe('optional embeddings: off by default, hybrid ranking when on', () => {
     assert.equal(await isQueued(gone.id) || await hasVector(gone.id), false, 'a deleted row leaves neither a vector nor a queue entry');
   });
 
-  test('a vector is never stored for words that changed, or for a space whose AI went off, after the row was claimed', async () => {
+  test('a vector is never stored for words that changed after the row was claimed; a space whose AI went off is still embedded', async () => {
     await worker!.stop();
     worker = null;
     const message = await say(olek, openThread.id, 'The rain stopped at noon.');
@@ -293,8 +293,8 @@ describe('optional embeddings: off by default, hybrid ranking when on', () => {
     assert.ok(again);
     try {
       await setSpaceAi(lamp.id, 'blocked');
-      assert.equal(await vectorRows.store([{ ...again, vector }]), 0, 'AI went off in the meantime');
-      assert.equal(await hasVector(other.id), false);
+      assert.equal(await vectorRows.store([{ ...again, vector }]), 1, 'AI going off does not keep a row from its vector (C-73)');
+      assert.equal(await hasVector(other.id), true);
     } finally {
       await ensureSpaceAiAllowed(lamp.id);
     }

@@ -176,6 +176,15 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions, storage }: 
     replay: readDm(request.params.dmId),
   }));
 
+  // C-73 (#1591): the caller's own "Turn off AI in this conversation"; DELETE withdraws only theirs. Repeating either changes nothing.
+  for (const method of ['PUT', 'DELETE'] as const) {
+    app.route<{ Params: { dmId: string } }>({ method, url: `${DM}/ai-off`, handler: async (request, reply) => command(request, reply, {
+      operation: `${method} ${DM}/ai-off`, scope: dmScope(request.params.dmId),
+      run: (actor, conn) => dmUseCases(conn).setAiOff(actor, request.params.dmId, { off: method === 'PUT' }),
+      replay: readDm(request.params.dmId),
+    }) });
+  }
+
   app.post<{ Params: { dmId: string } }>(`${DM}/leave`, async (request, reply) => command(request, reply, {
     operation: `POST ${DM}/leave`, scope: dmScope(request.params.dmId), status: 204,
     run: (actor, conn) => dmUseCases(conn).leave(actor, request.params.dmId),

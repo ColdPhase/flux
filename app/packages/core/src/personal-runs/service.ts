@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AGENT_LIMITS,
   ASSISTANT_PLANS,
-  AI_PROVIDERS,
+  dmAiOffNames,
   aiModelSearchesWeb,
   assistantPlanModels,
   noLongerOffered,
@@ -56,6 +56,7 @@ import { takeAsk } from '../agent-tasks/ask.js';
 import { toolsRequired, type ToolChecking } from '../ai/tool-check.js';
 import { isPrivateAnswer, placeOf } from './ports.js';
 import { chatFilesOf } from './chat-files.js';
+import { aiCompany } from './place.js';
 import {
   budgetedReservationMicros, centsToMicros, connectionRef, memoryText, normalizeAgentChange, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
   type NormalizedInvoke,
@@ -557,9 +558,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return { ok: true, fields: { reservedMicros: 0, provider: connection.provider, model: connection.model } };
   }
 
-  /** Who receives a conversation when AI is used on it: "Claude", "ChatGPT", or the key's provider (#842, the line of a DM). */
-  const company = (engine: AssistantEngine, provider: string) => engine === 'runtime' ? (provider === 'openai' ? 'ChatGPT' : 'Claude')
-    : provider === 'anthropic' ? 'Claude' : AI_PROVIDERS[provider as keyof typeof AI_PROVIDERS]?.label ?? 'an AI provider';
+  /** Who receives a conversation when AI is used on it (#842, the line of a DM). */
+  const company = (engine: AssistantEngine, provider: string) => aiCompany(engine, provider);
 
   /** The same place, whether the request named it as a conversation id or as a place (#842). */
   const asPlace = (place: string | AssistantPlace): AssistantPlace => (typeof place === 'string' ? { kind: 'space', projectId: '', conversationId: place } : place);
@@ -576,6 +576,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const { workspaceId } = await ports.access.requireDm(principal, dmId, lock);
       // AI is always off in an encrypted space (F-030): a direct message there has no switch, so its participants are told that, not to make an agent.
       if (await ports.runs.workspaceEncrypted(workspaceId)) throw new ConflictError('AI is always off in an encrypted space', 'WORKSPACE_ENCRYPTED_AI_OFF');
+      // C-73 (#1591): while any of its people has turned AI off, no agent of anyone reads it, so `/ai` there (and in its threads) is refused.
+      const off = await ports.runs.dmAiOffBy(dmId, lock);
+      if (off.length) throw new ConflictError(`AI is off in this conversation · turned off by ${dmAiOffNames(off)}`, 'DM_AI_OFF');
       // A thread hangs on a root message of this DM (not a reply, not the line "used AI here"); any other id is as unknown as a missing DM.
       const threadRootId = wanted.threadRootId === null ? null : isId(wanted.threadRootId) ? wanted.threadRootId.toLowerCase() : 'invalid';
       if (threadRootId !== null && (threadRootId === 'invalid' || !(await ports.runs.isDmThreadRoot(dmId, threadRootId)))) throw new NotFoundError('Message', 'DM_MESSAGE_NOT_FOUND');

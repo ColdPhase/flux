@@ -5,6 +5,7 @@ import { authorLabel, digestPage, DomainError, NotFoundError, summaryCursorText,
 import { dmAuthorName, personTimeZones, removedInDm, schema, type Database, type Transaction } from '@flux/db';
 import { taskDiscussionInTransaction } from '../work/task-discussions.js';
 import { spaceAuthorsNamed, withAgentLabels } from './authors.js';
+import { agentReachesDm, givenDm } from './dm-reach.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -43,13 +44,12 @@ async function scopeOf(ctx: FluxAgentReadContext, claims: FluxMcpClaims, asked: 
   if (run?.dmId) {
     // A run in a direct message reads that direct message and nothing else; no space of its owner's reaches an answer its people read (C-37).
     if (asked !== undefined && asked !== run.dmId) throw placeNotFound();
-    // Its owner must be one of its people now; the route checks it again when the bytes are handed over (`dispatch.dm`).
-    const [member] = await tx.select({ id: schema.dms.id }).from(schema.dms)
-      .innerJoin(schema.dmParticipants, and(eq(schema.dmParticipants.dmId, schema.dms.id), eq(schema.dmParticipants.userId, ctx.connection.ownerUserId)))
-      .where(and(eq(schema.dms.id, run.dmId), eq(schema.dms.workspaceId, workspaceId))).for('share');
-    if (!member) throw placeNotFound();
+    // Its owner must be one of its people now and its AI on (C-73); the route checks it again when the bytes are handed over (`dispatch.dm`).
+    if (!await agentReachesDm(ctx, claims, run.dmId)) throw placeNotFound();
     return { kind: 'dm', dmId: run.dmId };
   }
+  // C-73 (#1591): a private chat reads a direct message its owner is in, with AI on, when `in` names it.
+  if (asked !== undefined && await agentReachesDm(ctx, claims, asked)) return { kind: 'dm', dmId: asked };
   const id = asked ?? run?.conversationId ?? run?.projectId ?? claims.boundProjectId ?? null;
   if (id === null) throw new DomainError(400, 'PLACE_REQUIRED', 'Say where to read: in is a space, a conversation or a task.');
   const guarded = async <T>(read: () => Promise<T>) => { try { return await read(); } catch (error) { throw error instanceof DomainError ? placeNotFound() : error; } };
@@ -164,7 +164,7 @@ async function summarize(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input
       const [left] = await tx.select({ n: sql<number>`count(*)::int` }).from(d).where(dmCondition(scope.dmId, range, { at: page.last!.atKey, id: page.last!.id }));
       remaining = Number(left?.n ?? 0);
     }
-    claims.dispatch?.dm(scope.dmId);
+    await givenDm(ctx, claims, scope.dmId);
   } else {
     // A task with no discussion yet has nothing to read.
     const conversationId = scope.kind === 'space' ? null : scope.conversationId;

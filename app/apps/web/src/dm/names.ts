@@ -39,3 +39,9 @@ export function audienceOf(names: string[]): string {
 export function audienceLine(dm: Pick<DmSummary, 'participants'>, meId: string): string {
   return audienceOf(othersIn(dm, meId).map((p) => p.name));
 }
+
+/** C-73 (#1591): the header's state while AI is off, "AI off · turned off by Marek" ("by you" for the reader's own); empty while it is on. */
+export function aiOffLine(aiOff: readonly DmPerson[], meId: string): string {
+  if (!aiOff.length) return '';
+  return `AI off · turned off by ${joinNames(aiOff.map((person) => (person.id === meId ? 'you' : firstName(person.name))))}`;
+}

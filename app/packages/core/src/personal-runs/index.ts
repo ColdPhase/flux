@@ -22,3 +22,4 @@ export { answerWithSchedule, preparedAnswer, type PreparedAnswer } from './sched
 export { inOwnersLanguage, languageOf } from './schedule-language.js';
 export { answerWithWebSources, endedSourcesLine, endedWithWebSources, webSourcesAt, webSourcesLine, WEB_SOURCES_HEADINGS, type ListedRead } from './web-sources.js';
 export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, defangedAddresses, joinsAddress, boundedWebSearch, comparableText, insideAddress, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, privateFragmentsIn, PrivateTextIndex, privateTextIndex, withoutPrivateAddresses, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';
+export { aiCompany } from './place.js';

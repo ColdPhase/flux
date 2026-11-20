@@ -45,6 +45,7 @@ import { beginNotificationSession, retireNotificationSession } from '../notifica
 import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { DmUnreadProvider } from '../dm/dmUnread';
+import { aiOffLine } from '../dm/names';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
@@ -904,7 +905,9 @@ function AppLayoutContent() {
     : where === 'dm'
       ? activeDm
         // A pair is named by the other person. A group names its people beneath its title, since the title may be a topic (#871).
-        ? { crumb: null, title: activeDm.title, ...(activeDm.kind === 'group' ? { topic: activeDm.audience } : {}) }
+        // While AI is off (C-73) the line under the title says so and who turned it off: "AI off · turned off by Marek".
+        ? { crumb: null, title: activeDm.title, ...(activeDm.kind === 'group' || activeDm.aiOff.length
+          ? { topic: [activeDm.kind === 'group' ? activeDm.audience : '', aiOffLine(activeDm.aiOff, me.user.id)].filter(Boolean).join(' · ') } : {}) }
         : dmId === 'new'
           ? { crumb: null, title: 'New message', noDetails: true }
           : { crumb: null, title: 'Messages', noDetails: true }
@@ -1042,7 +1045,7 @@ function AppLayoutContent() {
         <>{phoneBack('/projects')}
           <div className="phead__id"><div className="phead__title">
             <h1 title={activeDm.title}>{activeDm.title}</h1>
-            <p className="phead__sub">{activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'}</p>
+            <p className="phead__sub">{activeDm.aiOff.length ? aiOffLine(activeDm.aiOff, me.user.id) : activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'}</p>
           </div></div></>
       ) : activeAgent ? (
         // An agent's chat is a normal conversation (F-026 §7 Agents and AI, drawn in phone-assistant, #1356): Back, its face and name,
@@ -1155,7 +1158,7 @@ function AppLayoutContent() {
             context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}
             focusBack={() => objectControl(now.current.detailsView)}>
             {opening ? <ThreadOpening /> : null}
-            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience } : null} onBack={() => { if (activeDm) setDetailsView('place'); else closePanel(); }} />}
+            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience, aiOff: activeDm.aiOff, workspaceId: activeDm.workspaceId } : null} onBack={() => { if (activeDm) setDetailsView('place'); else closePanel(); }} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

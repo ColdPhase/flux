@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { AiProviderKind } from '@flux/contracts';
 import type { PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork } from '../personal-runs/ports.js';
 import { connectionOnModel } from '../personal-runs/model.js';
-import { spaceSwitchAllows } from '../personal-runs/place.js';
+import { aiSwitchAllows } from '../personal-runs/place.js';
 import { centsToMicros } from '../personal-runs/validation.js';
 import { admitGatewayRequest, type AdmittedRequest, type GatewayAdmissionLimits, type GatewayRequestFacts } from './admission.js';
 import { gatewayChargeMicros, gatewayHoldMicros, type GatewayCharge } from './charge.js';
@@ -169,7 +169,7 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
           if (!run || run.status !== 'dispatching' || run.stopRequestedAt || !run.connectionId) return ended;
           // The owner's lane, as a server run reserves on the key (#854): no other reservation of the owner's interleaves with this one.
           await ports.runs.lockLane(run.ownerUserId);
-          if (!(await spaceSwitchAllows(ports, run, true))) return ended;
+          if (!(await aiSwitchAllows(ports, run, true))) return ended;
           const named = await connections.resolve(run.ownerUserId, run.connectionId);
           if (!named || named.status !== 'active' || named.ownerUserId !== run.ownerUserId || named.id !== run.connectionId) return ended;
           if (named.provider !== facts.provider) return { ok: false as const, refusal: { status: 400, code: 'flux_request_refused', message: `This run's key is for ${named.provider}` } };

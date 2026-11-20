@@ -7,7 +7,7 @@ import type {
   RunLiveText, RunRecord,
 } from './ports.js';
 import { connectionOnModel } from './model.js';
-import { placeAllows, spaceSwitchAllows } from './place.js';
+import { placeAllows, aiSwitchAllows } from './place.js';
 import { createRuntimeRunProcessor, type KeyRunGateway, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { centsToMicros } from './validation.js';
@@ -70,7 +70,7 @@ type Refusal = Extract<RunRecord['status'], 'denied' | 'revoked' | 'unavailable'
  */
 async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionLookup, compute: PersonalCompute, run: RunRecord, stage: Stage, lock: boolean): Promise<{ refusal: Refusal } | { connection: PersonalConnection }> {
   // AG-10, first: AI on in the run's space, at the epoch the run was admitted under (policy row before the others).
-  if (!(await spaceSwitchAllows(ports, run, lock))) return { refusal: 'ai_off' };
+  if (!(await aiSwitchAllows(ports, run, lock))) return { refusal: 'ai_off' };
   if (!(await ports.runs.enablement(run.ownerUserId, { lock, agentId: run.agentId }))) return { refusal: 'revoked' };
   const owner: Principal = { kind: 'human', id: run.ownerUserId };
   if (!(await ports.access.canInvoke(owner, run.agentId, { lock }))) return { refusal: 'revoked' };

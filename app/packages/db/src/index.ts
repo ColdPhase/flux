@@ -35,13 +35,14 @@ export * from './sealed-columns.js';
 export * from './sealed-search.js';
 export * from './sealing.js';
 export * from './repositories/agent-reach.js';
+export * from './repositories/dm-ai.js';
 export * from './repositories/agent-project-objects.js';
 export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 export * from './repositories/ai-price-list.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 109;
+export const FLUX_SCHEMA_VERSION = 110;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 

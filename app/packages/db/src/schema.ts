@@ -1605,6 +1605,20 @@ export const dmParticipants = pgTable('dm_participants', {
   index('dm_participants_user_idx').on(table.workspaceId, table.userId, table.dmId),
 ]);
 
+/**
+ * 0110 (C-73, #1591): each participant's own "Turn off AI in this conversation". AI is off in a conversation while it has a row; a person
+ * adds and deletes only their own. It goes with their place in the conversation.
+ */
+export const dmAiOff = pgTable('dm_ai_off', {
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  userId: text('user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.dmId, table.userId] }),
+  foreignKey({ columns: [table.dmId, table.userId], foreignColumns: [dmParticipants.dmId, dmParticipants.userId] }).onDelete('cascade'),
+]);
+
 export const dmMessages = pgTable('dm_messages', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
@@ -1624,8 +1638,11 @@ export const dmMessages = pgTable('dm_messages', {
   via: text('via'),
   /** 0059 (#1232): that agent's colour, so every reader sees its Kreska ("Hubert's Assistant"). */
   viaColour: text('via_colour').$type<import('@flux/contracts').AgentColour>(),
-  /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */
-  kind: text('kind', { enum: ['text', 'ai_used'] }).notNull().default('text'),
+  /**
+   * 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. 0110 (C-73):
+   * `ai_off` and `ai_on` are the lines of a change of someone's "AI off"; the body names who still keeps it off.
+   */
+  kind: text('kind', { enum: ['text', 'ai_used', 'ai_off', 'ai_on'] }).notNull().default('text'),
   /** 0076 (#1438): how many files the message carries; a message with files may have no words. */
   attachmentCount: smallint('attachment_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -20,6 +20,18 @@ export const dmReadersPath = (dmId: string) => `${dmReceiptsPath(dmId)}/readers`
 export const dmTaskCopyPreviewPath = (dmId: string) => `${dmPath(dmId)}/task-copy/preview`;
 export const dmTaskCopiesPath = (dmId: string) => `${dmPath(dmId)}/task-copies`;
 
+/** `PUT` turns AI off in this conversation for the caller (C-73, #1591), `DELETE` withdraws the caller's own choice. */
+export const dmAiOffPath = (dmId: string) => `${dmPath(dmId)}/ai-off`;
+
+/**
+ * Who keeps AI off in a conversation, by first name, as its header and its refusal say them (C-73): "Marek", "Marek and Ada",
+ * "Marek, Ada and Ola". A removed person's mark stays with their name.
+ */
+export function dmAiOffNames(by: readonly { name: string }[]): string {
+  const names = by.map((person) => /\(removed\)$/.test(person.name) ? person.name : person.name.trim().split(/\s+/)[0] || person.name);
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
 /** One person in a DM (or a former participant who wrote a message in the returned window). */
 export interface DmPerson {
   id: string;
@@ -59,6 +71,11 @@ export interface DmSummary {
   /** Present only when the last message was an answer posted with Show everyone (#842): the list names it ("via Assistant: …"). */
   lastMessageVia?: string;
   /**
+   * C-73 (#1591): the current participants who turned AI off here, in the order they did; absent while AI is on. While present, no agent
+   * of anyone reads the conversation and `/ai` answers 409 `DM_AI_OFF`. Each person withdraws only their own (`dmAiOffPath`).
+   */
+  aiOff?: DmPerson[];
+  /**
    * In the list: how many messages by others (the roots) the caller has not read, at most 99; 0 when read (#1424 decision 10). Read is
    * up to the newest of what they viewed ("Seen by"), their own last message and "Mark all as read". Kept on the server, so every device
    * agrees. Absent on a single DM's answer.
@@ -74,10 +91,12 @@ export type DmMessage = HumanConversationMessage & { threadRootId: string | null
   /** When the newest reply of a root was written ("3 replies · last 9:40", as a space's root says); null without replies and for a reply. */
   lastReplyAt: string | null;
   /**
-   * `ai_used` is the line "Ada used AI here (Claude)" both people of a DM see when `/ai` is used in it (#842, F-036 AG-4): its
-   * `body` is the name of the company that receives the conversation. Absent on a message.
+   * `ai_used` is the line "Ada used AI here (Claude)" both people of a DM see when `/ai` is used in it, or its author's private chat read it
+   * (#842, F-036 AG-4, C-73): its `body` is the name of the company that receives the conversation. `ai_off` is "Marek turned off AI in this
+   * conversation" and `ai_on` "Marek turned AI back on" (C-73), whose `body` names, by first name, who still keeps it off (empty when AI is
+   * on again). Absent on a message.
    */
-  notice?: 'ai_used' };
+  notice?: 'ai_used' | 'ai_off' | 'ai_on' };
 
 /**
  * `POST /api/v1/dms/:dmId/messages` (and a thread reply): the stored message. `answered` (#1249) names the Inbox items this reply answered

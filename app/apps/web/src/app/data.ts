@@ -50,6 +50,8 @@ export interface DirectMessageSummary {
   audience: string; preview: string | null; lastAt: string | null;
   /** How many messages by others the person has not read (#1424 decision 10), as the server keeps it; `useDmUnread` keeps it fresh. */
   unread: number;
+  /** C-73 (#1591): who turned AI off here, in the order they did (the caller included); empty while AI is on. */
+  aiOff: { id: string; name: string }[];
 }
 
 export interface ShellData {
@@ -142,6 +144,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody && dm.lastMessageVia ? `via ${dm.lastMessageVia}: ${plainMessageText(dm.lastMessageBody)}` : dm.lastMessageBody ? plainMessageText(dm.lastMessageBody)
       // A message of files alone has no words (#1438 point 10): the row says so.
       : dm.lastMessageAt && dm.lastMessageBody === '' ? 'Sent a file' : dm.lastMessageBody, lastAt: dm.lastMessageAt, unread: dm.unread ?? 0,
+    aiOff: dm.aiOff ?? [],
   }));
   return { me, workspace, removedFrom, workspaces, lockedWorkspaces, projects, spaceOrder, reachableSpaces, directMessages, agents, photos };
 }

@@ -4,6 +4,7 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openField, openRows, sealFor, sealOf, sealsOf } from '../sealing.js';
 import { fileRows } from './files.js';
+import { dmAiRows } from './dm-ai.js';
 
 /**
  * Drizzle persistence for direct messages (issues #107, #46). The rows satisfy the ports in
@@ -121,6 +122,8 @@ export function dmRows(db: DbExecutor) {
         lastMessageBody: lastMessageId ? openField('dm_messages', 'body', [lastMessageId], lastMessageBody, seal) ?? null : lastMessageBody };
     });
     const people = await participants(rows.map(({ row }) => row.id));
+    // C-73 (#1591): who turned AI off in each, for its header and its list row.
+    const aiOff = await dmAiRows(db).offBy(rows.map(({ row }) => row.id));
     const pairIds = [...new Set(rows.flatMap(({ row }) => row.pairKey?.split(':') ?? []))];
     const pairNames = new Map(pairIds.length
       ? (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, pairIds))).map((u) => [u.id, u.name])
@@ -135,6 +138,7 @@ export function dmRows(db: DbExecutor) {
       pair: row.pairKey ? row.pairKey.split(':').map((id) => ({ id, name: pairName(row.workspaceId, id) })) : null,
       id: row.id, workspaceId: row.workspaceId, kind: row.kind, title: row.title, createdBy: row.createdBy, version: row.version,
       createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, lastMessageVia, participants: people.get(row.id) ?? [],
+      aiOff: aiOff.get(row.id) ?? [],
     }));
   }
   /** How many replies each root has and when the newest was written, for "3 replies · last 9:40" (round 14: a space's thread line says when). */
@@ -183,6 +187,13 @@ export function dmRows(db: DbExecutor) {
     async removeParticipant(dmId: string, userId: string) {
       return (await db.delete(p).where(and(eq(p.dmId, dmId), eq(p.userId, userId))).returning({ userId: p.userId })).length > 0;
     },
+    async setAiOff(workspaceId: string, dmId: string, userId: string, off: boolean): Promise<'changed' | 'same' | 'sealed'> {
+      // Held for update: every agent read of the conversation holds it (share), so none is half-way through when the choice commits.
+      const [held] = (await db.execute(sql`SELECT workspace_sealed(workspace_id) AS sealed FROM dms WHERE id = ${dmId}::uuid FOR UPDATE`)).rows as { sealed: boolean }[];
+      if (held?.sealed) return 'sealed';
+      return (await dmAiRows(db).set(workspaceId, dmId, userId, off)) ? 'changed' : 'same';
+    },
+    postAiLine: (dmId: string, workspaceId: string, authorId: string, kind: 'ai_off' | 'ai_on', body: string) => dmAiRows(db).postLine(dmId, workspaceId, authorId, kind, body),
     async rename(dmId: string, title: string | null) {
       const [located] = await db.select({ workspaceId: d.workspaceId }).from(d).where(eq(d.id, dmId));
       await db.update(d).set({ ...(await sealFor(db, 'dms', located!.workspaceId, { title }, { id: dmId })), version: sql`${d.version} + 1` }).where(eq(d.id, dmId));

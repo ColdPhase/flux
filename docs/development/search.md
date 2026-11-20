@@ -351,12 +351,13 @@ fused list (at most 100 rows), and a vector that is missing, or a container that
   `search_vector_queue` and `search_vector_state`. The one state row is what switches embeddings on; without it the triggers return at
   once, so an installation that never turns them on writes nothing here and sends no NOTIFY. The worker deletes the row, and empties
   both tables, at the first start without `FLUX_EMBEDDINGS_URL`.
-- **Eligible rows** (`search_vector_eligible`): not sealed (an encrypted space's placeholder), not a person, some text, and, in a
-  space, AI on (AG-10). The same rule decides the backfill, the triggers and the worker's claim.
+- **Eligible rows** (`search_vector_eligible`): not sealed (an encrypted space's placeholder), not a person, and some text. The same rule
+  decides the backfill, the triggers and the worker's claim. Since migration 0110 ([C-73](../product/decisions.md), founder decision 2026-11-20:
+  the embedder is local, an index like BM25, not AI) a space with AI off and a direct message with AI off are embedded like any other place;
+  no agent finds them because an agent's audiences leave them out at the moment of the search, the vector half included.
 - **A vector follows its row in the writer's transaction.** An edit of the title or body deletes the vector and queues the row; a
-  delete takes it with it (the foreign key); a row that becomes sealed loses it; turning a space's AI off deletes its vectors, turning it
-  on queues its rows. The worker stores a vector only for a row whose words still hash as they did when it was claimed, after taking
-  a share lock on the row and on its space's policy, so an edit or a switch that is committing is never overtaken.
+  delete takes it with it (the foreign key); a row that becomes sealed loses it. A space's AI switch no longer touches the vectors (0110). The worker stores a vector only for a row whose words still hash as they did when it was claimed, after taking
+  a share lock on the row, so an edit that is committing is never overtaken.
 - **No polling.** The triggers NOTIFY `flux_search_vectors`; the worker wakes on it (and on a reconnection) and embeds the queue in
   batches of 16 until it is empty. A timer exists only after a failure, doubling from 2 s to 60 s. An idle worker issues no statement
   for it.

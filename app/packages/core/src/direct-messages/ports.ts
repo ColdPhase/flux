@@ -25,6 +25,8 @@ export interface DmRecord {
   participants: DmPerson[];
   /** For a 1:1 DM, both people of the pair (from its pair key), whether or not they still take part. */
   pair: DmPerson[] | null;
+  /** C-73 (#1591): the participants who turned AI off here, in the order they did; empty while AI is on. */
+  aiOff?: DmPerson[];
 }
 
 export interface DmMessageRecord {
@@ -49,8 +51,8 @@ export interface DmMessageRecord {
   via: string | null;
   /** That agent's colour (#1232); null when there is none. */
   viaColour?: AgentColour | null;
-  /** `ai_used` is the line "used AI here" (#842), whose body names the company that receives the conversation. */
-  kind: 'text' | 'ai_used';
+  /** `ai_used` is the line "used AI here" (#842), whose body names the company that receives the conversation; `ai_off` and `ai_on` the lines of C-73. */
+  kind: 'text' | 'ai_used' | 'ai_off' | 'ai_on';
   /** The files the message carries, in order (#1438 point 10); absent when it has none. */
   files?: MessageFile[];
   /** How many files it carries; a message with files may have no words. */
@@ -112,6 +114,15 @@ export interface DmRepository {
   addParticipant(workspaceId: string, dmId: string, userId: string): Promise<boolean>;
   /** Removes a participant; false when they did not take part. */
   removeParticipant(dmId: string, userId: string): Promise<boolean>;
+  /**
+   * C-73 (#1591): adds (`off`) or deletes the person's own "AI off", with the conversation's row held for update first, so every agent read
+   * that holds it (share) is waited for. `sealed`: an encrypted company, where AI is always off and there is no switch.
+   */
+  setAiOff(workspaceId: string, dmId: string, userId: string, off: boolean): Promise<'changed' | 'same' | 'sealed'>;
+  /** The conversation's line of that change: no message to read, search, notify or count. */
+  postAiLine(dmId: string, workspaceId: string, authorId: string, kind: 'ai_off' | 'ai_on', body: string): Promise<void>;
+  /** The turn-off's sweep: runs in the conversation, and private chats' runs given words of it, end or are asked to stop; their owners are told. */
+  stopAiRuns(dmId: string): Promise<number>;
   /** Sets the title (null clears it) and increments the version. */
   rename(dmId: string, title: string | null): Promise<void>;
   /** Increments the version after a participant change. */

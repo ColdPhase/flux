@@ -25,7 +25,7 @@ import { ComposerMenu } from '../app/ComposerMenu';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useClearOfToast, useMediaQuery, useToast } from '../ui';
-import { dmTitle, othersIn } from './names';
+import { aiOffLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
 import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
@@ -339,6 +339,8 @@ function DmContent({ initial }: { initial: Dm }) {
   async function askAgent() {
     const prompt = draft.replace(/^\/ai\s*/, '').trim();
     const state = askState(assistant.status, false, workspace?.role === 'guest');
+    // C-73 (#1591): while anyone here keeps AI off, no agent reads this conversation; the words stay in the field.
+    if (dm.aiOff?.length) { setAskFailure(`${aiOffLine(dm.aiOff, me.user.id).replace('AI off', 'AI is off in this conversation')}. Remove /ai to send these words as a message.`); return; }
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this conversation.'); return; }
     if (state.kind !== 'ready') { setAskFailure(state.note); if (state.action === 'connect') openConnectAi(); return; }
     const active = captureScope();

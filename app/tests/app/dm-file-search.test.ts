@@ -149,8 +149,13 @@ describe('the files of a direct message, found by its people and read by /ai in 
       assert.equal(hits(await call('flux_search', { q: textWord, kind: 'file' })).length, 1);
       assert.match((toolValue(await call('flux_read_file', { fileId: notes.fileId })) as unknown as { body: string }).body, new RegExp(textWord));
     });
-    // A run in another conversation of the same owner, in a space and in the owner's private chat find nothing and read nothing: one answer, as for a file that is not there.
-    const elsewhere = [{ kind: 'dm' as const, dmId: group.id }, { kind: 'space' as const }, { kind: 'chat' as const }];
+    // The owner's private chat reads their conversations' files too (C-73, #1591), with the line "used AI here" there.
+    await asRun({ kind: 'chat' }, async (call) => {
+      assert.equal(hits(await call('flux_search', { q: pdfWord, kind: 'file' })).length, 1, 'chat: the PDF\'s word');
+      assert.equal((toolValue(await call('flux_read_file', { fileId: pdf.fileId })) as unknown as { dmId: string }).dmId, pair.id);
+    });
+    // A run in another conversation of the same owner and in a space find nothing and read nothing: one answer, as for a file that is not there.
+    const elsewhere = [{ kind: 'dm' as const, dmId: group.id }, { kind: 'space' as const }];
     for (const place of elsewhere) {
       await asRun(place, async (call) => {
         assert.deepEqual(hits(await call('flux_search', { q: pdfWord })), [], `${place.kind}: no hit`);
@@ -180,8 +185,13 @@ describe('the files of a direct message, found by its people and read by /ai in 
         assert.match(JSON.stringify(await view(call, notes.fileId)), /not a picture/);
       });
     }
-    // A run in another conversation, in a space and in the owner's private chat: the same "not there" as for a picture that does not exist.
-    for (const place of [{ kind: 'dm' as const, dmId: group.id }, { kind: 'space' as const }, { kind: 'chat' as const }]) {
+    // The owner's private chat looks at it too (C-73, #1591).
+    await asRun({ kind: 'chat' }, async (call) => {
+      const seen = await view(call, picture.fileId);
+      assert.equal((seen?.result as { isError?: boolean } | undefined)?.isError, undefined, JSON.stringify(seen));
+    });
+    // A run in another conversation and in a space: the same "not there" as for a picture that does not exist.
+    for (const place of [{ kind: 'dm' as const, dmId: group.id }, { kind: 'space' as const }]) {
       await asRun(place, async (call) => {
         assert.equal(toolFailure(await view(call, picture.fileId)).code, 'PICTURE_UNAVAILABLE', place.kind);
         assert.equal(toolFailure(await view(call, randomUUID())).code, 'PICTURE_UNAVAILABLE', `${place.kind}: a guessed id`);

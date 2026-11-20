@@ -8,6 +8,7 @@ import { pictureStorage } from './picture-actions.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError } from './tool-results.js';
 import { reachesChatFile, reachesDmFile } from './chat-files.js';
+import { givenDm } from './dm-reach.js';
 
 /**
  * `flux_view_image` (#1217, F-036 AG-8, C-59): a run looks at a picture attached to a message it may read, and its model gets it as image
@@ -56,7 +57,7 @@ export function registerAgentPictureViews(tools: AgentToolRegistry, db: Database
         // A picture sent in a direct message (C-64 (3), #1590): only a run in that conversation (or its thread) whose owner is one of its people now.
         if (row.dmId) {
           if (row.dmMessageId === null || row.posterOf !== null || !await reachesDmFile(ctx, claims, { workspaceId: row.workspaceId, dmId: row.dmId })) throw unavailable();
-          claims.dispatch?.dm(row.dmId);
+          await givenDm(ctx, claims, row.dmId);
           return row;
         }
         if (row.messageId === null || row.projectId === null) throw unavailable();
