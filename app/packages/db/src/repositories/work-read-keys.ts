@@ -18,7 +18,12 @@ const w = schema.projectWorkItems, d = schema.projectDecisions;
 const unfinished = sql`${w.status} IN ('open', 'in_progress', 'blocked')`;
 /** A task whose creation was undone (#238) is history: never in a task group, count or chooser. */
 const active = sql`${w.creationRevertedAt} IS NULL`;
-const workRank = sql`CASE WHEN ${w.status} = 'in_progress' THEN 1 WHEN ${w.status} = 'blocked' THEN 2 WHEN ${w.status} = 'open' THEN 3 ELSE 4 END`;
+/**
+ * The List's order is the Board's columns: To do, Doing, Blocked, Done (#1581). The rank of a key is its band, so the order of pages and the
+ * group of a count are the same list: `workGroupByRank[rank]` (0 is a proposed decision, 5 and 6 accepted and superseded ones).
+ */
+export const workGroupByRank = ['needs', 'open', 'in_progress', 'blocked', 'finished', 'rules', 'rules'] as const;
+const workRank = sql`CASE WHEN ${w.status} = 'open' THEN 1 WHEN ${w.status} = 'in_progress' THEN 2 WHEN ${w.status} = 'blocked' THEN 3 ELSE 4 END`;
 const decisionRank = sql`CASE ${d.status} WHEN 'proposed' THEN 0 WHEN 'accepted' THEN 5 ELSE 6 END`;
 
 /**

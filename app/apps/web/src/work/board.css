@@ -137,6 +137,13 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
     .tb-board::after { content: ""; flex: 0 0 calc(var(--space-page) - 12px); }
     .tb-board::-webkit-scrollbar { display: block; height: 8px; }
     .tb-board::-webkit-scrollbar-thumb { border-radius: var(--r-pill); background: var(--t3); }
+    /* A panel floating over the board (641 to 1000 px, or 200 % on a laptop) stands on its right, and the board narrows beside it as it does beside a docked
+       one: its columns are no wider than the room left of the panel (160 px at least), a card brought into view (a click, the keyboard) lands in that room
+       with its left edge whole, never scrolled so far that the first columns are cut at the board's left edge, and the last column scrolls out from under
+       the panel (#1581, round 15 look-3 d). The panel's 10 px gutter is in the 24 px, so a card's focus ring is whole. */
+    :root:has(.ui-panel--float:not(.is-leaving)) .tb-board { scroll-padding-inline-end: calc(var(--panel-w) + 24px); }
+    :root:has(.ui-panel--float:not(.is-leaving)) .tb-board::after { flex-basis: calc(var(--panel-w) + 24px); }
+    :root:has(.ui-panel--float:not(.is-leaving)) .tb-board > .tb-col { flex-basis: min(86%, 340px, max(160px, calc(100% - var(--panel-w) - 24px))); }
   }
   .tb-board > .tb-col { flex: 0 0 min(86%, 340px); }
 }
