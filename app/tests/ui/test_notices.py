@@ -483,6 +483,30 @@ class NoticeJourney(unittest.TestCase):
         self.card(page).get_by_role("button", name="Close").click()
         expect(self.card(page)).to_have_count(0)
 
+    def test_14_at_everything_a_new_message_in_a_space_is_a_notice_that_groups_and_is_no_inbox_item(self) -> None:
+        """C-65, #1550: at Everything every new message in a space the person is in notifies them; a burst from one place is one grouped card
+        ("3 new messages in <space>"), Open leads to the message, and nothing of it waits in the Inbox."""
+        self.request("nia", "PATCH", "/api/v1/notification-preferences", {"level": "everything"})
+        self.addCleanup(lambda: self.request("nia", "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
+        page = self.home("nia")
+        self.post("jonas", f"/api/v1/projects/{self.project_id}/conversations", {"body": "The east bed pump is running again", "clientMessageId": str(uuid.uuid4())})
+        card = self.card(page)
+        expect(card).to_contain_text(f"Jonas Berg wrote in {SPACE}", timeout=8000)
+        expect(card.locator(".ui-notice__body")).to_have_text("The east bed pump is running again")
+        expect(card.get_by_role("button", name="Open")).to_be_visible()
+        expect(card.get_by_role("button", name="Reply")).to_have_count(0)
+        for line in ("The west bed pump too", "Both read 40% now"):
+            self.post("jonas", f"/api/v1/projects/{self.project_id}/conversations", {"body": line, "clientMessageId": str(uuid.uuid4())})
+        expect(card).to_contain_text(f"3 new messages in {SPACE}", timeout=8000)
+        expect(card.locator(".ui-notice__body")).to_have_text("Jonas: Both read 40% now")
+        self.assertEqual(page.locator(".ui-notice").count(), 1, "never more than one card")
+        inbox = self.request("nia", "GET", "/api/v1/inbox?limit=50")["items"]
+        self.assertFalse([item for item in inbox if item["reason"] == "message"], "a new message is no Inbox item")
+        page.mouse.move(10, 10)
+        shot(page, "notices-desktop-1440-light-space-messages")
+        card.get_by_role("button", name="Open").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/conversations/"))
+
 
 if __name__ == "__main__":
     unittest.main()
