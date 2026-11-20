@@ -313,13 +313,55 @@ Kept from PROV-4:
 - One set of rules for every provider and model: the same Flux tools, Ask me first, waits,
   Undo, attribution and failures ([agents](assistant.md)). No Flux feature is reserved to a vendor.
 - Adapters translate only the wire format, stop reasons, usage and errors into one shared result
-  set. Provider-hosted tools stay off, with one exception: the provider's own built-in **web search**
+  set. Provider-hosted tools stay off, with one exception: the provider's own hosted **web search**
   (Anthropic's `web_search` server tool; OpenAI's `web_search` tool, for which Flux speaks OpenAI's
-  Responses API), offered to a run with tools while the operator's `FLUX_WEB_READS` is on (AG-8, C-29,
-  founder direction 2026-11-08, #954). A wire format without one (Chat Completions: OpenRouter,
-  Gemini's compatible endpoint, OpenAI-compatible servers) has no search and its brief says so. Each
-  search counts $0.01 in the key's daily budget (both vendors' price, read 2026-11-08) and every
-  request that offers it reserves 5. Page reading is Flux's own `flux_read_web` on every engine.
+  Responses API; Gemini's Google Search grounding and OpenRouter's `web` plugin, #1585, C-72), which an
+  agent in pi uses through `flux_web_search` while the operator's `FLUX_WEB_READS` is on (AG-8, C-29,
+  founder direction 2026-11-08, #954, RT-5). An endpoint of the owner's own (OpenAI-compatible or
+  self-hosted) has no search and its brief says so. Each search counts its provider's fee in the key's
+  daily budget (`webSearchMicros`: $0.01 on Anthropic and OpenAI, both vendors' price read 2026-11-08;
+  Gemini's and OpenRouter's below). Page reading is Flux's own `flux_read_web` on every engine.
+- **Gemini's and OpenRouter's search** (#1585, researched 2026-11-20; C-72). What the primary sources
+  said that day, none of them dated on the page:
+  - *Gemini* (aistudio.google.com/docs/google-search, /docs/pricing, /docs/openai, /docs/terms; the old
+    ai.google.dev addresses redirect there). Observed: the tool is `{"google_search": {}}` on
+    `POST /v1beta/models/<model>:generateContent` with the key in `x-goog-api-key` (older models had
+    `google_search_retrieval`); the answer's `groundingMetadata` has `webSearchQueries`, `groundingChunks`
+    (`web.uri`, `web.title`, the example's addresses on `vertexaisearch.cloud.google.com` and its titles
+    domains), `groundingSupports` (which chunks each part of the answer rests on) and `searchEntryPoint`
+    (Google's Search Suggestions HTML). The OpenAI-compatible endpoint lists grounding only for image
+    generation (`extra_body`), so Flux sends the search to the native API at the same host. Every
+    current model is listed with grounding (Gemini 4 Carbon, Argon, Neon, Hydrogen; 3.8 Flash, 3.6
+    Flash, 3.5 Flash-Lite, 3.1 Pro and Flash-Lite, 3 Flash; 2.5 Pro, Flash, Flash-Lite; 2.0 Flash).
+    Pricing, paid tier: Gemini 3 and newer are billed **per search query the model runs**, 5,000 free a
+    month shared across them, then **$14 per 1,000**, at most 1,500 a day by default; Gemini 2.5 per
+    **grounded prompt**, 1,500 a day free, then **$35 per 1,000**. The query count ignores empty
+    queries; whether a failed search is billed is not stated. Flux charges every counted search at the
+    full price (the free allowances are not counted, so it never undercounts) and the grounding's
+    input (`toolUsePromptTokenCount`) and thinking (`thoughtsTokenCount`) tokens at the key's price.
+    The request has no bound on the number of queries. *Terms* ("Grounding with Google Search", effective
+    2026-03-23): Grounded Results go with their Search Suggestions only to the end user who sent the
+    prompt, unmodified; Links may not be collected or used to find pages to crawl; a Grounded Result's
+    text may be resubmitted in a later prompt to Google through a function call, the final result shown
+    with up to five Search Suggestions or Links; its text may be stored up to two years for limited
+    uses (a user's own chat history among them). Flux shows neither Google's Search Suggestions nor
+    its HTML, lists the result addresses under the answer for everyone who sees it, and keeps them with
+    the run: whether that fits these terms is the key owner's to judge (an open question, C-72).
+  - *OpenRouter* (openrouter.ai/docs/guides/features/plugins/web-search, …/server-tools, …/usage-accounting).
+    Observed: the `web` plugin (`plugins: [{"id": "web", "engine", "max_results"}]`, default five
+    results; `:online` on a model id is the same plugin on every request) searches once per request and
+    returns `url_citation` annotations (`url`, `title`, `content`) on the Chat Completions message.
+    Engines: `native` (the model's provider's own search, price passed through; Anthropic, Google,
+    OpenAI, Perplexity and SpaceXAI models only), `exa` ($0.007 a request of up to 10 results in its
+    instant, fast and auto modes), `parallel`, `firecrawl`, `perplexity`; with no engine, native where
+    the provider has it, else Exa. A newer `openrouter:web_search` server tool is documented on the
+    Responses API only and marked beta. `usage.cost` is "the total amount charged"; the server tools
+    page says a tool's cost is in it, the plugin page does not say. Usage is always reported now
+    (`usage: {include: true}` has no effect). Flux uses the plugin on **Exa**: one fixed price that
+    works on every OpenRouter model, and none of a native search's per-vendor prices or terms; it
+    charges the larger of OpenRouter's reported cost and the tokens at the key's price plus $0.007.
+  - Unverified: no real Gemini or OpenRouter key was used; the shapes are tested against the Docker
+    provider mock only.
 - The UI names the chosen provider and model neutrally, for example "OpenRouter · model-id".
 - **Evidence (PROV-6, kept).** One adapter contract suite runs identically in Docker against mock
   servers for each wire format (Anthropic Messages; OpenAI Responses; OpenAI-compatible Chat

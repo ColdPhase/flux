@@ -121,7 +121,7 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
 
   test('a search that does not fit the key\'s budget is refused before anything is sent', async () => {
     // A day's budget that holds the run's own requests but not a search's larger one (its results are input too).
-    const request = runReservationMicros(FAKE_PRICE, true, false)!; const search = keySearchHoldMicros(FAKE_PRICE)!;
+    const request = runReservationMicros(FAKE_PRICE, true, false)!; const search = keySearchHoldMicros({ price: FAKE_PRICE, provider: 'anthropic', model: 'claude-sonnet-5' })!;
     assert.ok(search > request + 20_000, `${search} > ${request}`);
     connections.connect(owner.id, connectionId, { dailyBudgetCents: Math.floor((request + search) / 2 / 10_000) });
     try {
@@ -151,6 +151,19 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
       assert.ok(on?.includes('flux_web_search'), JSON.stringify(on));
       const without = await issue(offBase);
       assert.ok(without && without.length > 0 && !without.includes('flux_web_search'), JSON.stringify(without));
+      // #1585 (C-72): a run on a Gemini or an OpenRouter key is given it too, and not with the web off; one on an endpoint of the owner's own never.
+      for (const [provider, model, offered] of [['gemini', 'gemini-3.8-flash', true], ['openrouter', 'anthropic/claude-sonnet-5', true], ['openai_compatible', 'llama3.1:8b', false]] as const) {
+        const issueOn = async (url: string) => {
+          const started = await ask('Anything new?');
+          await pool.query(`UPDATE personal_runs SET status = 'dispatching', dispatched_at = now(), provider = $2, model = $3 WHERE id = $1`, [started.run.id, provider, model]);
+          const grant = await runTokenIssuer(db, url).issue(started.run.id, { pi: true });
+          await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released' WHERE id = $1`, [started.run.id]);
+          return grant?.tools ?? null;
+        };
+        assert.equal((await issueOn(base))?.includes('flux_web_search'), offered, `${provider}: with the web on`);
+        const off = await issueOn(offBase);
+        assert.ok(off && off.length > 0 && !off.includes('flux_web_search'), `${provider}: FLUX_WEB_READS=off`);
+      }
     } finally { await off.close(); }
   });
 

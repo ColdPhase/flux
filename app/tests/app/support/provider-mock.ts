@@ -14,6 +14,7 @@ import { toolAnswer, toolWireOf } from './tool-answers.js';
  *   POST /openai/v1/chat/completions, GET /openai/v1/models          OpenAI-compatible Chat Completions
  *   GET /keyed/v1/models                                             an endpoint that lists its models only to a key
  *   POST /openai/v1/responses                                        OpenAI's Responses API (#954)
+ *   POST /gemini/v1beta/models/{model}:generateContent              Gemini's own API, for its Google Search grounding (#1585)
  *   GET  /openrouter/v1/models                                       a priced model list (OpenRouter's shape)
  *   POST /__script { wire, mode, text, usage, cost, status, delayMs, search }   the next answers of one wire format
  *   GET  /__requests                                                 what the adapters sent
@@ -37,9 +38,13 @@ import { toolAnswer, toolWireOf } from './tool-answers.js';
  * becomes a `server_tool_use` and a `web_search_tool_result` block and a text block citing `cite` (`web_search_result_location`), with
  * `usage.server_tool_use.web_search_requests: 1` on Anthropic; a `web_search_call` item with `action.sources` and a message whose
  * `output_text` has a `url_citation` annotation on the Responses API. `errorMessage` gives a `status` answer the provider's own words.
+ * On Chat Completions a request that carries OpenRouter's `web` plugin (#1585) gets a `url_citation` annotation for each result
+ * (OpenRouter's documented shape, openrouter.ai/docs/guides/features/plugins/web-search, read 2026-11-20: `{ type: 'url_citation', url_citation: { url, title, content } }`); Gemini's `generateContent` answers with
+ * `groundingMetadata` (`webSearchQueries`, a `groundingChunks` entry per result, a `groundingSupports` entry pointing at `cite`) and
+ * `usageMetadata` with `toolUsePromptTokenCount` and `thoughtsTokenCount` (aistudio.google.com/docs/google-search, read 2026-11-20).
  */
 
-type Wire = 'anthropic' | 'openai';
+type Wire = 'anthropic' | 'openai' | 'gemini';
 type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized' | 'paused' | 'tool';
 interface Search { query: string; results: string[]; cite: string }
 interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null; streamGapMs: number; crlf: boolean }
@@ -49,7 +54,7 @@ export interface RecordedProviderRequest {
 }
 
 const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0, search: null, errorMessage: null, streamGapMs: 5, crlf: false };
-const scripts: Record<Wire, Script> = { anthropic: { ...DEFAULT }, openai: { ...DEFAULT } };
+const scripts: Record<Wire, Script> = { anthropic: { ...DEFAULT }, openai: { ...DEFAULT }, gemini: { ...DEFAULT } };
 const requests: RecordedProviderRequest[] = [];
 
 function json(response: http.ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -148,13 +153,36 @@ function responsesEvents(answer: ReturnType<typeof responsesAnswer>) {
   return events;
 }
 
-function openAiAnswer(script: Script, body: { model?: string }) {
+function openAiAnswer(script: Script, body: { model?: string; plugins?: unknown }) {
   const refusal = script.mode === 'refusal';
+  // OpenRouter's web plugin (#1585): its results come back as the message's url_citation annotations.
+  const searched = script.search && Array.isArray(body.plugins) && body.plugins.some((plugin) => (plugin as { id?: unknown })?.id === 'web');
+  const annotations = searched ? script.search!.results.map((url, index) => ({ type: 'url_citation',
+    url_citation: { url, title: `Result ${index + 1}`, content: `What result ${index + 1} says.`, start_index: 0, end_index: script.text.length } })) : null;
   return { id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: body.model,
     choices: [{ index: 0, finish_reason: script.mode === 'truncated' ? 'length' : 'stop',
-      message: { role: 'assistant', content: refusal ? null : script.text, ...(refusal ? { refusal: 'I can’t help with that.' } : {}) } }],
+      message: { role: 'assistant', content: refusal ? null : script.text, ...(refusal ? { refusal: 'I can’t help with that.' } : {}), ...(annotations ? { annotations } : {}) } }],
     ...(script.mode === 'no_usage' ? {} : { usage: { prompt_tokens: script.usage.input, completion_tokens: script.usage.output,
       total_tokens: script.usage.input + script.usage.output, ...(script.cost === null ? {} : { cost: script.cost }) } }) };
+}
+
+/** Gemini's `generateContent` answer (#1585): a candidate, its grounding when the request offered `google_search`, and its usage. */
+function geminiAnswer(script: Script, body: { tools?: unknown }) {
+  const search = Array.isArray(body.tools) && body.tools.some((tool) => (tool as { google_search?: unknown })?.google_search !== undefined) ? script.search : null;
+  const refusal = script.mode === 'refusal';
+  return {
+    candidates: [{ index: 0, finishReason: refusal ? 'SAFETY' : script.mode === 'truncated' ? 'MAX_TOKENS' : 'STOP',
+      content: { role: 'model', parts: refusal ? [] : [{ text: 'thinking about it', thought: true }, { text: script.text }] },
+      ...(search ? { groundingMetadata: {
+        webSearchQueries: [search.query, `${search.query} 2026`],
+        searchEntryPoint: { renderedContent: '<!-- Search Suggestions -->' },
+        groundingChunks: search.results.map((uri, index) => ({ web: { uri, title: `result${index + 1}.example` } })),
+        groundingSupports: [{ segment: { startIndex: 0, endIndex: script.text.length, text: script.text }, groundingChunkIndices: [search.results.indexOf(search.cite)] }],
+      } } : {}) }],
+    ...(script.mode === 'no_usage' ? {} : { usageMetadata: { promptTokenCount: script.usage.input, candidatesTokenCount: script.usage.output,
+      ...(search ? { toolUsePromptTokenCount: 500 } : {}), thoughtsTokenCount: 40, totalTokenCount: script.usage.input + script.usage.output + 40 + (search ? 500 : 0) } }),
+    modelVersion: 'mock',
+  };
 }
 
 const server = http.createServer((request, response) => {
@@ -179,20 +207,22 @@ const server = http.createServer((request, response) => {
     if (handleKeyLists(request, response, url, body)) return;
     if (url.pathname === '/__requests') return json(response, 200, { requests });
     if (url.pathname === '/__reset') {
-      requests.length = 0; scripts.anthropic = { ...DEFAULT }; scripts.openai = { ...DEFAULT };
+      requests.length = 0; scripts.anthropic = { ...DEFAULT }; scripts.openai = { ...DEFAULT }; scripts.gemini = { ...DEFAULT };
       return json(response, 200, { ok: true });
     }
     if (url.pathname === '/__script') {
       const patch = body as Partial<Script> & { wire?: Wire | 'all' };
-      for (const wire of patch.wire === 'all' || !patch.wire ? ['anthropic', 'openai'] as Wire[] : [patch.wire]) {
+      for (const wire of patch.wire === 'all' || !patch.wire ? ['anthropic', 'openai', 'gemini'] as Wire[] : [patch.wire]) {
         scripts[wire] = { ...DEFAULT, ...patch, usage: { ...DEFAULT.usage, ...patch.usage } };
         delete (scripts[wire] as { wire?: unknown }).wire;
       }
       return json(response, 200, { ok: true });
     }
-    const wire: Wire | 'other' = url.pathname.startsWith('/anthropic/') ? 'anthropic' : url.pathname.startsWith('/openai/') ? 'openai' : 'other';
-    // Both wires carry the key as a bearer: the Anthropic SDK 1.x sends an API key in `Authorization`, as the OpenAI-compatible adapters do.
-    const key = (request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+    const wire: Wire | 'other' = url.pathname.startsWith('/anthropic/') ? 'anthropic' : url.pathname.startsWith('/openai/') ? 'openai'
+      : url.pathname.startsWith('/gemini/v1beta/models/') ? 'gemini' : 'other';
+    // Both wires carry the key as a bearer: the Anthropic SDK 1.x sends an API key in `Authorization`, as the OpenAI-compatible adapters do;
+    // Gemini's own API takes it in `x-goog-api-key`.
+    const key = (wire === 'gemini' ? String(request.headers['x-goog-api-key'] ?? '') : (request.headers.authorization ?? '').replace(/^Bearer /, '')) || null;
     const recorded: RecordedProviderRequest = { wire, method: request.method ?? '', path: url.pathname, key, headers: request.headers, body, aborted: false, at: Date.now() };
     response.on('close', () => { if (!response.writableFinished) recorded.aborted = true; });
     requests.push(recorded);
@@ -223,6 +253,7 @@ const server = http.createServer((request, response) => {
       if (url.pathname === '/anthropic/v1/messages' && streamed) return sse(response, anthropicEvents(anthropicAnswer(script, body as { model?: string })), script.streamGapMs);
       if (url.pathname === '/anthropic/v1/messages') return json(response, 200, anthropicAnswer(script, body as { model?: string }));
       if (url.pathname === '/openai/v1/chat/completions') return json(response, 200, openAiAnswer(script, body as { model?: string }));
+      if (wire === 'gemini' && url.pathname.endsWith(':generateContent')) return json(response, 200, geminiAnswer(script, (body ?? {}) as { tools?: unknown }));
       if (url.pathname === '/openai/v1/responses' && streamed) return sse(response, responsesEvents(responsesAnswer(script, body as { model?: string })), script.streamGapMs, script.crlf);
       if (url.pathname === '/openai/v1/responses') return json(response, 200, responsesAnswer(script, body as { model?: string }));
       return json(response, 404, { error: 'not found' });
