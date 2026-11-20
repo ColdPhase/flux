@@ -52,6 +52,18 @@ admin prints no warning; `scripts/check_flux_cli.sh` asserts it. An operator who
 `compose.yaml` with plain `docker compose` still sees the line; it is harmless
 ([troubleshooting](../operations/troubleshooting.md)).
 
+SELinux labels also reach the images built here. BuildKit's `COPY . .` keeps each file's
+label from the checkout, and a file made during the build beneath such a directory inherits it.
+Checked 2026-11-20 on Fedora 42 (kernel 6.19, Docker with `selinux-enabled`): a checkout in a home directory
+(`user_home_t`) gave the worker's `sandbox.node` that label. A container could read and map it, but the kernel
+refused `mprotect` (`avc: denied { read } … tcontext=…user_home_t`). musl then failed with `Error relocating
+…/sandbox.node: RELRO protection failed`, and the file reader read nothing. BuildKit's cache key leaves labels
+out, so later builds of the same code from a correctly labelled checkout reused the bad layer. Native code is
+therefore compiled only in the Dockerfile's `native` stage, beneath `/native`. node-pty's `pty.node` is assembled
+outside `/app` and moved into place. `tests/test_native_addon_labels.py` enforces both. Release images are
+built on GitHub's Ubuntu runners, where SELinux is off, and a pulled image carries no SELinux labels from
+its build host.
+
 ## Local task worktrees
 
 Keep each task or independent review in its own Git worktree under the repository
