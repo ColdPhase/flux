@@ -74,9 +74,11 @@ export function playTime(milliseconds: number): string {
 }
 
 /** The "detail" of "type · detail · size" (#469): pages, data rows or playing time, as the server read them from the bytes; empty when it did not. */
-export function detailLine(detail: { pages?: number; rows?: number; durationMs?: number } | undefined): string {
+export function detailLine(detail: { pages?: number; rows?: number; durationMs?: number; noText?: true } | undefined): string {
   if (!detail) return '';
-  if (detail.pages !== undefined) return `${detail.pages} ${detail.pages === 1 ? 'page' : 'pages'}`;
+  // A PDF Flux found no text in (C-69, #1557): the row says so, so nobody expects search or an agent to read its words.
+  if (detail.pages !== undefined) return `${detail.pages} ${detail.pages === 1 ? 'page' : 'pages'}${detail.noText ? ' · no text' : ''}`;
+  if (detail.noText) return 'no text';
   if (detail.rows !== undefined) return `${detail.rows} ${detail.rows === 1 ? 'row' : 'rows'}`;
   if (detail.durationMs !== undefined) return playTime(detail.durationMs);
   return '';

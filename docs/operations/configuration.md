@@ -788,6 +788,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
                          put its files in place, migrate and check health; on failure print the
                          way back. A source checkout: ./flux upgrade [--pull] builds its own code.
+  ./flux upgrade --check [VERSION | --file flux.tar.gz]
+                         The plan, changing nothing: from which schema to which, the migrations by
+                         name, what they remove, and the size and time of the backup it will take.
   ./flux runtime status | release <email> | purge [-y]
                          Agent runtime (FLUX_AGENT_RUNTIME): show who is in it, release one person's
                          place (they are signed out and told), or sign out and delete every login.

@@ -218,6 +218,8 @@ export function FileViewer({ file, format, poster, page = null, onClose }: { fil
       : <>External images and scripts are blocked. {quiet('Run scripts', () => setScripts(true))}</>);
   } else if (format === 'pdf' && pdf.status === 'ready') {
     body = <PdfPage file={file} bytes={pdf.bytes} page={page} drawn={drawn} onDrawn={onDrawn} onFailed={setPdfFailed} onLink={onLink} />;
+    // C-69 (#1557): a scan or a picture has no words for search or an agent to read; the person knows before they wonder.
+    if (file.noText) notes.push('No text in this PDF (scan or picture)');
     // A link in the file only shows where it goes: it opens in a new tab, without this page as its opener, when the person presses Open.
     if (link) notes.push(<>This PDF links to {link}</>, <a className="ui-btn ui-btn--link" href={link} target="_blank" rel="noopener noreferrer">Open link</a>,
       quiet('Dismiss', () => setLink(null)));

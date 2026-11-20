@@ -38,6 +38,8 @@ export interface StoredFileRow {
   videoContainer?: VideoContainer | null;
   /** C-61: the staged video this file is the poster of; such a file is no attachment of its own and follows its video to the message. */
   posterOf?: string | null;
+  /** C-69: a PDF the worker read and found no text in. */
+  noText?: boolean;
   /** F-030: the key version an encrypted workspace's object is sealed under; null (or absent) for a plain object. */
   keyVersion?: number | null;
 }

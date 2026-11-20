@@ -101,6 +101,8 @@ export interface FileDetail {
   durationMs?: number;
   /** The container the server recognised from a video's bytes (C-61); absent for every other file and in an encrypted space. */
   video?: VideoContainer;
+  /** C-69 (#1557): a PDF Flux read and found no text in (a scan or a picture); absent until it is read, and for every other file. */
+  noText?: true;
 }
 
 /** A file staged by the signed-in person, ready to attach. */
