@@ -1,0 +1,9 @@
+# Columns of content tables that a migration removes ON PURPOSE (#1605). scripts/release/smoke_artifacts.sh compares the rows of each content
+# table across an upgrade on every column the previous release had; a column listed here is left out of that comparison, and any other
+# column that is gone after the upgrade fails the check by name. Add a line in the same change as the migration that drops the column.
+# table                      column               migration  why
+project_materials            kind                 0107       C-71 (#1508): a saved source is a Wiki page; the kind goes
+project_materials            client_mutation_id   0107       C-71 (#1508): the saved sources' retry keys go with their API
+project_materials            request_fingerprint  0107       C-71 (#1508): the saved sources' retry keys go with their API
+project_material_versions    client_mutation_id   0107       C-71 (#1508): the saved sources' retry keys go with their API
+project_material_versions    request_fingerprint  0107       C-71 (#1508): the saved sources' retry keys go with their API

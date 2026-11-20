@@ -472,8 +472,11 @@ published releases from v0.2.0 on before the version); the `package` job runs th
 `release-assets` for **every** such release, by release installation and by source checkout; `sign` and `draft` need `upgrade`, so a release whose upgrade fails is neither
 signed nor drafted. The draft's notes carry the "Upgrades from" line of the versions the `upgrade` job actually tested. The checkout of
 [`repository-checks.yml`](../../.github/workflows/repository-checks.yml) fetches the release tags (`fetch-tags: true`), because `tests/test_released_migrations.py`
-compares every released migration file with its tag and fails in Actions when the tags are missing. No PR check runs the matrix: it builds and runs a whole
-installation per release, and is part of release acceptance ([evaluation](evaluation.md#at-release-acceptance)).
+compares every released migration file with its tag and fails in Actions when the tags are missing. No ordinary PR check runs the whole matrix: it builds and runs a whole
+installation per release, and is part of release acceptance ([evaluation](evaluation.md#at-release-acceptance)). Both its legs also run the post-upgrade journeys
+(every feature used on the old rows, and a browser pass; [upgrade](../operations/upgrade.md#tested-with)); their reports and screenshots are in the
+`release-upgrade-matrix` artifact. [`upgrade-journeys.yml`](../../.github/workflows/upgrade-journeys.yml) runs the matrix against the newest release only for a pull
+request that adds a migration or changes the upgrade checks (path-filtered), and on demand.
 
 A pull request that touches the database ([`database-checks.yml`](../../.github/workflows/database-checks.yml), C-68, #1552: `app/packages/db/**`,
 the migrator, the released fixtures or the database image) runs `./scripts/check_application.sh` with only `released-databases.test.ts` and

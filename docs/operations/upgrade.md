@@ -268,6 +268,23 @@ must restore into fresh volumes with that release's files and read back. Before 
 checks that every released migration file is byte-identical to the one in its release tag. A negative control for each failure
 (`FLUX_MATRIX_CONTROL=edited-migration` and `old-data`) must fail the check.
 
+Reading old data back is not enough: every feature must also **work on it** (founder request, 2026-11-20). From v0.2.1 on, both legs
+also run the post-upgrade journeys (`scripts/release/smoke_journeys.py`). Before the upgrade they fill the release with a thread that
+mentions and asks, files of every kind (a PDF with text, a scanned PDF, a picture, a CSV, a DOCX, a video), files in a direct and a group
+message, a map, tasks in every status with discussions, a Wiki page, a saved source with its link, decisions, Inbox items, an agent's
+schedule, a sealed file and a member who is then removed. After it they use each of those **old** rows: they read, reply to, edit and
+delete old messages; download every old file byte for byte; search for old words, and for a word of the old scan and picture once OCR
+(`FLUX_FILE_OCR=on`) has read them; add to the old map; move every old task through its statuses; save the old page; open the old source
+and its link; accept the old decision; resolve the old Inbox items; fire the old schedule by Run now and by its clock; unlock the
+encrypted space and read its old file. They also check that the guest still sees only their space, that the removed member is still out,
+and that a new mention in an old thread reaches the Inbox. A browser pass then opens the main screens on that data at computer and phone
+width (`scripts/release/journeys_browser.sh`). Each journey reports PASS, FAIL with the exact error, or SKIP with the reason.
+[`upgrade-journeys.yml`](../../.github/workflows/upgrade-journeys.yml) runs this against the newest release for a pull request that adds a
+migration or changes these checks, and on demand. `scripts/check_backup_upgrade.sh <archive> <dir>` runs the read-only subset on a
+**copy of a real installation**: it restores a `./flux backup` into a throwaway project of the release that wrote it, with fresh secrets
+and push and e-mail off, upgrades it with `./flux upgrade -y`, and opens what the company's owner reaches. It prints only counts and
+PASS/FAIL, and removes the copy afterwards.
+
 `scripts/release/smoke_launcher.sh` runs the owner's path itself on the candidate's own images: the download check, `./flux up`,
 backup and restore, `./flux upgrade` from a release URL to the next release with the signature checked through the pinned cosign
 image (a throwaway key stands in for the release workflow's identity, which signs only on GitHub), and its refusals of an archive that

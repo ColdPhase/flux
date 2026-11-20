@@ -18,6 +18,9 @@
 #      b. SOURCE CHECKOUT: the release's source tree is started with ./flux up, seeded the same way, replaced by the candidate's tree,
 #         and moved with ./flux upgrade -y (FLUX_AGENT_RUNTIME=pi, so the candidate's runtime starts); everything is read back and written to
 #         again, a new agent run included.
+#    In both legs, from v0.2.1 on, the post-upgrade journeys then use every feature on the OLD rows the release wrote, through the API and a
+#    browser pass over the main screens (scripts/release/smoke_journeys.py, journeys_browser.sh; their reports and screenshots go to
+#    FLUX_MATRIX_JOURNEYS_DIR/<tag>/ when it is set).
 #    Each release goes straight to the candidate, so every release but the newest also proves that versions can be skipped.
 # 3. A migration that breaks old data is added to the candidate: against the oldest release the upgrade must stop, API and worker must
 #    not start, and the paired backup taken with the old files must restore into fresh volumes and read back (smoke_artifacts.sh leg 3).
@@ -216,10 +219,11 @@ for tag in $releases; do
       export FLUX_SMOKE_DUMP="$dump_dir/$tag.sql.gz"
     fi
     started=$(date +%s)
+    [ -z "${FLUX_MATRIX_JOURNEYS_DIR:-}" ] || export FLUX_SMOKE_JOURNEYS_DIR="$FLUX_MATRIX_JOURNEYS_DIR/$tag"
     FLUX_SMOKE_LEGS=upgrade FLUX_SMOKE_RECOVERY=$recovery FLUX_SMOKE_PREVIOUS_ASSETS="$work/releases/$tag" \
       FLUX_SMOKE_PORT=$((base + 1)) FLUX_SMOKE_RESTORE_PORT=$((base + 2)) \
       bash "$root/scripts/release/smoke_artifacts.sh" "$candidate_assets" "$work/state-$tag" "$run_id-i$n" "$run_id-r$n" | tee "$work/install-$tag.out"
-    unset FLUX_SMOKE_DUMP
+    unset FLUX_SMOKE_DUMP FLUX_SMOKE_JOURNEYS_DIR
     record "$tag -> $candidate_version  release installation  PASS  $(( $(date +%s) - started )) s$([ -z "$recovery" ] || echo '  (+ a migration that breaks old data stops it, the backup restores)')"
   else
     record "$tag -> $candidate_version  release installation  SKIPPED  (FLUX_MATRIX_RELEASE_INSTALL=0: not tested)"
@@ -236,7 +240,7 @@ for tag in $releases; do
     ( cd "$checkout" && FLUX_PROJECT="$project" FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux up >/dev/null )
     env_file="$checkout/docker/.env"
     head -c 32 /dev/urandom > "$work/background.key"; chmod 644 "$work/background.key"
-    for pair in "FLUX_PERSONAL_RUNS=on" "FLUX_AI_PRIVATE_TARGETS=provider-mock" "FLUX_BACKGROUND_KEY_HOST_FILE=$work/background.key"; do
+    for pair in "FLUX_PERSONAL_RUNS=on" "FLUX_AI_PRIVATE_TARGETS=provider-mock" "FLUX_BACKGROUND_KEY_HOST_FILE=$work/background.key" "FLUX_FILE_OCR=on"; do
       key=${pair%%=*}
       if grep -q "^$key=" "$env_file"; then sed "s#^$key=.*#$pair#" "$env_file" > "$env_file.edit" && mv "$env_file.edit" "$env_file"; else echo "$pair" >> "$env_file"; fi
     done
@@ -247,6 +251,11 @@ for tag in $releases; do
       -v "$root/scripts/release/provider_mock.mjs:/mock/provider_mock.mjs:ro,z" --entrypoint node "$node_image" /mock/provider_mock.mjs >/dev/null
     for _ in $(seq 1 30); do docker exec "$run_id-s$n-provider-mock" node -e "fetch('http://127.0.0.1:8091/__health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" && break; sleep 1; done
     FLUX_SETUP_TOKEN=$(sed -n 's/^FLUX_SETUP_TOKEN=//p' "$env_file") python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --provider-url http://provider-mock:8091/v1
+    journeys_state="$work/journeys-$tag"
+    mkdir -p "$journeys_state"; cp "$work/source-$tag.json" "$journeys_state/account.json"
+    if [ "$(curl -fsS "http://127.0.0.1:$port/api/v1/health" | sed -n 's/.*"schemaVersion":\([0-9]*\).*/\1/p')" -ge 95 ]; then
+      python3 "$root/scripts/release/smoke_journeys.py" seed --origin "http://127.0.0.1:$port" --account "$journeys_state/account.json" --state "$journeys_state/journeys.json"
+    fi
     # `git pull`: the files of the checkout change, its .env and the data stay.
     cp "$env_file" "$work/source-$tag.env"
     find "$checkout" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -264,6 +273,15 @@ for tag in $releases; do
     [ "$(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=runtime-1 --filter health=healthy | wc -l)" = 1 ] ||
       fail "the candidate's agent runtime (runtime-1, pi) is not healthy after ./flux upgrade from $tag"
     python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --write
+    if [ -f "$journeys_state/journeys.json" ]; then
+      journeys_out=${FLUX_MATRIX_JOURNEYS_DIR:+$FLUX_MATRIX_JOURNEYS_DIR/$tag}
+      journeys_out=${journeys_out:-$journeys_state}
+      mkdir -p "$journeys_out"
+      python3 "$root/scripts/release/smoke_journeys.py" exercise --ocr --origin "http://127.0.0.1:$port" --account "$journeys_state/account.json" \
+        --state "$journeys_state/journeys.json" --report "$journeys_out/source-checkout.json" || fail "a feature does not work on the data $tag wrote (journeys above)"
+      bash "$root/scripts/release/journeys_browser.sh" "http://127.0.0.1:$port" "$journeys_state" "$journeys_out/source-checkout-shots" ||
+        fail "a main screen does not open on the data $tag wrote (browser pass above)"
+    fi
     record "$tag -> $candidate_version  source checkout        PASS  $(( $(date +%s) - started )) s"
     ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux clean -y >/dev/null 2>&1 ) || true
     docker rm -fv "$run_id-s$n-provider-mock" >/dev/null 2>&1 || true

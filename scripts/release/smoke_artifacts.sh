@@ -29,6 +29,11 @@
 #      previous columns); the volumes were not recreated; the account signs in and every created item reads back;
 #      the instance accepts new work (smoke_data.py verify --write: messages of each kind, a task, a new agent run on the provider
 #      mock, a message in the unlocked encrypted space) and the second device's session still works.
+#      Then the post-upgrade journeys (scripts/release/smoke_journeys.py, from a previous release of schema 95, v0.2.1, on): every feature
+#      is used ON THE OLD ROWS the previous release wrote (a thread with mentions, files of every kind, direct and group messages, a map,
+#      tasks in every status, a Wiki page, a saved source, decisions, Inbox items, a schedule, a sealed file, a guest and a removed member):
+#      read, reply, edit, delete, download byte for byte, search (and OCR: FLUX_FILE_OCR=on), move, accept, resolve, fire, unlock; and a
+#      browser pass over the main screens (scripts/release/journeys_browser.sh). FLUX_SMOKE_JOURNEYS_DIR keeps their report and screenshots.
 #   5. Back up the upgraded installation and restore it into fresh volumes with the candidate's files.
 #   6. Recovery path: restore the PRE-upgrade backup into fresh volumes with the PREVIOUS release's files,
 #      check it there, then upgrade that restored installation to the candidate and check it again.
@@ -217,12 +222,26 @@ expected_ledger() { # the candidate's migration files, as the migrator numbers t
   ls "$root/app/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -
 }
 # Content tables compared across the upgrade: rows keep their previous columns (a migration may add a column or a
-# constraint but must not change or drop a recorded value). Tables the previous release lacks are skipped.
+# constraint but must not change or drop a recorded value). Tables the previous release lacks are skipped. A column that a migration
+# removes on purpose is listed in removed-columns.txt and left out (#1605); any other column that is gone after the upgrade fails by name.
 content_tables="workspaces workspace_members projects project_grants project_materials project_material_versions project_conversations project_messages project_work_items project_decisions agents"
+removed_columns() { # table: the quoted names of the columns of it that removed-columns.txt lists, comma separated (empty for none)
+  sed -e 's/#.*//' "$root/scripts/release/removed-columns.txt" | awk -v t="$1" -v q="'" '$1 == t { printf "%s%s%s%s", (n++ ? "," : ""), q, $2, q }'
+}
+listed_removed() { sed -e 's/#.*//' "$root/scripts/release/removed-columns.txt" | awk 'NF'; }
+# Each entry names a content table, a column, the candidate's migration that drops it, and why; a column cannot be listed in passing.
+while read -r table column migration why; do
+  case " $content_tables " in *" $table "*) ;; *) fail "removed-columns.txt lists $table.$column, but $table is not a compared content table" ;; esac
+  [ -n "$why" ] && [[ $migration =~ ^[0-9]{4}$ ]] || fail "removed-columns.txt: '$table $column $migration' needs a four-digit migration and a reason"
+  migration_file=$(ls "$root/app/packages/db/migrations/${migration}_"*.sql 2>/dev/null | head -n 1)
+  [ -n "$migration_file" ] && grep -qiE "drop column( if exists)? \"?$column\"?([^a-z0-9_]|$)" "$migration_file" ||
+    fail "removed-columns.txt lists $table.$column under migration $migration, which does not drop it"
+done < <(listed_removed)
 table_columns() {
-  local table columns
+  local table columns removed
   for table in $content_tables; do
-    columns=$(sql "$1" "$2" "$3" "SELECT string_agg(quote_literal(column_name), ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '$table'")
+    removed=$(removed_columns "$table")
+    columns=$(sql "$1" "$2" "$3" "SELECT string_agg(quote_literal(column_name), ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '$table'${removed:+ AND column_name NOT IN ($removed)}")
     if [ -n "$columns" ]; then printf '%s %s\n' "$table" "$columns"; fi
   done
 }
@@ -284,6 +303,8 @@ make_env() { # template, destination, port, [agents]: INSTALL.md's values; with 
     set_env "$2" FLUX_PERSONAL_RUNS on
     set_env "$2" FLUX_AI_PRIVATE_TARGETS provider-mock
     set_env "$2" FLUX_BACKGROUND_KEY_HOST_FILE "$background_key"
+    # The journeys search the old scan and picture by OCR (C-70); a release before it does not pass the setting to its services.
+    set_env "$2" FLUX_FILE_OCR on
   fi
 }
 restore_env_from() { # source environment file, destination, port
@@ -348,6 +369,14 @@ if [ -n "${FLUX_SMOKE_DUMP:-}" ]; then
     grep -v '^\\' | gzip -9n > "$FLUX_SMOKE_DUMP"
   echo "dumped the seeded database of $previous_version to $FLUX_SMOKE_DUMP ($(wc -c < "$FLUX_SMOKE_DUMP") bytes)"
 fi
+# The post-upgrade journeys seed what v0.2.1's API writes; an older release (v0.2.0) is upgraded and read back by smoke_data.py only.
+journeys=""
+if [ "$(schema_version "$source_port")" -ge 95 ]; then
+  python3 "$root/scripts/release/smoke_journeys.py" seed --origin "http://127.0.0.1:$source_port" --account "$up_dir/account.json" --state "$up_dir/journeys.json"
+  journeys=1
+else
+  echo "post-upgrade journeys not seeded: $(json_field "$previous_assets/release.json" version) is older than v0.2.1 (schema 95)"
+fi
 schema_before=$(schema_version "$source_port")
 ledger "$source_project" "$up_env" "$previous_assets" | tr ',' '\n' > "$up_dir/ledger.before"
 table_columns "$source_project" "$up_env" "$previous_assets" > "$up_dir/columns"
@@ -394,6 +423,16 @@ ledger_after=$(ledger "$source_project" "$up_env" "$assets")
 [ "$ledger_after" = "$candidate_ledger" ] || fail "the ledger after the upgrade ($ledger_after) is not the candidate's migration files ($candidate_ledger)"
 printf '%s\n' "$ledger_after" | tr ',' '\n' > "$up_dir/ledger.after"
 [ -z "$(comm -23 <(sort "$up_dir/ledger.before") <(sort "$up_dir/ledger.after"))" ] || fail "a ledger row of the previous release is gone"
+while read -r table columns; do
+  gone=$(sql "$source_project" "$up_env" "$assets" "SELECT string_agg(c, ', ') FROM unnest(ARRAY[$columns]) c WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = '$table' AND column_name = c)")
+  [ -z "$gone" ] || fail "the upgrade dropped $table.{$gone}: a column removed on purpose is listed in scripts/release/removed-columns.txt (#1605)"
+done < "$up_dir/columns"
+# A listed column is left out of the comparison only because the upgrade drops it: one still there would change unseen.
+while read -r table column _; do
+  [ "$(sql "$source_project" "$up_env" "$assets" "SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '$table' AND column_name = '$column'")" = 0 ] ||
+    fail "$table.$column is listed in scripts/release/removed-columns.txt but is still there after the upgrade"
+done < <(listed_removed)
 table_snapshot "$source_project" "$up_env" "$assets" "$up_dir/columns" > "$up_dir/tables.after"
 cmp "$up_dir/tables.before" "$up_dir/tables.after" || { diff "$up_dir/tables.before" "$up_dir/tables.after" >&2 || true; fail "content rows changed across the upgrade"; }
 [ "$(volume_stamps "$source_project")" = "$(cat "$up_dir/volumes.before")" ] || fail "a volume was recreated by the upgrade"
@@ -403,6 +442,14 @@ dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_time
 health "$source_port" >/dev/null
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --write
 check_probe "$source_project" "$up_env" "$assets" "$up_probe"
+if [ -n "$journeys" ]; then
+  journeys_dir=${FLUX_SMOKE_JOURNEYS_DIR:-$up_dir/journeys}
+  mkdir -p "$journeys_dir"
+  python3 "$root/scripts/release/smoke_journeys.py" exercise --ocr --origin "http://127.0.0.1:$source_port" --account "$up_dir/account.json" \
+    --state "$up_dir/journeys.json" --report "$journeys_dir/release-install.json" || fail "a feature does not work on the upgraded data (journeys above)"
+  bash "$root/scripts/release/journeys_browser.sh" "http://127.0.0.1:$source_port" "$up_dir" "$journeys_dir/release-install-shots" ||
+    fail "a main screen does not open on the upgraded data (browser pass above)"
+fi
 echo "upgrade: schemaVersion $schema_before -> $schema_after; ledger $(grep -c . "$up_dir/ledger.before") -> $(grep -c . "$up_dir/ledger.after") rows (+$(( $(grep -c . "$up_dir/ledger.after") - $(grep -c . "$up_dir/ledger.before") ))); $(grep -c . "$up_dir/tables.after") content tables identical; downtime from stopping the writers to healthy $downtime s"
 
 echo "-- 5. paired backup of the upgraded installation, restored with the candidate's files"
