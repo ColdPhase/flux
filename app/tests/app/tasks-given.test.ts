@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { Agent, Page, WorkItem } from '@flux/contracts';
-import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeFromSpace, removeMember, workspace, type Person } from './support/people.js';
 
 /**
  * "Tasks I gave others" (#1519, founder decision 2026-11-14, PM essentials): the unfinished tasks a person created for another person, across the
@@ -39,5 +39,29 @@ describe('tasks I gave others (#1519)', () => {
     assert.deepEqual(await given(ada), [forKaiLater.id]);
     expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${forSelf.id}`, { body: { owner: { kind: 'human', id: kai.id } }, headers: { 'if-match': `"${forSelf.version}"` } }), 200);
     assert.deepEqual(await given(ada), [forKaiLater.id, forSelf.id].sort(), 'a task handed to Kai is one Ada gave');
+  });
+
+  test('only in spaces the caller can still read: a space they left, or a company they left, drops its tasks', async () => {
+    const [ada, kai, lea] = await Promise.all(['given-acl-ada', 'given-acl-kai', 'given-acl-lea'].map(person));
+    const ws = await workspace(ada, 'Given access');
+    await addMember(ada, ws.id, kai, 'member');
+    await addMember(ada, ws.id, lea, 'member');
+    const open = await project(ada, ws.id, 'Everyone garden', 'workspace');
+    const closed = await project(ada, ws.id, 'Board room', 'restricted');
+    await grant(ada, closed.id, kai, 'contributor');
+    const make = async (where: string, title: string) => expectStatus(await kai.browser.request('POST', `/api/v1/projects/${where}/work`, { body: { title, owner: { kind: 'human', id: ada.id } } }), 201) as WorkItem;
+    const inOpen = await make(open.id, 'Water the beds');
+    const inClosed = await make(closed.id, 'Sign the lease');
+    const given = async (who: Person) => (await get<Page<WorkItem>>(who, `/api/v1/workspaces/${ws.id}/work/given`)).items.map((item) => item.id).sort();
+    assert.deepEqual(await given(kai), [inOpen.id, inClosed.id].sort());
+    assert.deepEqual(await given(lea), [], 'another member sees none of Kai\'s');
+
+    await removeFromSpace(ada, closed.id, kai);
+    assert.deepEqual(await given(kai), [inOpen.id], 'a restricted space Kai left drops out at once');
+
+    await removeMember(ada, ws.id, kai);
+    const after = await kai.browser.request('GET', `/api/v1/workspaces/${ws.id}/work/given`);
+    if (after.status === 200) assert.deepEqual((after.json as Page<WorkItem>).items, [], 'a company Kai left shows nothing');
+    else assert.ok([403, 404].includes(after.status), `a company Kai left is refused (${after.status})`);
   });
 });
