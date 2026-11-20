@@ -775,7 +775,7 @@ its own [error-path rule](#error-paths).
 | `sketches` (maps) | `title` | — | `scope` |
 | `sketch_thoughts` | `text` | — | `shape`, `x`, `y`, `width`, `height`, `source_author_name` (a person's name, account data) |
 | `sketch_links` | `label` | — | endpoints |
-| `project_files` | `name`, file bytes ([Files](#files)) | `sha256` | `size`, `state` |
+| `project_files` | `name`, file bytes ([Files](#files)) | `sha256` | `size`, `state`; `ocr_state` (enum, C-70) and `no_text` (C-69) are set only by the text reader, which never reads a file of a sealed workspace |
 | `doc_live_heads`, `doc_live_archives` | `body`, `codec_state` (field `doc_live.*`) | `hash` | sequences, generation |
 | `doc_live_updates` | `bytes`, `ledger` | `fingerprint` | actor, command id |
 | `doc_live_snapshots` | — | `hash` | `contributors` (people ids) |
@@ -800,7 +800,9 @@ refuse AI work. Its `ai_work_admission` trigger (0115) guards only six tables (`
 `assistant_join_question_identity_snapshots` and `background_compute_connections` where it names a
 workspace. It raises `WORKSPACE_ENCRYPTED_AI_OFF` when the row's workspace (direct or through its
 project, agent or connection) is sealed. The registry test checks that each AI-class table with a
-workspace path has it. The dump-scan test proves the tables empty for A.
+workspace path has it. The dump-scan test proves the tables empty for A. `file_page_pictures` (C-69, migration 0103: the pages'
+pictures of a PDF without text, read only by agents) is in this class without a workspace path of its own (it is keyed by file): the
+worker writes it only for a file it claimed and stored in a plain workspace (`fileTextRows.claim` and `store` skip `workspace_sealed`).
 
 **Client-chosen visible text.** Some visible columns hold keys chosen by the client: the idempotency
 `key`, `project_task_plan_intents.intent_key` and `clientMessageId`-style ids. The server cannot police
@@ -1212,7 +1214,7 @@ an **encrypted index at rest, decrypted into RAM**:
   is lost; it is found at the next search after that transaction ends). Another API replica learns of a Lock the first time it handles a
   request or frame for that workspace (every operation checks the unlock rows, and `sealFor` drops the keys, the index and the rooms
   there); until then it keeps the plaintext index in its memory, as it keeps the cached keys (S1).
-- **Files are found by name only (C-63, #1382; #1424 B).** The text inside the files people send (PDF, DOCX, Markdown, plain text, CSV/TSV) is searched in plain spaces only. The choice was a sealed index or none, and it is none for the text: a file of an encrypted space gets no extraction job (the triggers of migrations 0072 and 0088 skip `workspace_sealed` workspaces), and the worker never opens its object. Its **name** is searchable like any sealed title (migration 0088): the file's row is a placeholder (`sealed`, empty title and body, written by `search_put`), and the in-memory index of the unlocked space opens `project_files.name` for it (`contentOf`, kind `file`); the name is never in a visible column. A sealed index would need the extracted text stored sealed beside the sealed object and held in the API's memory, where the bound counts estimated heap at 16 to 112 times the text; one PDF of 200,000 characters would use as much of the 256 MiB as thousands of messages. A file is also reached through the message it is attached to, which this index holds.
+- **Files are found by name only (C-63, #1382; #1424 B).** The text inside the files people send (PDF, DOCX, Markdown, plain text, CSV/TSV) is searched in plain spaces only. The choice was a sealed index or none, and it is none for the text: a file of an encrypted space gets no extraction job (the triggers of migrations 0072 and 0088 skip `workspace_sealed` workspaces), and the worker never opens its object. Its **name** is searchable like any sealed title (migration 0088): the file's row is a placeholder (`sealed`, empty title and body, written by `search_put`), and the in-memory index of the unlocked space opens `project_files.name` for it (`contentOf`, kind `file`); the name is never in a visible column. A sealed index would need the extracted text stored sealed beside the sealed object and held in the API's memory, where the bound counts estimated heap at 16 to 112 times the text; one PDF of 200,000 characters would use as much of the 256 MiB as thousands of messages. A file is also reached through the message it is attached to, which this index holds. The same holds for what came after C-63: a direct message's file (C-64 (3), migration 0109: `search_index_dm_file` returns for a sealed workspace before it reads the name), the pages' pictures of a PDF without text (C-69, 0103) and OCR (C-70, 0104: the trigger wakes the worker only for a plain workspace, and `queueOcr` skips sealed workspaces in the same `WHERE` that matches the name) are never made for an encrypted space.
 - **The chooser.** A chooser search with text (a task or decision of one project) uses the same index for its case-insensitive
   title filter. It replaces the S2a-2a scan of the newest 2000 objects and its `searchLimited` marker, and its test switch.
 - **Test support.** The explain route of a test deployment adds `sealed: { postings, terms, documents }` (what the index read), the

@@ -146,9 +146,11 @@ describe('F-030 registry against the live catalog', () => {
       search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision',
       search_index_sketch: 'as search_index_decision', search_index_thought: 'as search_index_decision', search_index_work: 'as search_index_decision',
       // C-63 (0072): a file's name decides only whether its text is read; it returns first for a sealed workspace, and nothing of a sealed row is stored or queued.
-      search_index_file: 'returns for a sealed workspace before it stores the name row or queues the file (0072)',
+      search_index_file: 'search_put stores a placeholder for a sealed workspace (0088); returns for one before it queues the file or wakes OCR (0072, 0104)',
+      // C-64 (3) (0109): a direct message's file.
+      search_index_dm_file: 'returns for a sealed workspace before it reads the name, stores a row or queues the file (0109)',
       // C-64 (0079): the same for a file of an agent's chat.
-      agent_chat_file_text_job: 'as search_index_file: queues a chat\'s file of a plain workspace only, and stores no text (0079)',
+      agent_chat_file_text_job: 'returns for a sealed workspace before it reads the name: queues a chat\'s file of a plain workspace only, and stores no text (0079, 0104)',
     };
     const found = new Set<string>();
     for (const [table, entry] of Object.entries(SEALED_COLUMNS)) {
@@ -321,6 +323,7 @@ describe('F-030 events backstop (S2a-2c-3, migration 0125)', () => {
 const HANDLED_SQL: Readonly<Record<string, string>> = {
   'packages/db/src/repositories/agent-orientation.ts: SELECT m.id, left(v.title, 300)': 'agent orientation: an encrypted workspace has no agents (AI always off)',
   'packages/db/src/repositories/agent-orientation.ts: SELECT c.id, coalesce(left(m.body, 300)': 'agent orientation: an encrypted workspace has no agents (AI always off)',
+  'packages/db/src/repositories/file-text.ts: AND (file_ocr_picture(f.name) OR (f.no_text AND lower(f.name) ~ \'[.]pdf$\'))': 'queueOcr (C-70): the same WHERE skips a sealed workspace, so a sealed file is never queued (an envelope never matches either)',
   'packages/db/src/repositories/live-editing.ts: const sizes = await db.select({ sequence: u.sequence, size: sql<number>`octet_length(${u.bytes})': 'the stored size of an update (S2b: a sealed update\'s length is metadata, its bytes stay sealed)',
   'packages/db/src/repositories/live-map.ts: const [size]=await db.select({bytes:sql<number>`COALESCE(sum(octet_length(${j.change}': 'the stored size of the journal (S2b: a sealed change\'s length is metadata)',
   'packages/db/src/repositories/project-export.ts: .where(byId ? or(byId, eq(schema.projects.name, value))': 'export by name: an envelope never equals a typed name; ./flux export refuses A and the API passes the id',

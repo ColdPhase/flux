@@ -22,7 +22,7 @@ Memory in more detail. Compose limits each service, and memory and swap to the s
 | Service | Limit | Observed |
 | --- | --- | --- |
 | `api` | 1.5 GB | 274 MiB idle; peak 431 MB in the encryption checks |
-| `worker` | 512 MB | 84 MiB idle; peak 111 MB; while it reads a file for search ([C-63](../product/decisions.md)) a child process of at most 320 MiB runs beside it, for at most 20 seconds, one file at a time |
+| `worker` | 512 MB; 1 GB with [OCR](configuration.md#flux_file_ocr) on | 84 MiB idle; peak 111 MB; while it reads a file for search ([C-63](../product/decisions.md)) a child process of at most 320 MiB runs beside it, for at most 20 seconds, one file at a time. With `FLUX_FILE_OCR=on` an OCR child of at most 384 MiB reads one picture at a time (C-70; a 12-megapixel photo measured 270 MiB), so `./flux` gives the worker at least 1 GiB then, raising a smaller `FLUX_WORKER_MEMORY` |
 | `keyring` | 128 MB | 18 MiB idle; peak 42 MB |
 | `db` | 768 MB | 69 MiB idle |
 | `livekit` (only with [calls](calls.md#resources)) | 512 MB, 1 CPU (`FLUX_LIVEKIT_MEMORY`, `FLUX_LIVEKIT_CPUS`) | 75 to 86 MB and 3 to 9 % of one core in a synthetic 16-person call, 4 of them publishing video (2026-11-20) |
