@@ -102,8 +102,12 @@
 .sk-k { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .sk-k svg { flex: none; }
 .sk-t { font-size: var(--fs-base); font-weight: 600; color: var(--t1); line-height: var(--lh); overflow-wrap: anywhere; white-space: pre-line; }
-/* A thought's provenance is one line that ends in one ellipsis (#1553): its words never run over each other, whatever the card's width. */
-.sk-p { display: block; min-width: 0; max-width: 100%; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
+/* A thought's provenance is one line (#1553, #1568): the name gives way first, with an ellipsis, down to its first letters; then the time does;
+   the card's edge clips what is left, so no part is ever printed over another, whatever the card's width. */
+.sk-p { display: flex; min-width: 0; max-width: 100%; margin-top: 3px; overflow: hidden; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
+.sk-p__w { flex: none; white-space: pre; }
+.sk-p__n { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
+.sk-p__t { flex: 0 0.01 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 .sk-resize { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 50%, var(--t3) 50%, var(--t3) 60%, transparent 60%, transparent 72%, var(--t3) 72%, var(--t3) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0;
   opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }

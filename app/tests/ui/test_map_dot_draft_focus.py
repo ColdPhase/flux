@@ -73,7 +73,7 @@ class MapDotDraftFocus(unittest.TestCase):
         expect(form).to_have_count(0)
 
     def typed_at_once(self, page, text='ab'):
-        """Types with no pause after the gesture, as a person does, and says whether it landed in the draft."""
+        """Types with no pause after the gesture, as a person does; True when it landed in the draft, else what was seen instead."""
         page.keyboard.type(text)
         field = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
         try:
@@ -81,7 +81,9 @@ class MapDotDraftFocus(unittest.TestCase):
             expect(field).to_be_focused()
             return True
         except AssertionError:
-            return False
+            return page.evaluate("""() => { const f = document.querySelector('form[aria-label="New thought draft"] textarea'); const a = document.activeElement;
+              return {draft: !!f, value: f && f.value, focused: a === f, active: a && (a.tagName + '.' + (a.className || '') + (a.dataset && a.dataset.side ? '/' + a.dataset.side : '')),
+                connecting: !!document.querySelector('.sk-canvas.is-connecting'), status: (document.querySelector('.sk-status') || {}).textContent}; }""")
 
     def press_dot(self, page, text, *, hold_ms=0, wobble=0, steps=10):
         """The dot's real pointer sequence: down on the dot, a movement to empty space (first `wobble` px at a time), a pause, up."""
@@ -103,8 +105,9 @@ class MapDotDraftFocus(unittest.TestCase):
         misses = []
         for index in range(REPEATS):
             self.press_dot(page, (A, B, C)[index % 3], hold_ms=(0, 120, 400)[index % 3], wobble=(0, 5, 2)[(index // 3) % 3], steps=(1, 6, 14)[index % 3])
-            if not self.typed_at_once(page):
-                misses.append(index)
+            seen = self.typed_at_once(page)
+            if seen is not True:
+                misses.append((index, seen))
             self.cancel(page)
         self.assertEqual(misses, [], 'every new thought from a dot took what was typed at once')
 
@@ -115,8 +118,9 @@ class MapDotDraftFocus(unittest.TestCase):
             node = page.locator('.sk-node', has_text=(A, B, C)[index % 3])
             node.click()
             page.get_by_role('button', name='Add a thought connected to', exact=False).click()
-            if not self.typed_at_once(page):
-                misses.append(index)
+            seen = self.typed_at_once(page)
+            if seen is not True:
+                misses.append((index, seen))
             self.cancel(page)
         self.assertEqual(misses, [], 'every new thought from the + took what was typed at once')
 
@@ -124,7 +128,7 @@ class MapDotDraftFocus(unittest.TestCase):
         """A press that moves less than the click threshold connects from the dot (no draft); the next drop from it still takes typing."""
         page = self.scene()
         misses = []
-        for index in range(REPEATS):
+        for index in range(REPEATS * 2):
             x, y = self.dot_of(page, A)
             page.mouse.move(x, y)
             page.mouse.down()
@@ -132,8 +136,9 @@ class MapDotDraftFocus(unittest.TestCase):
             page.mouse.up()
             page.keyboard.press('Escape')
             self.press_dot(page, B, hold_ms=60)
-            if not self.typed_at_once(page):
-                misses.append(index)
+            seen = self.typed_at_once(page)
+            if seen is not True:
+                misses.append((index, seen))
             self.cancel(page)
         self.assertEqual(misses, [])
 
@@ -151,8 +156,9 @@ class MapDotDraftFocus(unittest.TestCase):
             page.mouse.move(canvas['x'] + canvas['width'] * 0.7, canvas['y'] + canvas['height'] * 0.65, steps=8)
             page.evaluate("""(type) => document.addEventListener(type, () => document.querySelector('.sk-canvas').focus({ preventScroll: true }), { once: true })""", event)
             page.mouse.up()
-            if not self.typed_at_once(page):
-                misses.append((index, event))
+            seen = self.typed_at_once(page)
+            if seen is not True:
+                misses.append((index, event, seen))
             self.cancel(page)
         self.assertEqual(misses, [], 'the new thought took what was typed although the press ended by moving the focus to the map')
 

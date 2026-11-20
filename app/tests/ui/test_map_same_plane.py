@@ -335,22 +335,30 @@ class MapSamePlane(unittest.TestCase):
                 expect(self.node(linked, text)).to_have_attribute('aria-pressed', 'true')
 
     def test_08_a_thoughts_provenance_never_overlaps_itself(self):
+        """#1553/#1568: at 360 px a card with a long author name keeps "(you)" and the time whole and clamps the name to its first
+        letters with an ellipsis; no part is over another and none is outside the card."""
         rows = (('Darmowe kampanie dla schronisk ?', 40, 40), ('Marketing', 420, 40))
         for width in (360, 390):
             with self.subTest(width=width):
                 page = self.page({'width': width, 'height': 780}, touch=True)
                 project, sketch, ids = self.make(rows)
                 self.open(page, project, sketch, count=2)
-                meta = self.node(page, rows[0][0]).locator('.sk-p')
-                text = meta.inner_text()
+                node = self.node(page, rows[0][0])
+                meta = node.locator('.sk-p')
+                text = meta.text_content()
                 self.assertTrue(text.startswith(f'From {NAME} (you) · '), text)
-                style = meta.evaluate('el => { const s = getComputedStyle(el); return [s.overflow, s.textOverflow, s.whiteSpace, el.scrollWidth > el.clientWidth]; }')
-                self.assertEqual(style[:3], ['hidden', 'ellipsis', 'nowrap'], 'one line, ellipsised as a whole')
-                node = self.node(page, rows[0][0]).bounding_box()
-                box = meta.bounding_box()
-                self.assertLessEqual(box['x'] + box['width'], node['x'] + node['width'] + 0.5, 'the line stays inside its card')
-                # Its pieces cannot run over each other: it is one text run.
-                self.assertEqual(meta.evaluate('el => el.children.length'), 0)
+                self.assertTrue(meta.get_attribute('title').startswith(f'From {NAME} (you) · '), 'the whole line is its title')
+                parts = meta.evaluate("""el => [...el.children].map((c) => { const b = c.getBoundingClientRect(); return {cls: c.className, text: c.textContent, left: b.left, right: b.right, whole: c.scrollWidth <= c.clientWidth + 0.5}; })""")
+                card = node.bounding_box()
+                for before, after in zip(parts, parts[1:]):
+                    self.assertLessEqual(before['right'], after['left'] + 0.5, f'{before["text"]!r} runs over {after["text"]!r}: {parts}')
+                for part in parts:
+                    self.assertLessEqual(part['right'], card['x'] + card['width'] + 0.5, f'{part["text"]!r} reaches past the card: {parts}')
+                by = {part['cls']: part for part in parts if part['cls'] != 'sk-p__w'}
+                self.assertEqual([p['text'] for p in parts if p['cls'] == 'sk-p__w'], ['From ', ' (you)'], 'the lead and "(you)" are whole')
+                self.assertTrue(by['sk-p__t']['whole'], f'the time stays whole: {parts}')
+                self.assertGreaterEqual(by['sk-p__n']['right'] - by['sk-p__n']['left'], 12, f'the name keeps its first letters: {parts}')
+                self.assertFalse(by['sk-p__n']['whole'], 'and ends in an ellipsis, since the full name does not fit')
                 if width == 360:
                     shot(page, 'same-plane-meta-360-light')
 

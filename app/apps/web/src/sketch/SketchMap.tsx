@@ -8,7 +8,7 @@ import { Icon, IconButton, Sheet } from '../ui';
 import { projectMessageHref } from '../conversations/api';
 import { linkPath, PAD, placeLabels, PLANE_MARGIN, rectOf, type Rect } from './geometry';
 import { readMapView, writeMapView, type MapView } from './mapView';
-import { provenance, quote } from './format';
+import { provenance, provenanceParts, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
 import { ThoughtTasks, type ThoughtTasksEntry } from './ThoughtTasks';
@@ -1463,10 +1463,17 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
   );
 });
 
-/** "From Ada Kowalska (you) · 14:22" on one line that ends in one ellipsis where the card is too narrow, its words never over each other (#1553). */
+/**
+ * "From Ada Kowalska (you) · 14:22" on one line (#1553, #1568): the name gives way with "…" and keeps at least its first letters, "(you)" and the
+ * time stay whole where they fit, and what cannot fit is cut at the card's edge, never printed over its neighbour.
+ */
 function Provenance({ thought, meId }: { thought: Pick<Thought, 'source' | 'version' | 'createdBy' | 'createdAt'>; meId: string }) {
-  const text = provenance(thought, meId);
-  return <span className="sk-p" title={text}>{text}</span>;
+  const { lead, name, mark, tail } = provenanceParts(thought, meId);
+  return (
+    <span className="sk-p" title={provenance(thought, meId)}>
+      <span className="sk-p__w">{lead}</span><span className="sk-p__n">{name}</span>{mark ? <span className="sk-p__w">{` (${mark})`}</span> : null}<span className="sk-p__t">{tail}</span>
+    </span>
+  );
 }
 
 /** Preview coordinates and lease sequences change every movement; the native content does not.
