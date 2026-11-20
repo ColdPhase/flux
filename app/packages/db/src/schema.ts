@@ -712,20 +712,14 @@ export const projectMaterials = pgTable('project_materials', {
   /** Exactly one actor (migration 0043, #152): a person, or the agent that started a doc under a standing grant. */
   createdBy: text('created_by'),
   createdByAgentId: uuid('created_by_agent_id'),
-  /** 'doc' for project docs (#112, migration 0013); docs have no client mutation id. */
-  kind: text('kind', { enum: ['material', 'doc'] }).notNull().default('material'),
-  clientMutationId: uuid('client_mutation_id'),
-  requestFingerprint: text('request_fingerprint'),
   currentVersion: integer('current_version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
-  unique().on(table.projectId, table.createdBy, table.clientMutationId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_material_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
-  check('project_material_agent_doc', sql`${table.createdByAgentId} IS NULL OR ${table.kind} = 'doc'`),
 ]);
 
 export const projectMaterialVersions = pgTable('project_material_versions', {
@@ -735,13 +729,12 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   version: integer('version').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull(),
+  /** The link of a page that was a saved source (#1508, migration 0107); each later version keeps it. Nothing else writes one. */
   url: text('url'),
   /** Exactly one actor (migration 0043, #152): a person, or the agent that wrote a doc version under a standing grant. */
   authorId: text('author_id'),
   authorAgentId: uuid('author_agent_id'),
-  clientMutationId: uuid('client_mutation_id'),
-  requestFingerprint: text('request_fingerprint'),
-  /** Doc versions only (#112): draft or published, and why this version was made. */
+  /** Why this version was made (#112). */
   reason: text('reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

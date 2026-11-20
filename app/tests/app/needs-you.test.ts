@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, Decision, InboxResponse, Material, NeedsYouAsideResponse, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, SentDmMessage, Workspace, WorkItem } from '@flux/contracts';
+import type { Conversation, Decision, InboxResponse, NeedsYouAsideResponse, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, SentDmMessage, Workspace, WorkItem } from '@flux/contracts';
 import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project as createProject, removeMember, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/push.js';
 import { db, pool } from './support/db.js';
 import { needsYouRows, sql } from '@flux/db';
+import { savePage, type SavedPage } from './support/pages.js';
 
 // The Inbox "Needs you" queue (#342): what asks something of a person is computed from current rows and
 // the access policy; only what the person did with an item is stored. One person accepts a decision
@@ -40,7 +41,7 @@ describe('the Inbox needs-you queue', () => {
   let ws: Workspace;
   let lamp: Project;
   let conversation: Conversation;
-  let material: Material;
+  let material: SavedPage;
 
   before(async () => {
     owner = await named('Needs Owner');
@@ -52,8 +53,7 @@ describe('the Inbox needs-you queue', () => {
     await grant(owner, lamp.id, second, 'contributor');
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: 'Measure soil moisture or frost first?', clientMessageId: randomUUID() }), 201);
-    material = json<Material>(await post(owner, `/api/v1/projects/${lamp.id}/materials`,
-      { clientMutationId: randomUUID(), title: 'Probe notes', body: 'Overwatering is the problem now' }), 201);
+    material = await savePage(owner.browser, lamp.id, { title: 'Probe notes', body: 'Overwatering is the problem now' });
   });
 
   test('a proposed decision needs the people who can accept it, and only them', async () => {

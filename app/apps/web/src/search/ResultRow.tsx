@@ -13,7 +13,7 @@ import { youLabel } from '../docs/format';
 // words marked, and one line of where it lives, who wrote it and when. The groups are `groups.ts`.
 
 const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message' | 'file'>, IconName> = {
-  work: 'tasks', material: 'doc', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',
+  work: 'tasks', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -108,7 +108,7 @@ function pieces(result: SearchResult): Array<Line | null> {
   if (task) return [`#${task.number}`, TASK_STATE_WORD[task.status], where];
   switch (result.kind) {
     case 'message': case 'dm_message': return [author, where, written(result)];
-    case 'doc': case 'material': {
+    case 'doc': {
       const snippet = plainSnippet(result.snippet);
       return snippet ? [quoted(snippet)] : [where];
     }

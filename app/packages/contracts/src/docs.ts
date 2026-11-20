@@ -141,6 +141,8 @@ export interface DocVersion extends DocVersionSummary {
   projectId: string;
   /** The Markdown source of this version, never rewritten. */
   body: string;
+  /** The link of a page that was a saved source (#1508, C-71), shown under its text and kept by every later version; null for any other page. */
+  url: string | null;
   /** Server-rendered, sanitized HTML of `body`. */
   html: string;
   /** References in this version's text and where they lead now. */

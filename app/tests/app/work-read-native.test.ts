@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase, nativeWorkAssociationRows, nativeWorkVisibilityRows, sql, type NativeWorkAssociationSelector, type Transaction } from '@flux/db';
 import { createBoundedWorkReads, DomainError, type WorkReadUnitOfWork } from '@flux/core';
-import type { Agent, Conversation, Decision, Material, ProjectWorkSummary, ProjectWorkView, WorkAssociations, WorkDetailProjection, WorkItem, WorkRelations, WorkRowProjection } from '@flux/contracts';
+import type { Agent, Conversation, Decision, ProjectWorkSummary, ProjectWorkView, WorkAssociations, WorkDetailProjection, WorkItem, WorkRelations, WorkRowProjection } from '@flux/contracts';
 import { nativeWorkReadFinalFence, nativeWorkReadUnitOfWork } from '../../apps/server/src/work-read/adapters.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';
 import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
@@ -11,6 +11,7 @@ import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
 import { Browser } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, secondSession, workspace, type Person } from './support/people.js';
+import { editPage, savePage, type SavedPage } from './support/pages.js';
 
 // Real native commands, HTTP cookies and PostgreSQL observations. Holds wrap actual
 // reads, never substitute native session/project authority with a fabricated port.
@@ -25,7 +26,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
   let owner: Person, other: Person, viewer: Person, outsider: Person;
   let workspaceId: string, projectId: string;
   let conversation: Conversation, main: WorkItem, finished: WorkItem;
-  let oldRule: Decision, rule: Decision, material: Material;
+  let oldRule: Decision, rule: Decision, material: SavedPage;
   let sketchId: string, thoughtId: string, zeroMessageId: string;
   const base = () => `/api/v1/projects/${projectId}`;
   const get = async <T>(path: string, who = owner) => {
@@ -46,8 +47,8 @@ describe('bounded native work reads through HTTP and current native fences', () 
       await addWork(`Active ${ref.kind} ${ref.id}`, { status: 'in_progress', owner: ref });
     conversation = await post<Conversation>(owner, `${base()}/conversations`, { body: 'Actual source opening\nSecond line stays private to its body', clientMessageId: randomUUID() });
     zeroMessageId = (await post<{ id: string }>(other, `/api/v1/conversations/${conversation.id}/messages`, { body: 'Zero-link source', clientMessageId: randomUUID() })).id;
-    material = await post<Material>(owner, `${base()}/materials`, { title: 'Material v1', body: 'Version one', clientMutationId: randomUUID() });
-    expectStatus(await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`, { body: { title: 'Material v2', expectedVersion: 1, clientMutationId: randomUUID() } }), 200);
+    material = await savePage(owner.browser, projectId, { title: 'Source v1', body: 'Version one' });
+    await editPage(owner.browser, material.materialId, { title: 'Source v2', expectedVersion: 1 });
     sketchId = (await post<{ id: string }>(owner, `/api/v1/workspaces/${workspaceId}/sketches`, { title: 'Shared thought scope', scope: 'project', projectId })).id;
     thoughtId = (await post<{ thought: { id: string } }>(owner, `/api/v1/sketches/${sketchId}/thoughts`, { text: 'Actual thought opening\nOther text', x: 0, y: 0 })).thought.id;
     const message = { type: 'message', id: conversation.messages[0]!.id };
@@ -119,7 +120,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const pending = await create('Pending prerequisite');
     const third = await create('Third prerequisite');
     await post<Decision>(owner, `${path}/decisions`, { title: 'Plan direction' });
-    const plan = await post<Material>(owner, `${path}/materials`, { title: 'Exact plan source', body: 'The bounded task plan', clientMutationId: randomUUID() });
+    const plan = await savePage(owner.browser, isolated.id, { title: 'Exact plan source', body: 'The bounded task plan' });
     const planIntent = { materialId: plan.materialId, version: 1, intentKey: 'bounded-task-read' };
     const planned = await create('Planned task with mixed prerequisites', { criteria: ['First native criterion', 'Second native criterion'],
       dependencyIds: [third.id, ready.id, pending.id], planIntent });
@@ -215,7 +216,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const second = await get<WorkRelations>(`${path}&cursor=${first.nextCursor}`);
     const previous = await get<WorkRelations>(`${path}&cursor=${second.previousCursor}`); assert.deepEqual(previous.items, first.items);
     const all = await get<WorkRelations>(`${base()}/work-relations?objects=work:${main.id}`);
-    assert.deepEqual(all.items.filter(({ to }) => to.type === 'material').map(({ to, toTitle }) => [to.type === 'material' && to.version, toTitle]).sort((a, b) => Number(a[0]) - Number(b[0])), [[1, 'Material v1'], [2, 'Material v2']]);
+    assert.deepEqual(all.items.filter(({ to }) => to.type === 'material').map(({ to, toTitle }) => [to.type === 'material' && to.version, toTitle]).sort((a, b) => Number(a[0]) - Number(b[0])), [[1, 'Source v1'], [2, 'Source v2']]);
     assert.equal(all.items.find(({ to }) => to.id === thoughtId)?.sketchId, sketchId);
     assert.equal(all.items.find(({ to }) => to.type === 'message')?.toTitle, 'Actual source opening');
     const only = await get<WorkRelations>(`${base()}/work-relations?objects=work:${main.id}&role=source`); assert.equal(only.total, 4);

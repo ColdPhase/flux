@@ -9,7 +9,7 @@ look-1 and look-3) and fails on the commit before its fix:
 - look-1 P2-2, look-3 F3: at 200 % a decision's panel opened at the end of its discussion, its title 341 px above the view.
 - look-3 F1: beside the open panel, an own card with a due day read "#11 Due 25 Nov AK (you)" and "(you)" ran past the card.
 - look-3 F4: at 200 % the selected thought's actions lay under the map's header, Edit and Connect hidden.
-- look-3 F5: a saved source (a Wiki page by its own address) was not in the space's Wiki page switcher, and its page named no space.
+- look-3 F5: a saved source was not in the space's Wiki page switcher, and its page named no space (since #1508 it is an ordinary page).
 - new P2-4: the Wiki's current version by its address read "You are reading a saved version" instead of opening the page.
 """
 
@@ -146,9 +146,9 @@ class Round15Work(unittest.TestCase):
             self.api(ada if index % 2 else jonas, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": note, "clientMessageId": str(uuid.uuid4())}, status=201)
             self.api(ada if index % 2 else jonas, "POST", f"/api/v1/work/{long_task['id']}/discussion", {"body": note, "clientMessageId": str(uuid.uuid4())}, status=201)
         doc = self.api(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Sensor placement", "body": "One probe per raised bed.\nEach probe 10 cm deep.\n"}, status=201)
-        source = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"clientMutationId": str(uuid.uuid4()), "title": SOURCE,
+        source = self.api(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": SOURCE,
                                                                             "body": "Capacitive probe: 2.90 EUR\nDS18B20: 1.90 EUR\n"}, status=201)
-        type(self).ids = {"project": pid, "long": long_task["id"], "blocked": blocked["id"], "decision": decision["id"], "doc": doc["id"], "source": source["materialId"]}
+        type(self).ids = {"project": pid, "long": long_task["id"], "blocked": blocked["id"], "decision": decision["id"], "doc": doc["id"], "source": source["id"]}
 
     # ---------------------------------------------------------------- look-1 P2-1, look-3 F2
 
@@ -232,28 +232,22 @@ class Round15Work(unittest.TestCase):
     # ---------------------------------------------------------------- look-3 F5
 
     def test_06_a_saved_source_is_a_page_of_its_spaces_wiki(self) -> None:
+        """#1508: a saved source is an ordinary page of its space's Wiki: in the page switcher with the others, opened as a page."""
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/docs/{self.ids['doc']}")
         page.locator(".wiki-switch").click()
         pages = page.get_by_role("dialog", name=re.compile("^Pages in ")).get_by_role("list", name="Pages")
         row = pages.get_by_role("link", name=SOURCE)
-        expect(row).to_have_attribute("href", f"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}")
+        expect(row).to_have_attribute("href", f"/projects/{self.ids['project']}/docs/{self.ids['source']}")
         row.click()
-        expect(page.get_by_role("heading", name=SOURCE)).to_be_visible()
-        expect(page.get_by_role("link", name="Community garden sensors · Wiki")).to_have_attribute("href", f"/projects/{self.ids['project']}/docs")
-        # Its header names its space, as the space's other Wiki pages do (look-3 F5), and its way back returns to the Wiki it was opened
-        # from, not to the conversation (round 15 confirm S2).
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/{self.ids['source']}$"))
+        expect(page.locator(".wiki-title")).to_contain_text(SOURCE)
         expect(page.get_by_role("heading", level=1)).to_have_text("Community garden sensors")
-        # The space's own header: its four views, the Wiki the current one, and its people (v0.2.2, #1563: the page had a header "Wiki" with no tabs).
         views = page.locator("nav[aria-label='Space views']")
         expect(views.get_by_role("tab")).to_have_text(["Conversation", "Tasks", "Map", "Wiki"])
         expect(views.get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}$"))
+        expect(page.locator(".wiki-source")).to_have_count(0)
         shot(page, f"r15-source-page-{ENGINE}")
-        expect(page.get_by_role("link", name="Back to the conversation")).to_have_count(0)
-        page.get_by_role("link", name="Back to Wiki").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/{self.ids['doc']}$"))
-        expect(page.locator(".wiki-switch")).to_be_visible()
 
     # ---------------------------------------------------------------- new P2-4
 
@@ -266,25 +260,37 @@ class Round15Work(unittest.TestCase):
 
     # ---------------------------------------------------------------- v0.2.2 (#1563)
 
-    def test_08_a_saved_source_by_its_id_alone_goes_to_its_place_in_its_space(self) -> None:
+    def test_08_a_saved_source_by_its_id_alone_goes_to_its_page_and_shows_its_link(self) -> None:
+        """A citation carries a page by its id alone (`/materials/:id`): it opens the page in its space's Wiki, the current version as the page
+        itself. A page that was a saved source of v0.2.1 keeps the link it was saved with under its text (#1508); no API writes one, so the
+        page's read is given one here."""
         page = self.page("ada")
         page.goto(f"/materials/{self.ids['source']}")
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/{self.ids['source']}$"))
         expect(page.get_by_role("heading", level=1)).to_have_text("Community garden sensors")
         expect(page.locator("nav[aria-label='Space views']").get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
-        # Opened by its address there is no earlier place: its way back is its space's conversation, as it was.
-        page.get_by_role("link", name="Back to the conversation").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
         phone = self.page("ada", phone=True)
         phone.goto(f"/materials/{self.ids['source']}/versions/1")
-        expect(phone).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}/versions/1$"))
+        expect(phone).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/{self.ids['source']}$"))
         expect(phone.locator("nav[aria-label='Space views']").get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
         shot(phone, f"r15-source-page-phone-{ENGINE}")
-        for is_phone, scheme in ((False, "dark"), (True, "dark")):
-            dark = self.page("ada", phone=is_phone, scheme=scheme)
-            dark.goto(f"/materials/{self.ids['source']}")
-            expect(dark.get_by_role("heading", name=SOURCE)).to_be_visible()
-            shot(dark, f"v022-source-page-{'phone' if is_phone else 'computer'}-{scheme}-{ENGINE}")
+        link = "https://example.com/supplier-price-list-winter-2026"
+
+        def with_link(route) -> None:
+            response = route.fetch()
+            body = response.json()
+            body["url"] = link
+            route.fulfill(response=response, json=body)
+
+        for is_phone, scheme in ((False, "light"), (False, "dark"), (True, "light"), (True, "dark")):
+            linked = self.page("ada", phone=is_phone, scheme=scheme)
+            linked.route(f"**/api/v1/docs/{self.ids['source']}", with_link)
+            linked.goto(f"/materials/{self.ids['source']}")
+            expect(linked.locator(".wiki-title")).to_contain_text(SOURCE)
+            source_link = linked.get_by_role("link", name="Open source link")
+            expect(source_link).to_have_attribute("href", link)
+            expect(source_link).to_have_attribute("target", "_blank")
+            shot(linked, f"v022-source-page-{'phone' if is_phone else 'computer'}-{scheme}-{ENGINE}")
 
     def test_09_a_space_row_says_what_was_said_last_and_when_as_a_conversation_row_does(self) -> None:
         jonas = self.page("jonas")

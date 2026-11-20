@@ -40,7 +40,7 @@ describe('the plan of a search', () => {
     const plan = agentSearchPlan({ q: 'Czujnik kalibracja' }, { ...scope, place: { type: 'project', id: 'p-1' }, conversationId: 'c-1' });
     assert.deepEqual([plan.words, plan.limit, plan.place, plan.conversationId, plan.reader, plan.after, plan.authorId, plan.since, plan.until],
       ['czujnik kalibracja', 10, { type: 'project', id: 'p-1' }, 'c-1', 'u-ada', null, null, null, null]);
-    assert.deepEqual(plan.kinds, ['message', 'dm_message', 'doc', 'material', 'file', 'work', 'decision', 'sketch', 'thought'], 'every kind an agent finds, the text of files too (C-63): never a person or a space\'s own row');
+    assert.deepEqual(plan.kinds, ['message', 'dm_message', 'doc', 'file', 'work', 'decision', 'sketch', 'thought'], 'every kind an agent finds, the text of files too (C-63): never a person or a space\'s own row');
   });
   test('a kind, an author and a range narrow it; a range backwards, a limit out of bounds and an unknown kind are refused', () => {
     const plan = agentSearchPlan({ q: 'x', kind: 'task', from: ' u-jonas ', after: '2026-03-01', before: '2026-04-01', limit: 25 }, scope);

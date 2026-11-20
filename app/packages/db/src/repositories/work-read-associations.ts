@@ -35,7 +35,7 @@ function title(projectId: string, kind: ReturnType<typeof sql>, id: ReturnType<t
     WHEN 'decision' THEN (SELECT o.title FROM project_decisions o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'message' THEN (SELECT left(split_part(btrim(o.body), E'\n', 1), 120) FROM project_messages o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'material' THEN (SELECT o.title FROM project_material_versions o WHERE o.project_id = ${projectId}::uuid AND o.material_id = ${id} AND o.version = ${version})
-    WHEN 'doc' THEN (SELECT v.title FROM project_materials o JOIN project_material_versions v ON v.material_id = o.id AND v.version = o.current_version WHERE o.project_id = ${projectId}::uuid AND o.id = ${id} AND o.kind = 'doc')
+    WHEN 'doc' THEN (SELECT v.title FROM project_materials o JOIN project_material_versions v ON v.material_id = o.id AND v.version = o.current_version WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'sketch' THEN (SELECT o.title FROM sketches o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id} AND o.scope = 'project')
     WHEN 'thought' THEN (SELECT left(split_part(btrim(t.text), E'\n', 1), 120) FROM sketch_thoughts t JOIN sketches s ON s.id = t.sketch_id WHERE s.project_id = ${projectId}::uuid AND t.id = ${id} AND s.scope = 'project')
     ELSE NULL END`;

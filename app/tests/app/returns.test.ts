@@ -98,7 +98,7 @@ describe('return view: since you left', () => {
     json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Mount the PIR sensor', owner: { kind: 'human', id: nia.id } }), 201);
     const blocked = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Order the lens' }), 201);
     json(await patch(ari, `/api/v1/work/${blocked.id}`, { status: 'blocked' }, { 'if-match': '"1"' }), 200);
-    const material = json<{ materialId: string }>(await post(ari, `/api/v1/projects/${lamp.id}/materials`, { clientMutationId: randomUUID(), title: 'Low-light test plan', body: '5 lux, 20 gestures' }), 201);
+    const material = json<{ id: string }>(await post(ari, `/api/v1/projects/${lamp.id}/docs`, { title: 'Low-light test plan', body: '5 lux, 20 gestures' }), 201);
     const sketch = json<{ id: string }>(await post(ari, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Sensing options', scope: 'project', projectId: lamp.id }), 201);
     const secret = json<{ id: string }>(await post(ari, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Ari private ideas', scope: 'private' }), 201);
 
@@ -112,7 +112,7 @@ describe('return view: since you left', () => {
     assert.ok(list.includes('Ari created a task for you: Mount the PIR sensor'));
     const lens = back.items.find((item) => item.text === 'Blocked: Order the lens')!;
     assert.equal(lens.detail, 'No reason was recorded.');
-    assert.ok(list.includes('New material: Low-light test plan'));
+    assert.ok(list.includes('Ari started a Wiki page: Low-light test plan'));
     assert.ok(list.includes('Ari started a sketch: Sensing options'));
     assert.equal(JSON.stringify(back).includes(secret.id), false, 'a private sketch of someone else never appears');
     assert.equal(JSON.stringify(back).includes('Ari private ideas'), false);
@@ -122,7 +122,7 @@ describe('return view: since you left', () => {
     const sources = new Map(back.items.map((item) => [item.text, item.source]));
     assert.deepEqual(sources.get('Ari asked you: “Nia, can you check the camera at 5 lux before Friday?”'), { type: 'message', projectId: lamp.id, conversationId: thread.id, messageId: reply.id });
     assert.deepEqual(changed.source, { type: 'decision', id: replacement.id, projectId: lamp.id });
-    assert.deepEqual(sources.get('New material: Low-light test plan'), { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 1 });
+    assert.deepEqual(sources.get('Ari started a Wiki page: Low-light test plan'), { type: 'doc', projectId: lamp.id, docId: material.id, version: 1, since: null });
     assert.deepEqual(sources.get('Ari started a sketch: Sensing options'), { type: 'sketch', sketchId: sketch.id, projectId: lamp.id });
     for (const item of back.items) assert.deepEqual(item.project, { id: lamp.id, name: 'Gesture lamp' });
 

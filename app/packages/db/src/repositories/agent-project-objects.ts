@@ -2,17 +2,16 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
-type Kind = 'work' | 'decision' | 'doc' | 'material' | 'conversation' | 'sketch';
+type Kind = 'work' | 'decision' | 'doc' | 'conversation' | 'sketch';
 
 /** Implements core's metadata-only AgentProjectObjectPort; policy stays in core/composition. */
 export function agentProjectObjectRows(tx: DbExecutor) {
   return {
     async scopeOf(kind: Kind, id: string, within: { workspaceId: string; projectId: string }, lock = true): Promise<{ workspaceId: string; projectId: string } | null> {
-      if (kind === 'doc' || kind === 'material') {
+      if (kind === 'doc') {
         const table = schema.projectMaterials;
         const query = tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
-          .where(and(eq(table.id, id), eq(table.workspaceId, within.workspaceId), eq(table.projectId, within.projectId),
-            kind === 'doc' ? eq(table.kind, 'doc') : undefined));
+          .where(and(eq(table.id, id), eq(table.workspaceId, within.workspaceId), eq(table.projectId, within.projectId)));
         const [row] = await (lock ? query.for('share') : query);
         return row ?? null;
       }

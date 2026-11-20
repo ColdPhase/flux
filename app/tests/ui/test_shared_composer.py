@@ -76,7 +76,7 @@ class SharedComposerJourney(unittest.TestCase):
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/projects", {"name": f"Night lamp {uuid.uuid4().hex[:6]}", "visibility": "restricted"}, 201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": self.people['writer']}, "role": "contributor"}, 201)
         tasks = [self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": title}, 201) for title in ("Measure the lamp after dark", "Review the sensor wiring")]
-        material = self.api(page, "POST", f"/api/v1/projects/{project['id']}/materials", {"title": "Verified measurements", "body": "38% gestures at 5 lux", "clientMutationId": str(uuid.uuid4())}, 201)
+        material = self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": "Verified measurements", "body": "38% gestures at 5 lux"}, 201)
         return project, tasks[0], tasks[1], material
 
     def enter_agents(self, page, project):

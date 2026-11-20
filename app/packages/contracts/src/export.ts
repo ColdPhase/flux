@@ -9,7 +9,7 @@ import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, WorkStatus } f
  * Schema below and a manifest with SHA-256 checksums. Documented in docs/operations/export.md.
  *
  * It holds exactly what the project's own audience can read in the project: its conversations,
- * materials and docs with every version, project sketches with thoughts and links, work,
+ * Wiki pages (docs, every former saved source among them) with every version, project sketches with thoughts and links, work,
  * decisions with their typed links, members and roles, and who made what. It never
  * holds other projects, direct messages, private sketches, sessions,
  * push subscriptions, notifications, agent connections, OAuth tokens, agent proposals or events. Re-import is not part of the format.
@@ -64,7 +64,7 @@ export interface ProjectExportMessage {
   body: string;
   /** Present only when the author posted through a local client or an assistant (LC-2, #842): its name, shown as "Ada · via Claude Code". */
   via?: string;
-  /** The cited material or doc version, if any. */
+  /** The cited version of a Wiki page, if any. */
   source: { materialId: string; version: number } | null;
   /** Present only for a saved blocker, a "what came of it" line or a public handoff (#154). */
   contribution?: MessageContribution;
@@ -78,28 +78,12 @@ export interface ProjectExportConversation {
   messages: ProjectExportMessage[];
 }
 
-export interface ProjectExportMaterialVersion {
-  version: number;
-  title: string;
-  body: string;
-  url: string | null;
-  author: ExportActor;
-  createdAt: string;
-}
-
-export interface ProjectExportMaterial {
-  id: string;
-  createdBy: ExportActor;
-  createdAt: string;
-  currentVersion: number;
-  /** Oldest first. */
-  versions: ProjectExportMaterialVersion[];
-}
-
 export interface ProjectExportDocVersion {
   version: number;
   title: string;
   body: string;
+  /** The link of a page that was a saved source (#1508); null for any other page. */
+  url: string | null;
   reason: string;
   author: ExportActor;
   createdAt: string;
@@ -240,7 +224,6 @@ export interface ProjectExport {
   /** Display names of every person or agent referenced anywhere in this export. */
   actors: ExportNamedActor[];
   conversations: ProjectExportConversation[];
-  materials: ProjectExportMaterial[];
   docs: ProjectExportDoc[];
   sketches: ProjectExportSketch[];
   work: ProjectExportWork[];
@@ -305,9 +288,7 @@ const baseExportSchema = {
         contribution: object({ kind: { enum: ['blocker', 'handoff', 'came_of_it'] } }) },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
-    materialVersion: object({ version: count, title: text, body: text, url: nullable(text), author: ref('actor'), createdAt: time }),
-    material: object({ id, createdBy: ref('actor'), createdAt: time, currentVersion: count, versions: { ...list(ref('materialVersion')), minItems: 1 } }),
-    docVersion: object({ version: count, title: text, body: text, reason: text, author: ref('actor'), createdAt: time }),
+    docVersion: object({ version: count, title: text, body: text, url: nullable(text), reason: text, author: ref('actor'), createdAt: time }),
     doc: object({ id, createdBy: ref('actor'), createdAt: time, currentVersion: count, file: { type: 'string', pattern: '^docs/[^/]+\\.md$' }, versions: { ...list(ref('docVersion')), minItems: 1 } }),
     thought: object({
       id, text, x: { type: 'integer' }, y: { type: 'integer' }, width: { type: 'integer' }, height: { type: 'integer' },
@@ -349,7 +330,6 @@ const baseExportSchema = {
     grants: list(object({ principal: ref('actor'), role: { enum: ['manager', 'contributor'] }, createdAt: time })),
     actors: list(ref('namedActor')),
     conversations: list(ref('conversation')),
-    materials: list(ref('material')),
     docs: list(ref('doc')),
     sketches: list(ref('sketch')),
     work: list(ref('work')),

@@ -94,7 +94,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     description: 'Read source text in 20,000-character pages; continue with nextOffset and the same version.',
     inputSchema: z.object({ projectId: z.uuid(), materialId: z.uuid(), ...chunk }), annotations },
   ({ projectId, materialId, offset, version }, call) => result(call, projectId, async ({ tx, principal, requireObject }) => {
-    await requireObject(projectId, 'material', materialId);
+    await requireObject(projectId, 'doc', materialId);
     const material = await conversationStore(tx).getMaterial(principal, materialId);
     return { projectId, materialId: material.materialId, version: material.version, title: material.title,
       url: material.url, updatedAt: material.updatedAt, ...textChunk(material.body, material.version, offset, version, isRun(call)) };

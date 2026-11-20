@@ -27,6 +27,8 @@ export interface DocVersionRecord {
   version: number;
   title: string;
   body: string;
+  /** A former saved source's link (#1508); the repository carries it to each next version. */
+  url: string | null;
   reason: string;
   /** The actual author of this version: a person, or an agent writing under a standing grant (#152). */
   author: ActorRef;

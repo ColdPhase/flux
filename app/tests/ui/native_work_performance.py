@@ -157,9 +157,8 @@ def fixture(browser):
     api(owner,"POST",f"/api/v1/projects/{project}/grants",
         {"principal":{"kind":"human","id":ids[1]},"role":"contributor"},201)
     root = f"/api/v1/projects/{project}"
-    material = api(owner,"POST",root+"/materials",{"title":"Low-light observations",
-        "body":"20 gestures at each light level. A distance sensor stores no images. Keep a manual switch.",
-        "clientMutationId":str(uuid.uuid4())},201)
+    material = api(owner,"POST",root+"/docs",{"title":"Low-light observations",
+        "body":"20 gestures at each light level. A distance sensor stores no images. Keep a manual switch."},201)
     assert material["version"] == 1
     conversation = api(owner,"POST",root+"/conversations",
         {"body":"How should the library lamp respond in low light?","clientMessageId":str(uuid.uuid4())},201)
@@ -177,7 +176,7 @@ def fixture(browser):
     for index in range(1000):
         status = "open" if index < 500 else "in_progress" if index < 800 else "blocked" if index < 950 else "done"
         sources = ([{"type":"message","id":messages[index//2]}] if index%2 == 0
-                   else [{"type":"material","id":material["materialId"],"version":1}]) if index < 100 else []
+                   else [{"type":"material","id":material["id"],"version":1}]) if index < 100 else []
         item = api(contexts[index%2],"POST",root+"/work",{
             "title":f"{themes[index%len(themes)]} — trial {index+1:04d}",
             "outcome":"Record measured range, lux and observations so the library can choose a usable threshold.",

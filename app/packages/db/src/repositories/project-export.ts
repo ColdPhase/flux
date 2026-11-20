@@ -42,8 +42,8 @@ function creator(userId: string | null, agentId: string | null): Actor {
 }
 
 export function projectExportRows(db: DbExecutor) {
-  async function versioned(projectId: string, kind: 'material' | 'doc') {
-    const materials = await db.select().from(m).where(and(eq(m.projectId, projectId), eq(m.kind, kind))).orderBy(asc(m.createdAt), asc(m.id));
+  async function versioned(projectId: string) {
+    const materials = await db.select().from(m).where(eq(m.projectId, projectId)).orderBy(asc(m.createdAt), asc(m.id));
     if (!materials.length) return [];
     // F-030: an encrypted workspace's export opens every sealed field (a deliberate copy to the person who asked).
     const versions = groupBy(await openRows(db, 'project_material_versions', await db.select({
@@ -106,20 +106,12 @@ export function projectExportRows(db: DbExecutor) {
 
     conversations,
 
-    async materials(projectId: string) {
-      return (await versioned(projectId, 'material')).map(({ row, versions }) => ({
-        id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
-        versions: versions.map((version) => ({ version: version.version, title: version.title, body: version.body, url: version.url,
-          author: creator(version.authorId, version.authorAgentId), createdAt: iso(version.createdAt) })),
-      }));
-    },
-
     async docs(projectId: string) {
-      return (await versioned(projectId, 'doc')).map(({ row, versions }) => ({
+      return (await versioned(projectId)).map(({ row, versions }) => ({
         // A doc and its versions may be agent-written under a standing grant (#152, migration 0043).
         id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
         versions: versions.map((version) => ({
-          version: version.version, title: version.title, body: version.body, reason: version.reason,
+          version: version.version, title: version.title, body: version.body, url: version.url, reason: version.reason,
           author: creator(version.authorId, version.authorAgentId), createdAt: iso(version.createdAt),
         })),
       }));

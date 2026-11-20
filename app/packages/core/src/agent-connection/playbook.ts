@@ -94,7 +94,7 @@ source versions it covered), so continue from there and compare those versions w
         'flux_list_conversations', 'flux_get_conversation', 'flux_get_task_discussion', 'flux_list_maps', 'flux_get_map', 'flux_search', 'flux_read_around',
         'flux_read_file', 'flux_summarize', 'flux_create_proposal', 'flux_create_task', 'flux_undo_task_creation', 'flux_propose_decision'],
       providers: [],
-      text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, material, work, decision, \
+      text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, work, decision, \
 conversation, map). Read the current plan and the accepted decisions completely, paging with nextOffset and the exact \
 version. Follow other sources only as far as the outcome you are working on needs them, using flux_search (any words, ranked, across \
 every space you may read; search before you assume something was not decided, in each language the project uses; flux_read_around reads the \

@@ -47,23 +47,14 @@ relation applies to agent principals of native work rows (`owner`, `createdBy`,
 docs and the creator of sketches in the project lists; see
 [access policy](access-policy.md#agent-owner-labels-f-026-339).
 
-`POST /api/v1/projects/:projectId/materials` takes an explicit title, body or
-HTTP(S) URL, and `clientMutationId`. A material has no private source (private drafts went in #947). `PATCH
-/api/v1/materials/:id` requires `expectedVersion` and `clientMutationId`. Retry
-the exact edit with the same UUID after a lost response: it returns the original
-committed revision, even if a later edit has advanced the material. Reusing that
-UUID for other content returns 409. A fresh edit against an old version returns
-`STALE_MATERIAL` (409). Every edit creates an immutable `GET
-/api/v1/materials/:id/versions/:version` snapshot. A reply cites that snapshot
-even after later edits. Existing draft updates also retain private version
-snapshots in PostgreSQL. They are not public API resources.
+A message cites a version of a Wiki page (`source: { materialId, version }`); `GET
+/api/v1/materials/:id/versions/:version` reads that immutable snapshot even after later edits, and
+`GET /api/v1/materials/:id` the page's current version. Pages are written through the doc API
+([docs and wiki](docs-wiki.md)); the saved sources ("materials") of #36 became Wiki pages in v0.2.2
+and their create, edit and list routes are gone (#1508, C-71). Since #112 the database rejects any
+`UPDATE` of a version row.
 
-**Docs (#112)** are project materials of kind `doc` that reuse these immutable version
-snapshots; see [docs and wiki](docs-wiki.md). A message can cite a doc version like any material
-version. The materials list excludes docs, and `PATCH /api/v1/materials/:id` on a doc is
-`409 USE_DOC_API`. Since #112 the database rejects any `UPDATE` of a version row.
-
-Collection reads use `?limit=1..100&offset=0..10000` and count only material in
+Collection reads use `?limit=1..100&offset=0..10000` and count only rows in
 the authorized project. `GET /api/v1/conversations/:id` returns the newest 50
 messages by default, in ascending display order. `?limit=1..100` changes the
 window size; `?beforeSequence=<positive integer>` fetches the next older window.

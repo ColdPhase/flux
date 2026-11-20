@@ -67,13 +67,13 @@ class TypingJourney(unittest.TestCase):
         cls.project = post(f"/api/v1/workspaces/{cls.workspace}/projects", {"name": "Reading corner lamp", "visibility": "restricted"})["id"]
         for key, role in (("bob", "contributor"), ("viewer", "contributor")):
             post(f"/api/v1/projects/{cls.project}/grants", {"principal": {"kind": "human", "id": cls.ids[key]}, "role": role})
-        cls.material = post(f"/api/v1/projects/{cls.project}/materials", {"title": "Low-light observations", "body": "20 gestures per light level; a distance sensor preserves privacy.", "clientMutationId": str(uuid.uuid4())})
+        cls.material = post(f"/api/v1/projects/{cls.project}/docs", {"title": "Low-light observations", "body": "20 gestures per light level; a distance sensor preserves privacy."})
         cls.conversations = []
         for title in ("How should the lamp behave in low light?", "Where should the manual switch go?"):
             conversation = post(f"/api/v1/projects/{cls.project}/conversations", {"body": title, "clientMessageId": str(uuid.uuid4())})
             cls.conversations.append(conversation["id"])
         for index in range(99):
-            post(f"/api/v1/conversations/{cls.conversations[0]}/messages", {"body": f"Observation {index + 1}: the reading corner stays quiet. Test the distance sensor at this light level before choosing a threshold.", "clientMessageId": str(uuid.uuid4()), **({"source": {"materialId": cls.material["materialId"], "version": cls.material["version"]}} if index == 98 else {})})
+            post(f"/api/v1/conversations/{cls.conversations[0]}/messages", {"body": f"Observation {index + 1}: the reading corner stays quiet. Test the distance sensor at this light level before choosing a threshold.", "clientMessageId": str(uuid.uuid4()), **({"source": {"materialId": cls.material["id"], "version": cls.material["version"]}} if index == 98 else {})})
         cls.dm = post(f"/api/v1/workspaces/{cls.workspace}/dms", {"participantIds": [cls.ids["bob"]]})["id"]
         post(f"/api/v1/dms/{cls.dm}/messages", {"body": "Let's keep the first lamp test between us until it works in low light.", "clientMessageId": str(uuid.uuid4())})
         owner.close()

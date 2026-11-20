@@ -8,7 +8,6 @@ import type {
   ProjectExportFile,
   ProjectExportGithubSources,
   ProjectExportLink,
-  ProjectExportMaterial,
   ProjectExportSketch,
   ProjectExportWork,
   ProjectPerson,
@@ -31,9 +30,7 @@ export interface ProjectExportRows {
   grants(projectId: string): Promise<ProjectExportGrant[]>;
   workspaceRoles(workspaceId: string): Promise<{ userId: string; role: WorkspaceRole }[]>;
   conversations(projectId: string): Promise<ProjectExportConversation[]>;
-  /** Materials of kind `material` with every version. */
-  materials(projectId: string): Promise<ProjectExportMaterial[]>;
-  /** Docs with every version. */
+  /** Wiki pages with every version (every former saved source among them, #1508). */
   docs(projectId: string): Promise<Omit<ProjectExportDoc, 'file'>[]>;
   /** Sketches shared with the project (scope `project`) only. */
   sketches(projectId: string): Promise<ProjectExportSketch[]>;

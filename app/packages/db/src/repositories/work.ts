@@ -692,7 +692,7 @@ export function workRows(db: DbExecutor) {
           break;
         case 'doc':
           found = await db.select({ id: schema.projectMaterials.id }).from(schema.projectMaterials)
-            .where(and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.id, ref.id), eq(schema.projectMaterials.kind, 'doc')));
+            .where(and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.id, ref.id)));
           break;
         case 'sketch':
           found = await db.select({ id: schema.sketches.id }).from(schema.sketches).where(and(projectSketch(projectId), eq(schema.sketches.id, ref.id)));
@@ -744,7 +744,7 @@ export function workRows(db: DbExecutor) {
         const v = schema.projectMaterialVersions;
         const rows = await db.select({ id: m.id, version: v.version, title: v.title }).from(m)
           .innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
-          .where(and(eq(m.projectId, projectId), eq(m.kind, 'doc'), inArray(m.id, docs)));
+          .where(and(eq(m.projectId, projectId), inArray(m.id, docs)));
         for (const row of rows) titles.set(`doc:${row.id}`, { title: open('project_material_versions', 'title', [row.id, String(row.version)], row.title) });
       }
       const sketchIds = of('sketch');

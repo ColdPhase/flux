@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { DomainError, liveInvitationUseCases, type LiveMedia } from '@flux/core';
-import type { Doc, LiveSession, Material } from '@flux/contracts';
+import type { Doc, LiveSession } from '@flux/contracts';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { liveAccess } from '../../apps/server/src/live/access.js';
 import { discoverLiveSessions } from '../../apps/server/src/live/discovery.js';
@@ -12,6 +12,7 @@ import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation.js';
 import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { savePage } from './support/pages.js';
 
 test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused', async () => {
   const owner = await person('live-doc-owner');
@@ -32,9 +33,7 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
   const foreignDoc = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${other.id}/docs`, {
     body: { title: 'Foreign doc' },
   }), 201) as Doc;
-  const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`, {
-    body: { clientMutationId: randomUUID(), title: 'Ordinary material', body: 'Not a wiki doc' },
-  }), 201) as Material;
+  const material = await savePage(owner.browser, place.id, { title: 'Ordinary material', body: 'Not a wiki doc' });
 
   const rooms = new Set<string>();
   const media: LiveMedia = {

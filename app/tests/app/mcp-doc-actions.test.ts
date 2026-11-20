@@ -10,7 +10,7 @@ type Scene = Awaited<ReturnType<typeof actionScene>>;
 const versions = async (docId: string) => (await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE material_id=$1', [docId])).rows[0].n as number;
 const docEvents = async (docId: string) => (await pool.query(
   "SELECT count(*)::int AS n FROM events WHERE kind IN ('project.doc_created.v1', 'project.doc_updated.v1') AND data->>'docId' = $1", [docId])).rows[0].n as number;
-const docs = async (projectId: string) => (await pool.query("SELECT count(*)::int AS n FROM project_materials WHERE project_id=$1 AND kind='doc'", [projectId])).rows[0].n as number;
+const docs = async (projectId: string) => (await pool.query("SELECT count(*)::int AS n FROM project_materials WHERE project_id=$1", [projectId])).rows[0].n as number;
 const base = (f: Scene, peerRequestClass: 'execute' | 'plan', clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
   runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass, sources: [] as { materialId: string; version: number }[] });
 const getDoc = async (f: Scene, docId: string) => expect(await f.owner.request('GET', `/api/v1/docs/${docId}`), 200) as unknown as Doc;

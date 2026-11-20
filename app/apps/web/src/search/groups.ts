@@ -8,7 +8,7 @@ const GROUPS: { label: string; kinds: SearchKind[] }[] = [
   { label: 'Tasks', kinds: ['work'] },
   { label: 'Decisions', kinds: ['decision'] },
   { label: 'Messages', kinds: ['message', 'dm_message'] },
-  { label: 'Wiki', kinds: ['doc', 'material'] },
+  { label: 'Wiki', kinds: ['doc'] },
   { label: 'Files', kinds: ['file'] },
   { label: 'Thoughts', kinds: ['thought', 'sketch'] },
   { label: 'Spaces', kinds: ['project'] },

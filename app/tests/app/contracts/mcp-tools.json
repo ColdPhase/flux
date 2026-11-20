@@ -428,7 +428,6 @@
                       "type": "string",
                       "enum": [
                         "doc",
-                        "material",
                         "work",
                         "decision"
                       ]
@@ -2127,7 +2126,6 @@
             "type": "string",
             "enum": [
               "doc",
-              "material",
               "work",
               "decision",
               "conversation",
@@ -2452,7 +2450,6 @@
                               "type": "string",
                               "enum": [
                                 "doc",
-                                "material",
                                 "work",
                                 "decision"
                               ]
@@ -2982,7 +2979,6 @@
             "enum": [
               "message",
               "doc",
-              "material",
               "file",
               "task",
               "decision",

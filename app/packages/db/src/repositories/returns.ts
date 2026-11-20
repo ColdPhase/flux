@@ -74,10 +74,8 @@ const SUMMARY_DISCUSSED = `SELECT dd.conversation_id AS "conversationId", d.id, 
   LEFT JOIN agents a ON d.proposed_by_kind = 'agent' AND a.id::text = d.proposed_by_id WHERE dd.conversation_id = ANY($1::uuid[])`;
 const LAST_POSTS = `SELECT conversation_id AS id, max(created_at) AS at FROM project_messages WHERE author_id = $1 AND conversation_id = ANY($2::uuid[])
   GROUP BY conversation_id`;
-const SUMMARY_MATERIALS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version
-  FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[])`;
 const SUMMARY_DOCS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version, v.reason
-  FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[]) AND pm.kind = 'doc'`;
+  FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[])`;
 const SUMMARY_SKETCHES = 'SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title FROM sketches WHERE id = ANY($1::uuid[])';
 // A person who left the company of a workspace these lines are about, or was removed from it, and has not come back, is marked, as an agent's
 // owner is below (#1424, 2026-11-17; delta review N2).
@@ -227,13 +225,7 @@ export function returnRows(db: DbExecutor) {
       return new Map(rows.map((row) => [row.id, new Date(row.at)]));
     },
 
-    async materials(ids: string[]) {
-      if (!ids.length) return new Map();
-      const rows = await openVersionText((await queryPrepared<{ id: string; workspaceId: string; projectId: string; title: string; version: number }>(db, SUMMARY_MATERIALS, [ids])).rows);
-      return byId(rows.map(({ id, projectId, title, version }) => ({ id, projectId, title, version })));
-    },
-
-    /** Project docs (#112): materials of kind 'doc' with their current version's title and reason. */
+    /** Wiki pages (#112, every saved source too since #1508) with their current version's title and reason. */
     async docs(ids: string[]) {
       if (!ids.length) return new Map();
       const rows = await openVersionText((await queryPrepared<{ id: string; workspaceId: string; projectId: string; title: string; version: number; reason: string }>(db, SUMMARY_DOCS, [ids])).rows);

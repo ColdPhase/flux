@@ -238,6 +238,16 @@
           "title": {
             "type": "string"
           },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "version": {
             "minimum": 1,
             "type": "integer"
@@ -249,6 +259,7 @@
           "createdAt",
           "reason",
           "title",
+          "url",
           "version"
         ],
         "type": "object"
@@ -308,82 +319,6 @@
           "id",
           "role",
           "to"
-        ],
-        "type": "object"
-      },
-      "material": {
-        "additionalProperties": false,
-        "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "createdBy": {
-            "$ref": "#/definitions/actor"
-          },
-          "currentVersion": {
-            "minimum": 1,
-            "type": "integer"
-          },
-          "id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "versions": {
-            "items": {
-              "$ref": "#/definitions/materialVersion"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": [
-          "createdAt",
-          "createdBy",
-          "currentVersion",
-          "id",
-          "versions"
-        ],
-        "type": "object"
-      },
-      "materialVersion": {
-        "additionalProperties": false,
-        "properties": {
-          "author": {
-            "$ref": "#/definitions/actor"
-          },
-          "body": {
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "version": {
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "author",
-          "body",
-          "createdAt",
-          "title",
-          "url",
-          "version"
         ],
         "type": "object"
       },
@@ -1130,12 +1065,6 @@
         },
         "type": "array"
       },
-      "materials": {
-        "items": {
-          "$ref": "#/definitions/material"
-        },
-        "type": "array"
-      },
       "people": {
         "items": {
           "additionalProperties": false,
@@ -1290,7 +1219,6 @@
       "formatVersion",
       "grants",
       "links",
-      "materials",
       "people",
       "project",
       "provenance",

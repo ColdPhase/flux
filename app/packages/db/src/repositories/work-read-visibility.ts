@@ -13,7 +13,7 @@ export function nativeWorkEndpointVisible(projectId: string | Placeholder, kind:
     WHEN 'decision' THEN EXISTS(SELECT 1 FROM project_decisions o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'message' THEN EXISTS(SELECT 1 FROM project_messages o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'material' THEN EXISTS(SELECT 1 FROM project_material_versions o WHERE o.project_id = ${projectId}::uuid AND o.material_id = ${id} AND o.version = ${version})
-    WHEN 'doc' THEN EXISTS(SELECT 1 FROM project_materials o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id} AND o.kind = 'doc')
+    WHEN 'doc' THEN EXISTS(SELECT 1 FROM project_materials o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'sketch' THEN EXISTS(SELECT 1 FROM sketches o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id} AND o.scope = 'project')
     WHEN 'thought' THEN EXISTS(SELECT 1 FROM sketch_thoughts t JOIN sketches s ON s.id = t.sketch_id WHERE s.project_id = ${projectId}::uuid AND t.id = ${id} AND s.scope = 'project')
     ELSE false END`;

@@ -23,8 +23,7 @@ const WORK_STATUS: Record<string, string> = {
 };
 const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · Accepted', proposed: 'Decision · Proposed', superseded: 'Decision · Replaced' };
 
-// A saved source is a Wiki page to the person (founder decision, Hubert, 2026-11-13, #1419 item 20): Search says "Wiki page" for it, and the
-// "Material" word is gone. It still opens at the version that matched (the page by its own address).
+// A Wiki page, every former saved source included (#1419 item 20, #1508): "Wiki page", or which version of how many matched.
 function docLabel(row: SearchRow) {
   const version = row.version ?? 1;
   const current = row.currentVersion ?? version;
@@ -51,10 +50,6 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   dm_message: {
     filter: 'message', audience: 'dm', textIsTitle: true, label: () => 'Direct message',
     target: (row) => ({ type: 'dm_message', dmId: row.parentId ?? '', messageId: row.objectId }),
-  },
-  material: {
-    filter: 'material', audience: 'project', textIsTitle: false, label: docLabel,
-    target: (row) => ({ type: 'material', projectId: inProject(row), materialId: row.objectId, version: row.version ?? 1 }),
   },
   doc: {
     filter: 'doc', audience: 'project', textIsTitle: false, label: docLabel,

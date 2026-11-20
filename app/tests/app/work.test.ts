@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { DomainError, type Principal } from '@flux/core';
-import type { Agent, Conversation, Decision, Material, Page, Project, ProjectWorkView, TaskActivityPage, TaskDiscussion, WorkDetailProjection, Workspace, WorkItem } from '@flux/contracts';
+import type { Agent, Conversation, Decision, Page, Project, ProjectWorkView, TaskActivityPage, TaskDiscussion, WorkDetailProjection, Workspace, WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
+import { savePage, type SavedPage } from './support/pages.js';
 
 // Work items, decisions and results linked to conversations (issue #101): access for two
 // people and outsiders, supersede history (no task is moved by a decision), If-Match conflicts, idempotent
@@ -31,7 +32,7 @@ describe('work, decisions and results in a project', () => {
   let ws: Workspace;
   let lamp: Project;
   let conversation: Conversation;
-  let material: Material;
+  let material: SavedPage;
   let agent: Agent;
 
   before(async () => {
@@ -43,8 +44,7 @@ describe('work, decisions and results in a project', () => {
     await grant(owner, lamp.id, viewer, 'contributor');
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: 'Camera or sensor? Let us test the camera in low light first.', clientMessageId: randomUUID() }), 201);
-    material = json<Material>(await post(owner, `/api/v1/projects/${lamp.id}/materials`,
-      { clientMutationId: randomUUID(), title: 'Low-light test plan', body: '5 lux, 20 gestures' }), 201);
+    material = await savePage(owner.browser, lamp.id, { title: 'Low-light test plan', body: '5 lux, 20 gestures' });
     agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Lab helper', owner: 'self' }), 201);
   });
 

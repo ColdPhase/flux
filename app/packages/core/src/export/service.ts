@@ -7,6 +7,7 @@ import {
   PROJECT_EXPORT_SCHEMA_ID,
   type ExportActor,
   type ProjectExport,
+  type ProjectExportDoc,
   type ProjectExportLink,
   type ProjectExportManifest,
   type ProjectExportPerson,
@@ -19,6 +20,12 @@ import { sha256, tarGzip, type BundleFile } from './bundle.js';
 import type { ProjectExportContext, ProjectExportUnitOfWork } from './ports.js';
 
 const key = (actor: ExportActor) => `${actor.kind}:${actor.id}`;
+
+/** A page's current text as its Markdown file: a former saved source's link (#1508) closes it, as the page shows it under its text. */
+function pageText(doc: ProjectExportDoc) {
+  const current = doc.versions.at(-1);
+  return current?.url ? `${current.body}${current.body ? '\n\n' : ''}<${current.url}>\n` : current?.body ?? '';
+}
 
 /**
  * Keeps only links whose two ends are part of this export. The link rows are already scoped to
@@ -41,7 +48,7 @@ function readme(data: ProjectExport) {
     '- `files/<id>`: exact published attachment bytes; names, hashes and message relationships are in `project.json`.',
     '- `manifest.json`: size and SHA-256 of every other file.',
     '',
-    `Contents: ${data.conversations.length} people conversations, ${data.materials.length} materials, ${data.docs.length} docs, ${data.sketches.length} sketches, `
+    `Contents: ${data.conversations.length} people conversations, ${data.docs.length} docs, ${data.sketches.length} sketches, `
       + `${data.work.length} work items, ${data.decisions.length} decisions, ${data.links.length} links, ${data.people.length} people.`,
     ...(data.githubSources ? ['', `GitHub: ${data.githubSources.rules.length} task rules are listed dormant in \`githubSources\`, all disabled. Repository bindings are not exported; connect and authorize repositories again to use them.`] : []),
     '',
@@ -68,12 +75,11 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       await access.requireManage(principal, projectId);
       const project = await rows.project(projectId);
       if (!project) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
-      const [audience, grants, roles, conversations, materials, docs, sketches, work, decisions, links] = await Promise.all([
+      const [audience, grants, roles, conversations, docs, sketches, work, decisions, links] = await Promise.all([
         access.audience(principal, projectId),
         rows.grants(projectId),
         rows.workspaceRoles(project.workspace.id),
         rows.conversations(projectId),
-        rows.materials(projectId),
         rows.docs(projectId),
         rows.sketches(projectId),
         rows.work(projectId),
@@ -95,10 +101,9 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       const ids = new Map<string, Set<string>>();
       const add = (type: string, id: string) => { if (!ids.has(type)) ids.set(type, new Set()); ids.get(type)!.add(id); };
       for (const conversation of conversations) for (const message of conversation.messages) add('message', message.id);
-      for (const material of materials) for (const version of material.versions) add('material', `${material.id}@${version.version}`);
       for (const doc of docs) {
         add('doc', doc.id);
-        // A message may cite a doc version like a material version.
+        // A message cites a version of a page (`material` is a link to a version).
         for (const version of doc.versions) add('material', `${doc.id}@${version.version}`);
       }
       for (const sketch of sketches) { add('sketch', sketch.id); for (const thought of sketch.thoughts) add('thought', thought.id); }
@@ -117,7 +122,6 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         { kind: principal.kind === 'agent' ? 'agent' : 'human', id: principal.id },
         ...audience, ...grants.map((grant) => grant.principal),
         ...conversations.flatMap((conversation) => [conversation.createdBy, ...conversation.messages.map((message) => message.author)]),
-        ...materials.flatMap((material) => [material.createdBy, ...material.versions.map((version) => version.author)]),
         ...docs.flatMap((doc) => [doc.createdBy, ...doc.versions.map((version) => version.author)]),
         ...sketches.flatMap((sketch) => [sketch.createdBy, ...sketch.thoughts.map((thought) => thought.createdBy)]),
         ...work.flatMap((item) => [item.createdBy, ...(item.owner ? [item.owner] : [])]),
@@ -144,7 +148,6 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         grants,
         actors,
         conversations,
-        materials,
         docs: docs.map((doc) => ({ ...doc, file: `docs/${doc.id}.md` })),
         sketches,
         work,
@@ -208,7 +211,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         ...base.map((file) => ({ path: file.path, bytes: file.content.length, sha256: sha256(file.content) })),
         ...attachments.map((file) => ({ path: file.path, bytes: file.size, sha256: file.sha256 })),
         ...data.docs.map((doc) => {
-          const content = utf8(doc.versions.at(-1)?.body ?? '');
+          const content = utf8(pageText(doc));
           return { path: doc.file, bytes: content.length, sha256: sha256(content) };
         }),
       ],
@@ -216,7 +219,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
     async function* files(): AsyncGenerator<BundleFile> {
       yield* base;
       for (const file of attachments) yield streamed(file) ? { path: file.path, size: file.size, content: checked(file) } : { path: file.path, content: await attachment(file) };
-      for (const doc of data.docs) yield { path: doc.file, content: utf8(doc.versions.at(-1)?.body ?? '') };
+      for (const doc of data.docs) yield { path: doc.file, content: utf8(pageText(doc)) };
       yield { path: 'manifest.json', content: utf8(`${JSON.stringify(manifest, null, 2)}\n`) };
     }
     const stamp = data.exportedAt.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');

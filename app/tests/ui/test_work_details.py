@@ -26,8 +26,8 @@ class NativeDetailsJourney(unittest.TestCase):
         cls.workspace=ws
         cls.project=api(cls.ctx,"POST",f"/api/v1/workspaces/{ws}/projects",{"name":"Library lighting measurements","visibility":"restricted"},201)["id"]
         cls.root=f"/api/v1/projects/{cls.project}"
-        cls.material=api(cls.ctx,"POST",cls.root+"/materials",{"title":"Shield measurement notes","body":"First measured cable","clientMutationId":str(uuid.uuid4())},201)["materialId"]
-        api(cls.ctx,"PATCH",f"/api/v1/materials/{cls.material}",{"title":"Shield measurement notes, revised","body":"Second cable run","expectedVersion":1,"clientMutationId":str(uuid.uuid4())})
+        cls.material=api(cls.ctx,"POST",cls.root+"/docs",{"title":"Shield measurement notes","body":"First measured cable"},201)["id"]
+        api(cls.ctx,"PATCH",f"/api/v1/docs/{cls.material}",{"title":"Shield measurement notes, revised","body":"Second cable run","expectedVersion":1})
         convo=api(cls.ctx,"POST",cls.root+"/conversations",{"body":"Compare the earliest measurements before ordering another sensor.","clientMessageId":str(uuid.uuid4())},201)
         cls.conversation=convo["id"];cls.message=convo["messages"][0]["id"]
         sketch=api(cls.ctx,"POST",f"/api/v1/workspaces/{ws}/sketches",{"title":"Sensing options","scope":"project","projectId":cls.project},201)["id"]

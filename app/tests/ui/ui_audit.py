@@ -202,8 +202,8 @@ def seed(browser: Browser) -> dict:
         ids["dmroot"] = soft("dm thread", dm_thread, "")
     # A message by its id, a material, an invitation link.
     ids["msg"] = soft("message id", lambda: call(ada, "GET", f"/api/v1/conversations/{media['conversation']}")["messages"][0]["id"], "")
-    ids["material"] = soft("material", lambda: call(ada, "POST", f"/api/v1/projects/{ids['p']}/materials", {
-        "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only.", "clientMutationId": str(uuid.uuid4())}), "")
+    ids["material"] = soft("material", lambda: call(ada, "POST", f"/api/v1/projects/{ids['p']}/docs", {
+        "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only."}), "")
     if isinstance(ids["material"], dict):
         made = ids["material"]
         ids["material"] = made.get("id") or made.get("materialId") or (made.get("material") or {}).get("id") or (made.get("item") or {}).get("id") or ""

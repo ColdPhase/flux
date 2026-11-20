@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { DomainError } from '@flux/core';
-import type { Conversation, Material, WorkItem } from '@flux/contracts';
+import type { Conversation, WorkItem } from '@flux/contracts';
 import { requireLivePresentationSource } from '../../apps/server/src/live/access.js';
 import { db } from './support/db.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace } from './support/people.js';
+import { savePage } from './support/pages.js';
 
 function missing(code: string) {
   return (error: unknown) => error instanceof DomainError && error.code === code;
@@ -23,12 +24,8 @@ test('live presentation accepts only current, project-readable source versions i
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'Project message', clientMessageId: randomUUID() },
   }), 201) as Conversation;
-  const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`, {
-    body: { clientMutationId: randomUUID(), title: 'Project plan', body: 'Visible plan' },
-  }), 201) as Material;
-  const foreign = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${elsewhere.id}/materials`, {
-    body: { clientMutationId: randomUUID(), title: 'Other plan', body: 'Private elsewhere' },
-  }), 201) as Material;
+  const material = await savePage(owner.browser, place.id, { title: 'Project plan', body: 'Visible plan' });
+  const foreign = await savePage(owner.browser, elsewhere.id, { title: 'Other plan', body: 'Private elsewhere' });
   const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
     body: { title: 'Review the plan' },
   }), 201) as WorkItem;

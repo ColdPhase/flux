@@ -11,6 +11,7 @@ import { coWorkUnitCreateInTransaction } from '../../apps/server/src/co-work/uni
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/locks.js';
 import { createConnection } from './support/mcp-actions.js';
+import { savePage } from './support/pages.js';
 
 // Authorized co-work unit creation (#153) over real #152 runtimes/grants/ledger and PostgreSQL. Bearer bindings are
 // trusted fixtures; no unit is inserted directly. Not a public tool or client evidence.
@@ -50,8 +51,7 @@ async function world() {
     const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
     return { who, connection: created, claims, runtimeId: runtime.id };
   };
-  const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
+  const material = await savePage(hubert.browser, p.id, { title: 'Review criteria', body: 'Exact current revision' });
   return { hubert, marek, ws, p, other, task, connection, connect, material };
 }
 type World = Awaited<ReturnType<typeof world>>;

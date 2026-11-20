@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Conversation, Material, Project, Workspace } from '@flux/contracts';
+import type { Conversation, Doc, Project, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { person } from './support/people.js';
@@ -16,11 +16,11 @@ async function post<T>(browser: Browser, path: string, body: unknown): Promise<T
 const kinds = [
   'project.conversation_created.v1',
   'project.message_sent.v1',
-  'project.material_created.v1',
-  'project.material_updated.v1',
+  'project.doc_created.v1',
+  'project.doc_updated.v1',
 ];
 
-test('conversation and material commits reach only current project readers through stream and replay', async () => {
+test('conversation and Wiki page commits reach only current project readers through stream and replay', async () => {
   const [owner, partner, outsider] = await Promise.all(['stream-capture-owner', 'stream-capture-partner', 'stream-capture-outsider'].map(person));
   const ws = await post<Workspace>(owner.browser, '/api/v1/workspaces', { name: 'Shared workshop' });
   for (const account of [partner, outsider]) {
@@ -40,13 +40,16 @@ test('conversation and material commits reach only current project readers throu
     const replyCommand = { body: 'Test it in low light', clientMessageId: replyKey };
     const reply = await post<{ id: string }>(partner.browser, `/api/v1/conversations/${thread.id}/messages`, replyCommand);
     await Promise.all([ownerLive.event(project.id, kinds[1]), partnerLive.event(project.id, kinds[1])]);
-    const createKey = randomUUID();
-    const createCommand = { clientMutationId: createKey, title: 'Sensor options', body: 'PIR works without images' };
-    const material = await post<Material>(owner.browser, `/api/v1/projects/${project.id}/materials`, createCommand);
+    // A page written once, then edited (every saved source is a Wiki page, #1508); each command carries its retry key.
+    const createKey = { 'idempotency-key': randomUUID() };
+    const createCommand = { title: 'Sensor options', body: 'PIR works without images' };
+    const created = await owner.browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: createCommand, headers: createKey });
+    assert.equal(created.status, 201, created.text);
+    const page = created.json as Doc;
     await Promise.all([ownerLive.event(project.id, kinds[2]), partnerLive.event(project.id, kinds[2])]);
-    const editKey = randomUUID();
-    const editCommand = { clientMutationId: editKey, expectedVersion: 1, body: 'PIR works, camera failed in low light' };
-    const edited = await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`, { body: editCommand });
+    const editKey = { 'idempotency-key': randomUUID() };
+    const editCommand = { expectedVersion: 1, body: 'PIR works, camera failed in low light' };
+    const edited = await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: editCommand, headers: editKey });
     assert.equal(edited.status, 200, edited.text);
     await Promise.all([ownerLive.event(project.id, kinds[3]), partnerLive.event(project.id, kinds[3])]);
 
@@ -57,7 +60,7 @@ test('conversation and material commits reach only current project readers throu
       assert.equal(row.object_id, project.id);
       // Identifiers only (#106 return view): never text, titles or URLs.
       const keys = Object.keys(row.data).sort();
-      assert.ok(['conversationId,messageId', 'materialId,version'].includes(keys.join(',')), `event data keys: ${keys.join(',')}`);
+      assert.ok(['conversationId,messageId', 'docId,version'].includes(keys.join(',')), `event data keys: ${keys.join(',')}`);
       for (const value of Object.values(row.data)) assert.ok(typeof value === 'number' || /^[0-9a-f-]{36}$/.test(String(value)), 'identifiers only');
     }
     const audience = await pool.query('SELECT DISTINCT recipient FROM event_audience WHERE event_id = ANY($1)', [rows.rows.map((row) => row.id)]);
@@ -73,11 +76,11 @@ test('conversation and material commits reach only current project readers throu
     // not a second write or stream event. A changed key payload must fail closed.
     assert.equal((await post<Conversation>(owner.browser, `/api/v1/projects/${project.id}/conversations`, openingCommand)).id, thread.id);
     assert.equal((await post<{ id: string }>(partner.browser, `/api/v1/conversations/${thread.id}/messages`, replyCommand)).id, reply.id);
-    assert.equal((await post<Material>(owner.browser, `/api/v1/projects/${project.id}/materials`, createCommand)).materialId, material.materialId);
-    assert.equal((await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`, { body: editCommand })).status, 200);
+    assert.equal(((await owner.browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: createCommand, headers: createKey })).json as Doc).id, page.id);
+    assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: editCommand, headers: editKey })).status, 200);
     assert.equal((await owner.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { ...openingCommand, body: 'different' } })).status, 409);
-    assert.equal((await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`, { body: { ...editCommand, body: 'different' } })).status, 409);
-    assert.equal((await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`, { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'stale' } })).status, 409);
+    assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: { ...editCommand, body: 'different' }, headers: editKey })).status, 409);
+    assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: { expectedVersion: 1, body: 'stale' }, headers: { 'idempotency-key': randomUUID() } })).status, 409);
     assert.equal((await owner.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: 'bad source', clientMessageId: randomUUID(), source: { materialId: randomUUID(), version: 1 } } })).status, 404);
     const laterRows = await pool.query('SELECT count(*)::int AS count FROM events WHERE object_id = $1 AND kind = ANY($2)', [project.id, kinds]);
     assert.equal(laterRows.rows[0].count, 4, 'retries and conflicts create no events');

@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import { assistantChangeActionPath, type AgentOperation, type ExternalClientDesignation } from '@flux/contracts';
 import { publicOrigin, register, uniqueEmail, type Browser } from './http.js';
 import { expect, mcp, oauthToken, toolValue } from './mcp.js';
+import { savePage } from './pages.js';
 
 // One owner, one restricted project with a contributor agent, a signed-in OAuth connection and its
 // bootstrap runtime: the shared starting point of the native MCP action tests (#152, #859).
@@ -161,8 +162,7 @@ export async function actionScene(pool: Pool) {
   const projectId = String(project.id);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
     { body: { name: 'Planning agent', owner: 'self' } }), 201);
-  const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Release plan', body: 'Step one: measure. Step two: compare.' } }), 201);
+  const plan = await savePage(owner, projectId, { title: 'Release plan', body: 'Step one: measure. Step two: compare.' });
   const source = { materialId: String(plan.materialId), version: Number(plan.version) };
   const prerequisite = expect(await owner.request('POST', `/api/v1/projects/${projectId}/work`,
     { body: { title: 'Measure the baseline' } }), 201);

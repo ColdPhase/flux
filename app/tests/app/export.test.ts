@@ -23,9 +23,10 @@ import { pool as connectionPool } from './support/db.js';
 import { Browser, type ClientResponse } from './support/http.js';
 import { createConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { editPage, savePage } from './support/pages.js';
 
 // Project export (issue #123): only a manager exports; the document and bundle hold the
-// project's conversation, materials and docs with versions, project sketches with thoughts and
+// project's conversation, Wiki pages with versions, project sketches with thoughts and
 // links, work, decisions with links, members and provenance, and never another
 // project, a DM or a private sketch (checked with distinctive tokens).
 
@@ -88,7 +89,6 @@ describe('project export', () => {
   let thoughtIds: string[];
   let work: WorkItem;
   let decision: Decision;
-  let materialMutationId: string;
   let agentId: string;
   let connectionId: string;
 
@@ -103,15 +103,9 @@ describe('project export', () => {
     await grant(owner, lamp.id, partner, 'contributor');
     await grant(owner, lamp.id, viewer, 'contributor');
 
-    // A material in the project.
-    materialMutationId = randomUUID();
-    const material = json<{ materialId: string; version: number }>(await post(owner, `/api/v1/projects/${lamp.id}/materials`, {
-      clientMutationId: materialMutationId, title: token('MATERIAL-title'), body: token('MATERIAL-body'),
-    }), 201, 'material');
-    materialId = material.materialId;
-    json(await owner.browser.request('PATCH', `/api/v1/materials/${materialId}`, {
-      body: { clientMutationId: randomUUID(), expectedVersion: 1, body: token('MATERIAL-body-v2') },
-    }), 200, 'material v2');
+    // A page a reply cites (what a saved source was before #1508), in two versions.
+    materialId = (await savePage(owner.browser, lamp.id, { title: token('SOURCE-title'), body: token('SOURCE-body') })).materialId;
+    await editPage(owner.browser, materialId, { expectedVersion: 1, body: token('SOURCE-body-v2') });
 
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: token('MESSAGE-one'), clientMessageId: randomUUID() }), 201, 'conversation');
@@ -200,14 +194,13 @@ describe('project export', () => {
     assert.deepEqual(data.conversations[1]!.messages.map((message) => [message.sequence, message.body, message.author.id, message.contribution]),
       [[1, token('CAMEOFIT-line'), partner.id, { kind: 'came_of_it' }]]);
 
-    assert.equal(data.materials.length, 1);
-    assert.deepEqual(data.materials[0]!.versions.map((version) => [version.version, version.body]), [[1, token('MATERIAL-body')], [2, token('MATERIAL-body-v2')]]);
-    assert.equal(data.materials[0]!.currentVersion, 2);
-
-    assert.equal(data.docs.length, 1);
-    assert.deepEqual(data.docs[0]!.versions.map((version) => [version.version, version.reason, version.author.id]),
+    // Every page is in the one list, oldest first: the cited source, then the page two people wrote.
+    assert.deepEqual(data.docs.map((item) => item.id), [materialId, doc.id]);
+    assert.deepEqual(data.docs[0]!.versions.map((version) => [version.version, version.body, version.url]), [[1, token('SOURCE-body'), null], [2, token('SOURCE-body-v2'), null]]);
+    assert.equal(data.docs[0]!.currentVersion, 2);
+    assert.deepEqual(data.docs[1]!.versions.map((version) => [version.version, version.reason, version.author.id]),
       [[1, 'Started the page', owner.id], [2, 'Edited the text', partner.id]]);
-    assert.equal(data.docs[0]!.file, `docs/${doc.id}.md`);
+    assert.equal(data.docs[1]!.file, `docs/${doc.id}.md`);
 
     assert.equal(data.sketches.length, 1);
     assert.deepEqual(data.sketches[0]!.thoughts.map((thought) => thought.text), [token('THOUGHT-root'), token('THOUGHT-leaf')]);
@@ -228,7 +221,7 @@ describe('project export', () => {
 
     const text = JSON.stringify(data);
     assert.deepEqual(leaked(text, ['OTHERPROJECT', 'DMSECRET', 'PRIVATESKETCH', 'extra-address', ...QUIET_HOURS_MARKERS]), [], 'export leaks');
-    for (const hidden of [materialMutationId, connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
+    for (const hidden of [connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
 
     const validate = await validator();
     const checked = await validate(data);
@@ -310,7 +303,7 @@ describe('project export', () => {
     const root = [...files.keys()][0]!.split('/')[0]!;
     const read = (path: string) => files.get(`${root}/${path}`);
     const manifest = JSON.parse(read('manifest.json')!.toString('utf8')) as ProjectExportManifest;
-    assert.deepEqual(manifest.files.map((file) => file.path).sort(), ['README.md', `docs/${doc.id}.md`, 'project.json', 'schema/project-export.v1.schema.json']);
+    assert.deepEqual(manifest.files.map((file) => file.path).sort(), ['README.md', `docs/${doc.id}.md`, `docs/${materialId}.md`, 'project.json', 'schema/project-export.v1.schema.json'].sort());
     for (const file of manifest.files) {
       const content = read(file.path)!;
       assert.equal(content.length, file.bytes, `${file.path} size`);
@@ -318,7 +311,7 @@ describe('project export', () => {
     }
     const data = JSON.parse(read('project.json')!.toString('utf8')) as ProjectExport;
     assert.equal(data.project.id, lamp.id);
-    assert.equal(read(`docs/${doc.id}.md`)!.toString('utf8'), data.docs[0]!.versions[1]!.body);
+    assert.equal(read(`docs/${doc.id}.md`)!.toString('utf8'), data.docs[1]!.versions[1]!.body);
     assert.deepEqual(JSON.parse(read('schema/project-export.v1.schema.json')!.toString('utf8')), JSON.parse(JSON.stringify(PROJECT_EXPORT_JSON_SCHEMA)));
     assert.match(read('README.md')!.toString('utf8'), /Re-import into Flux is not supported/);
     const everything = [...files.values()].map((content) => content.toString('utf8')).join('\n');

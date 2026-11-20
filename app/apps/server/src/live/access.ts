@@ -35,11 +35,10 @@ export async function requireLiveContext(principal: Principal, ref: LiveContextR
     return;
   }
   if (ref.type === 'doc') {
-    const query = db.select({ projectId: schema.projectMaterials.projectId,
-      kind: schema.projectMaterials.kind }).from(schema.projectMaterials)
+    const query = db.select({ projectId: schema.projectMaterials.projectId }).from(schema.projectMaterials)
       .where(eq(schema.projectMaterials.id, ref.id));
     const [row] = lock ? await query.for('share') : await query;
-    if (!row || row.projectId !== projectId || row.kind !== 'doc') missing();
+    if (!row || row.projectId !== projectId) missing();
     return;
   }
   missing();
@@ -117,20 +116,14 @@ export function liveAccess(db: Executor): LiveAccess {
         .where(eq(schema.sketches.id, id));
       return row?.scope === 'project' ? row.projectId : null;
     }
-    if (type === 'doc') {
-      const [row] = await db.select({ projectId: schema.projectMaterials.projectId,
-        kind: schema.projectMaterials.kind }).from(schema.projectMaterials)
+    if (type === 'doc' || type === 'material') {
+      const [row] = await db.select({ projectId: schema.projectMaterials.projectId }).from(schema.projectMaterials)
         .where(eq(schema.projectMaterials.id, id));
-      return row?.kind === 'doc' ? row.projectId : null;
+      return row?.projectId ?? null;
     }
     if (type === 'message') {
       const [row] = await db.select({ projectId: schema.projectMessages.projectId }).from(schema.projectMessages)
         .where(eq(schema.projectMessages.id, id));
-      return row?.projectId ?? null;
-    }
-    if (type === 'material') {
-      const [row] = await db.select({ projectId: schema.projectMaterials.projectId }).from(schema.projectMaterials)
-        .where(eq(schema.projectMaterials.id, id));
       return row?.projectId ?? null;
     }
     return null;

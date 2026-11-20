@@ -6,10 +6,12 @@ import { conversationUseCases } from '@flux/core';
 import { notificationRows } from '@flux/db';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { inboxAudience, notificationRepository } from '../../apps/server/src/push/adapters.js';
+import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { explainAnalyze, recordingDatabase, rowsRead, type PlanNode } from './support/statements.js';
 import { inboxVolume } from './support/inbox-volume.js';
+import { savePage } from './support/pages.js';
 
 // Regression tests for the slow paths measured in #298 (docs/development/performance-2026-10.md).
 // They assert work that grows with the data (how often a subplan runs, how many statements a
@@ -80,8 +82,8 @@ describe('application database connections (#298)', () => {
   });
 });
 
-describe('conversation and material pages (#298)', () => {
-  test('one page costs the same statements for one conversation or material as for six', async () => {
+describe('conversation and Wiki page lists (#298)', () => {
+  test('one page costs the same statements for one conversation or Wiki page as for six', async () => {
     const owner = await person('Pages owner');
     const space = await workspace(owner, 'Pages');
     const place = await project(owner, space.id, 'Pages project', 'workspace');
@@ -91,11 +93,11 @@ describe('conversation and material pages (#298)', () => {
       { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation;
     const reply = async (conversationId: string, body: string) => expectStatus(await owner.browser.request('POST',
       `/api/v1/conversations/${conversationId}/messages`, { body: { body, clientMessageId: randomUUID() } }), 201);
-    const material = async (title: string) => expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`,
-      { body: { clientMutationId: randomUUID(), title, body: `${title} notes` } }), 201);
+    const wiki = docUseCases(db);
+    const material = async (title: string) => await savePage(owner.browser, place.id, { title, body: `${title} notes` });
     const pages = async () => ({
       conversations: await statements(() => store.listConversations(principal, place.id, { limit: 100 })),
-      materials: await statements(() => store.listMaterials(principal, place.id, { limit: 100 })),
+      materials: await statements(() => wiki.listProjectDocs(principal, place.id, { limit: 100 })),
     });
 
     const first = await start('Which probe survives a winter outside?');
@@ -118,7 +120,7 @@ describe('conversation and material pages (#298)', () => {
     assert.equal(summary.lastMessageBody, 'Then we order six.');
     assert.deepEqual(six.materials.result.items.map((item) => item.title).sort(), ['Probe datasheet', ...[0, 1, 2, 3, 4].map((index) => `Source ${index}`)].sort());
     // Before #298 each conversation added two queries (its first and last message) and each
-    // material one (its current version), all sent at once on the shared pool.
+    // saved source one (its current version), all sent at once on the shared pool; the Wiki's list is one page however long.
     assert.deepEqual({ conversations: six.conversations.sent.length - one.conversations.sent.length, materials: six.materials.sent.length - one.materials.sent.length },
       { conversations: 0, materials: 0 }, 'extra statements for five more rows: a page costs the same however many rows it has');
   });
