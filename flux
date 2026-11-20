@@ -110,11 +110,11 @@ compose_dev() {
     -f "$COMPOSE_MAIN" -f "$COMPOSE_DEV" --profile dev "$@"
 }
 
-# Reads KEY from an env file (default: docker/.env) without executing it, as Compose reads it: one pair of quotes around the
-# value is dropped (#1541: a file written by configuration management quotes every value). The shell is not asked.
+# Reads KEY from an env file (default: docker/.env) without executing it, as Compose reads it: one matching pair of quotes around
+# the value is dropped, so "'x'" reads 'x' (#1541: a file written by configuration management quotes every value). The shell is not asked.
 env_file_value() {
   [ -f "${2:-$ENV_FILE}" ] || return 0
-  sed -n "s/^$1=//p" "${2:-$ENV_FILE}" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+  sed -n "s/^$1=//p" "${2:-$ENV_FILE}" | tail -n 1 | sed "s/^\([\"']\)\(.*\)\1\$/\2/"
 }
 # KEY from docker/.env, where a shell export of the same name wins, matching Compose precedence.
 env_value() {

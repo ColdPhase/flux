@@ -105,9 +105,10 @@ class FluxConfigurationTest(unittest.TestCase):
         match = re.search(r"^env_file_value\(\) \{\n.*?^\}\n", text, re.S | re.M)
         self.assertIsNotNone(match)
         archive = self.base / "archived.env"
-        archive.write_text("A=old\nA=\'a$b c\'\nB=\"two words\"\nC=plain\nD=\'\nE=\n", encoding="utf-8")
+        archive.write_text("A=old\nA=\'a$b c\'\nB=\"two words\"\nC=plain\nD=\'\nE=\nF=\"\'x\'\"\nG=\'\"y\"\'\nH=\"z\'\nI=a\"b\"\n", encoding="utf-8")
         script = f'ENV_FILE="{self.live}"\n{match.group(0)}' + "".join(
-            f'printf "%s|" "$(env_file_value {key} "{archive}")"\n' for key in ("A", "B", "C", "D", "E", "MISSING")
+            f'printf "%s|" "$(env_file_value {key} "{archive}")"\n' for key in ("A", "B", "C", "D", "E", "F", "G", "H", "I", "MISSING")
         ) + f'printf "%s|" "$(env_file_value A "{self.base}/no-such-file")"\n'
         result = subprocess.run(["sh", "-c", script], capture_output=True, text=True, env={**self.env, "A": "from-the-shell"})
-        self.assertEqual(result.stdout, "a$b c|two words|plain|\'||||")
+        # Only one matching pair goes, as in Compose: "'x'" is 'x', a mismatched pair or inner quotes stay.
+        self.assertEqual(result.stdout, "a$b c|two words|plain|\'||\'x\'|\"y\"|\"z\'|a\"b\"|||")
