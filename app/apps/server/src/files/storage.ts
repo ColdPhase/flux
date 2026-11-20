@@ -22,7 +22,8 @@ const SEALED_OBJECT_OVERHEAD = 4 + 4 + 12 + 16;
 
 export type ObjectCipherResolver = (objectId: string) => Promise<StoredFileCipher | null>;
 
-export async function diskFileStorage(filesDir: string, options: { cipherFor?: ObjectCipherResolver } = {}): Promise<FileStorage> {
+/** `fileBytes`: the operator's cap for one ordinary file (`FLUX_FILE_MAX_MIB`, #1549); a reader that only reads (an export) leaves the default. */
+export async function diskFileStorage(filesDir: string, options: { cipherFor?: ObjectCipherResolver; fileBytes?: number } = {}): Promise<FileStorage> {
   const cipherFor: ObjectCipherResolver = options.cipherFor ?? (async () => null);
   async function syncDirectory(path: string) {
     const handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
@@ -68,7 +69,7 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
         const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         try {
           const stat = await file.stat();
-          if (!stat.isFile() || stat.size < 1 || stat.size > FILE_LIMITS.fileBytes + SEALED_OBJECT_OVERHEAD) return null;
+          if (!stat.isFile() || stat.size < 1 || stat.size > FILE_LIMITS.wholeBytes + SEALED_OBJECT_OVERHEAD) return null;
           const bytes = Buffer.alloc(stat.size);
           let offset = 0;
           while (offset < bytes.length) {
@@ -101,6 +102,7 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
     while (offset < bytes.byteLength) offset += (await file.write(bytes, offset, bytes.byteLength - offset)).bytesWritten;
   }
   const storage: FileStorage = {
+    fileBytes: options.fileBytes ?? FILE_LIMITS.fileBytes,
     async receive(bytes, limits, objectId) {
       const sealer = objectId ? (await cipherFor(objectId))?.sealer() ?? null : null;
       const iterator = bytes[Symbol.asyncIterator]();

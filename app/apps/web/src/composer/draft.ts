@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { FILE_LIMITS, isVideoName, type Conversation, type ConversationMessage, type SendMessageCommand, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, isVideoName, megabytesText, type Conversation, type ConversationMessage, type SendMessageCommand, type StagedFile } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
 import { announceAnswered } from '../notifications/api';
@@ -186,10 +186,16 @@ function notSentReason(cause: unknown) {
   if (lasting(cause)) return 'Flux could not accept it. Remove it to edit it.';
   return '';
 }
-/** The most a file of this name may be: a video has its own cap (C-61). In an encrypted space the server holds it to 5 MB and says so. */
-const sizeLimit = (name: string) => isVideoName(name) ? fileLimits().videoBytes : FILE_LIMITS.fileBytes;
-const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
-const tooBig = (name: string) => isVideoName(name) ? `A video can be at most ${megabytes(fileLimits().videoBytes)}.` : 'A file can be at most 5 MB.';
+/** A picture by its name: it is written again whole by the server (#1343), so it keeps 5 MB whatever the file cap (#1549). The bytes decide there. */
+const isPictureName = (name: string) => /\.(png|jpe?g|gif|webp)$/i.test(name);
+/**
+ * The most a file of this name may be on this server (C-61, #1549): a video has its own cap, a picture 5 MB, any other file the operator's file
+ * cap. In an encrypted space the server holds every file to 5 MB and says so.
+ */
+const sizeLimit = (name: string) => isVideoName(name) ? fileLimits().videoBytes : isPictureName(name) ? FILE_LIMITS.wholeBytes : fileLimits().fileBytes;
+const megabytes = megabytesText;
+const tooBig = (name: string) => isVideoName(name) ? `A video can be at most ${megabytes(fileLimits().videoBytes)}.`
+  : isPictureName(name) ? `A picture can be at most ${megabytes(FILE_LIMITS.wholeBytes)}.` : `Files can be up to ${megabytes(fileLimits().fileBytes)} on this server.`;
 /** A refusal of the file's own bytes or size: the same file again meets the same answer (400, 413, 415, but never a conflict or an access answer). */
 const refusedFile = (cause: unknown) => cause instanceof ApiError && [400, 413, 415].includes(cause.status) && !['UPLOAD_CONFLICT', 'UPLOAD_TIMEOUT'].includes(cause.code ?? '');
 
@@ -392,8 +398,8 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
   const { draft } = snapshot;
 
   function addFiles(files: File[]) {
-    // A video is held to the operator's cap (C-61), read when a composer first takes a file (#1429): the first video waits for it.
-    if (!fileLimitsKnown() && files.some((file) => isVideoName(file.name))) void loadFileLimits().then(() => admit(files));
+    // Files and videos are held to the operator's caps (C-61, #1549), read when a composer first takes a file (#1429): the first file waits for them.
+    if (!fileLimitsKnown()) void loadFileLimits().then(() => admit(files));
     else { void loadFileLimits(); admit(files); }
   }
   function admit(files: File[]) {
@@ -403,13 +409,13 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     if (current.draft.files.length + files.length > FILE_LIMITS.messageFiles) {
       put(key, { ...current, error: 'Attach at most 10 files. Your existing draft and files are kept.' }); return;
     }
-    // A video has its own cap (C-61): the 20 MB of one message are the other files', and its videos together stay within one video cap.
+    // A video has its own cap (C-61): the message total (four files at the file cap, #1549) is the other files', and its videos together stay within one video cap.
     const sizes = (list: readonly { name: string; size: number }[]) => ({ videos: list.filter((item) => isVideoName(item.name)).reduce((total, item) => total + item.size, 0),
       others: list.filter((item) => !isVideoName(item.name)).reduce((total, item) => total + item.size, 0) });
     // A file over its own limit is refused on its own below, with its own words, and does not count here.
     const held = sizes(current.draft.files); const adding = sizes(files.filter((file) => file.size <= sizeLimit(file.name)));
-    if (held.others + adding.others > FILE_LIMITS.messageBytes) {
-      put(key, { ...current, error: 'Files in one message can total at most 20 MB. Your existing draft and files are kept.' }); return;
+    if (held.others + adding.others > fileLimits().messageBytes) {
+      put(key, { ...current, error: `Files in one message can total at most ${megabytes(fileLimits().messageBytes)}. Your existing draft and files are kept.` }); return;
     }
     if (held.videos + adding.videos > fileLimits().videoBytes) {
       put(key, { ...current, error: `Videos in one message can total at most ${megabytes(fileLimits().videoBytes)}. Your existing draft and files are kept.` }); return;

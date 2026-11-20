@@ -37,7 +37,7 @@ export async function diskRotationObjects(filesDir: string): Promise<RotationFil
         const file = await open(await objectPath(id), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         try {
           const stat = await file.stat();
-          if (!stat.isFile() || stat.size < 1 || stat.size > FILE_LIMITS.fileBytes + 64) return null;
+          if (!stat.isFile() || stat.size < 1 || stat.size > FILE_LIMITS.wholeBytes + 64) return null;
           const bytes = Buffer.alloc(stat.size);
           let offset = 0;
           while (offset < bytes.length) {

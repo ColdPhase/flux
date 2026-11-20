@@ -52,7 +52,7 @@ const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 export function imageRefusal(file: { type: string; size: number }): string | null {
   if (!THOUGHT_IMAGE_TYPES.includes(file.type as ThoughtImageType)) return 'Only PNG, JPEG, GIF or WebP images can be pasted on a map.';
   if (file.size === 0) return 'That image is empty, so nothing was pasted.';
-  if (file.size > FILE_LIMITS.fileBytes) return `That image is ${megabytes(file.size)}; an image on a map is at most 5 MB.`;
+  if (file.size > FILE_LIMITS.wholeBytes) return `That image is ${megabytes(file.size)}; an image on a map is at most 5 MB.`;
   return null;
 }
 
