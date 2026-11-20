@@ -155,7 +155,10 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       // app.inject() has no bound socket; unauthenticated route tests still
       // need a challenge and never fetch JWKS.
       const port = address && typeof address !== 'string' ? address.port : Number(process.env.PORT ?? 8080);
-      protectedFetch = requireMcpAuth(auth, handleVerified, {
+      // @better-auth/mcp 1.7.25 and later type `auth.$context.options.verification` as `{ storeInDatabase?: boolean }` (for the DPoP replay
+      // store), a weak type that Flux's own `{ modelName, storeIdentifier }` shares no property with, so TypeScript refuses the instance. It is
+      // the real auth instance; only the declared type is narrower than the library's own.
+      protectedFetch = requireMcpAuth(auth as unknown as Parameters<typeof requireMcpAuth>[0], handleVerified, {
         resource: `${publicOrigin}/mcp`,
         jwksUrl: `http://127.0.0.1:${port}/api/auth/jwks`,
       });

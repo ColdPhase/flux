@@ -13,6 +13,9 @@ import { applyStoredTheme } from './app/theme';
 import { registerServiceWorker, watchInstallPrompt } from './pwa';
 import { router } from './router';
 
+// The app scrolls in its panes, which keep and restore their own places (#592). A Back or Forward with the browser’s restoration on
+// also made WebKit scroll to the address's fragment: a message link's #message-… went to the top of the stream and took the focus (#1530).
+window.history.scrollRestoration = 'manual';
 applyStoredTheme();
 applyStoredSmallMoments();
 // Motion pauses while the page is hidden, and every pressable control takes the one press (#593).

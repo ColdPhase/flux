@@ -210,7 +210,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   // F-030: an encrypted workspace's file objects are sealed as they arrive and opened only after their tag verifies.
-  const fileStorage = await diskFileStorage(filesDir, { cipherFor: async (objectId) => {
+  const fileStorage = await diskFileStorage(filesDir, { fileBytes: config.files.fileBytes, cipherFor: async (objectId) => {
     const executor = db as unknown as DbExecutor;
     const [row] = (await executor.execute<{ workspace_id: string }>(dbSql`SELECT workspace_id FROM project_files WHERE id = ${objectId}::uuid`)).rows;
     // A profile photo's rendition is account data, and a space with an icon is never an encrypted one: neither is sealed (F-039, F-040). An object without its row is refused, never written or served

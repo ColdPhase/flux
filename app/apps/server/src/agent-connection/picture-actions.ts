@@ -233,7 +233,7 @@ async function attachInChat(db: Database, services: PictureServices, input: { cl
   if (!fetched.ok) refuse(PICTURE_WORDS[fetched.reason]);
   const ok = fetched as Extract<PictureResult, { ok: true }>;
   const name = pictureName(input.caption, ok.finalUrl, ok.type);
-  const received = await services.storage.receive(Readable.from([Buffer.from(ok.bytes)]), { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 });
+  const received = await services.storage.receive(Readable.from([Buffer.from(ok.bytes)]), { maxBytes: FILE_LIMITS.wholeBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 });
   let saved: { name: string; size: number } | null;
   try {
     saved = await db.transaction(async (tx) => {

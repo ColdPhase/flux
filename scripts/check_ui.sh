@@ -72,6 +72,8 @@ export FLUX_AI_PRIVATE_TARGETS=openai-mock
 export FLUX_LINK_PREVIEWS=on
 # A small video cap, so a UI test of the limit needs no 200 MiB file (C-61); the page reads it from GET /api/v1/files/limits.
 export FLUX_VIDEO_MAX_MIB=12
+# A small file cap above the 5 MiB read whole (#1549), so a UI test of a large file and of the refusal needs no 25 MiB file.
+export FLUX_FILE_MAX_MIB=8
 export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh

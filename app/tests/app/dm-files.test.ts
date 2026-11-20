@@ -95,7 +95,8 @@ test('a picture is decoded and written again, and a file over the limit is refus
   const damaged = await upload(f.ada, f.pair.id, photo.subarray(0, 40), 'damaged.png');
   assert.equal(damaged.status, 400, JSON.stringify(damaged.body));
   assert.equal(damaged.body.code, 'UNREADABLE_PICTURE');
-  const big = await upload(f.ada, f.pair.id, Buffer.alloc(FILE_LIMITS.fileBytes + 1, 1), 'big.bin');
+  // Over the test stack's file cap (FLUX_FILE_MAX_MIB=8, #1549).
+  const big = await upload(f.ada, f.pair.id, Buffer.alloc(8 * MiB + 1, 1), 'big.bin');
   assert.equal(big.status, 413);
   assert.equal(big.body.code, 'FILE_TOO_LARGE');
   assert.equal((await upload(f.ada, f.pair.id, Buffer.alloc(0), 'empty.txt')).status, 400);

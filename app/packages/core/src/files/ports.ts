@@ -108,6 +108,11 @@ export class FileReceiveTimeoutError extends Error {}
  * must never follow symlinks; one that cannot must not be used.
  */
 export interface FileStorage {
+  /**
+   * The operator's cap for one ordinary file of a plain place (`FLUX_FILE_MAX_MIB`, C-61, #1549): the uploads it takes, and a message's
+   * files other than videos together at most `messageBytesFor` it.
+   */
+  readonly fileBytes: number;
   /** Streams into private scratch, refusing more than `maxBytes` (FileTooLargeError) or past `deadline` (FileReceiveTimeoutError). */
   receive(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number },
     /**
@@ -115,7 +120,7 @@ export interface FileStorage {
      * the bytes as they arrive (size and SHA-256 stay those of the plaintext), so plaintext never reaches the scratch.
      */
     objectId?: string): Promise<ReceivedFile>;
-  /** The object's bytes, or null when it is missing. At most the ordinary file limit; a video is streamed (`stream`). */
+  /** The object's bytes, or null when it is missing. At most `FILE_LIMITS.wholeBytes`; a larger file is streamed (`stream`). */
   read(objectId: string): Promise<Uint8Array | null>;
   /**
    * C-61: bytes `start` to `end` (inclusive) of a plain object whose size is exactly `size`, as a stream that holds one chunk at a

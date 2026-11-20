@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { FILE_LIMITS, FILE_LIMITS_PATH, agentChatFilePosterPath, dmFilePosterPath, filePath, filePosterPath, type FileLimits, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, FILE_LIMITS_PATH, agentChatFilePosterPath, messageBytesFor, dmFilePosterPath, filePath, filePosterPath, type FileLimits, type StagedFile } from '@flux/contracts';
 import { request, send } from './client';
 
 /**
@@ -13,11 +13,11 @@ export async function readFileBytes(fileId: string, init: { signal?: AbortSignal
 }
 
 /**
- * What this instance accepts (C-61): the operator's video cap is the one number that varies. It is read once a page load, when a composer
- * first holds or takes a file (#1429: not on every space a person opens). Until the answer arrives the page assumes the default, and the
- * server holds each file to its real limit whatever the page believed.
+ * What this instance accepts (C-61, #1549): the operator's file and video caps vary. They are read once a page load, when a composer first holds
+ * or takes a file (#1429: not on every space a person opens). Until the answer arrives the page assumes the defaults, and the server holds each
+ * file to its real limit whatever the page believed.
  */
-let limits: FileLimits = { fileBytes: FILE_LIMITS.fileBytes, videoBytes: FILE_LIMITS.videoBytes, messageFiles: FILE_LIMITS.messageFiles, messageBytes: FILE_LIMITS.messageBytes };
+let limits: FileLimits = { fileBytes: FILE_LIMITS.fileBytes, videoBytes: FILE_LIMITS.videoBytes, messageFiles: FILE_LIMITS.messageFiles, messageBytes: messageBytesFor(FILE_LIMITS.fileBytes) };
 let loading: Promise<void> | null = null;
 let known = false;
 const listeners = new Set<() => void>();
@@ -27,7 +27,9 @@ export const fileLimitsKnown = () => known;
 export function loadFileLimits(): Promise<void> {
   loading ??= request<FileLimits>(FILE_LIMITS_PATH).then((answer) => {
     known = true;
-    if (answer.videoBytes !== limits.videoBytes) { limits = answer; listeners.forEach((listener) => listener()); }
+    const changed = answer.fileBytes !== limits.fileBytes || answer.videoBytes !== limits.videoBytes || answer.messageFiles !== limits.messageFiles
+      || answer.messageBytes !== limits.messageBytes;
+    if (changed) { limits = answer; listeners.forEach((listener) => listener()); }
   }).catch(() => { loading = null; });
   return loading;
 }

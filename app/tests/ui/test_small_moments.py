@@ -220,6 +220,8 @@ class SmallMomentsJourney(unittest.TestCase):
         page = self.page(phone=True, scheme="light", signed_in=False)
         page.route(re.compile(r"\.(js|css)(\?.*)?$"), lambda route: route.abort())
         page.goto("/", wait_until="commit")
+        # The splash is parsed once the head's stylesheets have arrived or failed (index.html waits for them, #1530).
+        expect(page.locator(".boot--moment")).to_be_visible()
         self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.boot--moment')).backgroundColor"), "rgb(244, 244, 245)")
 
     def test_06_closing_a_task_winks_in_one_undo_toast_from_every_surface(self) -> None:
