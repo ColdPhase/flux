@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { dmFilesPath, searchTargetPath, type Dm, type DmMessage, type SearchResponse, type SearchResult, type StagedFile } from '@flux/contracts';
+import { dmAiOffPath, dmFilesPath, searchTargetPath, type Dm, type DmMessage, type SearchResponse, type SearchResult, type StagedFile } from '@flux/contracts';
 import { startFileText } from '../../apps/worker/src/file-text/index.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
@@ -154,6 +154,15 @@ describe('the files of a direct message, found by its people and read by /ai in 
       assert.equal(hits(await call('flux_search', { q: pdfWord, kind: 'file' })).length, 1, 'chat: the PDF\'s word');
       assert.equal((toolValue(await call('flux_read_file', { fileId: pdf.fileId })) as unknown as { dmId: string }).dmId, pair.id);
     });
+    // With AI off in the conversation (C-73), no run reads its files, in it or from the chat; people still find them.
+    expectStatus(await scene.peer.browser.request('PUT', dmAiOffPath(pair.id)), 200);
+    try {
+      await asRun({ kind: 'chat' }, async (call) => {
+        assert.deepEqual(hits(await call('flux_search', { q: pdfWord, kind: 'file' })), [], 'AI off: no hit');
+        assert.equal(toolFailure(await call('flux_read_file', { fileId: pdf.fileId })).code, 'FILE_NOT_FOUND', 'AI off: nothing read');
+      });
+      await assert.rejects(run(pair.id), (error: { code?: string }) => error.code === 'DM_AI_OFF', '/ai there is refused');
+    } finally { expectStatus(await scene.peer.browser.request('DELETE', dmAiOffPath(pair.id)), 200); }
     // A run in another conversation of the same owner and in a space find nothing and read nothing: one answer, as for a file that is not there.
     const elsewhere = [{ kind: 'dm' as const, dmId: group.id }, { kind: 'space' as const }];
     for (const place of elsewhere) {
