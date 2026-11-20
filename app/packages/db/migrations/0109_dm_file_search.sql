@@ -7,6 +7,8 @@
 -- Works on the data of v0.2.1 (the release that had files in direct messages, 0076): it adds one trigger function and one trigger, gives the direct message
 -- files that are already there the name row they lack, and queues the readable ones for the worker, which reads them in the background one at a time under
 -- the limits of C-63 (a picture or a scan is read by OCR in the bounded batches of C-70 (7), when the switch is on). Nothing stored changes shape.
+-- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
+SET LOCAL lock_timeout = '5s';
 
 -- A file is published with its direct message: its name becomes a search row and the readable kinds are queued for the worker. A video's poster is the
 -- picture of its video, not a file anyone sent: no row (0088).
@@ -29,11 +31,16 @@ CREATE TRIGGER search_index_dm_file AFTER UPDATE OF published_at ON public.proje
   WHEN (OLD.published_at IS NULL AND NEW.published_at IS NOT NULL AND NEW.dm_message_id IS NOT NULL) EXECUTE FUNCTION public.search_index_dm_file();
 
 -- The direct message files that are already there (v0.2.1's) and have no name row: the name rows now, the text by the worker as it gets to them.
-SELECT count(search_put('file:' || f.id || ':0', 'file', f.workspace_id, 'dm:' || f.dm_id, NULL, f.id::text, f.dm_id, 0,
-    NULL, f.name, '', 'human', f.uploader_id, f.published_at))
+-- One statement, the row `search_put` writes for a file of a plain workspace (not sealed: no placeholder): the BM25 index writes a segment for
+-- each statement (0093), so a `search_put` per file would add one segment per file to it within this transaction, about 100 kB each on disk
+-- (measured on Flux's image, 2026-11-20: 2,000 files grew the index by 207 MB, which stayed after the merge).
+INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, parent_id, version, status, title, body,
+    author_kind, author_id, at, sealed)
+SELECT 'file:' || f.id || ':0', 'file', f.workspace_id, 'dm:' || f.dm_id, NULL, f.id::text, f.dm_id, 0, NULL, f.name, '', 'human', f.uploader_id,
+    f.published_at, false
 FROM project_files f
 WHERE f.dm_message_id IS NOT NULL AND f.published_at IS NOT NULL AND f.state = 'ready' AND f.poster_of IS NULL AND NOT workspace_sealed(f.workspace_id)
-  AND NOT EXISTS (SELECT 1 FROM search_documents d WHERE d.doc_key = 'file:' || f.id || ':0');
+ON CONFLICT (doc_key) DO NOTHING;
 INSERT INTO file_text_jobs (file_id)
 SELECT f.id FROM project_files f
 WHERE f.dm_message_id IS NOT NULL AND f.published_at IS NOT NULL AND f.state = 'ready' AND f.poster_of IS NULL AND f.size IS NOT NULL

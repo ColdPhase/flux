@@ -4,6 +4,9 @@
 -- - The search kinds `result` and `draft` (results were removed in 0044, private drafts in 0028): nothing writes either kind.
 -- v0.2.1 data: a sequence holds no rows. A search row of a removed kind cannot exist (their writers and triggers are gone); any that a
 -- database still holds would name an object that no longer exists, so it is deleted rather than refused by the new check.
+-- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
+SET LOCAL lock_timeout = '5s';
+
 DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence;
 
 DELETE FROM public.search_documents WHERE kind IN ('result', 'draft');

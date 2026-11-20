@@ -42,7 +42,9 @@ list of versions that upgrade to which, is [Upgrade](../operations/upgrade.md); 
 10. **Long migrations do not hold the tables.** API and worker are stopped during an upgrade, but a migration that rewrites or scans a
     large table (a backfill, a new index on `project_messages` or `search_documents`) works in batches and sets `SET LOCAL lock_timeout`
     (for example `'5s'`), so it fails clearly instead of waiting on a lock, and the upgrade restores the backup. Name in the pull request how
-    long it took on the largest fixture.
+    long it took on the largest fixture. A backfill of search rows is one `INSERT … SELECT` (or one `UPDATE`), never a `search_put` per
+    row: the BM25 index writes a segment for each statement (`mutable_segment_rows = 0`, 0093), about 100 kB each, and the space stays in
+    the index after the merge (0109: 2,000 files grew it by 207 MB as a call per file, by nothing as one statement; 2026-11-20).
 11. **The chain stays whole.** No baseline is cut at a minor release: any release from v0.2.0 on upgrades (#1241), and a baseline would
     remove the files an older release needs. A baseline is cut only in the release that drops the oldest supported release.
 

@@ -2,6 +2,9 @@
 -- 1. The reason is allowed. A `message` row is kept for push and the open tab's notice only: `in_inbox` is false and it is never emailed, so
 --    it never reaches the Inbox, Home or the tab's "(N)". Nothing is converted: v0.2.1 rows keep their reasons, and no row of this reason
 --    exists until the first message at Everything after the upgrade.
+-- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
+SET LOCAL lock_timeout = '5s';
+
 ALTER TABLE public.notifications DROP CONSTRAINT notifications_reason_check;
 ALTER TABLE public.notifications ADD CONSTRAINT notifications_reason_check CHECK (reason = ANY (ARRAY['mention'::text, 'question'::text, 'reply'::text,
   'dm'::text, 'assigned'::text, 'review'::text, 'invitation'::text, 'security'::text, 'approval'::text, 'call'::text, 'message'::text]));

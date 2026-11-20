@@ -14,6 +14,8 @@
 --
 -- v0.2.1 data: the table is new and empty, so no conversation is off after the upgrade; the kind and body checks only widen; the vector change
 -- writes nothing on an installation that never turned embeddings on (no `search_vector_state` row).
+-- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
+SET LOCAL lock_timeout = '5s';
 
 CREATE TABLE public.dm_ai_off (
     workspace_id uuid NOT NULL,
