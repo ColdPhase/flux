@@ -300,6 +300,8 @@ class Round15Work(unittest.TestCase):
                 row = page.locator(f"li.proj-index__row[data-space-id='{self.ids['project']}']")
                 expect(row.locator(".set-row__s")).to_have_text("Jonas: The supplier lowered the probe price, see the new list.")
                 expect(row.locator("time.proj-index__time")).to_have_count(1)
+                # The row's name for a screen reader is the space, its states, then what was said (never "undefined. …").
+                expect(row.locator("a.set-row")).to_have_attribute("aria-label", re.compile(r"^Community garden sensors[^.]*\. Jonas: The supplier lowered"))
                 box = row.locator(".set-row__s").bounding_box()
                 time = row.locator("time.proj-index__time").bounding_box()
                 self.assertIsNotNone(box)

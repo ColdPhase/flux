@@ -69,7 +69,7 @@ export function ProjectsIndex() {
               const items = at < moves.fixed ? [] : moveItems(project.id, at);
               return (
               <li key={project.id} className="proj-index__row" data-space-id={project.id} data-everyone={at < moves.fixed ? '' : undefined}>
-                <Link to={`/projects/${project.id}`} className={`set-row${unread ? ' is-unread' : ''}`} aria-label={said ? `${label}. ${said}` : label} data-encrypted={encrypted ? '' : undefined} draggable={false}>
+                <Link to={`/projects/${project.id}`} className={`set-row${unread ? ' is-unread' : ''}`} aria-label={said ? `${label ?? project.name}. ${said}` : label} data-encrypted={encrypted ? '' : undefined} draggable={false}>
                   {/* The same tile as the sidebar and Home (#763 NV-6; its icon, F-040); a sparkle would read as AI. */}
                   <span className="set-row__ic proj-index__tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} size={32} /></span>
                   <span className="set-row__b">
