@@ -239,7 +239,8 @@ class OcrWorkerMemoryTest(unittest.TestCase):
             self.assertIn("  say_ocr_worker_memory\n", body[:body.index("\n}\n")], function)
 
     def test_every_compose_command_of_the_launcher_applies_it(self) -> None:
-        self.assertIn("ocr_worker_memory\n", launcher_function("compose_main"))
+        for function in ("compose_main", "compose_dev"):
+            self.assertIn("ocr_worker_memory\n", launcher_function(function), function)
         self.assertRegex((DOCKER / "compose.test.yaml").read_text(encoding="utf-8"), r'FLUX_FILE_OCR: "on"[\s\S]*?mem_limit: 1g\n    memswap_limit: 1g')
 
 

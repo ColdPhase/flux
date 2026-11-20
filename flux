@@ -105,6 +105,7 @@ compose_main_all() (
 # A release has no development stack (its files are not shipped): down, reset and clean have nothing to do for it there.
 compose_dev() {
   if from_release; then return 0; fi
+  ocr_worker_memory
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
     docker --log-level error compose --project-directory "$FLUX_ROOT/docker" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
