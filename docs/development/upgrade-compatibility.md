@@ -76,7 +76,8 @@ before the candidate:
   settings with a muted space; a second signed-in device; an encrypted space with a message, locked; an owner AI connection with an API key, an
   agent with instructions, two remembered things, a weekly schedule and a switched-off one, and one agent run that completed. The agents run on
   `scripts/release/provider_mock.mjs`, an OpenAI-compatible service that `scripts/release/provider-mock.compose.yaml` adds to the release's own
-  Compose file, as the release guide's "Agents on your own AI key" file adds the key. `smoke_data.py` uses only routes that v0.2.0 has, because it
+  Compose file, as the release guide's "Agents on your own AI key" file adds the key; it calls the `ping` tool of the check that admits a model
+  as an agent from v0.2.1 on (RT-1 rule 2), so a v0.2.1 instance can be seeded with its key. `smoke_data.py` uses only routes that v0.2.0 has, because it
   seeds the previous release; when v0.2.0 is no longer a "from" release, that is relaxed in the same change.
 - The release is backed up (paired, writers stopped) and upgraded with the release guide's steps. `smoke_data.py verify --write` then reads
   every recorded item back (explicit fields, never whole responses), checks that the second device's session cookie still works, that the
