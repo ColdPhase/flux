@@ -90,7 +90,8 @@ before the candidate:
   agent run answered by the mock. The ledger must equal the candidate's files, every content table's rows must be unchanged, and no volume may
   be recreated. A column that a migration removes on purpose (0107's saved-source kind and retry keys) is listed with its migration and reason
   in `scripts/release/removed-columns.txt`, in the same change as the migration, and left out of that comparison; any other column that is gone
-  fails the check by name (#1605). The upgraded instance and the pre-upgrade backup are restored into fresh volumes and read back.
+  fails the check by name (#1605). An entry whose migration does not drop that column, or a listed column still there after the upgrade, fails
+  too. The upgraded instance and the pre-upgrade backup are restored into fresh volumes and read back.
 - From v0.2.1 on, the **post-upgrade journeys** (`scripts/release/smoke_journeys.py`, `journeys_browser.sh`) then use every feature on the
   rows the release wrote, through the API and a browser pass over the main screens ([upgrade](../operations/upgrade.md#tested-with)).
 - **Source checkout.** The release's tree (`git archive <tag>`) is started with `./flux up`, seeded, replaced by the candidate's tree (as `git pull` would,

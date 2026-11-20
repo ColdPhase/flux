@@ -228,6 +228,15 @@ content_tables="workspaces workspace_members projects project_grants project_mat
 removed_columns() { # table: the quoted names of the columns of it that removed-columns.txt lists, comma separated (empty for none)
   sed -e 's/#.*//' "$root/scripts/release/removed-columns.txt" | awk -v t="$1" -v q="'" '$1 == t { printf "%s%s%s%s", (n++ ? "," : ""), q, $2, q }'
 }
+listed_removed() { sed -e 's/#.*//' "$root/scripts/release/removed-columns.txt" | awk 'NF'; }
+# Each entry names a content table, a column, the candidate's migration that drops it, and why; a column cannot be listed in passing.
+while read -r table column migration why; do
+  case " $content_tables " in *" $table "*) ;; *) fail "removed-columns.txt lists $table.$column, but $table is not a compared content table" ;; esac
+  [ -n "$why" ] && [[ $migration =~ ^[0-9]{4}$ ]] || fail "removed-columns.txt: '$table $column $migration' needs a four-digit migration and a reason"
+  migration_file=$(ls "$root/app/packages/db/migrations/${migration}_"*.sql 2>/dev/null | head -n 1)
+  [ -n "$migration_file" ] && grep -qiE "drop column( if exists)? \"?$column\"?([^a-z0-9_]|$)" "$migration_file" ||
+    fail "removed-columns.txt lists $table.$column under migration $migration, which does not drop it"
+done < <(listed_removed)
 table_columns() {
   local table columns removed
   for table in $content_tables; do
@@ -419,6 +428,11 @@ while read -r table columns; do
     WHERE table_schema = current_schema() AND table_name = '$table' AND column_name = c)")
   [ -z "$gone" ] || fail "the upgrade dropped $table.{$gone}: a column removed on purpose is listed in scripts/release/removed-columns.txt (#1605)"
 done < "$up_dir/columns"
+# A listed column is left out of the comparison only because the upgrade drops it: one still there would change unseen.
+while read -r table column _; do
+  [ "$(sql "$source_project" "$up_env" "$assets" "SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '$table' AND column_name = '$column'")" = 0 ] ||
+    fail "$table.$column is listed in scripts/release/removed-columns.txt but is still there after the upgrade"
+done < <(listed_removed)
 table_snapshot "$source_project" "$up_env" "$assets" "$up_dir/columns" > "$up_dir/tables.after"
 cmp "$up_dir/tables.before" "$up_dir/tables.after" || { diff "$up_dir/tables.before" "$up_dir/tables.after" >&2 || true; fail "content rows changed across the upgrade"; }
 [ "$(volume_stamps "$source_project")" = "$(cat "$up_dir/volumes.before")" ] || fail "a volume was recreated by the upgrade"

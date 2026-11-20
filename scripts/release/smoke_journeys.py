@@ -350,6 +350,18 @@ def removed_view(origin: str, person: dict[str, str], company: str, space_id: st
 
 # --- exercise (on the upgraded instance) -------------------------------------------------------------------------------------------------
 
+UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def private_error(text: str) -> str:
+    """An error on a copy of real data keeps its route shape and status only: no id, no query (a search word), no answer's text."""
+    call = re.match(r"([A-Z]+) (\S+) returned (\d+)", text)
+    if call:
+        path, query = call.group(2).split("?", 1) if "?" in call.group(2) else (call.group(2), "")
+        return f"{call.group(1)} {UUID.sub('<id>', path)}{'?<query>' if query else ''} returned {call.group(3)}"
+    return UUID.sub("<id>", text.split(": ", 1)[0])
+
+
 class Report:
     def __init__(self, private: bool = False) -> None:
         self.rows: list[tuple[str, str, str]] = []
@@ -365,7 +377,7 @@ class Report:
         except Exception as error:  # noqa: BLE001 - every journey reports, one failure does not hide the others
             text = f"{error}"
             if self.private:
-                text = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<id>", text.split(": b'", 1)[0])
+                text = private_error(text)
             else:
                 traceback.print_exc(limit=2, file=sys.stderr)
             self.rows.append((name, "FAIL", text[:600]))
