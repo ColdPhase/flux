@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FUNCTIONS = ("say", "warn", "die", "env_value", "set_env_line", "background_key_dir", "docker_rootless", "check_background_key_file",
+FUNCTIONS = ("say", "warn", "die", "env_file_value", "env_value", "set_env_line", "background_key_dir", "docker_rootless", "check_background_key_file",
              "ensure_background_key")
 
 

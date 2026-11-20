@@ -30,6 +30,10 @@ INFO_SCENARIOS = {
     "kernel-6.6": '{"KernelVersion":"6.6.30-1","OSType":"linux","OperatingSystem":"Ubuntu 22.04","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
     "kernel-5.15": '{"KernelVersion":"5.15.0-119-generic","OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
     "kernel-unknown": '{"OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
+    # Proxmox VE 9 (#1543): kernel 7.0.14-pve has Landlock built in and still lists it among its active modules only with `lsm=landlock,...`.
+    "no-landlock": '{"KernelVersion":"7.0.14-pve","OSType":"linux","OperatingSystem":"Debian GNU/Linux 13","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
+    "lsm-unreadable": '{"KernelVersion":"6.8.0-45-generic","OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
+    "pve-landlock": '{"KernelVersion":"7.0.14-pve","OSType":"linux","OperatingSystem":"Debian GNU/Linux 13","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
 }
 
 DOCKER_STUB = r"""#!/bin/sh
@@ -44,11 +48,21 @@ case "$1" in
   network)
     [ "$2" != create ] || [ "$FLUX_AI_TEST_HOST" != no-internal ] || exit 1 ;;
   run)
-    case "$FLUX_AI_TEST_HOST" in
-      probe-failed) exit 125 ;;
-      no-yama) exit 1 ;;
-      yama0) printf '0\n' ;;
-      *) printf '1\n' ;;
+    case "$*" in
+      *flux-host-lsm*)
+        # The engine's active security modules (/sys/kernel/security/lsm), mounted into the check container (#1543).
+        case "$FLUX_AI_TEST_HOST" in
+          no-landlock) printf 'lockdown,capability,yama,apparmor,ima,evm\n' ;;
+          lsm-unreadable) exit 125 ;;
+          *) printf 'lockdown,capability,yama,apparmor,ima,evm,landlock\n' ;;
+        esac ;;
+      *)
+        case "$FLUX_AI_TEST_HOST" in
+          probe-failed) exit 125 ;;
+          no-yama) exit 1 ;;
+          yama0) printf '0\n' ;;
+          *) printf '1\n' ;;
+        esac ;;
     esac ;;
   compose)
     case "$*" in
@@ -345,6 +359,8 @@ class SubscriptionQuestionTest(unittest.TestCase):
         "no-internal": "cannot create an internal network",
         "probe-failed": "check container could not be run",
         "no-yama": "no Yama ptrace_scope of 1 or higher",
+        "no-landlock": "Landlock is not active in the engine's kernel (active: lockdown,capability,yama,apparmor,ima,evm). Add landlock first to its lsm= boot parameter, keeping the others, e.g. lsm=landlock,lockdown,yama,integrity,apparmor, then reboot",
+        "lsm-unreadable": "the engine does not show its active security modules (/sys/kernel/security/lsm), so Landlock, which Flux AI needs, could not be checked",
         "yama0": "Fix it now: `sudo sysctl -w kernel.yama.ptrace_scope=1`. Keep it after a restart: `echo 'kernel.yama.ptrace_scope = 1' | sudo tee /etc/sysctl.d/90-flux.conf`.",
     }
 
@@ -373,10 +389,33 @@ class SubscriptionQuestionTest(unittest.TestCase):
         name = created[0].rsplit(" ", 1)[1]
         self.assertIn(f"network rm {name}", calls)
         probe = [call for call in calls if call.startswith("run ")]
-        self.assertEqual(len(probe), 1, calls)
+        self.assertEqual(len(probe), 2, calls)
         self.assertRegex(probe[0], r"--entrypoint cat node@sha256:[0-9a-f]{64} /proc/sys/kernel/yama/ptrace_scope$")
-        for hardening in ("--rm", "--network none", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges"):
-            self.assertIn(hardening, probe[0])
+        # Landlock is active only when the engine's own list of security modules says so (#1543): one more throwaway container reads it.
+        self.assertRegex(probe[1], r"--mount type=bind,source=/sys/kernel/security/lsm,target=/flux-host-lsm,readonly "
+                                   r"--entrypoint cat node@sha256:[0-9a-f]{64} /flux-host-lsm$")
+        for call in probe:
+            for hardening in ("--rm", "--network none", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges"):
+                self.assertIn(hardening, call)
+
+    def test_a_kernel_of_6_7_or_later_that_runs_landlock_keeps_the_runtime_on_even_when_it_is_not_a_stock_one(self) -> None:
+        # Proxmox VE once its boot parameter lists landlock (#1543): the version alone never decided it.
+        result = self.plain("up", host="pve-landlock")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn(STAYS_OFF, result.stdout + result.stderr)
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,pi")
+
+    def test_a_kernel_without_active_landlock_keeps_ai_off_with_one_line_and_does_not_fail_up(self) -> None:
+        for host in ("no-landlock", "lsm-unreadable"):
+            with self.subTest(host=host):
+                self.env_file.unlink(missing_ok=True)
+                result = self.plain("up", host=host)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(len([line for line in result.stdout.splitlines() if STAYS_OFF in line]), 1, result.stdout)
+                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+                self.assertTrue(self.value("FLUX_AGENT_RUNTIME_OFF_REASON"))
+                self.assertFalse(self.applied(), "the runtime is not started, so its own refusal cannot fail up")
+                self.assertLessEqual(len(self.value("FLUX_AGENT_RUNTIME_OFF_REASON")), 300, "Settings > AI shows 300 characters of it")
 
     # --- ./flux ai on ----------------------------------------------------------------------------
 
