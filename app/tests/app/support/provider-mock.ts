@@ -1,7 +1,7 @@
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { handleCliVendor } from './cli-vendor-mock.js';
-import { handleKeyLists, OPENROUTER_MODELS } from './key-list-mock.js';
+import { handleKeyLists, LLAMA_MODEL, OPENROUTER_MODELS } from './key-list-mock.js';
 import { toolAnswer, toolWireOf } from './tool-answers.js';
 
 /**
@@ -13,6 +13,7 @@ import { toolAnswer, toolWireOf } from './tool-answers.js';
  *   POST /anthropic/v1/messages, /anthropic/v1/messages/count_tokens   Anthropic Messages
  *   POST /openai/v1/chat/completions, GET /openai/v1/models          OpenAI-compatible Chat Completions
  *   GET /keyed/v1/models                                             an endpoint that lists its models only to a key
+ *   GET /llama/v1/models                                             a llama.cpp server without `--alias`: its model's id is its file (#1593)
  *   POST /openai/v1/responses                                        OpenAI's Responses API (#954)
  *   POST /gemini/v1beta/models/{model}:generateContent              Gemini's own API, for its Google Search grounding (#1585)
  *   GET  /openrouter/v1/models                                       a priced model list (OpenRouter's shape)
@@ -234,6 +235,8 @@ const server = http.createServer((request, response) => {
     // An endpoint that lists its models only to a key (v0.2.1 release gate, O05): 401 without a bearer or with a refused one.
     if (request.method === 'GET' && url.pathname === '/keyed/v1/models')
       return key && !key.includes('refused') ? json(response, 200, { object: 'list', data: [{ id: 'llama3.1:8b', object: 'model' }] }) : json(response, 401, { error: { message: 'invalid api key' } });
+    if (request.method === 'GET' && url.pathname === '/llama/v1/models')
+      return json(response, 200, { object: 'list', data: [{ id: LLAMA_MODEL, object: 'model', owned_by: 'llamacpp' }, { id: 'not a valid id', object: 'model' }] });
     if (wire === 'other') return json(response, 404, { error: 'not found' });
     const script = scripts[wire];
     const answer = () => {

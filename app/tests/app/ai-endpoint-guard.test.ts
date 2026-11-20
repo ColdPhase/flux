@@ -157,7 +157,9 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
   test('model ids are bounded free text; provider-hosted tool variants are refused', () => {
     for (const model of ['claude-sonnet-5', 'gpt-model', 'llama3.1:8b', 'meta-llama/Llama-3.1-8B-Instruct', 'vendor/model:free', 'models/gemini-x'])
       assert.ok(validModelId('openrouter', model), model);
-    for (const model of ['', 'two words', '-leading', 'x'.repeat(201), 'a"b', 'vendor/model:online']) assert.ok(!validModelId('openrouter', model), model);
+    for (const model of ['', 'two words', '-leading', 'x'.repeat(201), 'a"b', 'vendor/model:online', '/models/two words.gguf']) assert.ok(!validModelId('openrouter', model), model);
+    // #1593: a llama.cpp server started without `--alias` names its model by its file.
+    assert.ok(validModelId('openai_compatible', '/models/Qwen3.8-27B-UD-Q4_K_XL.gguf'));
     assert.ok(validModelId('openai_compatible', 'vendor/model:online'), 'only OpenRouter gives :online a hosted search');
   });
 

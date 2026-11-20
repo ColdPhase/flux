@@ -115,12 +115,13 @@ for (const wire of WIRES) {
     });
 
     test('rate limit, overload and errors: one request each, the closed reason, the charge unknown, no error body', async () => {
-      const cases: [number, string][] = [[429, 'rate_limited'], [529, 'overloaded'], [503, 'overloaded'], [500, 'provider_error'], [400, 'provider_error'], [401, 'provider_error']];
+      const cases: [number, string][] = [[429, 'rate_limited'], [529, 'overloaded'], [503, 'overloaded'], [500, 'provider_error'], [400, 'provider_error'], [401, 'provider_error'], [403, 'provider_error']];
       for (const [status, reason] of cases) {
         await control('/__reset', {});
         await script(wire.wire, { mode: 'status', status });
         const result = await personal(wire).dispatch(request(wire), new AbortController().signal);
-        assert.deepEqual(result, { kind: 'failed', reason, billed: 'unknown' }, `HTTP ${status}`);
+        // A 401 or 403 is the key refused, not the model (#1594).
+        assert.deepEqual(result, { kind: 'failed', reason, billed: 'unknown', ...(status === 401 || status === 403 ? { keyRefused: true } : {}) }, `HTTP ${status}`);
         assert.equal((await sent(wire.wire)).length, 1, `HTTP ${status} is sent once, although the mock asks for a retry`);
         assert.equal(JSON.stringify(result).includes(wire.key), false);
       }

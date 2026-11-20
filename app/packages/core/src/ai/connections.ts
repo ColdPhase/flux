@@ -3,7 +3,7 @@ import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, assistantApiPrice, assistantM
   type AiModelList, type AiProviderPriceList, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import { refuseAllEndpoints, toolsRequired, type AiEndpointPolicyPort, type ToolCheck } from '../ai/index.js';
+import { keyRefused, refuseAllEndpoints, toolCheckRefusal, type AiEndpointPolicyPort, type ToolCheck } from '../ai/index.js';
 import { requestReservationMicros, resolveConnectionPrice } from '../ai/price.js';
 import { aiKeyFormatProblem, baseUrlSyntaxProblem, normalizeBaseUrl, validAiKey, validModelId, validPrice } from '../ai/validation.js';
 
@@ -139,19 +139,20 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       // The key's test is the listing of its models (#1218): a key its provider refuses is not saved. A list that couldn't be read
       // leaves the key to be saved with the model typed.
       const modelList = providers.keyModels ? await providers.keyModels(input.provider, input.apiKey) : null;
-      if (modelList?.status === 'key_refused')
-        throw new InvalidInputError(`This key was refused by ${AI_PROVIDERS[input.provider].label}`, 'AI_KEY_REFUSED');
+      if (modelList?.status === 'key_refused') throw keyRefused(input.provider);
       const id = randomUUID();
       // Sealed first: a server that cannot keep the key (no instance key) refuses it before a request is sent for it.
       const encryptedKey = sealer.seal(input.apiKey, ownerUserId, id);
       // RT-1 rule 2 (#1441): only a model that calls tools can be an agent, decided by one small request on this model with the new key. It needs
-      // the model's price to be charged (CA-3), which every saved key has (#1424: a key without one is refused above). A model that does not call `ping`, or a request that failed, refuses the key and nothing is saved. That
+      // the model's price to be charged (CA-3), which every saved key has (#1424: a key without one is refused above). A model that does not call `ping`, or a request that failed, refuses the key and nothing is saved;
+      // a 401 or 403 says the key was refused (#1594: an endpoint's or OpenRouter's key is tested by no listing before the check). That
       // request has no connection to be charged to, so a refused key costs its check without it counting on any key's day; one that passes is
       // recorded with the key in one transaction, and so is counted from its first moment.
       let check: { model: string; chargedMicros: number } | undefined;
       if (providers.toolCheck && price) {
         const checked = await providers.toolCheck({ provider: input.provider, baseUrl, model, price, key: { apiKey: input.apiKey } });
-        if (!checked.callsTools) throw toolsRequired();
+        const refusal = toolCheckRefusal(input.provider, checked);
+        if (refusal) throw refusal;
         check = { model, chargedMicros: checked.chargedMicros };
       }
       const keyFingerprint = createHash('sha256').update(input.apiKey).digest('hex').slice(0, 16);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { AI_MODEL_ID_PATTERN } from '@flux/contracts';
 import { SEARCH_SOURCES } from '@flux/core';
 import { pool } from './support/db.js';
 
@@ -112,6 +113,14 @@ test('the search kinds the database allows are the kinds the application reads a
   assert.ok(row, 'search_documents has its kind check');
   const allowed = [...row.def.matchAll(/'([a-z_]+)'::text/g)].map((match) => match[1]).sort();
   assert.deepEqual(allowed, Object.keys(SEARCH_SOURCES).sort());
+});
+
+test('every model id check of the database is the contract\'s model id rule (#1593, migration 0111)', async () => {
+  // A check only widened in one place would refuse, on save, an id the API accepted (a llama.cpp server's `/models/x.gguf`).
+  const rows = (await pool.query(`SELECT conrelid::regclass::text AS tab, conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+    WHERE contype = 'c' AND connamespace = 'public'::regnamespace AND conname LIKE '%model_check' ORDER BY 1`)).rows as { tab: string; conname: string; def: string }[];
+  assert.deepEqual(rows.map((row) => row.tab), ['api_key_checks', 'assistant_settings', 'background_compute_connections']);
+  for (const row of rows) assert.deepEqual([...row.def.matchAll(/'(\^[^']*\$)'::text/g)].map((match) => match[1]), [AI_MODEL_ID_PATTERN.source.replaceAll('\\/', '/')], row.conname);
 });
 
 test('a new table that nothing uses is found (negative control, #1552)', async () => {

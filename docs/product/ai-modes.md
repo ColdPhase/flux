@@ -37,8 +37,10 @@ the option C comment before it), on the harness research ([PR #1440](https://git
 2. **Only models that call tools can be agents.** The server refuses a model that cannot call tools the way it refuses an unpriced
    one, and decides it by **one check, not by tables or owner switches** (founder-approved direction, 2026-11-13): when a key is added
    in Connect AI, and when a model of a key's list is chosen for an agent, the server sends the provider one small request on that
-   model with one tool, `ping`, that the model is asked to call. Called: the model is accepted. Not called, or the request refused:
-   `AI_TOOLS_REQUIRED` (422), and the form says at once "This model can't use tools. Choose another." The same for every provider
+   model with one tool, `ping`, that the model is asked to call. Called: the model is accepted. Not called, or the request failed
+   after it reached the model: `AI_TOOLS_REQUIRED` (422), and the form says at once "This model can't use tools. Choose another." A
+   401 or 403 to the check is the key refused, not the model (#1594, agent decision 2026-11-20): `AI_KEY_REFUSED`, and the form says
+   "This key was refused by the endpoint" (or by the provider it names), as the model list does. The same for every provider
    (Anthropic, OpenAI, Gemini, OpenRouter, OpenAI-compatible and self-hosted). The check's cost is charged to the key's day like any
    request (CA-3). There is no "can answer but can't make changes" mode, no owner's tool-calling switch and no table of models without
    tool calling.

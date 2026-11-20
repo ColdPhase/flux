@@ -17,6 +17,14 @@ import tool_check_mock
 lock = threading.Lock()
 requests: list[dict] = []
 MODELS = {"object": "list", "data": [{"id": "llama3.1:8b", "object": "model"}, {"id": "qwen2.5:7b-instruct", "object": "model"}]}
+# A llama.cpp server started without `--alias` (#1593): its model's id is the file it loaded.
+LLAMA = {"object": "list", "data": [{"id": "/models/Qwen3.8-27B-UD-Q4_K_XL.gguf", "object": "model", "owned_by": "llamacpp"}]}
+# What a llama.cpp server started with `--api-key-file` answers a wrong key (#1594).
+WRONG_KEY = {"error": {"code": 401, "message": "Invalid API Key", "type": "authentication_error"}}
+
+
+def refused(key: str) -> bool:
+    return not key or "refused" in key
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -41,10 +49,12 @@ class Handler(BaseHTTPRequestHandler):
             requests.append({"method": "GET", "path": self.path, "authorization": self.headers.get("authorization")})
         if self.path == "/v1/models":
             return self.reply(200, MODELS)
+        if self.path == "/llama/v1/models":
+            return self.reply(200, LLAMA)
         # An endpoint that lists its models only to a key (v0.2.1 release gate, O05): 401 without a bearer or with a refused one.
         if self.path == "/keyed/v1/models":
             key = (self.headers.get("authorization") or "").removeprefix("Bearer ")
-            return self.reply(200, MODELS) if key and "refused" not in key else self.reply(401, {"error": {"message": "invalid api key"}})
+            return self.reply(200, MODELS) if not refused(key) else self.reply(401, {"error": {"message": "invalid api key"}})
         return self.reply(404, {"error": {"message": "not found"}})
 
     def do_POST(self) -> None:
@@ -53,6 +63,9 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
         with lock:
             requests.append({"method": "POST", "path": self.path, "authorization": self.headers.get("authorization"), "body": body})
+        # The keyed endpoint refuses a wrong key to the check as well (#1594).
+        if self.path.startswith("/keyed/") and refused((self.headers.get("authorization") or "").removeprefix("Bearer ")):
+            return self.reply(401, WRONG_KEY)
         answered = tool_check_mock.answer(self.path, body)
         return self.reply(*answered) if answered else self.reply(404, {"error": {"message": "not found"}})
 

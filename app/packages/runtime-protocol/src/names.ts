@@ -43,10 +43,11 @@ export const KEY_PROVIDERS = ['anthropic', 'openai', 'openrouter', 'gemini', 'op
 export type KeyProvider = (typeof KEY_PROVIDERS)[number];
 /**
  * A model id of an API-key run (#1441): what the key's provider lists, such as `claude-haiku-5-5`, `anthropic/claude-haiku-5.5`,
- * `google/gemini-3-flash:free` or `Qwen/Qwen3-32B`. It starts with a letter or digit, so it is never read as a flag, and holds no space,
- * quote or path character other than `/`. Pi takes it from its own models file, never from a command line.
+ * `google/gemini-3-flash:free`, `Qwen/Qwen3-32B` or a llama.cpp server's file path `/models/Qwen3.8-27B-UD-Q4_K_XL.gguf` (#1593). It starts
+ * with a letter, digit or `/`, so it is never read as a flag, and holds no space, quote or path character other than `/`; the same bounds as
+ * Flux's `AI_MODEL_ID_PATTERN`, so every model a key is saved on can run. Pi finds it in its own models file by the exact id.
  */
-export const KEY_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/;
+export const KEY_MODEL_ID = /^[A-Za-z0-9/][A-Za-z0-9._:/@+-]{0,199}$/;
 
 export const isRuntimeClient = (value: unknown): value is RuntimeClient =>
   typeof value === 'string' && (RUNTIME_CLIENTS as readonly string[]).includes(value);

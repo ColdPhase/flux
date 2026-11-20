@@ -220,6 +220,65 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("alert").filter(has_text="This key was refused by the endpoint. Check it and try again.")).to_be_visible()
         self.no_key_anywhere(page)
 
+    def test_03d_a_local_model_named_by_its_file_connects_and_a_wrong_key_says_so_without_the_list(self) -> None:
+        """#1593: a llama.cpp server names its model by its file (`/models/….gguf`): listed and typed alike. #1594: without "Show available
+        models", a key the endpoint refuses to the tool check is said to be refused, not that the model can't use tools; the key stays."""
+        llama = "/models/Qwen3.8-27B-UD-Q4_K_XL.gguf"
+        page = self.page()
+        page.goto("/settings/ai-connections")
+        before = self.connections(page)
+        page.get_by_role("button", name="Add a key").click()
+        choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
+        page.get_by_label("Endpoint base URL").fill("http://openai-mock:8091/llama/v1")
+        page.get_by_role("button", name="Show available models").click()
+        expect(page.get_by_role("status").filter(has_text="1 model from OpenAI-compatible endpoint")).to_be_visible()
+        expect_value(page.get_by_label("Model", exact=True), llama)
+        expect(page.get_by_text("could not be read")).to_have_count(0)
+        # A list that holds no model Flux can use says so, never that it couldn't be read.
+        empty = self.page()
+        empty.route(re.compile(r".*/api/v1/ai-model-lists$"), lambda route: route.fulfill(json={
+            "provider": "openai_compatible", "status": "listed", "checkedOn": "2026-11-20", "models": []}))
+        empty.goto("/settings/ai-connections")
+        empty.get_by_role("button", name="Add a key").click()
+        choose(empty.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
+        empty.get_by_label("Endpoint base URL").fill("http://openai-mock:8091/llama/v1")
+        empty.get_by_role("button", name="Show available models").click()
+        expect(empty.get_by_role("status").filter(has_text="The endpoint lists no model Flux can use. Type the model id.")).to_be_visible()
+        expect(empty.get_by_label("Model", exact=True)).to_be_editable()
+
+        # The path the release test found (#1594): an endpoint that wants a key, a wrong one, the model typed, Connect, no list asked.
+        wrong = "local-refused-placeholder"
+        form = self.page()
+        form.goto("/settings/ai-connections")
+        form.get_by_role("button", name="Add a key").click()
+        choose(form.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
+        form.get_by_label("Endpoint base URL").fill("http://openai-mock:8091/keyed/v1")
+        form.get_by_label("Model", exact=True).fill(llama)
+        form.get_by_label("Input", exact=True).fill("0")
+        form.get_by_label("Output", exact=True).fill("0")
+        self.fill_key(form, wrong)
+        form.get_by_role("button", name="Connect", exact=True).click()
+        alert = form.get_by_role("alert")
+        expect(alert).to_have_text("This key was refused by the endpoint. Check it and try again.")
+        expect(form.get_by_text("can't use tools")).to_have_count(0)
+        expect(form.get_by_label("API key", exact=True)).to_have_value(wrong)
+        self.assertEqual(self.connections(form), before, "nothing is saved for a refused key")
+        self.assertFalse([item for item in mock_requests() if item["path"] == "/keyed/v1/models" and item["authorization"] == f"Bearer {wrong}"],
+                         "no list was asked: the refusal is the check's")
+        shot(form, "ai-connection-1440-compatible-key-refused")
+        # The right key in the same form connects on the model named by its file.
+        form.get_by_label("API key", exact=True).fill(KEYS["openai_compatible"])
+        form.get_by_role("button", name="Connect", exact=True).click()
+        expect(form.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
+        saved = [item for item in self.connections(form) if item["model"] == llama]
+        self.assertEqual(len(saved), 1)
+        checks = [item["body"]["model"] for item in mock_requests() if item["path"] == "/keyed/v1/chat/completions" and item["authorization"] == f"Bearer {KEYS['openai_compatible']}"]
+        self.assertEqual(checks[-1:], [llama], "the check asked for the id the server lists")
+        self.no_key_anywhere(form)
+        # Removed again, so the later tests see the keys they expect.
+        removed = form.request.delete(f"{ORIGIN}/api/v1/background-compute-connections/{saved[0]['id']}", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 204, removed.text())
+
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()
         page.goto("/settings/ai-connections")

@@ -32,7 +32,8 @@ export const largestToolCheckMicros = (price: ToolCheckProbe['price']): number =
 /**
  * Sends the check through `compute` and says whether the model called `ping`, and what the request cost: the provider's usage at the model's
  * price when the answer came (never above the request's largest cost), nothing when the provider documents no charge for the failure
- * (`billed: 'none'`), else the most the request could have cost. A request that failed or was refused is a model that cannot be an agent.
+ * (`billed: 'none'`), else the most the request could have cost. A request that failed after it reached the model is a model that cannot be
+ * an agent; a 401 or 403 is the key refused (`keyRefused`, #1594), which says nothing of the model.
  */
 export async function checkToolCalling(compute: PersonalCompute, probe: ToolCheckProbe, signal: AbortSignal = AbortSignal.timeout(TOOL_CHECK_TIMEOUT_MS + 10_000)): Promise<ToolCheckResult> {
   const keyRef = 'connectionId' in probe.key ? probe.key.connectionId : NEW_KEY_REF;
@@ -43,7 +44,7 @@ export async function checkToolCalling(compute: PersonalCompute, probe: ToolChec
   const largest = largestToolCheckMicros(probe.price);
   const result = await compute.dispatch(request, signal).catch((): null => null);
   if (!result) return { callsTools: false, chargedMicros: largest };
-  if (result.kind === 'failed') return { callsTools: false, chargedMicros: result.billed === 'none' ? 0 : largest };
+  if (result.kind === 'failed') return { callsTools: false, chargedMicros: result.billed === 'none' ? 0 : largest, ...(result.keyRefused ? { keyRefused: true as const } : {}) };
   const charged = boundedUsageMicros(probe.price, result.usage, { maxInputTokens: maxCheckInputTokens(), maxOutputTokens: CHECK_MAX_TOKENS, reservedMicros: largest }) ?? largest;
   return { callsTools: !!result.toolCalls?.some((call) => call.name === PING_TOOL.name), chargedMicros: charged };
 }
