@@ -11,6 +11,8 @@
 # - The pi engine's API key names providermock's pass-through (`/real/openai/v1`) as its OpenAI-compatible endpoint, which compose.test.yaml's
 #   FLUX_AI_PRIVATE_TARGETS already allows: it hands what Flux's model gateway sends to the real model unchanged, and records it.
 # - The check's runner writes its evidence to FLUX_AI_EVIDENCE_DIR on the host.
+# - The worker reads scans by OCR (FLUX_FILE_OCR=on, C-70), as compose.test.yaml already sets for every suite: the `files` scenario needs it.
+# - With `anthropic` in FLUX_AI_ENGINES the script adds compose.ai-real-model-anthropic.test.yaml (the real key's recording proxy).
 services:
   providermock:
     environment:
@@ -26,6 +28,9 @@ services:
   api:
     environment:
       FLUX_TEST_LINK_PREVIEW_HOSTS: public.test=linkmock:8098,other.test=linkmock:8098,evil.example=linkmock:8098
+  worker:
+    environment:
+      FLUX_FILE_OCR: "on"
   test:
     environment:
       FLUX_AI_EVIDENCE: /evidence

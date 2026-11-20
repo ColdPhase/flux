@@ -7,7 +7,8 @@ import { costMicros, type PersonalComputeRequest } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
-import { anthropicProxyOf, personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
+import { anthropicProxyOf } from '../../packages/agent-runtime/src/index.js';
+import { personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
 import { createDatabase } from '@flux/db';
 import { FAKE_PRICE } from './support/personal-runs.js';
 

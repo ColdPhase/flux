@@ -1,0 +1,44 @@
+# TEST ONLY (scripts/check_ai_real_model.sh with `anthropic` in FLUX_AI_ENGINES): the real-model AI check on a REAL Anthropic key. Layered
+# over compose.ai-real-model.test.yaml with the `test` profile. Never deploy it.
+#
+# What differs from compose.ai-real-model.test.yaml, and nothing else:
+# - evalproxy (app/tests/app/support/eval-proxy.ts, the evaluation's recording proxy) passes the key's Anthropic requests on to the real API
+#   unchanged, keeps each request body (never a header) under the evidence directory, and refuses further requests once the run's money cap
+#   (FLUX_AI_ANTHROPIC_CAP_USD) is reached.
+# - The worker's model gateway (pi's requests) and the API's `flux_web_search` send the key's Anthropic requests to that proxy
+#   (FLUX_TEST_ANTHROPIC_PROXY_URL, test only), whose host the operator allowlist names.
+# - A dry run (FLUX_AI_DRY_RUN=1) points the proxy at providermock's Anthropic mock and the key listings and the key's tool check at its
+#   `/lists` (FLUX_TEST_PROVIDER_LISTS), with a made-up key: the whole path runs and nothing reaches Anthropic.
+services:
+  evalproxy:
+    profiles: ["test"]
+    image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node_modules/.bin/tsx", "tests/app/support/eval-proxy.ts"]
+    environment:
+      FLUX_EVAL_CAP_USD: ${FLUX_AI_ANTHROPIC_CAP_USD:?Set by scripts/check_ai_real_model.sh}
+      FLUX_EVAL_UPSTREAM: ${FLUX_AI_ANTHROPIC_UPSTREAM:-https://api.anthropic.com}
+      FLUX_EVAL_LOG_DIR: /evidence/proxy
+    volumes:
+      - ${FLUX_AI_EVIDENCE_DIR:?Set by scripts/check_ai_real_model.sh}:/evidence:z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8099/__health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api:
+    environment:
+      FLUX_TEST_ANTHROPIC_PROXY_URL: http://evalproxy:8099
+      FLUX_AI_PRIVATE_TARGETS: providermock,evalproxy
+      FLUX_TEST_PROVIDER_LISTS: ${FLUX_AI_PROVIDER_LISTS:-}
+  worker:
+    environment:
+      FLUX_TEST_ANTHROPIC_PROXY_URL: http://evalproxy:8099
+      FLUX_AI_PRIVATE_TARGETS: providermock,evalproxy
+      FLUX_TEST_PROVIDER_LISTS: ${FLUX_AI_PROVIDER_LISTS:-}
+    depends_on:
+      evalproxy:
+        condition: service_healthy
+  test:
+    environment:
+      FLUX_AI_ANTHROPIC_PROXY_URL: http://evalproxy:8099
+      FLUX_AI_ANTHROPIC_MODEL: ${FLUX_AI_ANTHROPIC_MODEL:-claude-haiku-5-5}
