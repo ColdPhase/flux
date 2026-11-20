@@ -1209,7 +1209,7 @@ These functional rules from UI116-4 remain required:
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
-  - **The limits line** ("Only you see these files until you send · 25 MB each, videos 200 MB · 10 files / 100 MB per message", the operator's numbers) is not under
+  - **The limits line** ("Only you see these files until you send · 25 MB each, pictures 5 MB, videos 200 MB · 10 files / 100 MB per message", the operator's numbers; "pictures 5 MB" is said when the operator's file cap is above it, since a picture is written again whole by the server, #1549; atlas v0.2.2) is not under
     the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
     says **"Ready to send"**, and the paperclip's tip "Attach files · only you see them until you send" (personas-33: "Ready, private"
     and "private until sent" were read as "this file stays private"; the words say what happens). It shows below the files only when a file or the draft was refused, or when the draft is
@@ -1222,6 +1222,9 @@ These functional rules from UI116-4 remain required:
     limit it says "A video can be at most 200 MB." (the operator's number); in an encrypted space a
     video is an ordinary file ("A file in an encrypted space is at most 5 MB.") and downloads. Any other file over the operator's
     cap says "Files can be up to 25 MB on this server." (the operator's number; #1549), and a picture "A picture can be at most 5 MB."
+    A refused file's row says the same thing as the line under the draft (atlas v0.2.2: a 14.9 MB picture's row said "Can't be read" while the line
+    said "A picture can be at most 5 MB."): **"Can't be sent"** for every refusal of a file's size, name or kind, and **"Can't be read"** only for a
+    picture whose bytes the server could not read (damaged), whose line says "This picture cannot be read: …".
 
 | | |
 | --- | --- |
@@ -2525,6 +2528,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     endpoint reads "A server that works like OpenAI's, such as Ollama or LM Studio. Use an https address."; a price
     reads "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)". The window does
     not scroll at 1440 × 900.
+  - **Connect waits until there is something to connect**, for every provider alike (atlas v0.2.2: Google Gemini's Connect was dark with an empty key):
+    it is disabled until a provider is chosen **and** a key is entered, and again after a refused key or a cleared one.
   - **The window's buttons keep their side** (#1424): on every step the secondary action is on the left and the one primary on
     the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
     Cancel on the key step.

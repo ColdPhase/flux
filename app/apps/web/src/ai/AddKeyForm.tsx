@@ -61,6 +61,9 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
   const [blocked, setBlocked] = useState(true);
   // A line said about a model (Connect while the list was still being read) goes when the key is refused: no model field is on screen then.
   const onBlocked = useCallback((next: boolean) => { setBlocked(next); if (next) setError(''); }, []);
+  // A key is entered (every provider needs one, an endpoint that needs none takes a placeholder): Connect waits for it, the same for all (atlas v0.2.2).
+  // The field keeps no state of its own, so this follows what is typed in it and is cleared wherever the form clears it.
+  const [keyEntered, setKeyEntered] = useState(false);
   // The daily budget and the name are behind More (#1424). Both stay in the form, so a closed More still sends the budget's default;
   // it opens by itself when the problem is in it.
   const [more, setMore] = useState(false);
@@ -74,7 +77,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     errorRef.current?.focus();
   });
   useImperativeHandle(ref, () => ({
-    reset() { formRef.current?.reset(); setError(''); setMore(false); setBudgetText(DEFAULT_BUDGET); },
+    reset() { formRef.current?.reset(); setError(''); setMore(false); setKeyEntered(false); setBudgetText(DEFAULT_BUDGET); },
     focusFirst() { formRef.current?.querySelector<HTMLSelectElement | HTMLButtonElement>('[name="provider"], button')?.focus({ preventScroll: true }); },
   }), []);
 
@@ -121,7 +124,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     }
     finally {
       const key = form.elements.namedItem('apiKey');
-      if (!keepKey && key instanceof HTMLInputElement) key.value = '';
+      if (!keepKey && key instanceof HTMLInputElement) { key.value = ''; setKeyEntered(false); }
       command.apiKey = ''; data.delete('apiKey');
       setBusy(false);
     }
@@ -129,7 +132,8 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
 
   return <>
     {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
-    <form ref={formRef} onSubmit={(event) => void connect(event)}>
+    <form ref={formRef} onSubmit={(event) => void connect(event)}
+      onInput={(event) => { const field = event.target; if (field instanceof HTMLInputElement && field.name === 'apiKey') setKeyEntered(field.value.trim() !== ''); }}>
       <fieldset disabled={busy} className="background-settings__fields">
         <ConnectionFields disabled={busy} onBlocked={onBlocked} keyHelpId="background-key-help" />
         <div className="background-settings__more-row">
@@ -149,7 +153,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
         {/* Cancel, then the one primary, on the right: the choose step's Cancel and Continue keep their side here (#1424). */}
         <div className="background-settings__actions background-settings__actions--end">
           {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
-          <Button type="submit" variant="primary" busy={busy} disabled={blocked}>Connect</Button>
+          <Button type="submit" variant="primary" busy={busy} disabled={blocked || !keyEntered}>Connect</Button>
         </div>
       </fieldset>
     </form>
