@@ -145,11 +145,11 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
    Under 641 px `.tb-board--one` shows the chosen status's column at the full width, and the status row above it holds the four statuses with their
    glyph and count: one segmented control (ui/ui.css) of equal options, each the word over its glyph and count, so four fit a 320 px phone. The row
    sticks under the control row while the column scrolls. Nothing scrolls sideways, at page level or inside the board. */
-.ui-tabs.tb-status { position: sticky; top: 0; z-index: 3; max-width: none; padding: 8px var(--space-page) 6px; background: var(--bg); }
+.ui-tabs.tb-status { position: sticky; top: 0; z-index: 1; max-width: none; padding: 8px var(--space-page) 6px; background: var(--bg); }
 .tb-status.ui-tabs--seg .ui-tabs__bar { --seg-pad: 4px; width: 100%; max-width: none; }
 .tb-status.ui-tabs--seg .ui-tabs__tab { flex-direction: column; gap: 1px; min-height: 48px; padding-block: 4px; }
 .tb-status .ui-tabs__meta { gap: 5px; }
-.tb-board.tb-board--one { display: block; position: relative; overflow: visible; padding-top: 4px; mask-image: none; touch-action: pan-y; }
+.tb-board.tb-board--one { display: block; position: relative; overflow: visible; padding-top: 4px; mask-image: none; }
 .tb-board--one .tb-col[hidden] { display: none; }
 /* The status row is the column's header. */
 .tb-board--one .tb-col__head { display: none; }

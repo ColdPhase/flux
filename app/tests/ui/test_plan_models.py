@@ -160,7 +160,7 @@ class PlanModels(unittest.TestCase):
                 more.tap() if phone else more.click()
                 expect(page.get_by_role("radiogroup", name="Claude plan")).to_be_visible()
                 tag = f"{label}-{'dark' if dark else 'light'}"
-                lines = check_segmented(self, page, lambda: page.get_by_role("radiogroup", name="Claude plan"), f"Model {tag}", touch=phone)
+                lines = check_segmented(self, page, lambda: page.get_by_role("radiogroup", name="Claude plan"), f"Model {tag}", touch=phone, choose=False)
                 print("\n".join(lines))
                 shot(page, named(f"1561-model-{tag}"))
 

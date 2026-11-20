@@ -40,7 +40,7 @@ def measure(track: Locator) -> dict:
     return track.evaluate(GEOMETRY)
 
 
-def check_segmented(case, page: Page, track: Callable[[], Locator], what: str, *, skip: tuple[str, ...] = (), touch: bool = False,
+def check_segmented(case, page: Page, track: Callable[[], Locator], what: str, *, skip: tuple[str, ...] = (), touch: bool = False, choose: bool = True,
                     shot: Callable[[str], None] | None = None) -> list[str]:
     """Measures one control and every state of it; returns the numbers (one line per option) for the log."""
     lines: list[str] = []
@@ -65,7 +65,8 @@ def check_segmented(case, page: Page, track: Callable[[], Locator], what: str, *
         case.assertGreaterEqual(min(heights), 43.9, f"{what}: a touch option is a 44 px target {heights}")
     pills: list[dict] = []
     for index, item in enumerate(options):
-        if item["label"] in skip:
+        # `choose=False` measures the control as it stands (a control whose choice the test cannot change, such as a plan's Model on a stubbed list).
+        if item["label"] in skip or not choose:
             continue
         control = track().locator('[role="radio"], [role="tab"]').nth(index)
         control.tap() if touch else control.click()
@@ -85,8 +86,9 @@ def check_segmented(case, page: Page, track: Callable[[], Locator], what: str, *
         if shot:
             shot(item["label"])
     sizes = {(round(p["width"]), round(p["height"])) for p in pills}
-    if fits:
+    if fits and pills:
         case.assertLessEqual(max(p["width"] for p in pills) - min(p["width"] for p in pills), ROUND, f"{what}: the pill's width changes with the option {sizes}")
-    case.assertLessEqual(max(p["height"] for p in pills) - min(p["height"] for p in pills), ROUND, f"{what}: the pill's height changes with the option {sizes}")
+    if pills:
+        case.assertLessEqual(max(p["height"] for p in pills) - min(p["height"] for p in pills), ROUND, f"{what}: the pill's height changes with the option {sizes}")
     lines.append(f"{what}: options {[round(w, 1) for w in widths]} track {first['track']['width']:.1f} hugging {first['hugging']:.1f} fits-equal {fits}")
     return lines

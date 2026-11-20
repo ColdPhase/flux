@@ -314,10 +314,17 @@ class SwitchesVisible(unittest.TestCase):
                 expect(page.locator(".sk-canvas")).to_be_visible()
 
                 def map_mode():
+                    # The phone's Map / List is in the Map options sheet, which closes when an option is chosen; in the List the switch may stand in the page.
                     expect(page.locator('.ui-overlay[data-state="closing"]')).to_have_count(0)
-                    if not page.get_by_role("dialog", name="Map options", exact=True).is_visible():
+                    sheet = page.get_by_role("dialog", name="Map options", exact=True)
+                    trigger = page.get_by_role("button", name="Map options", exact=True)
+                    switch = page.get_by_role("radiogroup", name="Show as")
+                    expect(sheet.or_(trigger).or_(switch).first).to_be_visible()
+                    if not sheet.is_visible() and not trigger.is_visible():
+                        return switch
+                    if not sheet.is_visible():
                         open_map_options(page, touch=True)
-                    return page.get_by_role("dialog", name="Map options", exact=True).get_by_role("radiogroup", name="Show as")
+                    return sheet.get_by_role("radiogroup", name="Show as")
                 self.check(page, map_mode, f"Map / List {tag}", touch=True, shot_name=f"1561-map-list-{tag}")
                 page.goto(f"/projects/{project}/tasks")
                 page.get_by_role("button", name="Create", exact=True).tap()

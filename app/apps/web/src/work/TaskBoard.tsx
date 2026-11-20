@@ -188,7 +188,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   // The phone's one status at a time (#1560): it opens on To do; a tap on the status row or a sideways swipe on the column moves it.
   const phone = useMediaQuery(MEDIA.phone);
   const [shownColumn, setShownColumn] = useState<ColumnId>('open');
-  const swipe = useRef<{ x: number; y: number; id: number } | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
   // Moves in flight (shown in their target column) and the stored result of each finished move
   // until the board's own reads catch up with that version.
@@ -486,24 +485,36 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     boardRef.current?.closest<HTMLElement>('.pane-scroll')?.scrollTo({ top: 0 });
   };
   const columnIds = `${hintId}-col`;
-  // A sideways swipe on the column moves to the next or the previous status (the status row's tap is its visible alternative); a mostly vertical one
-  // is the page scrolling, and touch-action keeps the browser from taking a sideways one.
-  const swipeHandlers = phone ? {
-    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
-      swipe.current = event.pointerType === 'touch' ? { x: event.clientX, y: event.clientY, id: event.pointerId } : null;
-    },
-    onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
-      const start = swipe.current;
-      swipe.current = null;
-      if (!start || start.id !== event.pointerId) return;
-      const dx = event.clientX - start.x;
-      const dy = event.clientY - start.y;
+  // A sideways swipe anywhere in the tab's scroll area (a short column leaves most of it empty) moves to the next or the previous status; the status row's tap is
+  // its visible alternative. A mostly vertical move is the page scrolling, and `touch-action: pan-y` keeps the browser from taking a sideways one.
+  useEffect(() => {
+    const scroller = phone ? boardRef.current?.closest<HTMLElement>('.pane-scroll') : null;
+    if (!scroller) return undefined;
+    let start: { x: number; y: number; id: number } | null = null;
+    const down = (event: PointerEvent) => { start = event.pointerType === 'touch' ? { x: event.clientX, y: event.clientY, id: event.pointerId } : null; };
+    const up = (event: PointerEvent) => {
+      const from = start;
+      start = null;
+      if (!from || from.id !== event.pointerId) return;
+      const dx = event.clientX - from.x;
+      const dy = event.clientY - from.y;
       if (Math.abs(dx) < 48 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
-      const next = COLUMNS[COLUMNS.findIndex((column) => column.id === shownColumn) + (dx < 0 ? 1 : -1)];
-      if (next) showColumn(next.id);
-    },
-    onPointerCancel: () => { swipe.current = null; },
-  } : {};
+      setShownColumn((current) => COLUMNS[COLUMNS.findIndex((column) => column.id === current) + (dx < 0 ? 1 : -1)]?.id ?? current);
+      scroller.scrollTo({ top: 0 });
+    };
+    const cancel = () => { start = null; };
+    const touchAction = scroller.style.touchAction;
+    scroller.style.touchAction = 'pan-y';
+    scroller.addEventListener('pointerdown', down);
+    scroller.addEventListener('pointerup', up);
+    scroller.addEventListener('pointercancel', cancel);
+    return () => {
+      scroller.style.touchAction = touchAction;
+      scroller.removeEventListener('pointerdown', down);
+      scroller.removeEventListener('pointerup', up);
+      scroller.removeEventListener('pointercancel', cancel);
+    };
+  }, [phone]);
 
   return (
     <div className="tb-wrap">
@@ -546,7 +557,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
             ...(failedRead[column.id] ? {} : { count: totals[column.id], countLabel: `, ${totals[column.id]} ${totals[column.id] === 1 ? 'task' : 'tasks'}` }),
           }))} />
       ) : null}
-      <div className={`tb-board${writable ? ' tb-board--movable' : ''}${phone ? ' tb-board--one' : ''}`} ref={boardRef} {...swipeHandlers}>
+      <div className={`tb-board${writable ? ' tb-board--movable' : ''}${phone ? ' tb-board--one' : ''}`} ref={boardRef}>
         {COLUMNS.map((column) => {
           const list = cards[column.id];
           const headingId = `${hintId}-${column.id}`;

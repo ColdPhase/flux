@@ -626,9 +626,10 @@ class TasksBoardJourney(unittest.TestCase):
     def swipe(self, page: Page, dx: float, dy: float = 6) -> None:
         """A touch swipe on the visible column, as the pointer events a finger makes."""
         page.evaluate("""([dx, dy]) => {
-          const board = document.querySelector('.tb-board'), box = board.getBoundingClientRect();
-          const x = box.left + box.width / 2 - dx / 2, y = Math.min(window.innerHeight - 120, box.top + 200);
-          const target = document.elementFromPoint(x, y) || board;
+          // Anywhere in the tab's scroll area: a short column leaves most of it empty, and a swipe there moves the status too.
+          const pane = document.querySelector('.pane-scroll'), box = pane.getBoundingClientRect();
+          const x = box.left + box.width / 2 - dx / 2, y = box.top + box.height * 0.6;
+          const target = document.elementFromPoint(x, y) || pane;
           const event = (type, cx, cy) => new PointerEvent(type, { pointerType: 'touch', pointerId: 7, isPrimary: true, bubbles: true, cancelable: true, clientX: cx, clientY: cy });
           target.dispatchEvent(event('pointerdown', x, y));
           target.dispatchEvent(event('pointerup', x + dx, y + dy));
@@ -715,8 +716,10 @@ class TasksBoardJourney(unittest.TestCase):
                 expect(page.get_by_role("tablist", name="Task status")).to_have_count(0)
                 blocks[view] = page.locator(".view-empty").bounding_box()
                 shot(page, f"1560-empty-{'phone' if phone else 'computer'}-{view}")
-            for edge in ("x", "y", "width", "height"):
+            # The computer's List keeps its count line's hairline above the block, so the block stands a line lower there.
+            for edge in ("x", "width", "height") if not phone else ("x", "y", "width", "height"):
                 self.assertAlmostEqual(blocks["board"][edge], blocks["list"][edge], delta=1, msg=f"the empty state is the same block in both views ({edge})")
+            self.assertLess(abs(blocks["board"]["y"] - blocks["list"]["y"]), 60, "and it stands in the same place, within a line")
 
     # ---------------------------------------------------------------- tablet and laptop
 
