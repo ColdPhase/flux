@@ -29,6 +29,11 @@
 #      previous columns); the volumes were not recreated; the account signs in and every created item reads back;
 #      the instance accepts new work (smoke_data.py verify --write: messages of each kind, a task, a new agent run on the provider
 #      mock, a message in the unlocked encrypted space) and the second device's session still works.
+#      Then the post-upgrade journeys (scripts/release/smoke_journeys.py, from a previous release of schema 95, v0.2.1, on): every feature
+#      is used ON THE OLD ROWS the previous release wrote (a thread with mentions, files of every kind, direct and group messages, a map,
+#      tasks in every status, a Wiki page, a saved source, decisions, Inbox items, a schedule, a sealed file, a guest and a removed member):
+#      read, reply, edit, delete, download byte for byte, search (and OCR: FLUX_FILE_OCR=on), move, accept, resolve, fire, unlock; and a
+#      browser pass over the main screens (scripts/release/journeys_browser.sh). FLUX_SMOKE_JOURNEYS_DIR keeps their report and screenshots.
 #   5. Back up the upgraded installation and restore it into fresh volumes with the candidate's files.
 #   6. Recovery path: restore the PRE-upgrade backup into fresh volumes with the PREVIOUS release's files,
 #      check it there, then upgrade that restored installation to the candidate and check it again.
@@ -284,6 +289,8 @@ make_env() { # template, destination, port, [agents]: INSTALL.md's values; with 
     set_env "$2" FLUX_PERSONAL_RUNS on
     set_env "$2" FLUX_AI_PRIVATE_TARGETS provider-mock
     set_env "$2" FLUX_BACKGROUND_KEY_HOST_FILE "$background_key"
+    # The journeys search the old scan and picture by OCR (C-70); a release before it does not pass the setting to its services.
+    set_env "$2" FLUX_FILE_OCR on
   fi
 }
 restore_env_from() { # source environment file, destination, port
@@ -348,6 +355,14 @@ if [ -n "${FLUX_SMOKE_DUMP:-}" ]; then
     grep -v '^\\' | gzip -9n > "$FLUX_SMOKE_DUMP"
   echo "dumped the seeded database of $previous_version to $FLUX_SMOKE_DUMP ($(wc -c < "$FLUX_SMOKE_DUMP") bytes)"
 fi
+# The post-upgrade journeys seed what v0.2.1's API writes; an older release (v0.2.0) is upgraded and read back by smoke_data.py only.
+journeys=""
+if [ "$(schema_version "$source_port")" -ge 95 ]; then
+  python3 "$root/scripts/release/smoke_journeys.py" seed --origin "http://127.0.0.1:$source_port" --account "$up_dir/account.json" --state "$up_dir/journeys.json"
+  journeys=1
+else
+  echo "post-upgrade journeys not seeded: $(json_field "$previous_assets/release.json" version) is older than v0.2.1 (schema 95)"
+fi
 schema_before=$(schema_version "$source_port")
 ledger "$source_project" "$up_env" "$previous_assets" | tr ',' '\n' > "$up_dir/ledger.before"
 table_columns "$source_project" "$up_env" "$previous_assets" > "$up_dir/columns"
@@ -403,6 +418,14 @@ dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_time
 health "$source_port" >/dev/null
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --write
 check_probe "$source_project" "$up_env" "$assets" "$up_probe"
+if [ -n "$journeys" ]; then
+  journeys_dir=${FLUX_SMOKE_JOURNEYS_DIR:-$up_dir/journeys}
+  mkdir -p "$journeys_dir"
+  python3 "$root/scripts/release/smoke_journeys.py" exercise --ocr --origin "http://127.0.0.1:$source_port" --account "$up_dir/account.json" \
+    --state "$up_dir/journeys.json" --report "$journeys_dir/release-install.json" || fail "a feature does not work on the upgraded data (journeys above)"
+  bash "$root/scripts/release/journeys_browser.sh" "http://127.0.0.1:$source_port" "$up_dir" "$journeys_dir/release-install-shots" ||
+    fail "a main screen does not open on the upgraded data (browser pass above)"
+fi
 echo "upgrade: schemaVersion $schema_before -> $schema_after; ledger $(grep -c . "$up_dir/ledger.before") -> $(grep -c . "$up_dir/ledger.after") rows (+$(( $(grep -c . "$up_dir/ledger.after") - $(grep -c . "$up_dir/ledger.before") ))); $(grep -c . "$up_dir/tables.after") content tables identical; downtime from stopping the writers to healthy $downtime s"
 
 echo "-- 5. paired backup of the upgraded installation, restored with the candidate's files"

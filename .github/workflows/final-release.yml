@@ -483,6 +483,7 @@ jobs:
           FLUX_MATRIX_PROJECT: fluxupg${{ github.run_id }}
           FLUX_MATRIX_PORT: "18100"
           FLUX_MATRIX_TESTED_FILE: ${{ runner.temp }}/upgrade-tested.txt
+          FLUX_MATRIX_JOURNEYS_DIR: ${{ runner.temp }}/journeys
           UPGRADE_FROM: ${{ needs.candidate.outputs.upgrade_from }}
         run: |
           set -euo pipefail
@@ -494,7 +495,9 @@ jobs:
         if: always()
         with:
           name: release-upgrade-matrix
-          path: ${{ runner.temp }}/upgrade-matrix.log
+          path: |
+            ${{ runner.temp }}/upgrade-matrix.log
+            ${{ runner.temp }}/journeys
           if-no-files-found: ignore
 
   sign:

@@ -1,0 +1,64 @@
+name: Upgrade journeys
+
+# Founder request (Hubert, 2026-11-20): after an upgrade every feature must WORK on the data the previous release wrote, not only read
+# back. A pull request that adds a migration, or changes the post-upgrade checks themselves, installs the newest published release from
+# its own assets and from its source tree, fills it with data of every kind, upgrades it to this head and uses each feature on the old
+# rows through the API and a browser pass over the main screens (scripts/check_upgrade_matrix.sh for that one release; the journeys are
+# scripts/release/smoke_journeys.py and journeys_browser.sh). The release runs the same against every earlier release (final-release.yml).
+# It also runs on demand (workflow_dispatch), e.g. on a final candidate.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/packages/db/migrations/**'
+      - 'scripts/check_upgrade_matrix.sh'
+      - 'scripts/release/smoke_artifacts.sh'
+      - 'scripts/release/smoke_data.py'
+      - 'scripts/release/smoke_journeys.py'
+      - 'scripts/release/smoke_journeys_browser.py'
+      - 'scripts/release/journeys_browser.sh'
+      - '.github/workflows/upgrade-journeys.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: upgrade-journeys-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: Features work on upgraded data
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: The newest release, upgraded to this head, every feature used on its data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FLUX_MATRIX_PROJECT: fluxjrn${{ github.run_id }}
+          FLUX_MATRIX_PORT: "18100"
+          FLUX_MATRIX_JOURNEYS_DIR: ${{ runner.temp }}/journeys
+        run: |
+          set -euo pipefail
+          newest=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')
+          echo "upgrading from $newest"
+          FLUX_MATRIX_ONLY="$newest" bash scripts/check_upgrade_matrix.sh 2>&1 | tee "$RUNNER_TEMP/upgrade-journeys.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: upgrade-journeys
+          path: |
+            ${{ runner.temp }}/upgrade-journeys.log
+            ${{ runner.temp }}/journeys
+          if-no-files-found: ignore
