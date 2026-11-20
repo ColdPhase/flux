@@ -572,9 +572,16 @@ class UnifiedPanel(unittest.TestCase):
                 rows = open_panel.locator(".wd__scroll")
                 rows.evaluate("element => { element.scrollTop = 0; }")
                 reader.wait_for_timeout(300)
+                field_at = lambda: open_panel.locator(".wd__foot").evaluate("el => { const r = el.getBoundingClientRect(); return [r.top, r.bottom]; }")
+                field_before = field_at()
                 send(f"One more seal note for the {tag} reader.")
                 expect(reader.locator(".convo-newbelow__b")).to_have_text(re.compile("1 new"))
                 self.assertTrue(self.assert_band_below(open_panel, f"{tag} at the top"), "the pill shows in its band")
+                # The band takes its room from the scroll: the field under it does not move, and Tab goes from the pill to the field.
+                self.assertEqual(field_at(), field_before, f"{tag}: the field stays where it was when the band shows")
+                reader.locator(".convo-newbelow__b").focus()
+                reader.keyboard.press("Tab")
+                self.assertTrue(open_panel.locator(".wd__foot").evaluate("el => el.contains(document.activeElement)"), f"{tag}: Tab from the pill reaches the field")
                 # With the discussion's start half way up the panel, the band shows in its own room.
                 rows.evaluate("""element => { const top = element.querySelector('.wd-activity').getBoundingClientRect().top - element.getBoundingClientRect().top;
                   element.scrollTop += top - element.clientHeight / 2; }""")
