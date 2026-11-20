@@ -321,8 +321,8 @@ class LauncherReleaseTest(unittest.TestCase):
         migrations = self.base / "image" / "migrations"
         migrations.mkdir(parents=True)
         (migrations / "0095_guest_space_admin_held.sql").write_text("SELECT 1;\n")
-        (migrations / "0096_file_size_setting.sql").write_text("ALTER TABLE public.project_files DROP CONSTRAINT project_files_size_check;\n")
-        (migrations / "0097_remove_unused_schema.sql").write_text("DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence;\n")
+        (migrations / "0105_file_size_setting.sql").write_text("ALTER TABLE public.project_files DROP CONSTRAINT project_files_size_check;\n")
+        (migrations / "0106_remove_unused_schema.sql").write_text("DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence;\n")
         with tarfile.open(self.base / "migrations.tar", "w") as archive:
             archive.add(migrations, arcname="migrations")
         self.stub("docker", STUB.replace("esac\nexit 0", """  *"SELECT max(version) FROM flux_schema_version"*) echo 95 ;;
@@ -338,8 +338,8 @@ exit 0"""))
         self.assertIn("Flux v0.2.2 (checked against its signed SHA256SUMS):", out)
         self.assertRegex(out, r"From schema 95 to schema \d+\.")
         self.assertIn("Migrations (2), each in its own transaction, in this order:", out)
-        self.assertIn("  0096_file_size_setting\n", out)
-        self.assertIn("  0097_remove_unused_schema\n      removes: DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence", out)
+        self.assertIn("  0105_file_size_setting\n", out)
+        self.assertIn("  0106_remove_unused_schema\n      removes: DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence", out)
         self.assertNotIn("0095_guest", out, "a migration the database already has is not in the plan")
         self.assertIn("Backup first: database 200 MB and files 1024 MB before compression", out)
         self.assertIn("Nothing was changed.", out)

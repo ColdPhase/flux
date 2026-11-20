@@ -55,10 +55,10 @@ release's migrations from its image, and prints:
 
 ```text
 Flux v0.2.2 (checked against its signed SHA256SUMS):
-From schema 95 to schema 97.
+From schema 104 to schema 106.
 Migrations (2), each in its own transaction, in this order:
-  0096_file_size_setting
-  0097_remove_unused_schema
+  0105_file_size_setting
+  0106_remove_unused_schema
       removes: DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence
 Backup first: database 180 MB and files 2310 MB before compression, into backups; about 3 min with API and worker stopped.
 Nothing was changed. Run ./flux upgrade to do it.
@@ -101,7 +101,7 @@ engine, see [requirements](requirements.md#software)). The launcher checks it be
 an upgrade, because a launcher that finds an old one after the backup has stopped API and worker reports `UPGRADE FAILED`
 with the way back.
 
-The downtime is the backup and the migration. It prints each migration as it is applied (`Applied migration 0096_file_size_setting.sql`)
+The downtime is the backup and the migration. It prints each migration as it is applied (`Applied migration 0105_file_size_setting.sql`)
 and ends with one line, `Upgraded <project> from schema A to B`, and keeps the backup.
 
 The image checks the database's migration ledger before it migrates: every recorded version must
