@@ -4,7 +4,8 @@ import type { Database } from '../handles.js';
 /**
  * The rows of the text inside files (C-63, #1382, migration 0072). `file_text_jobs` holds the files the worker has yet to read; the text itself
  * is rows of `search_documents` (kind `file`, `object_id` the file, `version` the part from 1, and part 0 the file's name), so one table serves
- * search, the embeddings and the agents' read. A file of an encrypted space never has a job or a row (the trigger and the claim both check).
+ * search, the embeddings and the agents' read. A file of an encrypted space never has a job or a row (the trigger and the claim both check). A file sent in a
+ * direct message (C-64 (3), #1590, migration 0109) has the same rows with the conversation as its audience (`dm:<id>`), and is read the same way.
  */
 export const FILE_TEXT_CHANNEL = 'flux_file_text';
 
@@ -34,6 +35,9 @@ export interface FileTextLocated {
   ocr: boolean;
 }
 
+/** A file sent in a direct message (C-64 (3), #1590): its conversation and the message it was sent with, in place of a space's project and conversation. */
+export type DmFileLocated = Omit<FileTextLocated, 'projectId' | 'conversationId'> & { dmId: string };
+
 export function fileTextRows(db: Database) {
   return {
     /**
@@ -52,7 +56,7 @@ export function fileTextRows(db: Database) {
             RETURNING j.file_id::text AS file_id, j.attempts`)).rows[0] as { file_id: string; attempts: number } | undefined;
           if (!claimed) return 'none' as const;
           const file = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.name, f.size FROM project_files f
-            WHERE f.id = ${claimed.file_id}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND (f.message_id IS NOT NULL OR f.run_id IS NOT NULL)
+            WHERE f.id = ${claimed.file_id}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND (f.message_id IS NOT NULL OR f.dm_message_id IS NOT NULL OR f.run_id IS NOT NULL)
               AND f.size IS NOT NULL AND NOT workspace_sealed(f.workspace_id)`)).rows[0] as { workspace_id: string; name: string; size: number } | undefined;
           if (!file) {
             await tx.execute(sql`DELETE FROM file_text_jobs WHERE file_id = ${claimed.file_id}::uuid`);
@@ -76,15 +80,15 @@ export function fileTextRows(db: Database) {
     },
 
     /**
-     * C-70 (#1575), only while OCR is on: queues at most `limit` files OCR has yet to read, newest first (the pictures people sent to a space
-     * or a chat, and PDFs read without text), when none is queued already. A large install's earlier files are read a batch at a time.
+     * C-70 (#1575), only while OCR is on: queues at most `limit` files OCR has yet to read, newest first (the pictures people sent to a space,
+     * a direct message or a chat, and PDFs read without text), when none is queued already. A large install's earlier files are read a batch at a time.
      */
     async queueOcr(limit: number): Promise<number> {
       const queued = await db.execute(sql`INSERT INTO file_text_jobs (file_id)
         SELECT f.id FROM project_files f
         WHERE f.ocr_state IS NULL AND f.published_at IS NOT NULL AND f.poster_of IS NULL
           AND (file_ocr_picture(f.name) OR (f.no_text AND lower(f.name) ~ '[.]pdf$'))
-          AND f.state = 'ready' AND f.size IS NOT NULL AND (f.message_id IS NOT NULL OR (f.agent_id IS NOT NULL AND f.run_id IS NOT NULL))
+          AND f.state = 'ready' AND f.size IS NOT NULL AND (f.message_id IS NOT NULL OR f.dm_message_id IS NOT NULL OR (f.agent_id IS NOT NULL AND f.run_id IS NOT NULL))
           AND NOT workspace_sealed(f.workspace_id)
           AND NOT EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id)
         ORDER BY f.published_at DESC LIMIT ${limit}
@@ -129,18 +133,22 @@ export function fileTextRows(db: Database) {
           await tx.execute(sql`DELETE FROM file_text_jobs WHERE file_id = ${fileId}::uuid`);
           return true;
         }
-        const file = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.project_id::text AS project_id, f.name, f.published_at::text AS at,
-              f.uploader_id, f.uploader_agent_id::text AS agent_id, m.conversation_id::text AS conversation_id
-            FROM project_files f JOIN project_messages m ON m.id = f.message_id
-            WHERE f.id = ${fileId}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND NOT workspace_sealed(f.workspace_id) FOR SHARE OF f`)).rows[0] as
-          { workspace_id: string; project_id: string; name: string; at: string; uploader_id: string | null; agent_id: string | null; conversation_id: string } | undefined;
+        // A space's file is audienced by its space (`project:<id>`, its conversation the parent); a direct message's (C-64 (3)) by its conversation
+        // (`dm:<id>`, no space), the audience of the conversation's messages.
+        const file = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.project_id::text AS project_id, f.dm_id::text AS dm_id, f.name, f.published_at::text AS at,
+              f.uploader_id, f.uploader_agent_id::text AS agent_id, coalesce(m.conversation_id, f.dm_id)::text AS conversation_id
+            FROM project_files f LEFT JOIN project_messages m ON m.id = f.message_id
+            WHERE f.id = ${fileId}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND (m.id IS NOT NULL OR f.dm_message_id IS NOT NULL)
+              AND NOT workspace_sealed(f.workspace_id) FOR SHARE OF f`)).rows[0] as
+          { workspace_id: string; project_id: string | null; dm_id: string | null; name: string; at: string; uploader_id: string | null; agent_id: string | null; conversation_id: string } | undefined;
         if (!file) return false;
+        const audience = file.dm_id !== null ? `dm:${file.dm_id}` : `project:${file.project_id}`;
         await tx.execute(sql`DELETE FROM search_documents WHERE kind = 'file' AND object_id = ${fileId} AND version >= 1`);
         if (parts.length) {
           const payload = JSON.stringify(parts.map((part) => ({ part: part.part, page: part.page, text: part.text })));
           await tx.execute(sql`INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, parent_id, version, page, status, title, body,
               author_kind, author_id, at, sealed)
-            SELECT 'file:' || ${fileId} || ':' || (p->>'part'), 'file', ${file.workspace_id}::uuid, ${`project:${file.project_id}`}, ${file.project_id}::uuid, ${fileId},
+            SELECT 'file:' || ${fileId} || ':' || (p->>'part'), 'file', ${file.workspace_id}::uuid, ${audience}, ${file.project_id}::uuid, ${fileId},
               ${file.conversation_id}::uuid, (p->>'part')::int, (p->>'page')::int, NULL, ${file.name}, p->>'text',
               ${file.uploader_id !== null ? 'human' : 'agent'}, ${file.uploader_id ?? file.agent_id}, ${file.at}::timestamptz, false
             FROM jsonb_array_elements(${payload}::jsonb) p
@@ -177,6 +185,21 @@ export function fileTextRows(db: Database) {
         { file_id: string; workspace_id: string; agent_id: string; run_id: string; uploader_id: string | null; name: string; size: number; pages: number | null; pending: boolean; no_text: boolean; ocr: boolean | null } | undefined;
       return row ? { fileId: row.file_id, workspaceId: row.workspace_id, agentId: row.agent_id, runId: row.run_id, uploaderId: row.uploader_id, name: row.name, size: row.size,
         pages: row.pages, pending: row.pending, noText: row.no_text, ocr: row.ocr === true } : null;
+    },
+
+    /**
+     * A file sent in a direct message (C-64 (3), #1590), as a run in that conversation asks for it: null when it is not a published file of a conversation
+     * of this company (a plain workspace's). Who may read it is the caller's to decide: only a run of that conversation whose owner is one of its people now.
+     */
+    async locateDm(workspaceId: string, fileId: string): Promise<DmFileLocated | null> {
+      const row = (await db.execute(sql`SELECT f.id::text AS file_id, f.workspace_id::text AS workspace_id, f.dm_id::text AS dm_id, f.dm_message_id::text AS message_id,
+            f.name, f.size, f.page_count AS pages, f.no_text, f.ocr_state = 'text' AS ocr, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS pending
+          FROM project_files f
+          WHERE f.id = ${fileId}::uuid AND f.workspace_id = ${workspaceId}::uuid AND f.dm_id IS NOT NULL AND f.dm_message_id IS NOT NULL AND f.state = 'ready'
+            AND f.published_at IS NOT NULL AND f.size IS NOT NULL AND f.poster_of IS NULL AND NOT workspace_sealed(f.workspace_id)`)).rows[0] as
+        { file_id: string; workspace_id: string; dm_id: string; message_id: string; name: string; size: number; pages: number | null; pending: boolean; no_text: boolean; ocr: boolean | null } | undefined;
+      return row ? { fileId: row.file_id, workspaceId: row.workspace_id, dmId: row.dm_id, messageId: row.message_id, name: row.name, size: row.size, pages: row.pages,
+        pending: row.pending, noText: row.no_text, ocr: row.ocr === true } : null;
     },
 
     /** The text of a chat's file (C-64), the parts joined in order, and how many there are. */

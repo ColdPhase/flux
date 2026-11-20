@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { briefPrivateText, buildBrief, runtimeBrief, type BriefInput, type MessageSource, type TaskFacts } from '@flux/core';
+import { briefPrivateText, buildBrief, DM_FILES_LINE, runtimeBrief, type BriefInput, type MessageSource, type TaskFacts } from '@flux/core';
 import type { MessageFile } from '@flux/contracts';
 
 // The exact text every run is given (#1064): one brief per place, which the agent runtime gets on standard input, whether it runs pi with an
@@ -129,6 +129,16 @@ describe('the brief of every run (#1064)', () => {
     // A space is not given: the agent reads it with the Flux tools, so its request holds the place, the task and the request, and nothing numbered.
     const inSpace = buildBrief({ ...base, messages: MESSAGES }).request;
     assert.ok(!inSpace.includes('<conversation>') && !inSpace.includes('<open_tasks>') && !inSpace.includes('<message'), 'no message of a space is in the request');
+  });
+
+  test('a run in a direct message that can read a file\'s text is given each file\'s id and told how to read it, only when messages here carry files (#1590, C-64 (3))', () => {
+    const reading = { ...dmFour, tools: [...DM_TOOLS, 'flux_read_file'] };
+    const { system, request } = buildBrief(reading);
+    assert.ok(request.includes('<attachment name="north.csv" bytes="2048" id="f-1"/>'), 'the file is named with its id');
+    assert.ok(system.includes(DM_FILES_LINE));
+    // Without the tool, or without a file in the conversation, the brief is what it was.
+    assert.ok(!buildBrief(dmFour).system.includes(DM_FILES_LINE) && buildBrief(dmFour).request.includes('<attachment name="north.csv" bytes="2048"/>'));
+    assert.ok(!buildBrief({ ...dm, tools: [...DM_TOOLS, 'flux_read_file'] }).system.includes(DM_FILES_LINE), 'a conversation without files says nothing of files');
   });
 
   test('a message cannot leave its fence or forge the request; a web address keeps its & so it matches exactly (C-30)', () => {

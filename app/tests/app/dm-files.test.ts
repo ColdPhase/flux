@@ -77,7 +77,7 @@ test('a file sent in a direct message reaches the conversation\'s people and nob
   assert.equal((await get(f.cyra, `/api/v1/dms/${f.pair.id}`)).status, 404);
   assert.equal((await upload(f.cyra, f.pair.id, Buffer.from('intruder'))).status, 404);
   assert.equal((await send(f.cyra, f.pair.id, 'hello', [])).status, 404);
-  // It is a stored file of no space: no project, and nothing in search or the file-text queue.
+  // It is a stored file of no space (no project); unsent, it has no search row and no file-text job: they come with its message (dm-file-search.test.ts, C-64 (3)).
   const [row] = await db.select().from(schema.projectFiles).where(eq(schema.projectFiles.id, staged.body.id));
   assert.deepEqual([row!.projectId, row!.dmId, row!.messageId, row!.dmMessageId === sent.id], [null, f.pair.id, null, true]);
   assert.equal((await pool.query(`SELECT 1 FROM search_documents WHERE kind = 'file' AND object_id = $1`, [staged.body.id])).rows.length, 0);

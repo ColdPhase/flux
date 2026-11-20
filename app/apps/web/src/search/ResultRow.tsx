@@ -116,7 +116,7 @@ function pieces(result: SearchResult): Array<Line | null> {
       // Who sent it, where and when, as a file found by its name says, then what it says where it matched (led by the page, for a PDF): two
       // files of one name sent twice are told apart by their first words, never two identical rows (round 15 new P2-3).
       const snippet = plainSnippet(result.snippet);
-      const page = result.target.type === 'file' ? result.target.page : undefined;
+      const page = result.target.type === 'file' || result.target.type === 'dm_file' ? result.target.page : undefined;
       return snippet ? [author, where, written(result), page ? `Page ${page}` : null, quoted(snippet)] : [author, where, written(result)];
     }
     case 'thought': case 'sketch': return place.type === 'private' ? ['My map', 'only you'] : [result.label, where];

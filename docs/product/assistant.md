@@ -388,7 +388,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Wiki | Create and edit pages, with Undo. Undo of a page the agent started deletes it, while only that agent has written it and nothing uses it (no link to it, no message that cited it, no call on it, no one typing in it). Deleting a page always waits for the owner's OK |
 | Map | Add thoughts and link them to tasks |
 | Decisions | Propose; never accept |
-| Search | Everything the owner can see, in spaces with AI on, ranked by BM25 ([AG-12](#ag-12--finding-older-messages-f-042)); a DM only in a run in that DM |
+| Search | Everything the owner can see, in spaces with AI on, ranked by BM25 ([AG-12](#ag-12--finding-older-messages-f-042)); a DM, and the text of the files sent in it, only in a run in that DM |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
 | Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's; on an API key in pi, Flux's `flux_web_search`, run by the Flux server through the key's provider's hosted search, #1441), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
@@ -564,8 +564,8 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 
 - **`flux_search`** searches the spaces the agent may read now (its owner's rights, spaces with AI on), with any of the
   words, ranked by BM25 inside Flux's database, with Polish and English stemming and accents folded. It covers space
-  messages, the Wiki (pages and materials), tasks, decisions and maps, the text inside the files people sent (PDF, Word, Markdown, text, CSV;
-  [C-63](decisions.md), #1382), and DM messages only within a run in that DM. It takes
+  messages, the Wiki (pages and materials), tasks, decisions and maps, the text inside the files people sent (PDF, Word, Markdown, text, CSV, and scans and pictures when OCR is on;
+  [C-63](decisions.md), #1382, [C-70](decisions.md)), and DM messages and the text of the files sent in a DM (founder decision, 2026-11-20, #1590, [C-64](decisions.md) point 3) only within a run in that DM. It takes
   `in` (a space, a conversation, a task's discussion), `from` (an author's id, or a person's or an agent's name, #1410),
   `after` / `before` (a date or a time), `kind`
   and `limit` (ten unless asked, at most 25). Each hit names its place, its author as people see them ([C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160), its time, a link
@@ -587,7 +587,7 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
   message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
   is not there, one that is deleted and one the caller may not read.
-- **`flux_read_file`** (#1382) returns the text of a file that a search found (or, in an agent's chat, one its owner sent there, C-64), in pages from `offset` (12,000 characters in a run, 20,000
+- **`flux_read_file`** (#1382) returns the text of a file that a search found (or, in an agent's chat, one its owner sent there, or, in a run in a direct message, one sent in that conversation, C-64), in pages from `offset` (12,000 characters in a run, 20,000
   for a client; `nextOffset` continues; a note says when the text has not been read yet or the file has none, as a scan). The text is
   what the worker read in its sandbox (C-63), so a long file's first 200,000 characters. One answer for a file that is not there, one in
   an encrypted space and one the caller may not read, under the same reach and the same AI switch as a search.
