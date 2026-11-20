@@ -229,12 +229,21 @@ describe('the files of a direct message, found by its people and read by /ai in 
     const migration = readFileSync(join(import.meta.dirname, '../../packages/db/migrations/0109_dm_file_search.sql'), 'utf8');
     const backfill = migration.slice(migration.indexOf('-- The direct message files that are already there'));
     assert.ok(backfill.includes('INSERT INTO file_text_jobs') && backfill.includes('search_put'));
-    await pool.query(backfill);
-    assert.deepEqual((await rowsOf(textId)).map((row) => [row.version, row.audience_key]), [[0, `dm:${pair.id}`]], 'the name row at once');
-    assert.deepEqual((await rowsOf(pictureId)).map((row) => row.version), [0]);
+    // In one transaction no worker sees the rows before they are committed, so what the migration queued is read exactly.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(backfill);
+      const named = (await client.query(`SELECT object_id, audience_key, version FROM search_documents WHERE kind = 'file' AND version = 0 AND object_id = ANY($1::text[])`, [sent.fileIds])).rows as
+        { object_id: string; audience_key: string; version: number }[];
+      assert.deepEqual(named.map((row) => [row.object_id, row.audience_key, row.version]).sort(), [[textId, `dm:${pair.id}`, 0], [pictureId, `dm:${pair.id}`, 0]].sort(), 'the name rows at once');
+      const queued = (await client.query(`SELECT file_id::text FROM file_text_jobs WHERE file_id = ANY($1::uuid[])`, [sent.fileIds])).rows.map((row) => row.file_id as string);
+      // A worker's own tick may have queued the picture for OCR meanwhile (its bounded batch); the migration queues readable kinds only.
+      assert.ok(queued.includes(textId), 'the readable file is queued');
+      assert.ok(!/file_ocr_picture|ocr/.test(backfill.replace(/--[^\n]*\n/g, '')), 'the migration queues no picture: OCR does, in its bounded batches');
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; } finally { client.release(); }
     assert.deepEqual((await found(scene.owner, 'earlier')).map(titleOf).sort(), ['earlier.png', 'earlier.txt'], 'found by name as soon as the upgrade ran');
-    assert.equal(await jobs([textId]), 1, 'the readable file is queued');
-    assert.equal(await jobs([pictureId]), 0, 'a picture is not a job: OCR queues it in its bounded batches');
     // The worker reads the queued file, and, its queue empty, takes the next batch of what OCR has yet to read: the picture.
     await worker.tick();
     await settled(sent.fileIds);
