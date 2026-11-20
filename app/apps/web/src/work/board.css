@@ -163,12 +163,13 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-bar { flex-wrap: nowrap; padding-top: 10px; }
   .tb-search { flex: 1 1 0; margin-left: 2px; }
 }
-/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc". */
+/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc".
+   Board | List keeps 56 px options (a pill, never a circle, #1561), so Mine and the gaps give up the room it took (release audit P3 20 still holds). */
 @media (max-width: 359px) {
-  .tb-bar { gap: 6px; }
+  .tb-bar { gap: 4px; }
   .tb-mode .seg__b { min-width: 3.5rem; padding: 0 9px; }
-  .tb-bar .tb-mine { padding-inline: 9px; }
-  .tb-search { gap: 4px; }
+  .tb-bar .tb-mine { padding-inline: 6px; }
+  .tb-search { gap: 4px; margin-left: 0; }
 }
 
 @media (pointer: coarse) {

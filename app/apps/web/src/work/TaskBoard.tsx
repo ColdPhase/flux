@@ -486,7 +486,8 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   };
   const columnIds = `${hintId}-col`;
   // A sideways swipe anywhere in the tab's scroll area (a short column leaves most of it empty) moves to the next or the previous status; the status row's tap is
-  // its visible alternative. A mostly vertical move is the page scrolling, and `touch-action: pan-y` keeps the browser from taking a sideways one.
+  // its visible alternative. A mostly vertical move is the page scrolling, and `touch-action: pan-y pinch-zoom` keeps the browser from taking a sideways one
+  // while a pinch still zooms the page (a two-finger pinch is the browser's, which cancels the swipe).
   useEffect(() => {
     const scroller = phone ? boardRef.current?.closest<HTMLElement>('.pane-scroll') : null;
     if (!scroller) return undefined;
@@ -499,12 +500,16 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       const dx = event.clientX - from.x;
       const dy = event.clientY - from.y;
       if (Math.abs(dx) < 48 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
-      setShownColumn((current) => COLUMNS[COLUMNS.findIndex((column) => column.id === current) + (dx < 0 ? 1 : -1)]?.id ?? current);
+      // Past the first or the last status nothing moves, and the column keeps its scroll.
+      const shown = boardRef.current?.querySelector<HTMLElement>('.tb-col:not([hidden])')?.dataset.column;
+      const next = COLUMNS[COLUMNS.findIndex((column) => column.id === shown) + (dx < 0 ? 1 : -1)]?.id;
+      if (!next) return;
+      setShownColumn(next);
       scroller.scrollTo({ top: 0 });
     };
     const cancel = () => { start = null; };
     const touchAction = scroller.style.touchAction;
-    scroller.style.touchAction = 'pan-y';
+    scroller.style.touchAction = 'pan-y pinch-zoom';
     scroller.addEventListener('pointerdown', down);
     scroller.addEventListener('pointerup', up);
     scroller.addEventListener('pointercancel', cancel);
