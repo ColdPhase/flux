@@ -325,10 +325,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         expect(page.get_by_role("button", name="Page actions", exact=True)).to_be_visible()
-        # The one page of the space is in the switcher the title opens.
+        # The space's pages are in the switcher the title opens: the notes page and the two sources saved before it (#1508).
         page.get_by_role("heading", level=2).get_by_role("button", name=re.compile("What we learned about low light")).click()
         switcher = page.get_by_role("dialog", name="Pages in Gesture lamp")
-        expect(switcher.get_by_role("list", name="Pages").get_by_role("link")).to_have_count(1)
+        expect(switcher.get_by_role("list", name="Pages").get_by_role("link")).to_have_count(3)
         page.keyboard.press("Escape")
         expect(switcher).to_have_count(0)
         # At 320px the four views still fit in their row under the title (#873): the current one is marked there.
