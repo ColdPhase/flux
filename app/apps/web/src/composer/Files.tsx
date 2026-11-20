@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Button, Icon, useMediaQuery } from '../ui';
 import { FileIcon, typeLine, useObjectUrl, warmPreview } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
-import { isVideoName, type FileLimits } from '@flux/contracts';
+import { FILE_LIMITS, isVideoName, type FileLimits } from '@flux/contracts';
 import { useFileLimits } from '../api/files';
 import { detailLine, looksLikePhoto } from './fileKind';
 import { useVideoPoster } from './videoPoster';
@@ -12,7 +12,7 @@ export { MessageFiles, MessageContent, hasPhotos, fileSize } from './Attachments
 export type { PhotoActions, PhotoContext } from './Attachments';
 
 const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'uploading' ? uploadLabel(file)
-  : file.state === 'failed' && file.refused ? (looksLikePhoto(file.name) ? 'Can’t be read' : 'Can’t be sent')
+  : file.state === 'failed' && file.refused ? (file.unreadable ? 'Can’t be read' : 'Can’t be sent')
   : file.state === 'failed' ? 'Upload not confirmed'
     : unconfirmed ? 'Send unconfirmed; retry checks availability'
       : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready to send';
@@ -97,7 +97,8 @@ function refusedLine(file: DraftFile) {
 }
 
 const megabytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
-const limitsLine = (limits: FileLimits) => `Only you see these files until you send · ${megabytes(limits.fileBytes)} MB each, videos ${megabytes(limits.videoBytes)} MB · ${limits.messageFiles} files / ${megabytes(limits.messageBytes)} MB per message`;
+// A picture is written again whole by the server, so it keeps its 5 MB whatever the operator's file cap is (#1549); said when the cap is above it.
+const limitsLine = (limits: FileLimits) => `Only you see these files until you send · ${megabytes(limits.fileBytes)} MB each, ${limits.fileBytes > FILE_LIMITS.wholeBytes ? `pictures ${megabytes(FILE_LIMITS.wholeBytes)} MB, ` : ''}videos ${megabytes(limits.videoBytes)} MB · ${limits.messageFiles} files / ${megabytes(limits.messageBytes)} MB per message`;
 
 /** How close to a limit the draft is when its numbers are worth saying: two files short of the count, or four fifths of the bytes (#1424). */
 const NEAR_BYTES = 0.8;

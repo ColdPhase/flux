@@ -22,6 +22,8 @@ export interface DraftFile {
    * draft offers only to remove it, and the rest of the message goes once it is removed.
    */
   refused?: boolean;
+  /** The refused file is a picture whose bytes the server could not read (damaged): its row says "Can’t be read"; any other refusal says "Can’t be sent". */
+  unreadable?: boolean;
   /** Share of the bytes sent so far, 0 to 100, while uploading (#348). Not kept once the upload is confirmed or failed. */
   progress?: number;
 }
@@ -359,7 +361,7 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     // A message waiting for this file can go on (or fail) now.
     if (wake && snapshots.get(key)!.pending.some((item) => item.files.some((other) => other.uploadId === uploadId))) kick(key);
   };
-  changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined, refused: undefined, progress: 0 }));
+  changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined, refused: undefined, unreadable: undefined, progress: 0 }));
   // A video's poster is drawn while it uploads (C-61), so it is ready when the upload is.
   if (isVideoName(file.name)) void drawPoster(file);
   let lastShown = 0;
@@ -380,7 +382,8 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     changeFile((item) => ({ ...item, state: 'ready', staged, error: undefined, progress: undefined }));
   } catch (cause) {
     if (cause instanceof NetworkError) reportUnreachable();
-    changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause), offline: cause instanceof NetworkError || undefined, refused: refusedFile(cause) || undefined, progress: undefined }));
+    changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause), offline: cause instanceof NetworkError || undefined, refused: refusedFile(cause) || undefined,
+      unreadable: (cause instanceof ApiError && cause.code === 'UNREADABLE_PICTURE') || undefined, progress: undefined }));
   }
 }
 

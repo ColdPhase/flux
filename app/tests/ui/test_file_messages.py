@@ -1156,7 +1156,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         choose([{**text, "name": f"more-{index}.txt"} for index in range(5)])
         expect(draft.get_by_role("listitem")).to_have_count(8)
         # The check stack's caps (scripts/check_ui.sh): FLUX_FILE_MAX_MIB=8, so a message carries 4 × 8 MB (#1549).
-        expect(limits).to_have_text(re.compile(r"^Only you see these files until you send · 8 MB each, videos \d+ MB · 10 files / 32 MB per message$"))
+        expect(limits).to_have_text(re.compile(r"^Only you see these files until you send · 8 MB each, pictures 5 MB, videos \d+ MB · 10 files / 32 MB per message$"))
         # Each press waits for the draft to settle, as a person's eye does: a row's line changes from "Uploading" to "Ready to send" (the
         # rows wrap again), and at 7 files the limits line goes and the composer, anchored at the bottom, moves the rows down. A press
         # aimed before either landed beside the × (WebKit, trains 28 and 29).
@@ -1175,6 +1175,20 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(refused).to_have_attribute("role", "alert")
         expect(limits).to_have_count(1)
         draft.get_by_role("button", name="Remove too-big.bin").click()
+        expect(refused).to_have_count(0)
+        expect(limits).to_have_count(0)
+        # A picture over its 5 MB (the server writes it again whole) is not unreadable: its row says what the line under the draft says, and the limits
+        # line names the pictures' number (atlas v0.2.2: the row said "Can't be read" over "A picture can be at most 5 MB.").
+        choose([{"name": "scan.png", "mimeType": "image/png", "buffer": b"\x00" * (5 * 1024 * 1024 + 1)}])
+        row = draft.get_by_role("listitem").filter(has_text="scan.png")
+        expect(row).to_contain_text("Can’t be sent")
+        expect(row).not_to_contain_text("Can’t be read")
+        expect(refused).to_have_text("A picture can be at most 5 MB. Remove scan.png to send the rest.")
+        expect(limits).to_contain_text("pictures 5 MB")
+        page.mouse.move(0, 0)  # the paperclip's tip would stand over the line
+        row.scroll_into_view_if_needed()
+        self.shot(page, "composer-picture-over-5mb")
+        draft.get_by_role("button", name="Remove scan.png").click()
         expect(refused).to_have_count(0)
         expect(limits).to_have_count(0)
 

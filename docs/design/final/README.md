@@ -197,7 +197,8 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   - **Menus**: the header's and the sidebar's ⋯ menus (Move up and down, Mark all as read, Settings, Search, Mute, People) have the message
     menu's 14 px words and lead each row with its icon in `--t2`, as "A menu's rows lead with their icon" says.
   - **Toasts in the two-column Inbox** stand centred under the open item's column (`data-toast-home`), never across the line between the
-    columns or over the list's last card.
+    columns or over the list's last card. There they keep the one line every toast has ("Marked done | Undo Z ×"); only a toast moved
+    beside an open panel takes the two lines below (atlas v0.2.2: the Inbox's Done toast stood in two lines with × beside the words).
   - **Home's rows** cut a long title to two lines with "…", as the Inbox's rows do; the open item reads it whole. A question or a mention
     is kept whole up to 600 characters by the server (it was cut at 140, so its end could be read nowhere).
   - **The empty Inbox's** Notification settings is an outline button, never bare text beside the underlined "1 for later".
@@ -1169,7 +1170,10 @@ These functional rules from UI116-4 remain required:
   row's download button still downloads. Other files keep the whole row as the download.
   - **The frame** is the photo viewer's: always dark, full screen on every size (on the phone it is
     the full sheet), Close (×) at the top left, the file name with "type · size" under it in the
-    middle, Esc closes and focus returns to the row. The bottom bar holds Download; nothing else
+    middle, Esc closes and focus returns to the row. **Close is a quiet icon button** (founder request, Hubert 2026-11-20, his
+    phone: "nie taki ostentacyjny"): the × in the viewer's light ink with no filled circle at rest, the dark fill (`#1f1f22`, the
+    bottom bar's hover) only on hover and press, its 44 px target kept, in the photo viewer too. Previous and Next keep their
+    round fill, because they stand on the photo. The bottom bar holds Download; nothing else
     takes its place.
   - **The stage** holds the file on one page sheet: `--el` with `--t1` text, radius `--r`, the
     reading column wide (`--col`) for text and Markdown and up to 1200 px for tables, HTML and PDF.
@@ -1235,7 +1239,7 @@ These functional rules from UI116-4 remain required:
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
-  - **The limits line** ("Only you see these files until you send · 25 MB each, videos 200 MB · 10 files / 100 MB per message", the operator's numbers) is not under
+  - **The limits line** ("Only you see these files until you send · 25 MB each, pictures 5 MB, videos 200 MB · 10 files / 100 MB per message", the operator's numbers; "pictures 5 MB" is said when the operator's file cap is above it, since a picture is written again whole by the server, #1549; atlas v0.2.2) is not under
     the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
     says **"Ready to send"**, and the paperclip's tip "Attach files · only you see them until you send" (personas-33: "Ready, private"
     and "private until sent" were read as "this file stays private"; the words say what happens). It shows below the files only when a file or the draft was refused, or when the draft is
@@ -1248,6 +1252,9 @@ These functional rules from UI116-4 remain required:
     limit it says "A video can be at most 200 MB." (the operator's number); in an encrypted space a
     video is an ordinary file ("A file in an encrypted space is at most 5 MB.") and downloads. Any other file over the operator's
     cap says "Files can be up to 25 MB on this server." (the operator's number; #1549), and a picture "A picture can be at most 5 MB."
+    A refused file's row says the same thing as the line under the draft (atlas v0.2.2: a 14.9 MB picture's row said "Can't be read" while the line
+    said "A picture can be at most 5 MB."): **"Can't be sent"** for every refusal of a file's size, name or kind, and **"Can't be read"** only for a
+    picture whose bytes the server could not read (damaged), whose line says "This picture cannot be read: …".
 
 | | |
 | --- | --- |
@@ -2551,6 +2558,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     endpoint reads "A server that works like OpenAI's, such as Ollama or LM Studio. Use an https address."; a price
     reads "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)". The window does
     not scroll at 1440 × 900.
+  - **Connect waits until there is something to connect**, for every provider alike (atlas v0.2.2: Google Gemini's Connect was dark with an empty key):
+    it is disabled until a provider is chosen **and** a key is entered, and again after a refused key or a cleared one.
   - **The window's buttons keep their side** (#1424): on every step the secondary action is on the left and the one primary on
     the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
     Cancel on the key step.

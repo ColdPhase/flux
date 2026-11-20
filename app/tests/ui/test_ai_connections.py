@@ -293,6 +293,7 @@ class AiConnectionSettings(unittest.TestCase):
         alert = page.get_by_role("alert")
         expect(alert).to_contain_text("This endpoint cannot be used")
         expect(page.get_by_label("API key", exact=True)).to_have_value("")
+        expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()  # the key was cleared: Connect waits for another
         self.assertEqual(self.connections(page), before, "a refused key changes nothing")
         self.no_key_anywhere(page)
         shot(page, "ai-connection-1440-endpoint-refused")

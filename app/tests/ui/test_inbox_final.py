@@ -427,6 +427,8 @@ class InboxFinal(unittest.TestCase):
         self.assertLessEqual(max(frames) - min(frames), 1, f"the toast keeps one horizontal place from its first frame: {frames}")
         home = page.locator("[data-toast-home]").bounding_box()
         self.assertAlmostEqual(frames[0], home["x"] + home["width"] / 2, delta=1, msg="it stands under the open item")
+        # One line there, as every toast (atlas v0.2.2: "Marked done ×" over "Undo Z" in two lines, × beside the words).
+        self.assertLess(page.locator(".ui-toast").first.bounding_box()["height"], 56, "the Inbox's toast keeps one line")
         expect(cards).to_have_count(3)
         self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked"]), "Done to be stored")
         page.keyboard.press("z")
