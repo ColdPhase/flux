@@ -74,8 +74,9 @@ Flux keyring locked itself: this container can now write memory to disk (its swa
 ```
 
 Every encrypted space is then locked with the reason above, and the keyring's health check turns red
-(`docker compose ps` shows it unhealthy after about 90 seconds, and `./flux up` prints the line). Restart the keyring (`docker compose restart keyring`; Docker then sets the limit again), and
-the admins unlock their spaces again. Or, only if every swap device is encrypted with a key that is
+(`docker compose ps` shows it unhealthy after about 90 seconds, and `./flux up` prints the line). Restart Flux (`./flux down`, then `./flux up`): Docker sets the swap limit of every container
+again. Restarting only the keyring is not enough, because `api` and `worker` lost theirs too and keep
+the spaces locked by their own check. Then the admins unlock their spaces again. Or, only if every swap device is encrypted with a key that is
 not stored on the disk, set `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap`. A host with no swap device, or only
 `zram`, is not affected.
 

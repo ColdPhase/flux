@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = (ROOT / "flux").read_text(encoding="utf-8")
 LOCKED = ("Flux keyring locked itself: this container can now write memory to disk (its swap limit is gone, as `systemctl daemon-reload` does), "
-          "so it wiped its boot key and refuses every request. Encrypted spaces stay locked until you restart the keyring.")
+          "so it wiped its boot key and refuses every request. Encrypted spaces stay locked until you restart Flux.")
 REFUSED = "Flux keyring refuses to start: this server can write memory to disk. Turn off swap, limit this container's swap."
 
 

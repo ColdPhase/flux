@@ -189,7 +189,7 @@ describe('F-030 the keyring asks the swap rule again (#1559)', () => {
       assert.equal(running.locked, true, 'the timer found it without any request');
       assert.deepEqual(warned, [LOCKED_LINE], 'one line');
       assert.match(LOCKED_LINE, /wiped its boot key/);
-      assert.match(LOCKED_LINE, /restart the keyring/);
+      assert.match(LOCKED_LINE, /restart Flux \(`\.\/flux down`, then `\.\/flux up`/);
       assert.match(LOCKED_LINE, /FLUX_SWAP_ACKNOWLEDGED=encrypted-swap/);
       for (const [path, init] of [['/v1/boot', {}], ['/v1/seal', { method: 'POST', body: '{}' }],
         ['/v1/open', { method: 'POST', body: JSON.stringify({ workspaceId, keyVersion: 1, bootId: running.bootId, sealed: sealed.sealed }) }]] as const) {
@@ -269,7 +269,7 @@ describe('F-030 the keyring asks the swap rule again (#1559)', () => {
       const bootId = (await healthy.json() as { bootId: string }).bootId;
       await writeFile(join(root, '/sys/fs/cgroup/memory.swap.max'), 'max\n');
       for (let i = 0; i < 100 && !first.output.err.includes('locked itself'); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
-      assert.match(first.output.err, /^Flux keyring locked itself: .*restart the keyring.*FLUX_SWAP_ACKNOWLEDGED=encrypted-swap/m, first.output.err);
+      assert.match(first.output.err, /^Flux keyring locked itself: .*restart Flux.*FLUX_SWAP_ACKNOWLEDGED=encrypted-swap/m, first.output.err);
       assert.equal(first.output.err.includes(token), false);
       const red = await boot();
       assert.equal(red.status, 503, 'the health check greps for 200 on this route');

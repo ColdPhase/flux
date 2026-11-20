@@ -46,8 +46,8 @@ const FIXED = {
 
 /** The one line the keyring writes when it locks itself (and `./flux up` shows): what happened, what it did, the fix. */
 export const LOCKED_LINE = 'Flux keyring locked itself: this container can now write memory to disk (its swap limit is gone, as `systemctl daemon-reload` does), '
-  + 'so it wiped its boot key and refuses every request. Encrypted spaces stay locked until you restart the keyring (`docker compose restart keyring`; '
-  + 'a restart sets the limit again) and unlock them again, or set FLUX_SWAP_ACKNOWLEDGED=encrypted-swap if every swap device is encrypted with a key not on disk.';
+  + 'so it wiped its boot key and refuses every request. Encrypted spaces stay locked until you restart Flux (`./flux down`, then `./flux up`: '
+  + 'Docker sets the swap limit of every container again, the API\'s and the worker\'s too) and unlock them again, or set FLUX_SWAP_ACKNOWLEDGED=encrypted-swap if every swap device is encrypted with a key not on disk.';
 
 /** Each component as its UTF-8 bytes preceded by a 4-byte big-endian length (the contract's context encoding). */
 function encodeContext(parts: readonly (string | number)[]): Buffer {
