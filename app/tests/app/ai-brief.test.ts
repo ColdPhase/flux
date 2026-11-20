@@ -168,7 +168,7 @@ describe('the brief of every run (#1064)', () => {
   test('the same line about searching, for every place that has the tools: where it reaches, and that a run with no search tools gets none (F-042, AG-12, #1290)', () => {
     const find = (input: BriefInput) => runtimeBrief(input).split('\n').find((line) => line.startsWith('Before you say you do not know')) ?? null;
     assert.match(find(base)!, /^Before you say you do not know, or that something was not discussed, search: flux_search finds messages, Wiki pages, tasks, decisions and maps in this space by any of your words, best match first \(use each language the people here write in, and other words when little comes back\); flux_read_around reads the messages around a hit\.$/);
-    assert.match(find(chat)!, /maps in every space Ada Nowak can see by any/, 'a private chat reaches what its owner reaches');
+    assert.match(find(chat)!, /maps in every space Ada Nowak can see, and the direct messages Ada Nowak is in, by any/, 'a private chat reaches what its owner reaches');
     assert.match(find(dm)!, /flux_search finds the messages of this direct message by any/, 'a run in a direct message reaches that direct message');
     assert.match(buildBrief(dm).system, /Your Flux tools reach only this direct message\. Besides them, one Flux tool reads a public web page\./);
     assert.equal(find({ ...base, tools: ['flux_get_work', ...CHANGES] }), null, 'one without both tools is not told of them');

@@ -250,12 +250,13 @@ const searches = (input: BriefInput) => input.webSearch === true || input.tools.
 
 /**
  * Finding what lies outside the messages it was given (F-042, AG-12, #1290). It names where the search reaches: a run reaches
- * its own place (C-12, C-37), a private chat every space its owner reaches. Only a run that has both tools is told about them.
+ * its own place (C-12, C-37), a private chat every space its owner reaches and their direct messages (C-73). Only a run that has both tools is told about them.
  */
 const canFind = (input: BriefInput) => input.tools.includes('flux_search') && input.tools.includes('flux_read_around');
 function findLine(input: Placed): string {
   const what = input.place.kind === 'dm' ? 'the messages of this direct message'
-    : `messages, Wiki pages, tasks, decisions and maps ${input.place.kind === 'chat' ? `in every space ${input.ownerName} can see` : 'in this space'}`;
+    // A private chat also reaches the direct messages its owner is in, with AI on (C-73, #1591).
+    : `messages, Wiki pages, tasks, decisions and maps ${input.place.kind === 'chat' ? `in every space ${input.ownerName} can see, and the direct messages ${input.ownerName} is in,` : 'in this space'}`;
   return `Before you say you do not know, or that something was not discussed, search: flux_search finds ${what} by any of your words, best match first `
     + '(use each language the people here write in, and other words when little comes back); flux_read_around reads the messages around a hit.';
 }
