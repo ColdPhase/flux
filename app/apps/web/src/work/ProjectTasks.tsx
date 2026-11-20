@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { redirect, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { decisionAppPath, type Project, type ProjectWorkViewQuery, type WorkItem, type WorkObjectType, type WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, MEDIA, SearchField, useMediaQuery, useRowMotion } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, SearchField, useMediaQuery } from '../ui';
+import { useRowMotion } from '../ui/rowMotion';
 import { getProject } from '../project/api';
 import { WORK_EVENT, streamLive, useStreamEvents } from '../api/stream';
 import { useShellActions } from '../app/shellContext';

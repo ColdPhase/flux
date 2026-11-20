@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
-import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
+import { AgentIdentity, Icon, Kreska, StatusGlyph, initials } from '../ui';
+import { Morph } from '../ui/Morph';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { useAgentHue, type ColouredAgent } from '../agents/hues';
 import type { AgentHue } from '../ui';

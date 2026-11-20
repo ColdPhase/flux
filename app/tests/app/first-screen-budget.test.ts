@@ -10,7 +10,9 @@ import { brotliCompressSync, constants } from 'node:zlib';
 // number here is the number that script reports (`tests/test_first_screen_budget.py` keeps the two in step). It grew from 242 to 269 KB
 // in nine days of features that each went into the entry chunk; the picker, the Create window, the notice card and the sign-out wiring now
 // load with the code that needs them, and this holds them there. Over budget? Load the new code lazily (`app/DeferredSurfaces.tsx`, a
-// route's `lazy`) instead of raising the number.
+// route's `lazy`) instead of raising the number. A barrel (`ui/index.ts`, `pwa/index.ts`) that re-exports a module only a lazy route uses
+// pulls it into the first screen too (the build keeps a barrel's modules together), so such a module is imported from its own file; and
+// `@flux/contracts` is `sideEffects: false`, so what the first screen does not use of it (the export's JSON Schema, the AI route table) is left out.
 const BUDGET_KB = 250;
 const root = join(process.cwd(), 'apps/web/dist');
 const entryLink = /<(?:script|link)\b[^>]*?(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"[^>]*>/g;

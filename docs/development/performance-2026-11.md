@@ -608,6 +608,16 @@ the train head `44947da84` has 44 files and **248.9 KB** brotli (843.0 KB raw; 1
 35 files and **242.0 KB** (844.3 KB raw). The release is 6.9 KB above v0.2.0's first screen, not below it; the 239.1 KB above was true when it
 was counted, before the features and fixes the train added after it.
 
+**Over again at the v0.2.2 candidate** (2026-11-20, `402044a49`; `scripts/perf-bundle.mjs`, the web app built in the development image): 42 files and
+**250.8 KB** brotli (851 KB raw), the full check failing the guard by 0.8 KB; v0.2.1 (`f3b8ec55e`) was 43 files and 248 KB. The release's new first-screen
+code (`ui/backLayer`, Home's New messages, the search field, the map and gesture code) is used on the first screen and stays. What came with it
+without being needed is gone, and nothing is removed: the notification settings' two PWA components (`NotificationsButton`, `InstallFlux`) leave
+`pwa/index.ts` for their own files (-1.0 KB); `AuthorFace`, `Morph`, `PersonName`, `useFocusBack` and `useRowMotion`, used only by routes that load
+lazily, leave the `ui` barrel (-1.2 KB), as the date and time fields did; `@flux/contracts` is `sideEffects: false` and the export's JSON Schema is its own
+module (`export-schema.ts`), so the browser no longer gets the AI route table (10 KB before minifying) or the schema (8 KB), which only the server
+reads (-2.1 KB). After: 44 files and **246.4 KB** (837 KB raw; 3.6 KB under the budget). Tried and not kept: telling the bundler that `react` or
+the whole of `ui/` has no side effects splits the `ui` barrel into one chunk per module and the first screen grows to 252 to 255 KB.
+
 **Guard.** `tests/app/first-screen-budget.test.ts` runs against the finished build with the API tests (`./scripts/check_application.sh`,
 or `ci_test.sh api tests/app/first-screen-budget.test.ts`): it counts the files of `index.html` as `perf-bundle.mjs` does and fails above 250 KB,
 and it fails when the Create window, the notice card, Settings, Details, Jump to…, Tasks, the Wiki or the live stage turns up in the first
