@@ -6,6 +6,7 @@ export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { Icon, type IconName } from './Icon';
 export { Input } from './Input';
+export { SearchField, type SearchFieldProps } from './SearchField';
 export { MEDIA, choosesInPlace, duration, installMotionGuards, isObscured, markMotionReady, motionAllowed, noteChange, play, sendsOnEnter, settle, useArrivals, useLoopPause, useMediaQuery, useMorph, useTravelingHighlight } from './motion';
 export { usePop } from './pop';
 export { installPress } from './press';

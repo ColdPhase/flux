@@ -393,7 +393,7 @@ class CreateWindow(unittest.TestCase):
             page.get_by_role("menuitem", name="Search", exact=True).tap()
             sheet = page.get_by_role("dialog", name="Search", exact=True)
             expect(sheet).to_be_visible()
-            expect(sheet.get_by_role("heading", name="Search")).to_be_visible()
+            self.assertEqual(sheet.get_by_role("heading").count(), 0, "no title on the phone: the field is the sheet's header (founder direction 2026-11-20)")
             field = sheet.get_by_role("combobox", name="Search", exact=True)
             expect(field).to_be_visible()
             self.at_rest(page)

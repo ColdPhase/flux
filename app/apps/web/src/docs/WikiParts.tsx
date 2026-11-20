@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Button, EmptyState, Icon, prefersReducedMotion, usePop, useToast, type IconName } from '../ui';
+import { Button, EmptyState, Icon, prefersReducedMotion, SearchField, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
@@ -199,12 +199,8 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
       </h2>
       {pop.mounted ? (
         <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-switcher" role="dialog" aria-label={`Pages in ${project.name}`} onKeyDown={onKeyDown}>
-          <label className="wiki-find">
-            <Icon name="search" size={15} />
-            <input ref={findRef} type="text" placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); void navigate(shown[0].to); } }} />
-          </label>
+          <SearchField ref={findRef} className="wiki-find" iconSize={15} placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query} onValue={setQuery}
+            onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); void navigate(shown[0].to); } }} />
           <ul className="wiki-menu__list" aria-label="Pages">
             {shown.map((doc) => (
               <li key={doc.id}>

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { flushPlace } from '../place/memory';
 import { removedName, type SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
-import { Button, EmptyState, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, SearchField, Spinner, useMediaQuery, type IconName } from '../ui';
 import { leaveFocusToDestination } from '../ui/Overlay';
 import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
@@ -188,16 +188,15 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
 
   return (
     <div className="jump__in">
-      {phone ? <h2 className="jump__title">Search</h2> : null}
-      {/* The field's row is its target: the input is a control's height inside the row (#763 sweep). */}
+      {/* The field's row is its target: the input is a control's height inside the row (#763 sweep). On the phone it is the sheet's header: the
+          pill, then Cancel outside it, with no title (README §4 Phone, "Search fields"). */}
       <div className="jump__field" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); inputRef.current?.focus(); } }}>
-        <Icon name="search" size={16} className="jump__icon" />
-        <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search"
+        <SearchField ref={inputRef} className="jump__search" inputClassName="jump__input" value={query} onValue={setQuery} placeholder="Search"
           role="combobox" aria-expanded={options.length > 0} aria-controls={listId} aria-autocomplete="list" aria-label="Search"
           aria-describedby={statusId} aria-activedescendant={options.length ? `${listId}-${current}` : undefined}
-          enterKeyHint="search" autoComplete="off" spellCheck={false}
-          onChange={(event) => setQuery(event.target.value)} onKeyDown={onKeyDown} />
-        {state.status === 'loading' ? <Spinner /> : null}
+          autoComplete="off" spellCheck={false} onKeyDown={onKeyDown}>
+          {state.status === 'loading' ? <Spinner /> : null}
+        </SearchField>
         {/* The name holds the visible "Esc" (WCAG 2.5.3). */}
         {/* Close says its word, with its key beside it as the footer's "↵ open" and the menus do (L539); never a bare keycap as the button's only label. */}
         <button type="button" className="jump__close" onClick={onClose} aria-keyshortcuts={phone ? undefined : 'Escape'}>{phone ? 'Cancel' : <>Close<kbd aria-hidden="true">Esc</kbd></>}</button>

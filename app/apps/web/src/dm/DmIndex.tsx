@@ -8,7 +8,7 @@ import { useShellData } from '../app/data';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { useDmUnread } from './dmUnread';
 import { usePlaceMutes } from '../notifications/mutes';
-import { Avatar, Button, EmptyState, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
+import { Avatar, Button, EmptyState, Icon, Kreska, MEDIA, SearchField, useMediaQuery } from '../ui';
 import { focusField, stopAwaitingField, waitForField } from '../ui/keys';
 import { GUEST_NO_DMS, audienceOf } from './names';
 import { startsConversations } from '../people/api';
@@ -251,7 +251,7 @@ export function NewDm() {
       {workspaceId ? (
         <>
           <label className="ui-vh" htmlFor="dm-people-search">Find people</label>
-          <input id="dm-people-search" className="dm-new__search" type="search" placeholder="Find people by name or email" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off"
+          <SearchField id="dm-people-search" className="dm-new__search" phoneIcon placeholder="Find people by name or email" value={query} onValue={setQuery} autoComplete="off"
             // One person found is picked by Enter or the down arrow (persona round 28); Enter again opens the conversation. The down arrow
             // otherwise moves into the list.
             // The keys read the choice as it is now, not as the page last drew it: "Mar", Enter, Enter typed at once opened nothing and left
