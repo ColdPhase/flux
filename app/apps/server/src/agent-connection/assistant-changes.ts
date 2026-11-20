@@ -561,7 +561,10 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
     const fingerprint = assistantCallFingerprint(call);
     const live = operation.startsWith('map.') && objectId !== null && await nativeMapRoomExists(db as DbExecutor, objectId);
     const releases = new Set<() => void>();
-    if (live) releases.add(await prepareNativeMap({ claims, command: { operation, objectId, payload } }).catch((error: unknown) => { throw nativeCapacityRefusal(error); }));
+    // The live room's admission charges the context this change keeps while it waits: its plain facts, never the claims object, whose
+    // request dispatch (functions, maps) the charge refuses as unbounded. Passing it made every agent change on a map someone had open fail (#1555).
+    if (live) releases.add(await prepareNativeMap({ who: { ownerUserId: claims.ownerUserId, connectionId: claims.connectionId, runId: claims.run?.id ?? null },
+      command: { operation, objectId, payload } }).catch((error: unknown) => { throw nativeCapacityRefusal(error); }));
     let described: Target | null = null; let authority: Authority | null = null;
     try {
       return await db.transaction(async (tx) => {

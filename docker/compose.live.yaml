@@ -19,6 +19,19 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
     restart: unless-stopped
+    # Limits of its own (#1558): without them a call with many people or a misbehaving client could take the whole host's memory
+    # and CPU from the database and the keyring. Memory equal to memory+swap, like the other services. The defaults are for the 16
+    # people a call holds (docs/operations/calls.md#resources); a limit of one CPU also works on a 1-core server (Docker refuses more).
+    mem_limit: ${FLUX_LIVEKIT_MEMORY:-512m}
+    memswap_limit: ${FLUX_LIVEKIT_MEMORY:-512m}
+    cpus: ${FLUX_LIVEKIT_CPUS:-1}
+    pids_limit: 512
+    # No capability (every port it binds is above 1024, or the TURN/TLS overlay adds the one it needs), no privilege gained, an init
+    # process as PID 1 that reaps its health probes (#1540).
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    read_only: true
     # Signaling and the room service bind only to this container's address on the internal
     # network (plus loopback for the health check), never to the media network's interface.
     entrypoint: ["/bin/sh", "-ec"]

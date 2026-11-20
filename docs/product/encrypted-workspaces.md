@@ -982,6 +982,14 @@ disk, and PostgreSQL must never see it.
   - `POST /v1/open { workspaceId, keyVersion, bootId, sealed }` → `{ dek }`, or `409 STALE_BOOT` when
     `bootId` is not its own.
   - Nothing else. Bodies are never logged.
+  - **It asks the swap rule again (#1559).** The rule of [Memory](#memory-what-is-enforced-and-what-is-not) is checked at start, and
+    then every 60 s and before every authenticated request, because a running container's swap limit can be reset: `systemctl
+    daemon-reload` (run by package upgrades and configuration tools) writes `memory.swap.max = max` for the cgroups Docker made
+    (reproduced 2026-11-19 on Ubuntu 24.04, Docker 29.9.3, cgroup v2 and the `systemd` cgroup driver; `memory.max` keeps its value). When
+    the rule fails, the keyring zeroes its boot key, logs one line (`Flux keyring locked itself: …`) with the fix, and answers `503
+    SWAP_UNSAFE` on all three routes, which turns its health check red. Nothing brings it back but a restart, which makes a new boot
+    key and boot id (every encrypted space is then unlocked again by its admins) and, because Docker creates the container's cgroup
+    again, sets the limit again.
 - **Single instance.** Exactly one keyring per deployment. Two would have two boot keys. API
   replicas scale freely.
 - **Hardening.** `read_only: true`, `cap_drop: [ALL]`, `ulimits: { core: 0 }`, `mem_limit: 128m` and
@@ -1073,7 +1081,12 @@ not only warned about.
   and creation answer `503 SWAP_UNSAFE` ("This server can write memory to disk. Its operator needs to
   turn off swap or confirm it is encrypted."), and the API logs a warning at start. (S1 review: the
   unauthenticated `/api/v1/health` does not report it.) The heartbeat runs the check again every 5 s and
-  drops every key when it fails.
+  drops every key when it fails; so does a keyring that locked itself (it answers `503 SWAP_UNSAFE`, which the heartbeat takes as
+  swap unsafe, #1559). A container's swap limit does not stay: `systemctl daemon-reload` resets a running container's
+  `memory.swap.max` to `max` (observed on the `systemd` cgroup driver; the upstream cause in runc or systemd was not traced), so the
+  shipped limits alone do not keep the rule true while Flux runs. Where the host has a disk swap device, the keyring and the API notice within the
+  intervals above; where it has none (a Proxmox guest with `memory.swap.max=0` on its parent cgroup, or `zram` only), the rule still
+  holds by case 2.
 - **Defaults that pass.** The shipped Compose files give `api` and `worker` `mem_limit` with
   `memswap_limit` equal (`FLUX_API_MEMORY`, default `1536m`; `FLUX_WORKER_MEMORY`, default `512m`;
   configurable, never unset), so case 1 holds wherever the kernel accounts swap. Elsewhere, case 2 or 3

@@ -304,6 +304,7 @@ describe('the state line of an agent on a task (#856)', () => {
     assert.deepEqual(line({ viewerId: 'jonas', waitingChanges: 2, run: run({ status: 'completed' }) }), ['waiting_for_ok', 'Waiting for Ada\'s OK']);
     assert.deepEqual(line({ run: run({ status: 'unavailable', endReason: 'plan_limit' }), successor: { resumeAt: new Date('2026-11-07T14:00:00Z') } }), ['paused_by_limit', 'Claude limit reached']);
     assert.deepEqual(line({ run: run({ status: 'provider_failed', endReason: 'unknown' }) }), ['failed', 'Couldn\'t finish']);
+    assert.deepEqual(line({ run: run({ status: 'unavailable', endReason: 'gateway_unreachable' }) }), ['failed', 'Flux couldn\'t reach its model gateway'], '#1556: never the provider');
     // Train 37 row 36: a run that waits for the API key's next day says so, never "Working on" or "on it", and the panel adds when and where to raise it.
     const waiting = taskAgentState(facts({ run: run({ status: 'queued', engine: 'server', endReason: 'budget', resumeAt: new Date('2026-11-18T00:00:00+01:00') }) }));
     assert.deepEqual([waiting.line, waiting.text, waiting.budget, waiting.resumesAt], ['paused_by_limit', 'Waiting: today’s AI budget is used up', true, '2026-11-17T23:00:00.000Z']);

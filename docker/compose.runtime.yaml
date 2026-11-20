@@ -107,6 +107,7 @@ services:
     image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "apps/runtime/dist/manager/main.js"]
     mem_limit: 128m
+    memswap_limit: 128m
     pids_limit: 64
     restart: unless-stopped
     environment:
@@ -123,6 +124,7 @@ services:
     image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "apps/runtime/dist/egress/main.js"]
     mem_limit: 128m
+    memswap_limit: 128m
     pids_limit: 128
     restart: unless-stopped
     environment:

@@ -130,6 +130,8 @@ function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable' | 
     // A key run in pi (#1441): the gateway refused for the key's daily budget, or the provider for its credits (a plan has neither).
     case 'budget': return ended('cap_reached', null, { ...used, endReason: 'budget' });
     case 'credits': return ended('provider_failed', null, { ...used, endReason: 'credits' });
+    // #1556: the run never reached Flux's model gateway, so the provider was never asked: Flux is unavailable, not the provider.
+    case 'gateway_unreachable': return ended('unavailable', null, { ...used, endReason: 'gateway_unreachable' });
     // A run that waited for room is claimed, not ended.
     case 'no_room': return ended('provider_failed', null, used);
   }

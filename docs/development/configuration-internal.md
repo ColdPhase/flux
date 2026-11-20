@@ -83,6 +83,7 @@ the wiring between services or enables test-only code.
 | `FLUX_TEST_ROTATION_PAGE_SIZE` | Test deployments only. |
 | `FLUX_TEST_ROTATION_SWEEP_MS` | Test deployments only. |
 | `FLUX_TEST_STATE_DIR` | Test profile only. |
+| `FLUX_TEST_SWAP_CHECK_MS` | Test deployments only: how often the keyring asks the swap rule again (default 60 s). |
 | `FLUX_TEST_SWAP_ROOT` | Test deployments only. |
 | `FLUX_UI_ORIGIN` | Browser-test profile only. |
 | `FLUX_UI_SCREENSHOTS` | Browser-test profile only. |

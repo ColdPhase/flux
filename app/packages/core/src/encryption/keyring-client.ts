@@ -1,4 +1,4 @@
-import { KeyringUnavailableError } from './errors.js';
+import { KeyringUnavailableError, SwapUnsafeError } from './errors.js';
 import { fromB64url } from './primitives.js';
 
 /**
@@ -7,7 +7,10 @@ import { fromB64url } from './primitives.js';
  * in `workspace_unlocks`; a keyring restart makes every unlock row unopenable, which locks every sealed workspace.
  */
 export interface KeyringPort {
-  /** The keyring's boot id (the heartbeat). Throws {@link KeyringUnavailableError}. */
+  /**
+   * The keyring's boot id (the heartbeat). Throws {@link KeyringUnavailableError}, or {@link SwapUnsafeError} when the keyring
+   * found swap possible and locked itself (#1559): it has wiped its boot key and serves again only after a restart.
+   */
   boot(): Promise<string>;
   /** Seals a DEK under the boot key. */
   seal(workspaceId: string, keyVersion: number, dek: Buffer): Promise<{ bootId: string; sealed: string }>;
@@ -41,6 +44,9 @@ export function httpKeyring({ url, token, timeoutMs = 2_000 }: KeyringClientOpti
     try { json = await response.json() as Record<string, unknown>; } catch { json = null; }
     return { status: response.status, json };
   }
+  // The keyring answers 503 SWAP_UNSAFE once it has found that its memory could be paged to disk and wiped its boot key.
+  const refused = (status: number, json: Record<string, unknown> | null) =>
+    status === 503 && json?.code === 'SWAP_UNSAFE' ? new SwapUnsafeError() : new KeyringUnavailableError();
   const bootOf = (json: Record<string, unknown> | null) => {
     const bootId = json?.bootId;
     if (typeof bootId !== 'string' || !UUID.test(bootId)) throw new KeyringUnavailableError();
@@ -49,18 +55,19 @@ export function httpKeyring({ url, token, timeoutMs = 2_000 }: KeyringClientOpti
   return {
     async boot() {
       const { status, json } = await call('GET', '/v1/boot');
-      if (status !== 200) throw new KeyringUnavailableError();
+      if (status !== 200) throw refused(status, json);
       return bootOf(json);
     },
     async seal(workspaceId, keyVersion, dek) {
       const { status, json } = await call('POST', '/v1/seal', { workspaceId, keyVersion, dek: dek.toString('base64url') });
-      if (status !== 200 || typeof json?.sealed !== 'string') throw new KeyringUnavailableError();
+      if (status !== 200) throw refused(status, json);
+      if (typeof json?.sealed !== 'string') throw new KeyringUnavailableError();
       return { bootId: bootOf(json), sealed: json.sealed };
     },
     async open(workspaceId, keyVersion, bootId, sealed) {
       const { status, json } = await call('POST', '/v1/open', { workspaceId, keyVersion, bootId, sealed });
       if (status === 409) throw new StaleBootError();
-      if (status !== 200) throw new KeyringUnavailableError();
+      if (status !== 200) throw refused(status, json);
       const dek = fromB64url(json?.dek);
       if (dek.length !== 32) { dek.fill(0); throw new KeyringUnavailableError(); }
       return dek;

@@ -1113,7 +1113,11 @@ These functional rules from UI116-4 remain required:
     **Preview** as the same quiet link button. A file that is not valid UTF-8 adds "Shown as
     Windows-1252 text." A PDF that needs a password says "This PDF needs a password. Download it
     to open it."; one that cannot be read says "This file could not be shown. Download it to open
-    it." The sheet shows nothing else then.
+    it." The sheet shows nothing else then. A PDF Flux read and found no text in (a scan, an exported
+    map, slides saved as pictures; [C-69](../../product/decisions.md), [#1557](https://github.com/ColdPhase/flux/issues/1557))
+    shows its pages as usual and says "No text in this PDF (scan or picture)" on this line, so nobody
+    expects search to find its words. Its file row says the same in short in its line: "PDF · 1 page ·
+    no text · 2.1 MB".
   - **While it opens** the sheet shows the spinner with the file name (a PDF's until its first page
     is drawn); a person who lost access sees "You no longer have access to this file." and nothing
     else.

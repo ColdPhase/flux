@@ -135,7 +135,9 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
   // there, with budget still shown in Settings, so the line says so instead of "Couldn't finish" (v0.2.1 round 15 ai P2-1).
   if (run.endReason === 'budget') return state('failed', mine ? BUDGET_SHORT_WORDS : `Stopped: not enough of ${agent.owner.name}\u2019s AI budget for today was left`,
     { canTryAgain: mine, canTakeBack: mine, canStop: false, budget: true });
-  const reason = run.endReason === 'sign_in_again' ? `Sign in to ${vendor(run)} again` : run.status === 'denied' || run.status === 'revoked' ? 'No longer allowed here'
+  // #1556: the run never reached Flux's model gateway; the provider was not asked, and only whoever runs Flux can fix the path.
+  const reason = run.endReason === 'sign_in_again' ? `Sign in to ${vendor(run)} again` : run.endReason === 'gateway_unreachable' ? 'Flux couldn\'t reach its model gateway'
+    : run.status === 'denied' || run.status === 'revoked' ? 'No longer allowed here'
     : run.status === 'input_too_large' ? 'Too much to read at once' : 'Couldn\'t finish';
   return state('failed', reason, { canTryAgain: mine, canTakeBack: mine, canStop: false });
 }

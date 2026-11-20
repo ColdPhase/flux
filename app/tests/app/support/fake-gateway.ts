@@ -23,6 +23,8 @@ export interface GatewayRequest {
   tools: string[];
   /** The text of each tool result the request carries, in order. */
   results: string[];
+  /** How many pictures the tool results carry (C-69: a PDF's pages; #1217: a looked-at picture), Messages API only. */
+  images: number;
   system: string;
   /** The first user message's text: Flux's request on pi's standard input (the brief). */
   prompt: string;
@@ -72,9 +74,12 @@ export async function startFakeGateway(): Promise<FakeGateway> {
       const results = messagesApi
         ? messages.flatMap((message) => (Array.isArray(message.content) ? message.content as Record<string, unknown>[] : []).filter((block) => block.type === 'tool_result').map((block) => textOf(block.content)))
         : messages.filter((message) => message.role === 'tool').map((message) => textOf(message.content));
+      const images = messagesApi ? messages.flatMap((message) => (Array.isArray(message.content) ? message.content as Record<string, unknown>[] : [])
+        .filter((block) => block.type === 'tool_result' && Array.isArray(block.content))
+        .flatMap((block) => (block.content as Record<string, unknown>[]).filter((part) => part.type === 'image'))).length : 0;
       const system = messagesApi ? textOf(body.system) : textOf(messages.find((message) => message.role === 'system' || message.role === 'developer')?.content);
       requests.push({ path, authorization: request.headers.authorization ?? null, apiKey: (request.headers['x-api-key'] as string | undefined) ?? null,
-        model: String(body.model ?? ''), tools, results, system, prompt: textOf(messages.find((message) => message.role === 'user')?.content) });
+        model: String(body.model ?? ''), tools, results, images, system, prompt: textOf(messages.find((message) => message.role === 'user')?.content) });
       const step = steps.shift() ?? { text: 'Done.' };
       if ('status' in step) {
         response.writeHead(step.status, { 'content-type': 'application/json' });

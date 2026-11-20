@@ -1,7 +1,7 @@
 import { readSync, writeSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { extractDocx } from './docx.js';
-import { extractPdf } from './pdf.js';
+import { extractPdf, type PictureLimits } from './pdf.js';
 import { extractText, type Extracted } from './text.js';
 
 /**
@@ -12,7 +12,9 @@ import { extractText, type Extracted } from './text.js';
  *
  * argv: format (`pdf`, `docx` or `text`), the path of sandbox.node, and a JSON object of limits.
  */
-interface Limits { pages: number; chars: number; fileBytes: number; zipEntries: number; zipDirectoryBytes: number; xmlBytes: number; extraBytes: number; cpuSeconds: number; pdfjs: string; reads: string[] }
+interface Limits { pages: number; chars: number; fileBytes: number; zipEntries: number; zipDirectoryBytes: number; xmlBytes: number; extraBytes: number; cpuSeconds: number; pdfjs: string; reads: string[];
+  /** The pictures of a PDF without text (C-69). */
+  pictures: PictureLimits }
 
 // Whatever a library prints must not reach the answer.
 console.log = console.warn = console.info = console.debug = (...args: unknown[]) => console.error(...args);

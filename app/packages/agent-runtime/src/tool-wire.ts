@@ -256,7 +256,7 @@ export function chatMessages(system: string, user: string, turns: readonly Perso
       messages.push({ role: 'tool', tool_call_id: result.callId, content: result.isError ? `Error: ${result.content}` : result.content });
     // A tool message carries text only on this wire format: the pictures of a turn's calls (#1217) follow its tool messages as one user message.
     const pictures = turn.results.flatMap((result) => (result.isError ? [] : result.images ?? []));
-    if (pictures.length) messages.push({ role: 'user', content: [{ type: 'text', text: 'The pictures flux_view_image returned:' },
+    if (pictures.length) messages.push({ role: 'user', content: [{ type: 'text', text: 'The pictures your tools returned:' },
       ...pictures.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] });
   }
   // Flux's words of a run's last request (#1410), after the last tool messages.

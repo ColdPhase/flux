@@ -800,6 +800,14 @@ die_if_v01_refused() {
   die "Flux v0.2 does not upgrade this database (see the message above). Its data is untouched, but v0.1's API and worker are stopped now. To go on with v0.1, check out its v0.1.0 files again and run ./flux up; to start v0.2, install it fresh as the message says."
 }
 
+# A keyring that refused to start, or locked itself because its swap limit was reset while it ran (#1559, `systemctl daemon-reload`), says why
+# in its log: its last such line, when no "ready" came after it. Encrypted spaces stay locked then; everything else works, so this only warns.
+keyring_notice() {
+  keyring_line=$(compose_main logs --no-color --no-log-prefix keyring 2>/dev/null | grep -E '^Flux keyring (ready|refuses to start|locked itself)' | tail -n 1) || true
+  case "$keyring_line" in 'Flux keyring refuses'*|'Flux keyring locked'*) warn "$keyring_line" ;; esac
+  return 0
+}
+
 start_main() {
   check_runtime_switch
   if calls_on; then calls_settings; fi
@@ -817,13 +825,14 @@ start_main() {
     # host requirement, #860) stays red: this fails with its one message and the fix, and Flux is not reported healthy.
     compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress runtime-1 \
       || { refused=$(runtime_refusal); [ -z "$refused" ] || die "$refused"
-        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; die_if_v01_refused; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; die_if_v01_refused; keyring_notice; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
   else
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
-      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die_if_v01_refused; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die_if_v01_refused; keyring_notice; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
     stop_runtime
     remove_idle_runtime_networks
   fi
+  keyring_notice
   embeddings_on || remove_when_off embeddings "Local embeddings are off: removing their container (the downloaded model stays in its volume)."
   https_on || remove_when_off proxy "The bundled HTTPS proxy is off (the origin is not https, or FLUX_TRUSTED_PROXIES names your own proxy): removing it (its certificates stay in its volume)."
   calls_on || remove_when_off livekit "Calls are off: removing the media server."
@@ -1758,16 +1767,43 @@ upgrade_apply() {
   say "The backup from before the upgrade stays in $UPGRADE_ARCHIVE."
 }
 
+# `./flux upgrade --check` (#1552, C-68): the plan, and nothing changed. From which schema to which, the migrations by name, what they
+# remove (their DROP statements), and the size of the backup the upgrade will take with a rough time for it. The instance keeps running.
+# $1: the directory of the new version's migrations; $2: the schema it ends at.
+upgrade_plan() {
+  from_schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
+  say "From schema $from_schema to schema $2."
+  pending=$(ls "$1" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_[a-z0-9_]*\.sql$/\1 &/p' | while read -r number name; do
+    [ "$(printf '%s' "$number" | sed 's/^0*//')" -gt "$from_schema" ] && printf '%s\n' "$name"; done)
+  if [ -z "$pending" ]; then say "Migrations: none; the database is already at schema $from_schema."
+  else
+    say "Migrations ($(printf '%s\n' "$pending" | grep -c .)), each in its own transaction, in this order:"
+    for name in $pending; do
+      say "  ${name%.sql}"
+      # What it removes, as written in it: tables, columns, sequences, functions, triggers, types, views and indexes.
+      grep -oiE 'DROP +(TABLE|COLUMN|SEQUENCE|FUNCTION|TRIGGER|TYPE|VIEW|INDEX)( +IF +EXISTS)? +[A-Za-z0-9_."]+' "$1/$name" | sed 's/^/      removes: /' || true
+    done
+  fi
+  database=$(db_query 'SELECT pg_database_size(current_database())') || database=0
+  files=$(compose_main --profile ops run --rm --no-deps -T files-archive du -sk /data/files 2>/dev/null | awk '{ print $1 * 1024 }') || files=0
+  total=$(( ${database:-0} + ${files:-0} ))
+  # A rough figure: a backup dumps and compresses at about 20 MB/s on a small server; the migrations themselves are usually seconds.
+  minutes=$(( total / (20 * 1024 * 1024) / 60 + 1 ))
+  say "Backup first: database $(( ${database:-0} / 1024 / 1024 )) MB and files $(( ${files:-0} / 1024 / 1024 )) MB before compression, into $out_dir; about $minutes min with API and worker stopped."
+  say "Nothing was changed. Run ./flux upgrade${target:+ $target} to do it."
+}
+
 cmd_upgrade() {
-  pull=0 ASSUME_YES=0 out_dir=$BACKUP_DIR target='' bundle=''
+  pull=0 ASSUME_YES=0 out_dir=$BACKUP_DIR target='' bundle='' check=0
   while [ $# -gt 0 ]; do
     case "$1" in
+      --check) check=1; shift ;;
       --pull) pull=1; shift ;;
       --file) [ $# -ge 2 ] || die "upgrade: --file needs the flux.tar.gz you downloaded"; bundle=$2; shift 2 ;;
       -y|--yes) ASSUME_YES=1; shift ;;
       -o|--output) [ $# -ge 2 ] || die "upgrade: $1 needs a directory"; out_dir=$2; shift 2 ;;
       v[0-9]*) [ -z "$target" ] || die "upgrade: name one version"; target=$1; shift ;;
-      *) die "upgrade: unknown option $1 (use [VERSION], --file FILE, --output DIR, -y)" ;;
+      *) die "upgrade: unknown option $1 (use [VERSION], --file FILE, --output DIR, --check, -y)" ;;
     esac
   done
   if from_release; then
@@ -1782,8 +1818,25 @@ cmd_upgrade() {
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   # A release first gets the new release and checks it, while Flux keeps running: nothing is stopped for a download that fails.
+  if [ "$check" = 1 ] && [ "$pull" = 1 ]; then die "upgrade: --check shows the plan for the files in this folder; run git pull first, then ./flux upgrade --check."; fi
   if from_release; then release_fetch "$target" "$bundle"; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
+  if [ "$check" = 1 ]; then
+    if from_release; then
+      # The new release's migrations are in its application image: read from it, which is downloaded but not started.
+      mkdir -p "$UPGRADE_STAGE/plan"
+      new_image=$(release_value FLUX_RELEASE_IMAGE "$NEW_ROOT/docker/release.env")
+      docker run --rm --network none --entrypoint tar "$new_image" -C /app/packages/db -cf - migrations 2>/dev/null | tar -xf - -C "$UPGRADE_STAGE/plan" \
+        || refuse "upgrade: the migrations of Flux $NEW_VERSION could not be read from its image; nothing was changed."
+      say "Flux $NEW_VERSION (checked against its signed SHA256SUMS):"
+      upgrade_plan "$UPGRADE_STAGE/plan/migrations" "$NEW_SCHEMA"
+      rm -rf "$UPGRADE_STAGE"
+    else
+      say "This checkout's code (commit $(git_commit)):"
+      upgrade_plan "$MIGRATIONS_DIR" "$(code_schema)"
+    fi
+    return 0
+  fi
   from_schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
   # Before the confirmation, the backup and the stop of API and worker: v0.2 does not upgrade a v0.1 database (#1176).
   if v01_database; then rm -rf "$UPGRADE_STAGE"; v01_explain; warn "Your data is as it was: no backup was taken and API and worker were not stopped."; exit 1; fi
@@ -2165,6 +2218,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
                          put its files in place, migrate and check health; on failure print the
                          way back. A source checkout: ./flux upgrade [--pull] builds its own code.
+  ./flux upgrade --check [VERSION | --file flux.tar.gz]
+                         The plan, changing nothing: from which schema to which, the migrations by
+                         name, what they remove, and the size and time of the backup it will take.
   ./flux runtime status | release <email> | purge [-y]
                          Agent runtime (FLUX_AGENT_RUNTIME): show who is in it, release one person's
                          place (they are signed out and told), or sign out and delete every login.
