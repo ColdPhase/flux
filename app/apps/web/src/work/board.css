@@ -160,8 +160,10 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 .tb-search__l { display: none; }
 @media (max-width: 640px) {
   .tb-add.ui-btn { display: none; }
-  .tb-bar { flex-wrap: nowrap; padding-top: 10px; }
-  .tb-search { flex: 1 1 0; margin-left: 2px; }
+  /* One row; only where Board | List and Mine leave the search less than its word (large text) does the search take the line below, whole
+     (Board | List's options are never narrower than their labels, #1561, so the row cannot squeeze them instead). */
+  .tb-bar { padding-top: 10px; }
+  .tb-search { flex: 1 1 0; margin-left: 2px; min-width: 4.5rem; }
 }
 /* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc".
    Board | List keeps 56 px options (a pill, never a circle, #1561), so Mine and the gaps give up the room it took (release audit P3 20 still holds). */
