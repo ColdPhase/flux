@@ -1,7 +1,7 @@
 /* Pinned messages (C-74, #1615). The line above a pinned message's bubble: the pin glyph and who pinned it, quiet, at meta size. */
 .pin-line { display: flex; align-items: center; gap: 5px; margin: 2px 0 4px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.3; }
 .pin-line > svg { flex: none; }
-.is-mine > .pin-line, .is-mine .dm-msg__main > .pin-line { align-self: flex-end; }
+.is-mine > .pin-line, .is-mine .dm-msg__main > .pin-line, .dm-msg__main.is-mine > .pin-line { align-self: flex-end; justify-content: flex-end; }
 
 /* The Pinned panel and the phone's sheet (C-74): rows of the author's face, two lines of words and a quiet meta line; Unpin on hover or focus. */
 .pins { display: flex; flex-direction: column; gap: 4px; min-height: 100%; padding: 0 8px 8px; }

@@ -10,5 +10,5 @@ export function PinnedLine({ messageId, part }: { messageId: string; part?: PinP
   const pin = usePins().pinOf(messageId, part);
   const { me } = useShellData();
   if (!pin) return null;
-  return <p className="pin-line" data-pinned-line=""><Icon name="pin" size={12} />Pinned by {youLabel(pin.pinnedBy.name, pin.pinnedBy.id === me.user.id)}</p>;
+  return <div className="pin-line" data-pinned-line=""><Icon name="pin" size={12} />Pinned by {youLabel(pin.pinnedBy.name, pin.pinnedBy.id === me.user.id)}</div>;
 }
