@@ -13,6 +13,8 @@
 #
 # Environment: FLUX_BACKUP_CHECK_PORT (default 26500; +1 and +2 are taken too), FLUX_BACKUP_CHECK_PROJECT (default fluxbkc<pid>),
 # FLUX_BACKUP_CHECK_OVERRIDE=FILE  copied to the copy's docker/compose.override.yaml (an operator override this host needs).
+# FLUX_BACKUP_CHECK_TREE=DIR  an empty folder for the copy's Flux tree (default <work directory>/flux); its images are built from it, so on an
+#                             SELinux host it belongs where the repository's checkouts are, not under a home folder (#1606).
 # Needs docker with Compose, python3, git and the release's tag in this repository.
 set -euo pipefail
 archive=$(realpath "${1:?usage: check_backup_upgrade.sh <backup archive> <work directory>}")
@@ -24,7 +26,10 @@ fail() { echo "check_backup_upgrade: $*" >&2; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 mkdir -p "$work"; chmod 700 "$work"
 work=$(cd "$work" && pwd -P)
-tree="$work/flux"
+tree=${FLUX_BACKUP_CHECK_TREE:-$work/flux}
+case "$tree" in "$root"/*) fail "FLUX_BACKUP_CHECK_TREE must be outside this checkout: its files would become part of the candidate" ;; esac
+mkdir -p "$tree"; tree=$(cd "$tree" && pwd -P)
+[ -z "$(ls -A "$tree")" ] || fail "FLUX_BACKUP_CHECK_TREE ($tree) is not empty"
 logs="$work/logs"
 mkdir -p "$logs"
 export XDG_STATE_HOME="$work/state" FLUX_PROJECT="$project" FLUX_PORT="$port" FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2))
@@ -45,7 +50,6 @@ git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null || fail "the ba
 echo "backup: schema $schema, written by Flux $version; the copy is project $project on port $port; candidate $(git -C "$root" rev-parse --short HEAD)"
 
 step "1. Flux $tag in a throwaway project, with fresh secrets and no push or e-mail"
-mkdir -p "$tree"
 git -C "$root" archive "$tag" | tar -xf - -C "$tree"
 [ -z "${FLUX_BACKUP_CHECK_OVERRIDE:-}" ] || cp "$FLUX_BACKUP_CHECK_OVERRIDE" "$tree/docker/compose.override.yaml"
 (cd "$tree" && ./flux up > "$logs/up.log" 2>&1) || { tail -n 20 "$logs/up.log"; fail "./flux up of $tag failed"; }
