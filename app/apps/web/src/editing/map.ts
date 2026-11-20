@@ -39,6 +39,8 @@ export class SharedMap {
   private connection: EditingConnection | null = null;
   private gesture: Gesture | null = null;
   private completedGesture: Gesture | null = null;
+  /** The last gesture given up unfinished: the next lease request ends its lease on the server first, as its socket cancel may still be on the way. */
+  private abandoned: string | null = null;
   private stopped = false;
   private abort = new AbortController();
   private timer: number;
@@ -193,8 +195,9 @@ export class SharedMap {
     if (this.gesture) this.cancel();
     if (!this.head?.canWrite || this.status !== 'live' || !thoughts.length || thoughts.length > 200) return false;
     const id = crypto.randomUUID();
+    const replaces = this.abandoned ?? undefined; this.abandoned = null;
     const gesture: Gesture = { id, base: new Map(thoughts.map((thought) => [thought.id, thought.version])), active: true, sequence: 0, latest: null, lastPositions: null, serverLease: null, lastPreviewAt: 0,
-      lease: request<LiveMapLease>(liveMapGesturePath(this.id), { method: 'POST', body: { gestureId: id, thoughts: thoughts.map((thought) => ({ id: thought.id, expectedVersion: thought.version })) }, headers: { 'idempotency-key': id }, signal: this.abort.signal }) };
+      lease: request<LiveMapLease>(liveMapGesturePath(this.id), { method: 'POST', body: { gestureId: id, thoughts: thoughts.map((thought) => ({ id: thought.id, expectedVersion: thought.version })), replaces }, headers: { 'idempotency-key': id }, signal: this.abort.signal }) };
     this.gesture = gesture;
     this.changed();
     void gesture.lease.then((lease) => {
@@ -202,7 +205,10 @@ export class SharedMap {
       if (this.stopped || !gesture.active) { this.connection?.send({ type: 'map-cancel', generation: lease.generation, gestureId: id, leaseId: lease.leaseId }); return; }
       if (lease.generation !== this.head?.generation || lease.gestureId !== id) { gesture.active = false; return; }
       this.schedulePreview();
-    }, (error: unknown) => { this.keepMovement(gesture); gesture.active = false; this.problem = error instanceof Error ? error.message : 'Someone else is moving this thought.'; this.changed(); });
+    }, (error: unknown) => {
+      // A drag already given up says nothing: a refusal of its late request is about a gesture nobody is making any more.
+      if (this.gesture !== gesture && this.completedGesture !== gesture) return;
+      this.keepMovement(gesture); gesture.active = false; this.problem = error instanceof Error ? error.message : 'Someone else is moving this thought.'; this.changed(); });
     return true;
   }
   preview(positions: LiveMapPosition[]) {
@@ -243,6 +249,7 @@ export class SharedMap {
     if (keep && gesture.active) this.keepMovement(gesture);
     gesture.active = false;
     // An authoritative clear or expiry retires locally; an explicit cancel still tells the server.
+    if (notify) this.abandoned = gesture.id;
     if (notify && gesture.serverLease) this.connection?.send({ type: 'map-cancel', generation: gesture.serverLease.generation, gestureId: gesture.id, leaseId: gesture.serverLease.leaseId });
   }
   destroy() {

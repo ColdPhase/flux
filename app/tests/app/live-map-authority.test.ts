@@ -496,3 +496,27 @@ test('a cancel of a lease that is gone is done, never an error the person sees; 
     assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_gestures WHERE lease_id=$1',[live.leaseId])).rows[0].n,1,'the owner\'s lease stays');
   } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
+
+test('a new drag ends the same session\'s abandoned lease in order, whatever its socket cancel is doing; never another person\'s (#1588)', {timeout:20000},async()=>{
+  const f=await scene(2);const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
+  const [a,b]=f.ids as [string,string];
+  try {
+    const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const connection=randomUUID();
+    const leases=async(id:string)=>(await pool.query('SELECT count(*)::int n FROM map_live_gestures WHERE lease_id=$1',[id])).rows[0].n;
+    // A drag that moved (its lease bound to the socket) and was given up; its cancel has not arrived yet.
+    const old=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:a,expectedVersion:1}]});
+    const move={generation:head.generation,gestureId:old.gestureId,leaseId:old.leaseId,sequence:1,positions:[{id:a,x:60,y:40,width:184,height:72}]};
+    await authority.move(f.ownerSession,f.sketch.id,connection,move,Buffer.byteLength(JSON.stringify(move)));
+    await assert.rejects(authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:a,expectedVersion:1}]}),refused('EDITING_GESTURE_CONFLICT'),'without naming it, the old lease still holds the thought');
+    const next=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:a,expectedVersion:1}],replaces:old.gestureId});
+    assert.equal(await leases(old.leaseId),0,'the abandoned lease ended');assert.equal(await leases(next.leaseId),1);
+    // Its late cancel is then a no-op, and an exact retry of the new request returns the same lease.
+    const cancel={generation:head.generation,gestureId:old.gestureId,leaseId:old.leaseId};
+    await authority.cancel(f.ownerSession,f.sketch.id,connection,cancel,Buffer.byteLength(JSON.stringify(cancel)));
+    assert.equal((await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:next.gestureId,thoughts:[{id:a,expectedVersion:1}],replaces:old.gestureId})).leaseId,next.leaseId);
+    // Another person cannot end it by naming it.
+    const theirs=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:b,expectedVersion:1}]});
+    await assert.rejects(authority.acquire(f.peerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:b,expectedVersion:1}],replaces:theirs.gestureId}),refused('EDITING_GESTURE_CONFLICT'));
+    assert.equal(await leases(theirs.leaseId),1,'the owner\'s lease stays');
+  } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
+});

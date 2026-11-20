@@ -3,6 +3,7 @@ at once lands in the draft, over repeated presses, with a slow release and with 
 from __future__ import annotations
 
 import os
+import re
 import unittest
 import uuid
 
@@ -43,7 +44,7 @@ class MapDotDraftFocus(unittest.TestCase):
         assert response.status == status, response.text()
         return response.json() if response.text() else None
 
-    def scene(self):
+    def scene(self, before=None):
         context = self.browser.new_context(service_workers='block', base_url=ORIGIN, storage_state=self.state, viewport=COMPUTER)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -54,6 +55,8 @@ class MapDotDraftFocus(unittest.TestCase):
         sketch = self.api(context, 'POST', f'/api/v1/workspaces/{self.workspace}/sketches', {'title': 'Community garden sensors', 'scope': 'project', 'projectId': project}, 201)['id']
         for text, x, y in ((A, 40, 40), (B, 420, 40), (C, 40, 260)):
             self.api(context, 'POST', f'/api/v1/sketches/{sketch}/thoughts', {'text': text, 'x': x, 'y': y}, 201)
+        if before:
+            before(page)
         page.goto(f'/projects/{project}/map/{sketch}')
         expect(page.locator('.sk-node')).to_have_count(3)
         return page
@@ -190,6 +193,44 @@ class MapDotDraftFocus(unittest.TestCase):
                                arg=[node.get_attribute('data-id'), before['y']])
         expect(page.get_by_text('Another collaborator is moving', exact=False)).to_have_count(0)
         self.assertEqual(len(leases), 1, 'the move took one lease')
+
+    def test_06_a_move_given_up_with_escape_and_dragged_again_at_once_is_not_refused(self):
+        """#1588 review: Escape mid-move cancels its lease over the socket, and the next drag asks for a new one over HTTP. The socket cancel
+        is held back here (as a slow socket would), so the old lease is still on the server when the new request arrives: the new request
+        names the gesture it replaces, and the server ends that lease first instead of refusing the drag as another collaborator's."""
+        def hold_cancels(socket):
+            server = socket.connect_to_server()
+            socket.on_message(lambda message: None if isinstance(message, str) and '"map-cancel"' in message else server.send(message))
+        page = self.scene(lambda page: page.route_web_socket(re.compile(r'.*/api/v1/editing.*'), hold_cancels))
+        leases = []
+        page.on('response', lambda response: leases.append(response.status) if response.request.method == 'POST' and response.url.endswith('/live/gestures') else None)
+        node = page.locator('.sk-node', has_text=B)
+        node_id = node.get_attribute('data-id')
+        before = node.bounding_box()
+        x, y = before['x'] + before['width'] / 2, before['y'] + before['height'] / 2
+        # A real move (its lease bound to the socket by the previews), given up with Escape while the button is still down.
+        page.mouse.move(x, y)
+        page.mouse.down()
+        with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith('/live/gestures')):
+            page.mouse.move(x + 40, y + 60, steps=8)
+        page.mouse.move(x + 50, y + 70, steps=4)
+        page.wait_for_timeout(150)
+        node.press('Escape')
+        page.mouse.up()
+        page.wait_for_function("([id, top]) => Math.abs(document.querySelector(`.sk-node[data-id=\"${id}\"]`).getBoundingClientRect().top - top) < 2", arg=[node_id, before['y']])
+        # Dragged again at once: it moves, and it is saved.
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + 60, y + 80, steps=8)
+        page.mouse.up()
+        page.wait_for_function("([id, top]) => document.querySelector(`.sk-node[data-id=\"${id}\"]`).getBoundingClientRect().top > top + 40", arg=[node_id, before['y']])
+        expect(page.get_by_text('Another collaborator is moving', exact=False)).to_have_count(0)
+        self.assertEqual(len(leases), 2, 'one lease per drag')
+        self.assertTrue(all(status < 300 for status in leases), f'both drags got their lease; the second ended the given-up first one on the server: {leases}')
+        page.reload()
+        moved = page.locator(f'.sk-node[data-id="{node_id}"]')
+        expect(moved).to_be_visible()
+        self.assertGreater(moved.bounding_box()['y'], before['y'] + 40, 'the second drag was saved')
 
 
 if __name__ == '__main__':
