@@ -200,6 +200,33 @@ def build_pdf(pages: list[dict], dests: dict | None = None, catalog: bytes = b""
     return out + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (size, xref)
 
 
+def scan_pdf() -> bytes:
+    """C-69 (#1557): a one-page PDF that is a picture only (a scan), no font and no text: a grey page with a dark band."""
+    import zlib
+    width, height = 600, 400
+    raw = bytes(40 if 150 <= y < 250 else 235 for y in range(height) for _ in range(width))
+    image = zlib.compress(raw)
+    content = b"q 300 0 0 200 0 0 cm /Im1 Do Q"
+    objects = {
+        1: b"<< /Type /Catalog /Pages 2 0 R >>",
+        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        3: b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>",
+        4: b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        5: b"<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n"
+           % (width, height, len(image)) + image + b"\nendstream",
+    }
+    out, offsets = b"%PDF-1.7\n", {}
+    for number in sorted(objects):
+        offsets[number] = len(out)
+        out += b"%d 0 obj\n" % number + objects[number] + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % offsets[n] for n in range(1, 6))
+    return out + b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
+
+
+SCAN_PDF = scan_pdf()
+
+
 def link(rect: str, action: bytes | None = None, dest=None):
     """A link annotation over `rect` (x1 y1 x2 y2, in points) with an action or a destination."""
     def make(pages: list[int]) -> bytes:
@@ -324,7 +351,7 @@ class FilePreview(unittest.TestCase):
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
                                 ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", PLACEMENT),
                                 ("biglink", "biglink.pdf", BIG_LINK), ("hostile-pdf", "hostile.pdf", HOSTILE_PDF), ("goto", "goto.pdf", GOTO_PDF),
-                                ("long-pdf", "long.pdf", LONG_PDF), ("not-pdf", "html-named.pdf", NOT_A_PDF),
+                                ("long-pdf", "long.pdf", LONG_PDF), ("not-pdf", "html-named.pdf", NOT_A_PDF), ("scan", "OH-mapa-pomyslow.pdf", SCAN_PDF),
                                 ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
                                 ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE),
                                 ("one-line", "one-line.md", ONE_LINE_MD)):
@@ -690,6 +717,28 @@ class FilePreview(unittest.TestCase):
                 self.assertEqual(outside, [], "nothing left the browser")
                 self.assertEqual((page.title(), page.url, events["pages"], events["dialogs"]), (title, url, [], []))
                 self.shot(page, f"file-preview-pdf-{'390' if phone else '1440'}-light")
+
+    def test_09z_a_pdf_without_text_says_so_in_its_row_and_its_preview(self) -> None:
+        # C-69 (#1557): the worker reads the file after the message is sent; once it found no text, the file says so.
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["jonas"], service_workers="block")
+        self.addCleanup(context.close)
+        deadline = time.time() + 60
+        while True:
+            thread = context.request.get(f"/api/v1/conversations/{self.ids['conversation:scan']}").json()
+            files = [f for m in thread.get("messages", []) for f in m.get("files", []) if f["id"] == self.ids["file:scan"]]
+            if files and files[0].get("noText"):
+                break
+            self.assertLess(time.time(), deadline, f"the worker did not mark the scan: {files}")
+            time.sleep(0.5)
+        for phone, dark in ((False, False), (False, True), (True, False), (True, True)):
+            with self.subTest(phone=phone, dark=dark):
+                page, _, _ = self.open("scan", phone=phone, dark=dark)
+                message = page.locator(f"#message-{self.ids['scan']}")
+                expect(message.locator(".file-row__text small")).to_have_text(re.compile(r"^PDF · 1 page · no text · "))
+                self.shot(page, f"file-no-text-row-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                dialog, _, _ = self.pdf_viewer(page, "scan", "OH-mapa-pomyslow.pdf")
+                expect(dialog.locator(".file-viewer__note")).to_contain_text("No text in this PDF (scan or picture)")
+                self.shot(page, f"file-no-text-preview-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
 
     def test_09a_the_audits_page_sized_link_never_takes_the_flux_tab(self) -> None:
         self.assert_page_sized_link_stays_in_flux(self.browser, native_viewer=False)

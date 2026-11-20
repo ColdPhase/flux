@@ -14,6 +14,11 @@ export interface FileTextJob { fileId: string; workspaceId: string; name: string
 /** One part of a file's text, as the chunker made it. */
 export interface FileTextPart { part: number; page: number | null; text: string }
 
+/** The picture of one page of a PDF without text (C-69, #1557): a PNG within the bounds of migration 0103. */
+export interface FilePagePicture { page: number; width: number; height: number; png: Buffer }
+/** What the worker's read found besides text: a PDF without text, and its pages' pictures. */
+export interface FileTextRead { pictures: readonly FilePagePicture[]; noText: boolean }
+
 /** What a person or an agent may be told about the text of a file. */
 export interface FileTextLocated {
   fileId: string; workspaceId: string; projectId: string; conversationId: string; messageId: string; name: string; size: number;
@@ -21,6 +26,8 @@ export interface FileTextLocated {
   pages: number | null;
   /** Whether the worker has yet to read it (or is about to try again). */
   pending: boolean;
+  /** C-69: a PDF the worker read and found no text in; its pages' pictures are `pictures`. */
+  noText: boolean;
 }
 
 export function fileTextRows(db: Database) {
@@ -72,7 +79,14 @@ export function fileTextRows(db: Database) {
      * Replaces the text rows of a file with these parts and ends its job, in one transaction that holds the file's row (share): a file deleted
      * in the meantime has no row to lock, and one being deleted waits for this write. False when the file is gone or was never indexable.
      */
-    async store(fileId: string, parts: readonly FileTextPart[]): Promise<boolean> {
+    async store(fileId: string, parts: readonly FileTextPart[], read: FileTextRead = { pictures: [], noText: false }): Promise<boolean> {
+      // A PDF without text (C-69, #1557): its mark and its pages' pictures, replaced with its text in the same transaction.
+      const keepRead = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+        await tx.execute(sql`UPDATE project_files SET no_text = ${read.noText} WHERE id = ${fileId}::uuid AND no_text IS DISTINCT FROM ${read.noText}`);
+        await tx.execute(sql`DELETE FROM file_page_pictures WHERE file_id = ${fileId}::uuid`);
+        for (const picture of read.pictures) await tx.execute(sql`INSERT INTO file_page_pictures (file_id, page, width, height, png)
+          VALUES (${fileId}::uuid, ${picture.page}, ${picture.width}, ${picture.height}, ${picture.png})`);
+      };
       return db.transaction(async (tx) => {
         // A file of an agent's chat (#1438, C-64): its text is kept for that chat's runs only, never as a search row.
         const chat = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.agent_id::text AS agent_id FROM project_files f
@@ -86,6 +100,7 @@ export function fileTextRows(db: Database) {
               SELECT ${fileId}::uuid, (p->>'part')::int, ${chat.workspace_id}::uuid, ${chat.agent_id}::uuid, (p->>'page')::int, p->>'text'
               FROM jsonb_array_elements(${payload}::jsonb) p`);
           }
+          await keepRead(tx);
           await tx.execute(sql`DELETE FROM file_text_jobs WHERE file_id = ${fileId}::uuid`);
           return true;
         }
@@ -106,6 +121,7 @@ export function fileTextRows(db: Database) {
             FROM jsonb_array_elements(${payload}::jsonb) p
             ON CONFLICT (doc_key) DO UPDATE SET page = EXCLUDED.page, title = EXCLUDED.title, body = EXCLUDED.body, at = EXCLUDED.at`);
         }
+        await keepRead(tx);
         await tx.execute(sql`DELETE FROM file_text_jobs WHERE file_id = ${fileId}::uuid`);
         return true;
       });
@@ -114,13 +130,13 @@ export function fileTextRows(db: Database) {
     /** A file of a space, as an agent or the preview asks for it: null when it is not a published file of a plain space in this company. */
     async locate(workspaceId: string, fileId: string): Promise<FileTextLocated | null> {
       const row = (await db.execute(sql`SELECT f.id::text AS file_id, f.workspace_id::text AS workspace_id, f.project_id::text AS project_id, m.conversation_id::text AS conversation_id,
-            m.id::text AS message_id, f.name, f.size, f.page_count AS pages, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS pending
+            m.id::text AS message_id, f.name, f.size, f.page_count AS pages, f.no_text, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS pending
           FROM project_files f JOIN project_messages m ON m.id = f.message_id
           WHERE f.id = ${fileId}::uuid AND f.workspace_id = ${workspaceId}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND f.size IS NOT NULL
             AND NOT workspace_sealed(f.workspace_id)`)).rows[0] as
-        { file_id: string; workspace_id: string; project_id: string; conversation_id: string; message_id: string; name: string; size: number; pages: number | null; pending: boolean } | undefined;
+        { file_id: string; workspace_id: string; project_id: string; conversation_id: string; message_id: string; name: string; size: number; pages: number | null; pending: boolean; no_text: boolean } | undefined;
       return row ? { fileId: row.file_id, workspaceId: row.workspace_id, projectId: row.project_id, conversationId: row.conversation_id, messageId: row.message_id,
-        name: row.name, size: row.size, pages: row.pages, pending: row.pending } : null;
+        name: row.name, size: row.size, pages: row.pages, pending: row.pending, noText: row.no_text } : null;
     },
 
     /**
@@ -129,19 +145,27 @@ export function fileTextRows(db: Database) {
      */
     async locateChat(workspaceId: string, fileId: string): Promise<(Omit<FileTextLocated, 'projectId' | 'conversationId' | 'messageId'> & { agentId: string; runId: string; uploaderId: string | null }) | null> {
       const row = (await db.execute(sql`SELECT f.id::text AS file_id, f.workspace_id::text AS workspace_id, f.agent_id::text AS agent_id, f.run_id::text AS run_id,
-            f.uploader_id, f.name, f.size, f.page_count AS pages, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS pending
+            f.uploader_id, f.name, f.size, f.page_count AS pages, f.no_text, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS pending
           FROM project_files f
           WHERE f.id = ${fileId}::uuid AND f.workspace_id = ${workspaceId}::uuid AND f.agent_id IS NOT NULL AND f.run_id IS NOT NULL AND f.state = 'ready'
             AND f.published_at IS NOT NULL AND f.size IS NOT NULL AND NOT workspace_sealed(f.workspace_id)`)).rows[0] as
-        { file_id: string; workspace_id: string; agent_id: string; run_id: string; uploader_id: string | null; name: string; size: number; pages: number | null; pending: boolean } | undefined;
+        { file_id: string; workspace_id: string; agent_id: string; run_id: string; uploader_id: string | null; name: string; size: number; pages: number | null; pending: boolean; no_text: boolean } | undefined;
       return row ? { fileId: row.file_id, workspaceId: row.workspace_id, agentId: row.agent_id, runId: row.run_id, uploaderId: row.uploader_id, name: row.name, size: row.size,
-        pages: row.pages, pending: row.pending } : null;
+        pages: row.pages, pending: row.pending, noText: row.no_text } : null;
     },
 
     /** The text of a chat's file (C-64), the parts joined in order, and how many there are. */
     async chatText(fileId: string): Promise<{ text: string; parts: number }> {
       return (await db.execute(sql`SELECT coalesce(string_agg(body, '' ORDER BY part), '') AS text, count(*)::int AS parts
         FROM agent_chat_file_text WHERE file_id = ${fileId}::uuid`)).rows[0] as { text: string; parts: number };
+    },
+
+    /** The pages' pictures of a PDF without text (C-69), from page `from` on, at most `limit` of them, and how many it has in all. */
+    async pictures(fileId: string, from: number, limit: number): Promise<{ total: number; pictures: FilePagePicture[] }> {
+      const total = (await db.execute(sql`SELECT count(*)::int AS n FROM file_page_pictures WHERE file_id = ${fileId}::uuid`)).rows[0] as { n: number };
+      const rows = (await db.execute(sql`SELECT page, width, height, png FROM file_page_pictures WHERE file_id = ${fileId}::uuid AND page >= ${from}
+        ORDER BY page LIMIT ${limit}`)).rows as unknown as FilePagePicture[];
+      return { total: total.n, pictures: rows };
     },
 
     /** The text of a file, the parts joined in order, and how many there are. Empty text and 0 parts when none was read. */

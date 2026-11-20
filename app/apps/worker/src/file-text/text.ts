@@ -5,7 +5,10 @@ import { cleanText } from './clean.js';
  * NUL bytes that is not UTF-16 is binary and is not read. The text is cut to `maxChars` before it is cleaned, so a file of one huge line costs no more
  * than a short one.
  */
-export type Extracted = { ok: true; segments: { text: string; page?: number }[]; pages?: number } | { ok: false; reason: 'not-text' | 'empty' | 'encrypted' | 'unreadable' | 'too-large' };
+export type Extracted = { ok: true; segments: { text: string; page?: number }[]; pages?: number }
+  | { ok: false; reason: 'not-text' | 'empty' | 'encrypted' | 'unreadable' | 'too-large'; pictures?: PagePicture[] };
+/** The picture of one page of a PDF without text (C-69, #1557): a PNG, as base64 on the way out of the child. */
+export interface PagePicture { page: number; width: number; height: number; png: string }
 
 export function extractText(bytes: Uint8Array, maxChars: number): Extracted {
   let encoding: 'utf-8' | 'utf-16le' | 'utf-16be' = 'utf-8';
