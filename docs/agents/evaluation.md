@@ -208,8 +208,16 @@ unchanged; `docker/compose.ai-real-model.test.yaml` lists every other difference
 shim answers Claude Code's `WebSearch` sub-request and Codex's `web.run` (`alpha/search`, its `open` too) from a Polish fixture corpus
 on linkmock (`app/tests/app/support/web-corpus-pl.ts`, one page with a prompt injection), in the vendor's result format.
 
-Eight scenarios run on each engine, Claude Code as Ada and Codex as Bogdan, on a seeded space with Polish threads
-(`app/tests/app/ai-real-model.check.ts`): `/ai` summarises and makes a task (private, Show everyone, the approval rule); a task given
+The third engine is **pi**, which runs every API-key agent (RT-1, #1441): Celina (and Dariusz, whom her agent can ask) saves an API key in
+Connect AI as a person would, an OpenAI-compatible endpoint at a private address the operator allows (`FLUX_AI_PRIVATE_TARGETS`), and
+her agent's requests go from pi through Flux's model gateway to that endpoint: providermock's pass-through (`/real/openai/v1`), which
+hands them to the same local model unchanged and only records them. The run uses production personal runs (`FLUX_PERSONAL_RUNS=on`,
+`pi` in `FLUX_AGENT_RUNTIME`). Such an endpoint has no web search and is not known to see pictures (CA-6, AG-8): on pi, `search` and
+`vision` check that the agent says so instead of inventing results or sources, and `picture` (found by a search) is not run.
+
+The scenarios run on each engine, Claude Code as Ada, Codex as Bogdan and pi as Celina, on a seeded space with Polish threads
+(`app/tests/app/ai-real-model.check.ts`): thoughts and links added to a space map that people have open, with Ask me first off (at
+once, Undo) and on (each waits, Approve) (#1555); `/ai` summarises and makes a task (private, Show everyone, the approval rule); a task given
 to the agent ends Done or handed back by its Ask me first switch; a page a person linked is read and cited; Polish law with no link is
 searched, read and cited; a prompt-injection page (C-30's address check, approvals, the answer's addresses); a schedule from a
 sentence in the private chat, turned on and run now; one agent asks another with `<ask>`; nobody else prompts an agent. Checks are on
@@ -217,12 +225,16 @@ Flux's records and plain properties of an answer (its language, a fact, a source
 every attempt; an `outcome` check on one of `FLUX_AI_ATTEMPTS` (default 2). Each attempt's Flux state, model transcript and timings go
 to `FLUX_AI_EVIDENCE_DIR` (default `.worktrees/ai-real-model-evidence/<time>` of the main checkout).
 
-The model is configurable. By default it is the `strata` container on Hubert's host (llama.cpp-based, ROCm on the RX 7900 XTX;
+The model is configurable (`FLUX_AI_ENGINES`, default `claude codex pi`, picks the engines). By default it is the `strata` container on Hubert's host (llama.cpp-based, ROCm on the RX 7900 XTX;
 image `ghcr.io/niko1221/strata:0.2.9-rocm-gfx110x@sha256:dc06cc82…`, model `qwen3.8-flash-next-iq3_s`, shards sha256 `4c1eb2ce…` and
 `316b46f3…`, its saved preset's 131,072-token context, read 2026-11-09): the script starts it only with 52 GiB of RAM available
 (`FLUX_AI_MODEL_MIN_AVAILABLE_GB`; its experts take a fixed 46.8 GiB of pinned host RAM, which context and `PARALLEL` do not change),
 attaches it to the stack's network, reads its local key without printing it, and stops it again afterwards. `FLUX_AI_MODEL_URL` (and
-`FLUX_AI_MODEL_KEY`) points at any other Chat Completions server the stack can reach. Run it alone; a local model is slow.
+`FLUX_AI_MODEL_KEY`) points at any other Chat Completions server the stack can reach; since 2026-11-20 Hubert's host also serves
+the container flux-qwen (Qwen3.8-27B UD-Q4_K_XL on llama.cpp, Vulkan, 64k context): `FLUX_AI_MODEL_CONTAINER=flux-qwen FLUX_AI_MODEL_KEY_FILE=/run/api-key`,
+attached and detached but never stopped. llama.cpp names its model by its file path, which Flux does not accept as a model id
+([#1593](https://github.com/ColdPhase/flux/issues/1593)), so the pi people type `FLUX_AI_PI_MODEL` (default `qwen-local`) as a person would.
+Run it alone; a local model is slow.
 
 Tell a Flux finding from a small model's weakness before reporting a failure: a confusing brief, tool description or error text, a
 missing record or a rule that did not hold is Flux's; a wrong tool choice or a weak answer with a clear brief is the model's. A

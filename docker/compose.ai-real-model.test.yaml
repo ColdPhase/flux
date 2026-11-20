@@ -8,6 +8,8 @@
 #   Sign-in, refresh, usage and every other vendor endpoint stay the mock's. Searches are answered from linkmock's Polish corpus.
 # - evil.example, the host of the prompt-injection page's instruction, connects to linkmock, so any read that reaches it is recorded
 #   there (`/__hits`); every other rule of a read is the production rule.
+# - The pi engine's API key names providermock's pass-through (`/real/openai/v1`) as its OpenAI-compatible endpoint, which compose.test.yaml's
+#   FLUX_AI_PRIVATE_TARGETS already allows: it hands what Flux's model gateway sends to the real model unchanged, and records it.
 # - The check's runner writes its evidence to FLUX_AI_EVIDENCE_DIR on the host.
 services:
   providermock:
@@ -28,5 +30,6 @@ services:
     environment:
       FLUX_AI_EVIDENCE: /evidence
       FLUX_AI_ATTEMPTS: ${FLUX_AI_ATTEMPTS:-2}
+      FLUX_AI_PI_MODEL: ${FLUX_AI_PI_MODEL:-}
     volumes:
       - ${FLUX_AI_EVIDENCE_DIR:?Set by scripts/check_ai_real_model.sh}:/evidence:z

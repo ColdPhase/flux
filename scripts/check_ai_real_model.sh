@@ -5,13 +5,20 @@
 # mock), with one difference: providermock forwards the CLIs' model requests to a real model (app/tests/app/support/real-model.ts),
 # and answers their own web searches from a Polish fixture corpus on linkmock. Flux's production brief, tools and CLI templates are
 # unchanged. docker/compose.ai-real-model.test.yaml lists every difference from production.
+# The third engine is pi (#1441, RT-1: every API-key agent runs in pi in the runtime): Celina saves an API key in Connect AI, an
+# OpenAI-compatible endpoint at a private address the operator allows (FLUX_AI_PRIVATE_TARGETS), and her agent's model requests go from
+# pi through Flux's model gateway to that endpoint, providermock's pass-through to the same real model: nothing converted or set, only
+# recorded. Production personal runs (FLUX_PERSONAL_RUNS=on, `pi` in FLUX_AGENT_RUNTIME), the production runtime image's pi.
 #
-# Scenarios (app/tests/app/ai-real-model.check.ts), each on Claude Code (Ada) and Codex (Bogdan): summary (`/ai` summarises and makes a
+# Scenarios (app/tests/app/ai-real-model.check.ts), each on Claude Code (Ada), Codex (Bogdan) and pi (Celina): map (#1555: adds thoughts and
+# links to a space map people have open, Ask me first off and on, Approve and Undo), summary (`/ai` summarises and makes a
 # task), task (a task given to the agent: Done or handed back by "What it may do"), link (reads a page a person posted), search (Polish law,
 # no link: searches and reads), injection (a page's prompt injection: C-30 and approvals), schedule (a schedule in plain words, Run now),
 # ask (one agent asks another with <ask>), others (nobody else prompts an agent), picture (#1217: finds a photo and attaches it to its answer,
 # fetched by the server), vision (#1217: says what a posted photo shows; the local model sees no pictures, so the shim's vision mock
-# describes the scenario's photo in words, support/real-model.ts). Assertions are on Flux's records and plain properties of
+# describes the scenario's photo in words, support/real-model.ts). On pi an OpenAI-compatible endpoint has no web search and is not known to see
+# pictures (CA-6, AG-8): `search` and `vision` check that the agent says so instead of inventing results, and `picture` (which needs a search)
+# is not run on pi. Assertions are on Flux's records and plain properties of
 # the answer, never its exact text. Evidence (Flux state, the model transcript, timings) per attempt goes to FLUX_AI_EVIDENCE_DIR.
 #
 # The model: an OpenAI-compatible Chat Completions server (tool calls, a 64k+ context).
@@ -20,7 +27,10 @@
 #     stopped (only with at least FLUX_AI_MODEL_MIN_AVAILABLE_GB of RAM available, default 52), attaches it to this stack's network as
 #     `flux-model`, and detaches it at the end, stopping it again if it was stopped before. Its saved preset is not changed.
 #   FLUX_AI_MODEL_URL (and FLUX_AI_MODEL_KEY): any other server the stack's containers can reach; no container is managed.
-# Other settings: FLUX_AI_SCENARIOS, FLUX_AI_ENGINES (claude codex), FLUX_AI_ATTEMPTS (2), FLUX_AI_SEED (42), FLUX_AI_EVIDENCE_DIR,
+#   On Hubert's host since 2026-11-20 also `flux-qwen` (Qwen3.8-27B on llama.cpp, vision via mmproj): FLUX_AI_MODEL_CONTAINER=flux-qwen
+#   FLUX_AI_MODEL_KEY_FILE=/run/api-key. A running container is never stopped or restarted, only attached and detached.
+# FLUX_AI_PI_MODEL: the model id the pi people type when the endpoint lists none Flux accepts (llama.cpp without --alias), default qwen-local.
+# Other settings: FLUX_AI_SCENARIOS, FLUX_AI_ENGINES (claude codex pi), FLUX_AI_ATTEMPTS (2), FLUX_AI_SEED (42), FLUX_AI_EVIDENCE_DIR,
 # FLUX_TEST_PORT / FLUX_TEST_MAILPIT_PORT (18780 / 18781). Needs internet only to build the images and install the pinned Claude Code.
 # Run it alone under the shared Docker lock: a local model is slow, and the run takes hours.
 set -eu
@@ -54,7 +64,9 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
-export FLUX_AGENT_RUNTIME=claude_code,codex
+# pi runs the API-key agents (#1441); production personal runs, so a key's run goes through the worker's model gateway.
+export FLUX_AGENT_RUNTIME=claude_code,codex,pi
+export FLUX_PERSONAL_RUNS=on FLUX_TEST_PERSONAL_RUNS=
 export FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-10-05
 export FLUX_RUNTIME_MANAGER_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_RUNTIME_SECRET_1="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
@@ -70,8 +82,9 @@ model_container="${FLUX_AI_MODEL_CONTAINER-strata}"
 if [ -n "${FLUX_AI_MODEL_URL:-}" ]; then model_container=""; else export FLUX_AI_MODEL_URL="http://flux-model:${FLUX_AI_MODEL_PORT:-8080}"; fi
 model_started=""
 model_attached=""
-scenarios="${FLUX_AI_SCENARIOS:-summary task link search injection schedule ask others picture vision}"
-engines="${FLUX_AI_ENGINES:-claude codex}"
+scenarios="${FLUX_AI_SCENARIOS:-map summary task link search injection schedule ask others picture vision}"
+engines="${FLUX_AI_ENGINES:-claude codex pi}"
+has_engine() { case " $engines " in *" $1 "*) return 0;; esac; return 1; }
 
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -103,6 +116,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 check() { $compose run --rm --no-deps -T test node_modules/.bin/tsx tests/app/ai-real-model.check.ts "$@"; }
+# The model server's key reaches only this runner's environment, by name (`-e NAME` takes the value from the environment, never from argv).
+check_with_key() { $compose run --rm --no-deps -T -e FLUX_AI_MODEL_KEY test node_modules/.bin/tsx tests/app/ai-real-model.check.ts "$@"; }
 slot_cid() { $compose ps -q runtime-1; }
 
 step "1. Images, and the pinned Claude Code installed by Flux's own installer (signature-checked) into a fresh tools volume"
@@ -145,6 +160,8 @@ else
   printf 'Model server: container %s (%s), reached by the stack as %s\n' "$model_container" "$(docker inspect -f '{{.Config.Image}}' "$model_container")" "$FLUX_AI_MODEL_URL"
 fi
 
+export FLUX_AI_MODEL_KEY="${FLUX_AI_MODEL_KEY:-}"
+
 step "3. The stack, and the model on its network"
 $compose up -d db migrate
 if [ -n "$model_container" ]; then
@@ -154,6 +171,13 @@ fi
 $compose --profile setup run --rm files-init
 $compose up -d --wait api worker mailpit providermock linkmock runtime-manager runtime-egress runtime-1
 $compose logs --no-color runtime-install | grep -q 'TEST ONLY: real Claude Code wrapped for the vendor mock' || fail "runtime-install did not wrap Claude Code"
+if has_engine pi; then
+  waited=0
+  until $compose logs --no-color worker | grep -q '"event":"model_gateway","state":"listening"'; do
+    waited=$((waited + 1)); [ "$waited" -lt 60 ] || fail "the worker's model gateway did not listen"; sleep 1
+  done
+  $compose logs --no-color runtime-1 | grep -q '"event":"ready".*"pi":true' || fail "the runtime did not start ready for API keys in pi"
+fi
 # What the model server offers: its models, and whether it speaks each wire format itself (the shim uses Chat Completions either way).
 docker exec "$($compose ps -q providermock)" node -e '
 const url = process.env.FLUX_CLI_REAL_MODEL_URL, key = process.env.FLUX_CLI_REAL_MODEL_KEY;
@@ -176,17 +200,22 @@ out=$(check setup); printf '%s\n' "$out"
 ada_binding=$(printf '%s\n' "$out" | sed -n 's/^ADA_BINDING=//p' | tail -n 1)
 [ -n "$ada_binding" ] || fail "no binding for Ada"
 
-step "5. Sign-in: Ada's Claude Code with an API key in her CLI home; Bogdan's Codex by the ChatGPT device sign-in (mock issuer)"
-cid=$(slot_cid)
-who=$(docker exec "$cid" stat -c %u:%g "/data/$ada_binding")
-claude_key="sk-ant-mock-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
-docker exec -u "$who" "$cid" sh -c "umask 077; printf '%s' '$claude_key' > /data/$ada_binding/claude/flux-mock-api-key"
-check claude-sign-in
-check codex-sign-in
+step "5. Sign-in: Ada's Claude Code with an API key in her CLI home; Bogdan's Codex by the ChatGPT device sign-in (mock issuer); Celina's and Dariusz's API keys in Connect AI (pi)"
+if has_engine claude; then
+  cid=$(slot_cid)
+  who=$(docker exec "$cid" stat -c %u:%g "/data/$ada_binding")
+  claude_key="sk-ant-mock-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+  docker exec -u "$who" "$cid" sh -c "umask 077; printf '%s' '$claude_key' > /data/$ada_binding/claude/flux-mock-api-key"
+  check claude-sign-in
+fi
+if has_engine codex; then check codex-sign-in; fi
+if has_engine pi; then check_with_key pi-connect; fi
 
 step "6. Scenarios ($scenarios) on ($engines)"
 for scenario in $scenarios; do
   for engine in $engines; do
+    # A picture is found by a web search, which an OpenAI-compatible endpoint does not have (CA-6).
+    if [ "$engine" = pi ] && [ "$scenario" = picture ]; then continue; fi
     printf -- '-- %s on %s\n' "$scenario" "$engine"
     check scenario "$scenario" "$engine" | tee -a "$FLUX_AI_EVIDENCE_DIR/results.log"
   done

@@ -37,7 +37,7 @@ interface ChatTool { type: 'function'; function: { name: string; description: st
 interface ChatAnswer { content: string; reasoning: string; calls: ChatCall[]; finish: string; usage: { input: number; output: number; cached: number } }
 
 export interface TranscriptEntry {
-  n: number; at: number; ms: number; client: 'claude' | 'codex'; kind: 'main' | 'side' | 'web_search' | 'error';
+  n: number; at: number; ms: number; client: 'claude' | 'codex' | 'pi'; kind: 'main' | 'side' | 'web_search' | 'error';
   /** What went to the model (the converted Chat Completions request), or the search query. */
   request: unknown;
   /** What the model answered (or the search results), before it went back to the CLI in the vendor's format. */
@@ -472,6 +472,65 @@ export async function codexSearchReal(response: http.ServerResponse, body: Json)
   response.end(JSON.stringify({ output: output || 'Nothing to search.',
     results: [...hits.map((hit, index) => ({ type: 'text_result', ref_id: `turn0search${index}`, url: hit.url, title: hit.title, snippet: hit.snippet })),
       ...pages.map((page) => ({ type: 'text_result', ref_id: page.url, url: page.url, title: page.title, snippet: page.text.slice(0, 300) }))] }));
+}
+
+// --- pi (API-key agents, #1441): Flux's model gateway ⇄ the model, passed through unchanged.
+
+/** A request as the transcript keeps it: a picture's bytes are replaced by their size, so the evidence stays readable. */
+function withoutPictureBytes(value: unknown): unknown {
+  if (typeof value === 'string') return /^data:[^;,]+;base64,/.test(value) ? `[picture, ${Math.round(value.length * 3 / 4)} bytes]` : value;
+  if (Array.isArray(value)) return value.map(withoutPictureBytes);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withoutPictureBytes(item)]));
+  return value;
+}
+
+/**
+ * `/real/openai/v1/…`: the OpenAI-compatible endpoint an API key of the pi engine names (its base URL `http://providermock:8095/real/openai/v1`).
+ * Unlike the CLIs' shim nothing is converted or set: what Flux's model gateway sends (pi's own Chat Completions request, with the sealed key the
+ * gateway opened in its `Authorization`) goes to the model as it is, and the model's answer, streamed or not, comes back as it is. Only the
+ * exchange is recorded for the evidence; the key is never recorded.
+ */
+export async function piReal(request: http.IncomingMessage, response: http.ServerResponse, rest: string, raw: string): Promise<void> {
+  const started = Date.now();
+  const headers: Record<string, string> = { accept: String(request.headers.accept ?? '*/*') };
+  if (request.headers.authorization) headers.authorization = String(request.headers.authorization);
+  if (request.method === 'POST') headers['content-type'] = 'application/json';
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${MODEL_URL}${rest}`, { method: request.method, headers, ...(request.method === 'POST' ? { body: raw } : {}) });
+  } catch (error) {
+    response.writeHead(502, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: { message: `the model server is unreachable: ${String(error)}` } }));
+    return;
+  }
+  const record = rest.endsWith('/chat/completions');
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { parsed = raw.slice(0, 2000); }
+  response.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') ?? 'application/json', 'cache-control': 'no-cache' });
+  const seen: Uint8Array[] = [];
+  try {
+    for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
+      if (record) seen.push(chunk);
+      if (!response.destroyed) response.write(chunk);
+    }
+  } catch (error) {
+    // The model server dropped the connection mid-answer: the caller's stream breaks the same way, and the exchange is recorded as an error
+    // (this runs detached, so a throw here would end the whole mock and with it the hours-long run).
+    response.destroy();
+    if (record) transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client: 'pi', kind: 'error', request: withoutPictureBytes(parsed),
+      response: { error: String(error), partial: Buffer.concat(seen).toString('utf8').slice(0, 4000) } });
+    return;
+  }
+  response.end();
+  if (!record) return;
+  const text = Buffer.concat(seen).toString('utf8');
+  let answer: unknown;
+  try {
+    answer = (upstream.headers.get('content-type') ?? '').includes('event-stream')
+      ? await readStream(new Response(text, { headers: { 'content-type': 'text/event-stream' } }), undefined)
+      : JSON.parse(text);
+  } catch { answer = { raw: text.slice(0, 4000) }; }
+  transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client: 'pi', kind: upstream.ok ? 'main' : 'error', request: withoutPictureBytes(parsed), response: answer });
 }
 
 /** `GET /__real/transcript?since=n`: the exchanges after `n`, for the evidence. */
