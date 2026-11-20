@@ -55,6 +55,20 @@ export async function settleWaitingNotices(db: DbExecutor, ownerUserIds: readonl
       AND ${n.url} = '/inbox?item=assistant:' || COALESCE(w.run_id, w.connection_id)::text)`));
 }
 
+/**
+ * A run's change that sets its own task Blocked (AG-5, #1612). While it waits for the owner's OK the agent-task drain leaves the task as the run
+ * ended it, neither Done nor handed back; once it is decided (approved, skipped or refused) the run's end is noted again, and the drain finishes
+ * the task by what became of the change: Blocked with the agent, or Done or back with its owner by the agent's Ask me first.
+ */
+const SETS_BLOCKED = sql`${c.operation} = 'work.update' AND ${c.preparedCommand} -> 'args' -> 'changes' ->> 'status' = 'blocked'`;
+async function noteBlockDecided(db: DbExecutor, row: AssistantChangeRow) {
+  const status = (row.preparedCommand?.args as { changes?: { status?: unknown } } | undefined)?.changes?.status;
+  if (!row.runId || !row.objectId || row.operation !== 'work.update' || status !== 'blocked') return;
+  // Only a task run on this task that has ended: one still working is finished by its own end.
+  await db.execute(sql`INSERT INTO agent_task_events (kind, work_id, run_id) SELECT 'finished', r.work_id, r.id FROM personal_runs r
+    WHERE r.id = ${row.runId}::uuid AND r.kind = 'task' AND r.work_id = ${row.objectId}::uuid AND r.status NOT IN ('queued', 'reading', 'dispatching')`);
+}
+
 export function assistantChangeRows(db: DbExecutor) {
   /** A change with its run's conversation (or the one a client's message went to) and its agent's name; the runs it joins may be absent. */
   const viewRows = async (where: ReturnType<typeof and>, newest?: number): Promise<AssistantChangeInView[]> => {
@@ -143,9 +157,17 @@ export function assistantChangeRows(db: DbExecutor) {
      * run with nothing waiting: the owner's notification about it is then read (#1186).
      */
     async update(id: string, patch: Partial<NewAssistantChangeRow>): Promise<AssistantChangeRow> {
+      const settles = !!patch.state && patch.state !== 'waiting';
+      const [was] = settles ? await db.select({ state: c.state }).from(c).where(eq(c.id, id)) : [];
       const [updated] = await db.update(c).set({ ...patch, version: sql`${c.version} + 1`, updatedAt: new Date() }).where(eq(c.id, id)).returning();
-      if (patch.state && patch.state !== 'waiting') await settleWaitingNotices(db, [updated!.ownerUserId]);
+      if (settles) await settleWaitingNotices(db, [updated!.ownerUserId]);
+      if (was?.state === 'waiting') await noteBlockDecided(db, updated!);
       return updated!;
+    },
+    /** Whether the run's change setting this task Blocked still waits for its owner's OK (#1612): the task then stays as the run ended it. */
+    async blockWaits(runId: string, workId: string): Promise<boolean> {
+      const [row] = await db.select({ id: c.id }).from(c).where(and(eq(c.runId, runId), eq(c.objectId, workId), eq(c.state, 'waiting'), SETS_BLOCKED)).limit(1);
+      return !!row;
     },
     /**
      * #1217: the pictures of a run's answer that still wait for an OK, closed when the answer is shown or put away (they could only be added to
