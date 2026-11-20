@@ -55,8 +55,8 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database)
   register('work.create').registerTool('flux_create_task', {
     title: 'Create a project task',
     description: 'Create one native Flux task with an optional owner (a person of this space, by name or user id), due day, done-when criteria, '
-      + 'same-project prerequisites and a plan intent. A plan intent names one exact current '
-      + 'plan material revision and a key: repeating the same task for it returns the existing task instead of a duplicate. '
+      + 'same-project prerequisites and, only for a task made from an item of a plan page you read, a plan intent. A plan intent names one exact current '
+      + 'plan material revision and a key: repeating the same task for it returns the existing task instead of a duplicate. Leave it out otherwise. '
       + 'The cited source material revisions are linked to the task and must still be current.',
     inputSchema: z.strictObject({ ...execution(), task: z.strictObject({
       title: text(WORK_LIMITS.title), outcome: z.string().max(WORK_LIMITS.outcome).optional(),
@@ -67,7 +67,9 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database)
       dueOn: dueOn.optional(), criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
       parentTaskId: id.describe('Optional: make this a subtask of this task of the project. A subtask for another person waits for your owner\'s OK.').optional(),
       sourceMessageId: id.describe('Optional: the message of this project this task was made from. It is kept as the task\'s source, so the task opens it in context and the message shows the task.').optional(),
-      planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) }).optional(),
+      // A real local model (Qwen3.8-27B, 2026-11-20) filled a field it was told nothing about with a zero id and repeated the refused call: say when.
+      planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) })
+        .describe('Only for a task made from an item of a plan page (a Wiki material) you read: its materialId and version, and a key for the item. Leave it out for any other task.').optional(),
     }) }),
     annotations,
   }, async ({ task: { waitingOnDecisionId: onDecision, waitingOnTaskId: onTask, sourceMessageId, parentTaskId, ...named }, ...called }, call) => {
