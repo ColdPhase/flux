@@ -333,7 +333,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **Finishing** follows the agent's Ask me first switch: off, it marks the task Done and tells
   the owner, with Undo; on, it hands the task back, "Ready for you to check". **One exception:** a task that is Blocked when
   the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
-  is waiting for something (AG-6, [C-52](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). This is the whole
+  is waiting for something (AG-6, [C-52](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The agent
+  sets it Blocked itself, with a blocker that says what it waits for, before it replies; its brief tells it so and never to mark the task
+  Done or change its owner ([#1612](https://github.com/ColdPhase/flux/issues/1612)). This is the whole
   review step: the owner checks the task; a separate reviewer is optional, for example a subtask
   for a Reviewer agent ([coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.

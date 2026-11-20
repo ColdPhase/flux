@@ -204,6 +204,22 @@ function isPolish(text: string): boolean {
   return pl > en && (/[ąćęłńóśźż]/i.test(own) || pl >= 3);
 }
 const fold = (value: string) => value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
+/**
+ * The addresses under "Found on the web:" in the block Flux appended to an answer. The block starts after a blank line and its headings follow
+ * one another line by line (`webSourcesLine`), so after "Searched the web for:" this heading stands after a single line break.
+ */
+const foundOnWeb = (appended: string) => /(?:^|\n)Found on the web:\n((?:- .*(?:\n|$))+)/.exec(appended)?.[1]?.trim().split('\n') ?? [];
+/**
+ * A stored answer without Flux's own marks: `parseOutput` numbers each object of Flux the answer cites (`[message:ID]`, `[doc:ID]`) as `[1]`… in
+ * `answer_sources`, after it took out every bare number the model wrote itself (#1222). So a `[n]` within the run's sources is Flux's link, not
+ * a citation the model invented; one past them is still the model's.
+ */
+async function withoutFluxMarks(runId: string, text: string): Promise<string> {
+  const sources = (await pool.query<{ n: number }>(`SELECT jsonb_array_length(answer_sources)::int AS n FROM personal_runs WHERE id = $1`, [runId])).rows[0]?.n ?? 0;
+  return text.replace(/\[(\d{1,3})\]/g, (mark, number: string) => (Number(number) >= 1 && Number(number) <= sources ? '' : mark));
+}
+const INVENTED_MARK = /(^|[ \t(])\[(?:S?\d{1,3})\]|【/;
+const withoutCode = (text: string) => text.replace(/```[\s\S]*?```|`[^`\n]*`/g, '');
 
 // --- Starting runs as a person would.
 
@@ -426,7 +442,8 @@ async function searchOnKey(engine: Engine): Promise<Attempt> {
   const searches = await searchesOf(run.id);
   const answer = row.answer_body ?? '';
   const own = answer.split(/\n\n(?:Searched the web for:|Read on the web:|Found on the web:|Requested, not read:|Asked for on the web:)/)[0]!;
-  const found = /\n\nFound on the web:\n((?:- .*\n?)+)/.exec(answer)?.[1]?.trim().split('\n') ?? [];
+  const found = foundOnWeb(answer.slice(own.length));
+  const unmarked = await withoutFluxMarks(run.id, own);
   return {
     checks: [
       check('the run completed with an answer', 'outcome', row.status === 'completed' && !!answer, { status: row.status, endReason: row.end_reason }),
@@ -434,7 +451,7 @@ async function searchOnKey(engine: Engine): Promise<Attempt> {
       check('it searched the web, and Flux recorded the search and its results', 'outcome', searches.some((search) => search.queries.length > 0 && search.results.length > 0), searches),
       check('the answer gives the law (art. 6 RODO or its bases)', 'outcome', /art\.?\s*6|zgod|umow|obowiązk|uzasadnion/i.test(own)),
       check('Flux lists the sources under the answer, each once', 'outcome', found.length > 0 && found.length === new Set(found).size, answer.slice(own.length)),
-      check('the stored answer has no citation mark the model invented ([8], [S2], 【3†source】)', 'outcome', !/(^|[ \t(])\[(?:S?\d{1,3})\]|【/.test(own.replace(/```[\s\S]*?```|`[^`\n]*`/g, '')), own.slice(-400)),
+      check('the stored answer has no citation mark the model invented ([8], [S2], 【3†source】)', 'outcome', !INVENTED_MARK.test(withoutCode(unmarked)), own.slice(-400)),
       check('the answer is in Polish', 'outcome', isPolish(answer)),
     ],
     notes: { answer, searches, reads: await readsOf(run.id), runTools: row.run_tools }, runs: [run.id],
@@ -567,6 +584,7 @@ const scenarios: Record<string, Scenario> = {
     const answer = row.answer_body ?? '';
     const own = answer.split(/\n\n(?:Searched the web for:|Read on the web:|Found on the web:|Requested, not read:)/)[0]!;
     const results = new Set(searches.flatMap((search) => search.results));
+    const unmarked = await withoutFluxMarks(run.id, own);
     return {
       checks: [
         check('the run completed with an answer', 'outcome', row.status === 'completed' && !!answer, { status: row.status, endReason: row.end_reason }),
@@ -576,10 +594,10 @@ const scenarios: Record<string, Scenario> = {
         check('the answer gives the law (art. 6 RODO or its bases)', 'outcome', /art\.?\s*6|zgod|umow|obowiązk|uzasadnion/i.test(own)),
         check('the answer has sources', 'outcome', /public\.test\/pl\//.test(answer)),
         // #1222: the model's own marks and "Sources:" block are not stored; Flux's list is the one list, each address once in it.
-        check('the stored answer has no citation mark the model invented ([8], [S2], 【3†source】)', 'outcome', !/(^|[ \t(])\[(?:S?\d{1,3})\]|【/.test(own.replace(/```[\s\S]*?```|`[^`\n]*`/g, '')), own.slice(-400)),
+        check('the stored answer has no citation mark the model invented ([8], [S2], 【3†source】)', 'outcome', !INVENTED_MARK.test(withoutCode(unmarked)), own.slice(-400)),
         check('the stored answer has no "Sources:" / "Źródła:" / "References:" block of the model\'s own', 'outcome', !/\n[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?(?:sources?|źródła|źródło|references?)(?:\*\*)?[ \t]*:/i.test(own), own.slice(-400)),
         check('each address is listed once under "Found on the web:"', 'outcome', (() => {
-          const found = /\n\nFound on the web:\n((?:- .*\n?)+)/.exec(answer)?.[1]?.trim().split('\n') ?? [];
+          const found = foundOnWeb(answer.slice(own.length));
           return found.length === new Set(found).size;
         })(), answer.slice(own.length)),
         check('the answer is in Polish', 'outcome', isPolish(answer)),
@@ -672,12 +690,17 @@ const scenarios: Record<string, Scenario> = {
     return { checks, notes: { answer: row.answer_body, job, scheduledAnswer: fired?.answer_body ?? null }, runs };
   },
 
-  /** g) One agent asks another person's agent with `<ask>` in a task both owners are in; the answer comes back and the asker finishes. */
+  /**
+   * g) One agent asks another person's agent with `<ask>` in a task both owners are in; the answer comes back and the asker finishes. An agent may
+   * ask "only if you need the answer to go on" (TA-3), and the answering agent reads only what the asker can read too: a question about a fact of
+   * the space is one a model that searches answers itself (the payment thread, run2 on claude-sonnet-5-5: "Nie pytałem agenta Filipa, bo
+   * odpowiedź była już w przestrzeni"). So the task asks for the other agent's own view, which no search finds; its view rests on the same thread.
+   */
   async ask(engine, attempt) {
     const { me, them, spaceId, myAgentId, theirAgentId } = await setupFor(engine);
     const question = engine !== 'codex'
-      ? { title: `Zapytaj agenta ${GENITIVE[ENGINES[engine].other]}, jaki termin płatności zaakceptował Kowalski, i podaj go w raporcie (próba ${attempt})`, fact: /21/ ,
-        hint: 'Mój agent Asystent zna ustalenia z Kowalskim w sprawie płatności, możecie go zapytać.' }
+      ? { title: `Zapytaj agenta ${GENITIVE[ENGINES[engine].other]}, jaki termin płatności dla Kowalskiego jego zdaniem wpisać do umowy, i podaj jego odpowiedź w raporcie (próba ${attempt})`,
+        fact: /21/, hint: 'Mój agent Asystent zna ustalenia z Kowalskim w sprawie płatności, zapytajcie go o zdanie.' }
       : { title: `Zapytaj agenta ${GENITIVE[ENGINES[engine].other]}, kiedy startuje projekt CRM u Kowalskiego, i podaj datę w raporcie (próba ${attempt})`, fact: /1\s*grudnia|1\.12|01\.12|grudni/i,
         hint: 'Mój agent Asystent zna ustalenia z Kowalskim o starcie projektu, możecie go zapytać.' };
     const task = await newTask(me, spaceId, { title: question.title });
@@ -1082,17 +1105,21 @@ const scenarios: Record<string, Scenario> = {
     const edited = await ran('edit', `Na stronie Wiki „${checklist}” dopisz kolejny krok: sprawdzić umowę powierzenia przetwarzania danych.`);
     const saves = await changesBy(edited.id, 'flux_update_doc');
     const second = await pageTitled(checklist);
+    // The first version may name the processing agreement already (the thread asks for one): the new step is one more mention of it, and
+    // Undo is the first version's text again (it writes it as a new version), not a page without the word.
+    const mentions = (body: string | undefined) => fold(body ?? '').split('powierzeni').length - 1;
     checks.push(
       check('edit: a new version was saved at once', 'outcome', saves.some((change) => change.state === 'applied') && (second?.version ?? 0) > (first?.version ?? 0),
         { states: saves.map((change) => change.state), versions: [first?.version, second?.version] }),
-      check('edit: it has the new step', 'outcome', /powierzeni/.test(fold(second?.body ?? '')), second?.body.slice(-300)),
+      check('edit: it has the new step', 'outcome', mentions(second?.body) > mentions(first?.body), { before: mentions(first?.body), after: mentions(second?.body), text: second?.body.slice(-300) }),
     );
     const save = saves.find((change) => change.state === 'applied');
     if (save) {
       const undo = await decide(me, save.id, 'undo');
       const back = await pageTitled(checklist);
-      checks.push(check('edit: Undo takes the new version back', 'outcome', undo.status === 200 && await changeState(save.id) === 'undone' && !/powierzeni/.test(fold(back?.body ?? '')),
-        { status: undo.status, body: undo.text.slice(0, 200), text: back?.body.slice(-200) }));
+      checks.push(check('edit: Undo takes the new version back (the page reads as its first version again)', 'outcome',
+        undo.status === 200 && await changeState(save.id) === 'undone' && back !== null && back.body === first?.body && back.version > (second?.version ?? 0),
+        { status: undo.status, body: undo.text.slice(0, 200), versions: [first?.version, second?.version, back?.version], text: back?.body.slice(-200) }));
     }
 
     await setMayDo(me, myAgentId, 'ask');
