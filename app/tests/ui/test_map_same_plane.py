@@ -561,5 +561,78 @@ class MapSamePlane(unittest.TestCase):
         self.assertGreater(now[text][0] - before[text][0], finger + 40 / zoom, f'the thought went with the plane beyond the finger: {before[text]} then {now[text]}')
 
 
+    def test_12_gestures_do_not_fight_and_a_cancelled_drag_lets_go(self):
+        """#1600: a long press that never moves leaves nothing picked up (the next one-finger drag pans); a pinch whose first finger lands on a
+        thought zooms and moves nothing; a drag the system cancels (a call, an app switch: touchcancel) drops the drag and releases its live
+        lease at once, so a computer can move that thought straight after."""
+        project, sketch, ids = self.make()
+        computer = self.page(COMPUTER)
+        self.open(computer, project, sketch)
+        page = self.page(PHONE, touch=True)
+        self.open(page, project, sketch)
+        before = self.stored(page, sketch)
+        text = ROWS[3][0]
+        self.node(page, text).scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        centre = self.centre(page, text)
+        # A long press, released where it began.
+        self.touch(page, 'touchStart', centre)
+        page.wait_for_timeout(650)
+        self.touch(page, 'touchEnd')
+        page.wait_for_timeout(400)
+        expect(self.node(page, text)).to_have_attribute('aria-pressed', 'true')
+        expect(page.locator('.sk-node.is-dragging')).to_have_count(0)
+        self.assertEqual(self.stored(page, sketch), before, 'a long press alone moves nothing')
+        # Nothing stays picked up: a quick drag from that thought pans the plane.
+        scroll = self.scroll(page)
+        self.swipe(page, centre, (centre[0] + 70, centre[1]))
+        self.assertLess(self.scroll(page)[0], scroll[0] - 30, 'the next quick drag on the thought pans the plane')
+        self.assertEqual(self.stored(page, sketch), before, 'and moves no thought')
+        # Two fingers, the first on a thought: a pinch, not a move.
+        self.node(page, text).scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        centre = self.centre(page, text)
+        zoom = self.zoom(page)
+        other = (centre[0] + 40, centre[1] + 160)
+        self.touch(page, 'touchStart', centre)
+        page.wait_for_timeout(60)
+        self.touch(page, 'touchStart', centre, other)
+        for step in range(1, 9):
+            self.touch(page, 'touchMove', (centre[0] - 6 * step, centre[1] - 8 * step), (other[0] + 6 * step, other[1] + 8 * step))
+            page.wait_for_timeout(16)
+        page.wait_for_timeout(500)  # past the long press: the second finger ended it
+        self.touch(page, 'touchEnd')
+        page.wait_for_timeout(400)
+        self.assertGreater(self.zoom(page), zoom + 0.05, 'two fingers zoom, even with the first on a thought')
+        expect(page.locator('.sk-node.is-dragging')).to_have_count(0)
+        self.assertEqual(self.stored(page, sketch), before, 'a pinch moves no thought')
+        # A drag the system cancels mid-way.
+        self.node(page, text).scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        centre = self.centre(page, text)
+        self.touch(page, 'touchStart', centre)
+        page.wait_for_timeout(650)
+        for step in range(1, 7):
+            self.touch(page, 'touchMove', (centre[0] + 10 * step, centre[1] + 12 * step))
+            page.wait_for_timeout(24)
+        page.wait_for_timeout(300)
+        self.touch(page, 'touchCancel')
+        page.wait_for_timeout(300)
+        expect(page.locator('.sk-node.is-dragging')).to_have_count(0)
+        self.assertEqual(self.stored(page, sketch), before, 'a cancelled drag saves no shared move')
+        # Its lease is gone: the computer moves the same thought at once.
+        box = self.node(computer, text).bounding_box()
+        start = (box['x'] + box['width'] / 2, box['y'] + 14)
+        computer.mouse.move(*start)
+        computer.mouse.down()
+        for step in range(1, 9):
+            computer.mouse.move(start[0] + 10 * step, start[1] + 5 * step)
+            computer.wait_for_timeout(24)
+        computer.mouse.up()
+        now = self.eventually(computer, sketch, lambda s: any((t['x'], t['y']) != before[t['text']] for t in s['thoughts']))
+        now = {t['text']: (t['x'], t['y']) for t in now['thoughts']}
+        self.assertGreater(now[text][0], before[text][0] + 40, f'the computer moved the thought the phone let go of: {before[text]} then {now[text]}')
+
+
 if __name__ == '__main__':
     unittest.main()

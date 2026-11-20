@@ -228,15 +228,23 @@ export function SketchMap(props: SketchMapProps) {
   const press = useRef<{ pointerId: number; id: string; sx: number; sy: number; x: number; y: number; timer: number } | null>(null);
   const clearPress = () => { if (press.current) { window.clearTimeout(press.current.timer); press.current = null; } };
   // An edge pan in progress (#1600): where the pointer rests and how far the plane moves each frame.
-  const edge = useRef<{ x: number; y: number; vx: number; vy: number; frame: number } | null>(null);
+  // The speed is in pixels per 60 Hz frame, scaled by each frame's real time, so a 120 Hz or 144 Hz screen does not pan faster; `cx`,`cy` carry the fractions.
+  const edge = useRef<{ x: number; y: number; vx: number; vy: number; frame: number; last: number; cx: number; cy: number } | null>(null);
   const stopEdge = () => { if (edge.current) { cancelAnimationFrame(edge.current.frame); edge.current = null; } };
   const followRef = useRef<(d: Drag, x: number, y: number) => void>(() => undefined);
-  const edgeFrame = () => {
+  const edgeFrame = (now: number) => {
     const at = edge.current, d = drag.current, canvas = canvasRef.current;
     if (!at || !d || d.ended || !canvas) { edge.current = null; return; }
+    const frames = at.last ? Math.min(3, (now - at.last) / (1000 / 60)) : 1;
+    at.last = now;
+    at.cx += at.vx * frames;
+    at.cy += at.vy * frames;
+    const [stepX, stepY] = [Math.trunc(at.cx), Math.trunc(at.cy)];
+    at.cx -= stepX;
+    at.cy -= stepY;
     const [left, top] = [canvas.scrollLeft, canvas.scrollTop];
-    canvas.scrollLeft += at.vx;
-    canvas.scrollTop += at.vy;
+    canvas.scrollLeft += stepX;
+    canvas.scrollTop += stepY;
     if (canvas.scrollLeft !== left || canvas.scrollTop !== top) followRef.current(d, at.x, at.y);
     at.frame = requestAnimationFrame(edgeFrame);
   };
@@ -981,7 +989,7 @@ export function SketchMap(props: SketchMapProps) {
     if (!vx && !vy) { d.armed = true; stopEdge(); return; }
     if (!d.armed) return;
     if (edge.current) Object.assign(edge.current, { x, y, vx, vy });
-    else edge.current = { x, y, vx, vy, frame: requestAnimationFrame(edgeFrame) };
+    else edge.current = { x, y, vx, vy, last: 0, cx: 0, cy: 0, frame: requestAnimationFrame(edgeFrame) };
   };
 
   const onPointerUp = (event: ReactPointerEvent) => {

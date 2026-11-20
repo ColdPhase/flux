@@ -2238,7 +2238,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   direction, Hubert, 2026-11-20, [#1600](https://github.com/ColdPhase/flux/issues/1600)): the phone and the tablet arrange as the computer does, on the
   same plane, so a thought moved on the phone stands in the same place on the computer. The selected thought shows its two dots with a 44 px
   target; a drag from a dot onto another thought links them, and onto empty space starts a connected draft that takes typing (P12). A drag of a
-  thought or a dot near the map's edge, or over the floating header or tools, pans the map in that direction. A move or a link takes and releases
+  thought or a dot within 40 px of the map's edge pans the map in that direction, faster nearer the edge (on every device). A move or a link takes and releases
   the live lease exactly as on the computer. A dragged finger is the map's alone: the page never scrolls under it, and since the drag starts on a
   thought or a dot, never at the screen's edge, it is not the system's Back gesture. **Zoom is two fingers** (Hubert, 2026-11-20: "Zoom in/zoom out
   na telefonie to nie przyciski oddzielne, tylko naturalnie 2 palce"): the phone has no zoom buttons, a double tap still zooms in, and **Fit** stays
