@@ -438,7 +438,7 @@ class SearchJourney(unittest.TestCase):
         self.assertEqual(look["border"], ["0px"] * 4, f"{where}: no edge: {look}")
         self.assertGreaterEqual(look["radius"], look["height"] / 2 - 0.5, f"{where}: a pill: {look}")
         self.assertEqual(look["background"], look["sub"], f"{where}: filled with --sub: {look}")
-        self.assertTrue(44 <= look["height"] <= 48, f"{where}: 44 px tall: {look}")
+        self.assertTrue(has_minimum_touch_size(look["height"]) and look["height"] <= 48, f"{where}: 44 px tall: {look}")
         self.assertTrue(look["iconAtStart"], f"{where}: the magnifier is inside at the start: {look}")
         self.assertGreaterEqual(look["inputSize"], 16, f"{where}: 16 px text, so iOS does not zoom: {look}")
         clear_button = pill.get_by_role("button", name="Clear search")
