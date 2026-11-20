@@ -81,11 +81,13 @@ const LIMIT = 24;
  * Each project with something new, with what that is. `live` reads a project again soon after a message arrives in it (Home's "New messages" is
  * live, #1548); without it a read is kept for a minute, which is all the sidebar needs.
  */
-function useProjectReads(projectIds: readonly string[], live: boolean): ReadonlyMap<string, ProjectNews> {
+function useProjectReads(projectIds: readonly string[], live: boolean): { news: ReadonlyMap<string, ProjectNews>; settled: boolean } {
   const userId = useShellData().me.user.id;
   const here = useLocation().pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
   const key = projectIds.slice(0, LIMIT).join(',');
   const [again, setAgain] = useState(0);
+  // False until every project of the list has been read once: what Home puts under its rows waits for that, so nothing moves when they arrive.
+  const [settled, setSettled] = useState(false);
   const [news, setNews] = useState<ReadonlyMap<string, ProjectNews>>(() => new Map(projectIds.flatMap((id) => { const found = known.get(`${userId}:${id}`)?.read; return found && found.news ? [[id, found] as const] : []; })));
   useEffect(() => {
     const listener = () => setAgain((count) => count + 1);
@@ -118,21 +120,27 @@ function useProjectReads(projectIds: readonly string[], live: boolean): Readonly
     // (leaving saves its return point).
     if (here) known.set(`${userId}:${here}`, { at: Date.now(), read: NOTHING });
     void Promise.all(list.map(async (id) => [id, id === here ? NOTHING : await read(userId, id)] as const)).then((found) => {
-      if (alive) setNews(new Map(found.filter(([, one]) => one.news > 0)));
+      if (!alive) return;
+      setNews(new Map(found.filter(([, one]) => one.news > 0)));
+      setSettled(true);
     });
     return () => { alive = false; };
   }, [key, here, userId, again]);
-  return news;
+  return { news, settled };
 }
 
 /** The projects with something new, each with how many things (the quiet count of a muted place, #1249; the others are bold). */
 export function useProjectNews(projectIds: readonly string[]): ReadonlyMap<string, number> {
-  const reads = useProjectReads(projectIds, false);
-  return useMemo(() => new Map([...reads].map(([id, one]) => [id, one.news] as const)), [reads]);
+  const { news } = useProjectReads(projectIds, false);
+  return useMemo(() => new Map([...news].map(([id, one]) => [id, one.news] as const)), [news]);
 }
 
-/** The projects with a conversation that has something new (Home's "New messages", #1548), each with the newest message of it. Live. */
-export function useProjectMessages(projectIds: readonly string[]): ReadonlyMap<string, ProjectNews> {
-  const reads = useProjectReads(projectIds, true);
-  return useMemo(() => new Map([...reads].filter(([, one]) => one.messages > 0)), [reads]);
+/**
+ * The projects with a conversation that has something new (Home's "New messages", #1548), each with the newest message of it. Live. `settled`:
+ * every project has been read once, so what is known is all of it.
+ */
+export function useProjectMessages(projectIds: readonly string[]): { messages: ReadonlyMap<string, ProjectNews>; settled: boolean } {
+  const { news, settled } = useProjectReads(projectIds, true);
+  const messages = useMemo(() => new Map([...news].filter(([, one]) => one.messages > 0)), [news]);
+  return { messages, settled };
 }

@@ -17,12 +17,12 @@ const SHOWN = 5;
 
 interface Row { key: string; to: string; name: string; line: string; at: string; face: ReactNode }
 
-/** The rows, newest first, and how many conversations have news (the rows are at most `SHOWN` of them). */
-export function useNewMessages(): { rows: Row[]; total: number } {
+/** The rows, newest first, and how many conversations have news (the rows are at most `SHOWN` of them); `ready` once the spaces have been read. */
+export function useNewMessages(): { rows: Row[]; total: number; ready: boolean } {
   const { projects, directMessages } = useShellData();
   const { muted } = usePlaceMutes();
   const unread = useDmUnread();
-  const news = useProjectMessages(useMemo(() => projects.map((project) => project.id), [projects]));
+  const { messages: news, settled } = useProjectMessages(useMemo(() => projects.map((project) => project.id), [projects]));
   return useMemo(() => {
     const all: Row[] = [
       ...projects.flatMap((project): Row[] => {
@@ -37,13 +37,13 @@ export function useNewMessages(): { rows: Row[]; total: number } {
           face: <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" /> }];
       }),
     ].sort((a, b) => Date.parse(b.at || '0') - Date.parse(a.at || '0'));
-    return { rows: all.slice(0, SHOWN), total: all.length };
-  }, [projects, directMessages, news, muted, unread]);
+    return { rows: all.slice(0, SHOWN), total: all.length, ready: settled };
+  }, [projects, directMessages, news, settled, muted, unread]);
 }
 
 /** The part under Waiting for you; nothing at all (no heading, no empty line) while no conversation has something new. */
-export function NewMessages() {
-  const { rows, total } = useNewMessages();
+export function NewMessages({ read }: { read: ReturnType<typeof useNewMessages> }) {
+  const { rows, total } = read;
   if (!rows.length) return null;
   return (
     <section className="home__news" aria-labelledby="home-news" data-new-messages="">
