@@ -192,7 +192,8 @@ class PhonePolish(unittest.TestCase):
                 # The head row "‹ Inbox / Thread · 0 replies · Following ×": the count gives way first, "Thread" stays whole (it read "Threa" at 360).
                 word = page.locator(".ui-panel__head .ui-panel__word")
                 expect(word).to_have_text("Thread")
-                fits = word.evaluate("el => el.scrollWidth <= el.clientWidth")
+                # The drawn text against its box (scrollWidth rounds away the fraction of a pixel that makes WebKit draw "Thre…").
+                fits = word.evaluate("el => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().width <= el.getBoundingClientRect().width + 0.01; }")
                 self.assertTrue(fits, "the kind's word is not cut in the sheet's head row")
                 shot(page, f"1568-thread-from-inbox-{'360' if small else '390'}-{'dark' if dark else 'light'}")
 
