@@ -1,9 +1,9 @@
 import { messageOpening, messagePreview, oneLinePreviewText, removedName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
-import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, visibleFilter, type DbExecutor, type Database, type Transaction } from '@flux/db';
+import { fileRows, messageChangeRows, openAliased, openRows, schema, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, visibleFilter, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
-  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc, SentConversationMessage, SpacePreview,
+  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, MaterialOrDoc, SentConversationMessage, SpacePreview,
   AgentProjectOwner, MaterialVersion, MessageReferenceCard, Page, PageQuery,
 } from '@flux/contracts';
 import {
@@ -92,15 +92,9 @@ function version(row: VersionRow, principal: Principal, names: Map<string, strin
     author: { kind: 'agent', id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } };
 }
 
-const materialFields = (row: MaterialRow) => ({ kind: row.kind, projectId: row.projectId, workspaceId: row.workspaceId,
+const materialFields = (row: MaterialRow) => ({ projectId: row.projectId, workspaceId: row.workspaceId,
   audience: { kind: 'project' as const, projectId: row.projectId },
   createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
-
-/** A plain #36 material: always person-written (the database refuses an agent author outside docs). */
-function material(row: MaterialRow, current: VersionRow): Material {
-  if (current.authorId === null) throw new Error('A project material version must have a human author');
-  return { ...versionFields(current), authorId: current.authorId, ...materialFields(row) };
-}
 
 function materialOrDoc(row: MaterialRow, current: VersionRow, principal: Principal, names: Map<string, string>): MaterialOrDoc {
   return { ...version(current, principal, names), ...materialFields(row) };
@@ -149,9 +143,8 @@ async function locateMaterial(principal: Principal, materialId: string, db: Exec
   return row;
 }
 
-/** F-030: material versions and the material's request fingerprint are sealed in an encrypted workspace; opened here. */
+/** F-030: a page's versions are sealed in an encrypted workspace; opened here. */
 const openVersions = <T extends VersionRow>(db: Executor, rows: T[]) => openRows(db as unknown as DbExecutor, 'project_material_versions', rows);
-const openMaterial = async (db: Executor, row: MaterialRow | undefined) => (row ? (await openRows(db as unknown as DbExecutor, 'project_materials', [row]))[0]! : row);
 
 async function currentVersion(row: MaterialRow, db: Executor): Promise<VersionRow> {
   const [current] = await openVersions(db, await db.select().from(schema.projectMaterialVersions).where(and(
@@ -185,20 +178,6 @@ async function conversationEnds(ids: string[], db: Executor) {
       lastAttachments: Number(row.last_attachments), lastAt: new Date(row.last_at) });
   }
   return ends;
-}
-
-/** The current version of each row, in one statement however many rows a page has (#298). */
-async function currentVersions(rows: MaterialRow[], db: Executor): Promise<VersionRow[]> {
-  if (!rows.length) return [];
-  const v = schema.projectMaterialVersions;
-  const wanted = sql.join(rows.map((row) => sql`(${row.id}::uuid, ${row.currentVersion}::int)`), sql`, `);
-  const found = await openVersions(db, await db.select().from(v).where(sql`(${v.materialId}, ${v.version}) IN (${wanted})`));
-  const byMaterial = new Map(found.map((version) => [version.materialId, version]));
-  return rows.map((row) => {
-    const current = byMaterial.get(row.id);
-    if (!current || current.version !== row.currentVersion) throw new Error('Material current version missing');
-    return current;
-  });
 }
 
 async function sourceExists(projectId: string, source: { materialId: string; version: number } | null, db: Executor) {
@@ -655,19 +634,6 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       });
     },
 
-    async listMaterials(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<Material>> {
-      const page = parsePage(query);
-      await requireProject(principal, projectId, db);
-      // Docs (#112) are materials of kind 'doc' with their own list; citations of them still resolve below.
-      const materials = and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.kind, 'material'));
-      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(materials);
-      const rows = await db.select().from(schema.projectMaterials).where(materials)
-        .orderBy(desc(schema.projectMaterials.createdAt), desc(schema.projectMaterials.id)).limit(page.limit).offset(page.offset);
-      const versions = await currentVersions(rows, db);
-      const items = rows.map((row, index) => material(row, versions[index]!));
-      return { items, total: count?.total ?? 0, ...page };
-    },
-
     /** Metadata for the MCP source picker; bodies and private draft provenance stay out of the list. */
     async listSourceMaterials(principal: Principal, projectId: string, query: PageQuery = {}) {
       const page = parsePage(query);
@@ -680,7 +646,6 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const read = await tx.select({
           materialId: schema.projectMaterials.id,
           workspaceId: schema.projectMaterials.workspaceId,
-          kind: schema.projectMaterials.kind,
           version: schema.projectMaterials.currentVersion,
           title: schema.projectMaterialVersions.title,
           updatedAt: schema.projectMaterials.updatedAt,
@@ -709,76 +674,6 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, requested))));
       if (!snapshot) throw new NotFoundError('Material version', 'MATERIAL_VERSION_NOT_FOUND');
       return version(snapshot, principal, await versionAuthors(db, [snapshot]));
-    },
-
-    async createMaterial(principal: Principal, projectId: string, input: Parameters<ConversationPort['createMaterial']>[2]): Promise<Material> {
-      const authorId = human(principal);
-      return db.transaction(async (tx) => {
-        const project = await requireProject(principal, projectId, tx, true, true);
-        await lockIdempotency(tx, projectId, { kind: 'human', id: authorId }, input.clientMutationId);
-        const existing = await openMaterial(tx, (await tx.select().from(schema.projectMaterials).where(and(
-          eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
-          eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
-        if (existing) {
-          if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
-          return material(existing, await currentVersion(existing, tx));
-        }
-        const id = randomUUID();
-        const [created] = await tx.insert(schema.projectMaterials).values(await sealFor(tx as unknown as DbExecutor, 'project_materials', project.workspaceId, {
-          id, workspaceId: project.workspaceId, projectId, createdBy: authorId,
-          clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
-        })).onConflictDoNothing().returning();
-        if (!created) {
-          const raced = await openMaterial(tx, (await tx.select().from(schema.projectMaterials).where(and(
-            eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
-            eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
-          if (!raced || raced.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
-          return material(raced, await currentVersion(raced, tx));
-        }
-        const [first] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', project.workspaceId, {
-          workspaceId: project.workspaceId, projectId, materialId: id, version: 1,
-          title: input.title, body: input.body, url: input.url, authorId,
-        })).returning());
-        await recordEvent(eventPorts(tx), principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
-        return material(created, first!);
-      });
-    },
-
-    async updateMaterial(principal: Principal, materialId: string, input: Parameters<ConversationPort['updateMaterial']>[2]): Promise<Material> {
-      const authorId = human(principal);
-      return db.transaction(async (tx) => {
-        const row = await locateMaterial(principal, materialId, tx, true, true);
-        if (row.kind === 'doc') throw new ConflictError('Docs are edited through the doc API with If-Match', 'USE_DOC_API');
-        const [locked] = await tx.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.id, row.id)).for('update');
-        const [priorEdit] = await openVersions(tx, await tx.select().from(schema.projectMaterialVersions).where(and(
-          eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.authorId, authorId),
-          eq(schema.projectMaterialVersions.clientMutationId, input.clientMutationId))));
-        if (priorEdit) {
-          if (priorEdit.requestFingerprint !== input.fingerprint)
-            throw new ConflictError('This clientMutationId was used for another edit', 'IDEMPOTENCY_CONFLICT');
-          // Return the original committed revision even if later edits have advanced the material.
-          return material({ ...locked!, updatedAt: priorEdit.createdAt }, priorEdit);
-        }
-        if (!locked || locked.currentVersion !== input.expectedVersion)
-          throw new ConflictError('Material changed; refresh before editing', 'STALE_MATERIAL');
-        const previous = await currentVersion(locked, tx);
-        const next = { title: input.title ?? previous.title, body: input.body ?? previous.body, url: input.url === undefined ? previous.url : input.url };
-        if (!next.body.trim() && !next.url) throw new InvalidInputError('Material needs text or a link');
-        const progress=next.body!==previous.body||next.url!==previous.url;
-        const scope={workspaceId:row.workspaceId,projectId:row.projectId};
-        const fence=await prepareCanonicalArtifactTaskUse(tx,scope,progress?{kind:'material',id:row.id,version:locked.currentVersion+1}:null,[]);
-        const [updated] = await tx.update(schema.projectMaterials).set({ currentVersion: locked.currentVersion + 1, updatedAt: new Date() })
-          .where(eq(schema.projectMaterials.id, row.id)).returning();
-        const [snapshot] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', row.workspaceId, {
-          workspaceId: row.workspaceId, projectId: row.projectId, materialId: row.id,
-          version: updated!.currentVersion, ...next, authorId,
-          clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
-        })).returning());
-        if(progress)await artifactUseRows(tx).canonical(scope,{kind:'material',id:row.id,version:snapshot!.version},
-          {kind:'material',id:row.id,revision:String(snapshot!.version)},fence);
-        await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
-        return material(updated!, snapshot!);
-      });
     },
   };
 }

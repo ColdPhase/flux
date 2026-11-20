@@ -19,7 +19,7 @@ export function readableReferenceSet(references: SQL, workspaceId: SQL, projectI
           AND object.current_version::text=reference.value->>'version')
       WHEN 'doc' THEN EXISTS (SELECT 1 FROM project_materials object
         WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId}
-          AND object.kind='doc' AND object.current_version::text=reference.value->>'version')
+          AND object.current_version::text=reference.value->>'version')
       WHEN 'thought' THEN EXISTS (SELECT 1 FROM sketch_thoughts object JOIN sketches map
         ON map.workspace_id=object.workspace_id AND map.id=object.sketch_id
         WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId}

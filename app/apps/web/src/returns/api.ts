@@ -14,7 +14,6 @@ export const saveReturnPoint = (place: ReturnPlace, mark: string | null) =>
 export function sourceHref(source: ReturnSource) {
   switch (source.type) {
     case 'message': return `/projects/${source.projectId}/conversations/${source.conversationId}#message-${source.messageId}`;
-    case 'material': return `/materials/${source.materialId}/versions/${source.version}`;
     case 'sketch': return source.projectId ? `/projects/${source.projectId}/map/${source.sketchId}` : `/map/${source.sketchId}`;
     case 'doc': return source.since ? `/projects/${source.projectId}/docs/${source.docId}/history?from=${source.since}&to=${source.version}` : `/projects/${source.projectId}/docs/${source.docId}`;
     default: return `/projects/${source.projectId}`;

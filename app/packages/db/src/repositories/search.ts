@@ -22,7 +22,7 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
-export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
+export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
 type SearchKind = SearchKindRow;
 /** Highlighted text: plain and matched parts. */
 export type SearchTextRow = { text: string; match: boolean }[];
@@ -563,7 +563,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN auth_users agu ON agu.id = ag.owner_user_id
     LEFT JOIN project_messages pmv ON pmv.id = (CASE WHEN h.kind = 'message' THEN h.object_id::uuid END)
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
-    LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
+    LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind = 'doc' THEN h.object_id::uuid END)
     LEFT JOIN project_files pf ON pf.id = (CASE WHEN h.kind = 'file' THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
     LEFT JOIN project_work_items wi ON ${workJoin}

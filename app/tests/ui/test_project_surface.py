@@ -152,15 +152,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.api(ada, "POST", f"/api/v1/projects/{long_project['id']}/conversations", {"body": "Which shelf gets the first lamp?", "clientMessageId": str(uuid.uuid4())}, status=201)
 
         pages = {"ada": ada, "jonas": jonas, "nia": nia}
-        material = self.api(ada, "POST", f"/api/v1/projects/{pid}/materials", {"title": "Low-light test notes", "body": "Camera: 97% at 200 lux, 71% at 50 lux, 38% at 5 lux (20 gestures each).", "clientMutationId": str(uuid.uuid4())}, status=201)
-        self.api(nia, "POST", f"/api/v1/projects/{pid}/materials", {"title": "VL53L5CX datasheet", "url": "https://www.st.com/en/imaging-and-photonics-solutions/vl53l5cx.html", "clientMutationId": str(uuid.uuid4())}, status=201)
+        material = self.api(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Low-light test notes", "body": "Camera: 97% at 200 lux, 71% at 50 lux, 38% at 5 lux (20 gestures each)."}, status=201)
+        self.api(nia, "POST", f"/api/v1/projects/{pid}/docs", {"title": "VL53L5CX datasheet", "body": "https://www.st.com/en/imaging-and-photonics-solutions/vl53l5cx.html"}, status=201)
         thread = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": OPENING, "clientMessageId": str(uuid.uuid4())}, status=201)
         cid = thread["id"]
         messages = {"m_opening": thread["messages"][0]["id"]}
         for index, (who, body) in enumerate(THREAD):
             command = {"body": body, "clientMessageId": str(uuid.uuid4())}
             if index == 1:
-                command["source"] = {"materialId": material["materialId"], "version": material["version"]}
+                command["source"] = {"materialId": material["id"], "version": material["version"]}
             messages[f"m{index}"] = self.api(pages[who], "POST", f"/api/v1/conversations/{cid}/messages", command, status=201)["id"]
         messages["m_camera"] = messages["m0"]
         base = f"/api/v1/projects/{pid}"
@@ -175,7 +175,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": -260 + index * 260, "y": 160, "linkFrom": {"thoughtId": idea["thought"]["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         doc = self.api(ada, "POST", f"{base}/docs", {"title": "What we learned about low light", "from": {"type": "decision", "id": rule["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         type(self).ids = {"workspace": ws["id"], "project": pid, "bike": bike["id"], "conversation": cid, "long_project": long_project["id"], "work": work["id"], "rule": rule["id"],
-                          "proposal": proposal["id"], "sketch": sketch["id"], "doc": doc["id"], "material": material["materialId"], **messages}
+                          "proposal": proposal["id"], "sketch": sketch["id"], "doc": doc["id"], "material": material["id"], **messages}
 
     # ---------------------------------------------------------------- header
 
@@ -325,10 +325,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         expect(page.get_by_role("button", name="Page actions", exact=True)).to_be_visible()
-        # The one page of the space is in the switcher the title opens.
+        # The space's pages are in the switcher the title opens: the notes page and the two sources saved before it (#1508).
         page.get_by_role("heading", level=2).get_by_role("button", name=re.compile("What we learned about low light")).click()
         switcher = page.get_by_role("dialog", name="Pages in Gesture lamp")
-        expect(switcher.get_by_role("list", name="Pages").get_by_role("link")).to_have_count(1)
+        expect(switcher.get_by_role("list", name="Pages").get_by_role("link")).to_have_count(3)
         page.keyboard.press("Escape")
         expect(switcher).to_have_count(0)
         # At 320px the four views still fit in their row under the title (#873): the current one is marked there.

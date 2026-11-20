@@ -4,6 +4,7 @@ import type { CreatedThought, Sketch, WorkItem } from '@flux/contracts';
 import { pool } from './db.js';
 import { actionScene } from './mcp-actions.js';
 import { expect, toolValue } from './mcp.js';
+import { editPage } from './pages.js';
 
 type Scene = Awaited<ReturnType<typeof actionScene>>;
 
@@ -60,8 +61,7 @@ export async function fullProject() {
     { body: { body: 'A person answers in the discussion.', clientMessageId: randomUUID() } }), 201);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
     { body: { title: 'Erasure notes', body: `[The task](flux:work/${task.id}) has a measured note.` } }), 201);
-  expect(await f.owner.request('PATCH', `/api/v1/materials/${f.source.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: f.source.version, body: 'A revised release plan.' } }), 200);
+  await editPage(f.owner, f.source.materialId, { expectedVersion: f.source.version, body: 'A revised release plan.' });
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`,
     { body: { title: 'Keep the rule', rationale: 'Observed data', affects: [task.id] } }), 201);
   const map = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`,

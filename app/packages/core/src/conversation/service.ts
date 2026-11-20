@@ -1,9 +1,9 @@
 import type {
   AgentColour, Conversation, DecisionDiscussion, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
-  CreateMaterialCommand, EditMessageCommand, Material, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, SentConversationMessage, UpdateMaterialCommand,
+  EditMessageCommand, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, SentConversationMessage,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
-import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage, normalizeMessageEdit, normalizeRootWindow } from './commands.js';
+import { normalizeConversationWindow, normalizeMessage, normalizeMessageEdit, normalizeRootWindow } from './commands.js';
 
 /** Show everyone (#842): the agent whose answer a person posts as their message, with its colour (#1232), shown as "Ada's Assistant". Only the server sets it, from the answer itself. */
 export interface ViaAgent { via?: string | null; viaColour?: AgentColour | null }
@@ -26,12 +26,9 @@ export interface ConversationPort {
   editMessage(principal: Principal, conversationId: string, messageId: string, input: ReturnType<typeof normalizeMessageEdit>): Promise<ConversationMessage>;
   /** The author deletes their own message (#1006): a marker stays in its place; the words, its files and its notices go. */
   removeMessage(principal: Principal, conversationId: string, messageId: string): Promise<ConversationMessage>;
-  listMaterials(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<Material>>;
-  /** Any material or doc by ID; a doc's current version may be agent-written (#152). */
+  /** A page by its id (every saved source is a page, #1508); its current version may be agent-written (#152). */
   getMaterial(principal: Principal, materialId: string): Promise<MaterialOrDoc>;
   getMaterialVersion(principal: Principal, materialId: string, version: number): Promise<MaterialVersion>;
-  createMaterial(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMaterial>): Promise<Material>;
-  updateMaterial(principal: Principal, materialId: string, input: ReturnType<typeof normalizeMaterialUpdate>): Promise<Material>;
 }
 
 /** HTTP and future entry points share command rules; the adapter owns persistence and locks. */
@@ -53,12 +50,7 @@ export function conversationUseCases(port: ConversationPort) {
     editMessage: (principal: Principal, conversationId: string, messageId: string, command: EditMessageCommand) =>
       port.editMessage(principal, conversationId, messageId, normalizeMessageEdit(command)),
     removeMessage: (principal: Principal, conversationId: string, messageId: string) => port.removeMessage(principal, conversationId, messageId),
-    listMaterials: (principal: Principal, projectId: string, query?: PageQuery) => port.listMaterials(principal, projectId, query),
     getMaterial: (principal: Principal, materialId: string) => port.getMaterial(principal, materialId),
     getMaterialVersion: (principal: Principal, materialId: string, version: number) => port.getMaterialVersion(principal, materialId, version),
-    createMaterial: (principal: Principal, projectId: string, command: CreateMaterialCommand) =>
-      port.createMaterial(principal, projectId, normalizeMaterial(command)),
-    updateMaterial: (principal: Principal, materialId: string, command: UpdateMaterialCommand) =>
-      port.updateMaterial(principal, materialId, normalizeMaterialUpdate(command)),
   };
 }

@@ -107,7 +107,6 @@ function continueIds(choice: Continue): string[] {
   const { source } = choice.step;
   switch (source.type) {
     case 'message': return [source.messageId];
-    case 'material': return [source.materialId];
     case 'sketch': return [source.sketchId];
     case 'doc': return [source.docId];
     default: return [source.id];

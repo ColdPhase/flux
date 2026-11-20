@@ -1,7 +1,6 @@
 import { plainMessageText, type LiveContextRef, type LivePresentationRef } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getConversation } from '../conversations/api';
-import { getMaterial } from '../materials/api';
 import { getSketch } from '../api/sketches';
 import { getDoc } from '../docs/api';
 import { getWork } from '../work/api';
@@ -103,19 +102,14 @@ export async function resolveFragment(projectId: string, ref: LivePresentationRe
         return { label: item.title, what: changed ? 'task, changed since it was shown' : 'task', path: `/projects/${projectId}/tasks?open=work:${item.id}` };
       }
       case 'material': {
-        try {
-          const doc = await getDoc(ref.id, signal);
-          const latest = doc.version === ref.version;
-          return {
-            label: doc.title,
-            what: latest ? `doc · version ${ref.version}` : `doc · version ${ref.version} of ${doc.version}`,
-            path: latest ? `/projects/${projectId}/docs/${doc.id}` : `/projects/${projectId}/docs/${doc.id}/versions/${ref.version}`,
-          };
-        } catch (error) {
-          if (!(error instanceof ApiError && error.status === 404)) throw error;
-          const material = await getMaterial(ref.id, signal);
-          return { label: material.title, what: `source · version ${ref.version}`, path: `/materials/${ref.id}/versions/${ref.version}` };
-        }
+        // A version of a Wiki page (every saved source is one since #1508).
+        const doc = await getDoc(ref.id, signal);
+        const latest = doc.version === ref.version;
+        return {
+          label: doc.title,
+          what: latest ? `doc · version ${ref.version}` : `doc · version ${ref.version} of ${doc.version}`,
+          path: latest ? `/projects/${projectId}/docs/${doc.id}` : `/projects/${projectId}/docs/${doc.id}/versions/${ref.version}`,
+        };
       }
       case 'sketch': {
         const sketch = await getSketch(ref.id, signal);

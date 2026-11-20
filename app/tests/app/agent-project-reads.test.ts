@@ -25,7 +25,7 @@ test('foreign workspace/project and missing metadata return the same content-fre
     computeSource: 'user_operated_external_client' };
   for (const scope of [null, { workspaceId: randomUUID(), projectId }, { workspaceId, projectId: randomUUID() }]) {
     const reads = agentProjectReads({ scopeOf: async () => scope });
-    await assert.rejects(reads.requireObject(context, workspaceId, projectId, 'material', randomUUID()),
+    await assert.rejects(reads.requireObject(context, workspaceId, projectId, 'doc', randomUUID()),
       (error: unknown) => error instanceof DomainError && error.code === 'OBJECT_NOT_FOUND' && error.status === 404);
   }
 });

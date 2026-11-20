@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';
-import type { Agent, AgentConnection, Material, Page, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, Page, WorkItem } from '@flux/contracts';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { lockProjectTaskGraphs, requireTaskPrerequisitesMet, taskPrerequisiteIds } from '../../apps/server/src/work/task-graph.js';
@@ -13,6 +13,7 @@ import { db, pool } from './support/db.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { createConnection } from './support/mcp-actions.js';
+import { savePage, editPage } from './support/pages.js';
 
 // Native task criteria, prerequisites and plan intent (#152): API/persistence behavior against the real
 // database. Pure rules are in task-graph-core.test.ts; the migration is in task-plan-migration.test.ts.
@@ -44,8 +45,7 @@ async function scene() {
   await grant(owner, place.id, viewer, 'contributor');
   await grant(owner, elsewhere.id, writer, 'contributor');
   const tasks = `/api/v1/projects/${place.id}/work`;
-  const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Measurement plan', body: 'Step one. Step two.' } }), 201) as Material;
+  const material = await savePage(owner.browser, place.id, { title: 'Measurement plan', body: 'Step one. Step two.' });
   const create = async (who: Person, body: Body, status = 201, path = tasks) => expectStatus(await who.browser.request('POST', path, { body }), status) as WorkItem;
   const fails = async (who: Person, body: Body, status: number, expected: string, path = tasks) => {
     const failure = expectStatus(await who.browser.request('POST', path, { body }), status) as ApiFailure;
@@ -247,8 +247,7 @@ test('the same canonical plan intent returns the original task once; other paylo
   assert.equal((await f.counts()).intents, 2);
 
   // The plan moves on: the old revision conflicts before any old outcome is returned; the new one is a new intent.
-  const next = expectStatus(await f.owner.browser.request('PATCH', `/api/v1/materials/${f.material.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Step one. Step two. Step three.' } }), 200) as Material;
+  const next = await editPage(f.owner.browser, f.material.materialId, { expectedVersion: 1, body: 'Step one. Step two. Step three.' });
   assert.equal(next.version, 2);
   const moved = await f.fails(f.owner, creation, 409, 'SOURCE_VERSION_CONFLICT');
   assert.deepEqual([moved.requestedVersion, moved.currentVersion], [1, 2]);
@@ -270,8 +269,7 @@ test('the same canonical plan intent returns the original task once; other paylo
   assert.equal(edited.title, 'Measure at 5 lux, renamed by a person');
 
   // A plan from another project, or one that does not exist, is not a source.
-  const otherPlan = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.elsewhere.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Not this project', body: 'x' } }), 201) as Material;
+  const otherPlan = await savePage(f.owner.browser, f.elsewhere.id, { title: 'Not this project', body: 'x' });
   const absent = await f.fails(f.owner, { title: 'No such plan', planIntent: { materialId: otherPlan.materialId, version: 1, intentKey: 'k' } }, 422, 'PLAN_SOURCE_NOT_FOUND');
   const guessed = await f.fails(f.owner, { title: 'No such plan', planIntent: { materialId: randomUUID(), version: 1, intentKey: 'k' } }, 422, 'PLAN_SOURCE_NOT_FOUND');
   assert.equal(absent.error, guessed.error);
@@ -730,7 +728,7 @@ test('database rules: composite foreign keys, no self edge, one edge per pair, b
 
   // Removing the whole project removes its edges and intents with it (and nothing else fails).
   const doomed = await project(f.owner, f.ws.id, 'Doomed project', 'restricted');
-  const plan = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${doomed.id}/materials`, { body: { clientMutationId: randomUUID(), title: 'Doomed plan', body: 'x' } }), 201) as Material;
+  const plan = await savePage(f.owner.browser, doomed.id, { title: 'Doomed plan', body: 'x' });
   const base = await f.create(f.owner, { title: 'Doomed base' }, 201, `/api/v1/projects/${doomed.id}/work`);
   await f.create(f.owner, { title: 'Doomed planned', dependencyIds: [base.id], criteria: ['c'], planIntent: { materialId: plan.materialId, version: 1, intentKey: 'k' } }, 201, `/api/v1/projects/${doomed.id}/work`);
   const remover = await pool.connect();

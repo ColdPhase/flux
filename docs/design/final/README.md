@@ -2963,11 +2963,12 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
   the company, so this conversation has nobody to send to.", with no offer to reopen it.
 - **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
   is only Home's own, and Home has no header row on the computer.
-- **A Wiki page by its address** (the old "material") is a page of its space (v0.2.2, #1563; round 15 look-3 F5, confirm S2): its address is
-  `/projects/:id/docs/sources/:materialId` (a link by the id alone, `/materials/:id`, goes there, keeping where it was followed from), so it has
-  the space's own header (its name, Conversation · Tasks · Map · Wiki with the Wiki current, its people and ⋯), never a header "Wiki" without
-  tabs, and its way back returns to where the person came from (the Wiki's page switcher, a message, a task). It is a card on the page: its back link, its space's Wiki as a link with "Version 1"
-  ("Community garden sensors · Wiki · Version 1", round 15 look-3 F5), and the space's Wiki page switcher lists it with the space's pages, the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
+- **A saved source is a Wiki page** (the old "material", v0.2.2, [#1508](https://github.com/ColdPhase/flux/issues/1508), C-71; #1419 item 20): it is
+  one of its space's pages like any other, in the Wiki's page switcher and list, read and edited as a page at `/projects/:id/docs/:docId`, with
+  the space's own header (its name, Conversation · Tasks · Map · Wiki with the Wiki current). A link by the id alone (`/materials/:id`, what a
+  message's citation and a task's source carry) goes there, keeping where it was followed from; there is no page of its own and no "Material"
+  word. **The link it was saved with** stands between its title and its text as "Open source link" (`ui-link`, `--fs-md`, 12 px above the text,
+  a new tab), in every version and after every save; a page made in the Wiki has none.
 - **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
 
 ### Setup and accounts from a link

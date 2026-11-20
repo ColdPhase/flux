@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
+import { editPage } from './support/pages.js';
 
 test('a standing work.create grant creates one planned native task through MCP; retries and repeated intents never duplicate it', async () => {
   const f = await actionScene(pool);
@@ -45,8 +46,7 @@ test('a standing work.create grant creates one planned native task through MCP; 
   assert.equal(await f.tasks(), before + 1);
 
   // A changed plan revision is refused before any effect; the task keeps its original revision.
-  const edited = expect(await f.owner.request('PATCH', `/api/v1/materials/${f.source.materialId}`,
-    { body: { clientMutationId: randomUUID(), expectedVersion: f.source.version, body: 'Step one: measure twice.' } }), 200);
+  const edited = await editPage(f.owner, f.source.materialId, { expectedVersion: f.source.version, body: 'Step one: measure twice.' });
   assert.equal(Number(edited.version), f.source.version + 1);
   assert.equal(toolFailure(await f.tool('flux_create_task', command(randomUUID()))).code, 'SOURCE_VERSION_CONFLICT');
   assert.equal(await f.tasks(), before + 1);

@@ -75,15 +75,10 @@ function ConversationCodeBoundary() {
 }
 
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
-// A saved source by its id alone (a link in a message, a work link, a search result) goes to its place in its space, as a message by its id does.
+// A page by its id alone (a citation in a message, a task's source) goes to its place in its space's Wiki, as a message by its id does.
 const material = secondary(async () => {
   const [page, data] = await Promise.all([import('./materials/MaterialView'), import('./materials/loader')]);
   return { Component: page.MaterialView, loader: data.materialLoader };
-});
-// The page itself: inside its space, so it has the space's header and tabs and the Wiki is the current one (round 15 look-3 F5, confirm S2).
-const source = secondary(async () => {
-  const [page, data] = await Promise.all([import('./materials/MaterialView'), import('./materials/loader')]);
-  return { Component: page.SourcePage, loader: data.sourceLoader };
 });
 
 function Root() {
@@ -207,9 +202,6 @@ export const router = createBrowserRouter([
                   { path: ':docId/history', ...secondary(async () => { const page = await docViewsPage(); return { Component: page.DocHistory, loader: page.docHistoryLoader }; }) },
                 ],
               },
-              // A saved source (the former material), a page of the Wiki by its own address.
-              { path: 'docs/sources/:materialId', ...source },
-              { path: 'docs/sources/:materialId/versions/:version', ...source },
               // An invitation's link (#62): opens the session's work with the invitation card.
               { path: 'live/:sessionId', ...secondary(async () => ({ Component: (await import('./live/LiveOpen')).LiveOpen })) },
             ],

@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { SearchWork } from '@flux/core';
-import type { Conversation, Decision, Dm, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, Workspace } from '@flux/contracts';
+import type { Conversation, Decision, Dm, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, Workspace } from '@flux/contracts';
 import { searchTargetPath } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 import { inBatches } from './support/batches.js';
+import { savePage, editPage, type SavedPage } from './support/pages.js';
 
-// Search across Flux (issue #114): one query over project and direct messages, materials and
+// Search across Flux (issue #114): one query over project and direct messages, Wiki pages and
 // their versions, work, decisions, results, sketches and thoughts and people. The access
 // policy is applied in SQL before ranking, limits and snippets, so nothing hidden ever
 // shows or changes the work the database does.
@@ -58,7 +59,7 @@ describe('search: one query across Flux, only what you may read', () => {
   let lamp: Project; // restricted
   let open: Project; // workspace-visible
   let lampThread: Conversation;
-  let material: Material;
+  let material: SavedPage;
   let work: WorkItem;
   let privateSketch: Sketch;
   let direct: Dm;
@@ -76,12 +77,8 @@ describe('search: one query across Flux, only what you may read', () => {
 
     lampThread = await conversation(nia, lamp.id, 'Camera or sensor for the bedside lamp?');
     await say(ari, lampThread.id, 'The infrared sensor reacts at 5 lux in the hallway test.');
-    material = json<Material>(await post(ari, `/api/v1/projects/${lamp.id}/materials`, {
-      clientMutationId: randomUUID(), title: 'Sensor comparison', body: 'The capacitive option drifts with humidity.',
-    }), 201, 'material');
-    json(await patch(ari, `/api/v1/materials/${material.materialId}`, {
-      clientMutationId: randomUUID(), expectedVersion: 1, body: 'The infrared option wins on battery life.',
-    }), 200, 'material v2');
+    material = await savePage(ari.browser, lamp.id, { title: 'Sensor comparison', body: 'The capacitive option drifts with humidity.' });
+    await editPage(ari.browser, material.materialId, { expectedVersion: 1, body: 'The infrared option wins on battery life.' });
     work = json<WorkItem>(await post(nia, `/api/v1/projects/${lamp.id}/work`, { title: 'Test the infrared sensor at night', outcome: 'Numbers for the low-light case' }), 201, 'work');
     json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use the infrared sensor', rationale: 'It passed the hallway test.' }), 201, 'decision');
     const lampSketch = await sketch(nia, ws.id, 'Lamp shapes', lamp.id);
@@ -96,12 +93,12 @@ describe('search: one query across Flux, only what you may read', () => {
 
   test('a contributor finds every kind she may read, with places, labels and exact targets', async () => {
     const answer = await search(nia, 'sensor');
-    assert.deepEqual(kinds(answer), ['decision', 'dm_message', 'material', 'message', 'message', 'message', 'thought', 'work'].sort());
+    assert.deepEqual(kinds(answer), ['decision', 'dm_message', 'doc', 'message', 'message', 'message', 'thought', 'work'].sort());
     const byKind = (kind: string) => answer.items.filter((item) => item.kind === kind);
-    const materialHit = byKind('material')[0]!;
+    const materialHit = byKind('doc')[0]!;
     assert.equal(text(materialHit.title), 'Sensor comparison');
-    assert.equal(materialHit.label, 'Wiki page', 'a saved source is a Wiki page to the person (#1419 item 20); the word Material is gone');
-    assert.deepEqual(materialHit.target, { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 2 });
+    assert.equal(materialHit.label, 'Wiki page');
+    assert.deepEqual(materialHit.target, { type: 'doc', projectId: lamp.id, docId: material.materialId, version: 2, current: true });
     assert.deepEqual(materialHit.place, { type: 'project', id: lamp.id, name: 'Gesture lamp' });
     const dmHit = byKind('dm_message')[0]!;
     assert.deepEqual(dmHit.place, { type: 'dm', id: direct.id, name: 'Ari Nowak' });
@@ -204,8 +201,9 @@ describe('search: one query across Flux, only what you may read', () => {
 
   test('a type filter narrows the results to one kind', async () => {
     assert.ok(new Set(kinds(await search(nia, 'sensor'))).size > 1, 'without a filter there are several kinds');
-    const answer = await search(nia, { q: 'sensor', type: 'material' });
-    assert.deepEqual(kinds(answer), ['material']);
+    const answer = await search(nia, { q: 'sensor', type: 'doc' });
+    assert.deepEqual(kinds(answer), ['doc']);
+    assert.equal((await searchRaw(nia, { q: 'sensor', type: 'material' })).status, 400, 'no saved-source kind is left to filter by (#1508)');
     const sketches = await search(nia, { q: 'sensor', type: 'sketch' });
     assert.deepEqual(kinds(sketches), ['thought']);
     assert.equal((await searchRaw(nia, { q: 'sensor', type: 'secrets' })).status, 400);
@@ -214,7 +212,7 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal((await searchRaw(nia, { q: 'x'.repeat(201) })).status, 400);
   });
 
-  test('an edit is searchable at once, and an old material version is still found at the version it was', async () => {
+  test('an edit is searchable at once, and an old version of a page is still found at the version it was', async () => {
     const before = await search(nia, 'night');
     assert.deepEqual(titles(before), ['Test the infrared sensor at night']);
     json(await patch(nia, `/api/v1/work/${work.id}`, { title: 'Test the infrared sensor at dawn', expectedVersion: work.version }), 200, 'rename work');
@@ -223,7 +221,7 @@ describe('search: one query across Flux, only what you may read', () => {
     const old = await search(nia, 'humidity');
     assert.equal(old.items.length, 1);
     assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2');
-    assert.deepEqual(old.items[0]!.target, { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 1 });
+    assert.deepEqual(old.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: material.materialId, version: 1 });
     assert.ok(old.items[0]!.snippet?.some((part) => part.match && part.text.toLowerCase() === 'humidity'));
   });
 

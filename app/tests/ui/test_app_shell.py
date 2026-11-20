@@ -1084,9 +1084,9 @@ class AppShellJourney(unittest.TestCase):
         opening.get_by_role("button", name="Reply in thread", exact=True).click()
         expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
         # There is no Sources tray in the composer (#1419): a source saved for the space is cited by the API alone, and a reply that carries one shows its card.
-        saved = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/materials", data={"title": "Privacy options", "body": "PIR avoids storing images", "clientMutationId": str(uuid.uuid4())}, headers={"Origin": ORIGIN})
+        saved = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/docs", data={"title": "Privacy options", "body": "PIR avoids storing images"}, headers={"Origin": ORIGIN})
         self.assertEqual(saved.status, 201, saved.text())
-        cited = owner.context.request.post(f"{ORIGIN}/api/v1/conversations/{conversation_id}/messages", data={"body": "This is the version we should prototype", "clientMessageId": str(uuid.uuid4()), "source": {"materialId": saved.json()["materialId"], "version": 1}}, headers={"Origin": ORIGIN})
+        cited = owner.context.request.post(f"{ORIGIN}/api/v1/conversations/{conversation_id}/messages", data={"body": "This is the version we should prototype", "clientMessageId": str(uuid.uuid4()), "source": {"materialId": saved.json()["id"], "version": 1}}, headers={"Origin": ORIGIN})
         self.assertEqual(cited.status, 201, cited.text())
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
         source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))

@@ -158,7 +158,6 @@ function viewPlan(ids) {
     { view: 'Conversation', groups: [...shell, ...projectShell,
       [get('conversation roots', `/api/v1/projects/${p}/conversation-roots`),
         get('task notices', `/api/v1/projects/${p}/task-notices?limit=100&offset=0`),
-        get('materials', `/api/v1/projects/${p}/materials?limit=100&offset=0`),
         get('members', `/api/v1/workspaces/${ws}/members`)],
       [get('assistant', '/api/v1/personal-assistant'), get('assistant runs', '/api/v1/assistant-runs?limit=10'),
         get('root work associations', `/api/v1/projects/${p}/work-associations?${query({ relation: 'source', limit: 50, messageIds: associations })}`),

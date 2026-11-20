@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import type { Material, WorkItem } from '@flux/contracts';
+import type { WorkItem } from '@flux/contracts';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
+import { savePage } from '../support/pages.js';
 
 // A planned task's criteria, prerequisites and plan revision in the real task details (#152), including the unmet-prerequisite
 // refusal, keyboard operation and a phone-width read-only viewer. It does not certify an MCP client or model-driven planning.
@@ -63,8 +63,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   await grant(owner, place.id, reader, 'contributor');
   const api = `/api/v1/projects/${place.id}/work`;
   const create = async (body: Record<string, unknown>) => expectStatus(await owner.browser.request('POST', api, { body }), 201) as WorkItem;
-  const plan = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Measurement plan', body: 'Calibrate, then measure at 5 lux.' } }), 201) as Material;
+  const plan = await savePage(owner.browser, place.id, { title: 'Measurement plan', body: 'Calibrate, then measure at 5 lux.' });
   const calibrated = await create({ title: 'Calibrate the sensor', status: 'done' });
   const ordered = await create({ title: 'Order the replacement lens', outcome: 'A lens that fits the lamp head' });
   const planned = await create({ title: 'Measure gestures at 5 lux', outcome: 'A table of detections per light level',

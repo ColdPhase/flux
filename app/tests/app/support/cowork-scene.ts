@@ -4,6 +4,7 @@ import { pool } from './db.js';
 import { agentConnection, approveWaiting, waits } from './mcp-actions.js';
 import { toolValue } from './mcp.js';
 import { addMember, expectStatus, person, project, workspace, type Person } from './people.js';
+import { savePage } from './pages.js';
 
 // The shared starting point of the co-work card and concurrency tests (#153, #400): two owners, three real OAuth
 // connections and a project with a reader of every kind. Hubert owns the workspace (so manages the project) and two agents,
@@ -63,8 +64,7 @@ export async function coworkScene() {
 
   const task = async (title: string) => expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title } }), 201) as WorkItem;
-  const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Review findings', body: 'Two findings, both fixed' } }), 201) as { materialId: string };
+  const material = await savePage(hubert.browser, p.id, { title: 'Review findings', body: 'Two findings, both fixed' });
   const unit = async (unitId: string) => (await pool.query(
     'SELECT state, generation, version, assignment_connection_id AS assignee, transferred_from_connection_id AS "from", lease_id AS lease FROM cowork_units WHERE id=$1',
     [unitId])).rows[0] as { state: string; generation: number; version: number; assignee: string; from: string | null; lease: string | null };

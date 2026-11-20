@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { chmodSync, copyFileSync } from 'node:fs';
 import { writeFile, unlink } from 'node:fs/promises';
 import { coworkHostScope, coworkHostUrl, coworkNativeOutcome, type CoworkHostBinding } from '../../../tooling/cowork.js';
@@ -15,6 +14,7 @@ import { coworkProductionInvoke, coworkProductionLogin } from '../support/cowork
 import { createOAuthDiagnostic, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthLoginOnly, oauthPrivateCallback, oauthProductionFirstLoginOnly } from '../support/oauth-diagnostics.js';
 import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
+import { savePage, editPage } from '../support/pages.js';
 
 // OPT IN ONLY. Official pinned clients and their configured model accounts, never a scripted endpoint.
 // Credentials are mounted read-only from explicit host paths into a disposable container. No transcript or
@@ -47,15 +47,14 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         const project = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/projects`,
           { body: { name: 'Non-code orientation study', visibility: 'restricted' } }), 201);
         const projectId = String(project.id);
-        const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`, { body: {
-          clientMutationId: randomUUID(), title: 'Current project plan', body: 'Outcome: compare the two proposed labels, Study and Research. '
+        const plan = await savePage(owner, projectId, { title: 'Current project plan', body: 'Outcome: compare the two proposed labels, Study and Research. '
             + 'Create one native task for this comparison, with criteria that the chosen label and reason are recorded. '
             + 'Do not change software or contact anyone. The wiki explains the audience. '
             + 'Read the current plan and relevant wiki, decisions, conversations and existing tasks first. '
             + 'Create exactly one task for the plan with source-linked criteria and a stable plan intent; do not duplicate it on Resume. '
             + 'Within your owner’s rights, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
             + 'Leave the task open for later. On Resume compare source versions, reread any changed plan, and write a new Wiki page (a doc) explaining the current plan. '
-            + 'Stop after that bounded step. Never use another account, modify software or send external messages.' } }), 201);
+            + 'Stop after that bounded step. Never use another account, modify software or send external messages.' });
         expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
           { body: { title: 'Audience', body: 'This workspace is for people recording small experiments; use familiar everyday language.' } }), 201);
         const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
@@ -210,10 +209,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         const idleRequests = fluxRequests - idleFrom;
         console.log('LIVE_NATIVE_QUIET_IDLE', JSON.stringify({ client, windowMs: idleMs, fluxRequests: idleRequests, clientProcesses: 0 }));
         assert.equal(idleRequests, 0, `${client}: no Flux request while idle between Start and Resume`);
-        expect(await owner.request('PATCH', `/api/v1/materials/${plan.materialId}`, { body: {
-          clientMutationId: randomUUID(),
-          title: 'Current project plan', body: 'Changed outcome: use Experiment as the label, because the audience records small experiments.',
-          expectedVersion: Number(plan.version) } }), 200);
+        await editPage(owner, plan.materialId, { title: 'Current project plan', body: 'Changed outcome: use Experiment as the label, because the audience records small experiments.', expectedVersion: Number(plan.version) });
         await invoke('resume');
         const counts = (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND creation_reverted_at IS NULL', [projectId])).rows;
         assert.equal(counts[0].n, 1, `${client}: Resume uses existing work instead of duplicating the task`);

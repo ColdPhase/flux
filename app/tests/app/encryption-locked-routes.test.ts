@@ -66,7 +66,6 @@ before(async () => {
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: `${canary} decision`, rationale: 'why' }, 201);
   const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: `${canary} task`, outcome: 'done', criteria: ['one'] }, 201);
   const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: `${canary} doc`, body: 'body' }, 201);
-  const material = await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: `${canary} material`, body: 'b', url: 'https://example.test/m' }, 201);
   const sketch = await post(ada, `/api/v1/workspaces/${A}/sketches`, { title: `${canary} map`, scope: 'project', projectId: project.id }, 201);
   const one = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${canary} thought`, x: 0, y: 0 }, 201);
   const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: 'two', x: 200, y: 0 }, 201);
@@ -85,7 +84,7 @@ before(async () => {
     workspaceId: A, workspace: A, projectId: project.id, projectIds: project.id, conversationId: String(conversation.id), dmId: String(dm.id),
     rootId: String((dmMessage as { id?: string }).id ?? (dmMessage.message as { id: string }).id), messageId: String((conversation.messages as { id: string }[])[0]!.id),
     decisionId: String(decision.id), workId: String(task.id), taskId: String(task.id),
-    docId: String(doc.id), materialId: String(material.materialId ?? material.id), sketchId: String(sketch.id), thoughtId: String((one.thought as { id: string }).id),
+    docId: String(doc.id), materialId: String(doc.id), sketchId: String(sketch.id), thoughtId: String((one.thought as { id: string }).id),
     linkId: String((link.link as { id?: string } | undefined)?.id ?? link.id), fileId: file.id, userId: ben.id, version: '1', kind: 'decision',
     notification, grantId: randomUUID(), key: `note:${notification}`,
   });

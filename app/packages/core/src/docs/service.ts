@@ -132,7 +132,7 @@ function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedP
 
 async function presentVersion(ports: DocPorts, version: DocVersionRecord, workspaceId: string | null = null): Promise<DocVersion> {
   const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])], workspaceId)]);
-  return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: ports.renderer.render(version.body, map), mentions };
+  return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, url: version.url, html: ports.renderer.render(version.body, map), mentions };
 }
 
 async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {

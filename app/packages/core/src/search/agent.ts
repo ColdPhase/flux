@@ -8,11 +8,11 @@ import { searchPlaceOf, SEARCH_SOURCES } from './sources.js';
 // labels each author as people see them (#1160).
 
 /** The kinds an agent may ask for. A map covers its thoughts, a message a direct message too (in a run in that DM). Not people, not a space's own row. */
-export const AGENT_SEARCH_KINDS = ['message', 'doc', 'material', 'file', 'task', 'decision', 'map'] as const;
+export const AGENT_SEARCH_KINDS = ['message', 'doc', 'file', 'task', 'decision', 'map'] as const;
 export type AgentSearchKind = typeof AGENT_SEARCH_KINDS[number];
 
 const KIND_ROWS: Record<AgentSearchKind, SearchKind[]> = {
-  message: ['message', 'dm_message'], doc: ['doc'], material: ['material'], file: ['file'], task: ['work'], decision: ['decision'], map: ['sketch', 'thought'],
+  message: ['message', 'dm_message'], doc: ['doc'], file: ['file'], task: ['work'], decision: ['decision'], map: ['sketch', 'thought'],
 };
 const WORD = /[\p{L}\p{N}]+/gu;
 
@@ -181,7 +181,7 @@ export interface AgentHitAuthor { kind: 'human' | 'agent'; id: string; name: str
 
 /** The kind an agent is told: its own words for a task and a map, a direct message is a message of a place that is a direct message. */
 const KIND_WORD: Record<SearchKind, string> = {
-  project: 'space', message: 'message', dm_message: 'message', material: 'material', doc: 'doc', file: 'file', work: 'task', decision: 'decision', sketch: 'map', thought: 'thought', person: 'person',
+  project: 'space', message: 'message', dm_message: 'message', doc: 'doc', file: 'file', work: 'task', decision: 'decision', sketch: 'map', thought: 'thought', person: 'person',
 };
 
 /** The kinds of hit an answer may cite (C-62): a message of a space, a Wiki page, a task, a decision. A direct message, a material, a map and a thought carry none. */
@@ -232,7 +232,7 @@ export function agentHit(row: SearchRow, author: AgentHitAuthor | null): AgentHi
     place: place.type === 'project' ? { type: 'space', id: place.id, name: place.name } : place.type === 'dm' ? { type: 'dm', id: place.id, name: place.name } : null,
     ...(row.kind === 'message' && row.parentId ? { conversationId: row.parentId } : {}),
     ...((row.kind === 'message' || row.kind === 'dm_message') && row.sequence != null ? { sequence: row.sequence } : {}),
-    ...((row.kind === 'doc' || row.kind === 'material') && row.version !== null ? { version: row.version } : {}),
+    ...(row.kind === 'doc' && row.version !== null ? { version: row.version } : {}),
     ...(row.kind === 'file' && row.page ? { page: row.page } : {}),
     ...(row.kind === 'file' && row.messageId ? { messageId: row.messageId } : {}),
     ...(row.kind === 'work' && row.workNumber !== null ? { number: row.workNumber } : {}),

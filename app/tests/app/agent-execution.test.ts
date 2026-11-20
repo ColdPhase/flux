@@ -9,6 +9,7 @@ import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js'
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant as giveAccess, person, project, removeFromSpace, workspace } from './support/people.js';
 import { createConnection } from './support/mcp-actions.js';
+import { savePage, editPage } from './support/pages.js';
 
 async function fixture() {
   // The agent's owner is added to the space, so their access can end (#903); a company owner or admin always reaches every space.
@@ -116,10 +117,9 @@ test('runtime expiry/revocation and lost current domain authority deny successfu
 
 test('changed plan/source revisions and actual client or coarse scope substitution fail before effect or replay', async () => {
   const f = await fixture();
-  const source = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/materials`,
-    { body: { clientMutationId: randomUUID(), title: 'Execution source', body: 'Version one' } }), 201) as { materialId: string };
+  const source = await savePage(f.owner.browser, f.p.id, { title: 'Execution source', body: 'Version one' });
   const command = { ...f.command, sources: [{ materialId: source.materialId, version: 1 }] }; await f.run(command);
-  expectStatus(await f.owner.browser.request('PATCH', `/api/v1/materials/${source.materialId}`, { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Version two' } }), 200);
+  await editPage(f.owner.browser, source.materialId, { expectedVersion: 1, body: 'Version two' });
   await rejects(f.run(command), 'SOURCE_VERSION_CONFLICT');
   for (const claims of [{ ...f.claims, clientId: 'another-actual-client' }]) {
     await assert.rejects(db.transaction((tx) => agentExecutionInTransaction(tx, claims).prepare(normalizeAgentExecution(f.command))),

@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { agentProposalRepository, accessReader } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent, validateProposalCommand } from '@flux/core';
-import type { AgentProposal, Material, Project, Workspace } from '@flux/contracts';
+import type { AgentProposal, Project, Workspace } from '@flux/contracts';
 import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
 import { createConnection } from './support/mcp-actions.js';
+import { savePage, editPage, type SavedPage } from './support/pages.js';
 
 const store = agentProposalUseCases(agentProposalRepository(db, {
   async authorizeWrite(principal, projectId, tx) {
@@ -28,7 +29,7 @@ describe('sourced personal agent proposals', () => {
   let outsider: Awaited<ReturnType<typeof person>>;
   let workspace: Workspace;
   let project: Project;
-  let material: Material;
+  let material: SavedPage;
   let agentId: string;
   let connectionId: string;
 
@@ -42,8 +43,7 @@ describe('sourced personal agent proposals', () => {
       { body: { name: 'Lamp sensor', visibility: 'restricted' } }), 201) as Project;
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
       { body: { name: 'Hubert research client', owner: 'self' } }), 201) as { id: string }).id;
-    material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
-      { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
+    material = await savePage(owner.browser, project.id, { title: 'Low light', body: 'Sensor A misses dim scenes' });
     const connection = await createConnection(pool, owner.browser, { agentId });
     connectionId = connection.id;
     assert.equal(connection.ownerUserId, owner.id);
@@ -78,8 +78,7 @@ describe('sourced personal agent proposals', () => {
     assert.equal(peerView.offset, 0);
     expectStatus(await outsider.browser.request('GET', `/api/v1/projects/${project.id}/agent-proposals`), 404);
 
-    expectStatus(await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`,
-      { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'New evidence' } }), 200);
+    await editPage(owner.browser, material.materialId, { expectedVersion: 1, body: 'New evidence' });
     await assert.rejects(store.create(context, command), { code: 'SOURCE_VERSION_CONFLICT' });
     // The agent has no grant of its own (F-036 AG-3): revoking the agent ends what it may write.
     expectStatus(await owner.browser.request('DELETE', `/api/v1/agents/${agentId}`), 200);

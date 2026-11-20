@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { SPACE_PREVIEWS_LIMIT, SPACE_PREVIEWS_PATH, type ConversationRootQuery, type ConversationWindowQuery, type CreateMaterialCommand, type EditMessageCommand, type PageQuery, type SendMessageCommand, type SpacePreviewsResponse, type UpdateMaterialCommand } from '@flux/contracts';
+import { SPACE_PREVIEWS_LIMIT, SPACE_PREVIEWS_PATH, type ConversationRootQuery, type ConversationWindowQuery, type EditMessageCommand, type PageQuery, type SendMessageCommand, type SpacePreviewsResponse } from '@flux/contracts';
 import { conversationUseCases, DomainError, InvalidInputError, type FileStorage } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -29,13 +29,6 @@ const plainText = async (request: { body?: unknown }) => {
   if (request.body && typeof request.body === 'object' && Object.hasOwn(request.body, 'kind'))
     throw new InvalidInputError('A conversation message has no contribution kind');
 };
-const createMaterialBody = { type: 'object', required: ['clientMutationId', 'title'], additionalProperties: false,
-  properties: { clientMutationId: { type: 'string' }, title: { type: 'string', minLength: 1, maxLength: 200 },
-    body: { type: 'string', maxLength: 100_000 }, url: { type: 'string', maxLength: 2048 } } } as const;
-const updateMaterialBody = { type: 'object', required: ['clientMutationId', 'expectedVersion'], additionalProperties: false,
-  properties: { clientMutationId: { type: 'string' }, expectedVersion: { type: 'integer' }, title: { type: 'string', minLength: 1, maxLength: 200 },
-    body: { type: 'string', maxLength: 100_000 }, url: { type: ['string', 'null'], maxLength: 2048 } } } as const;
-
 export async function conversationRoutes(app: FastifyInstance, { db, sessions, storage }: Options) {
   const stored = conversationStore(db, { storage });
   const store = conversationUseCases(stored);
@@ -99,15 +92,9 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
     { schema: { body: { type: 'object', required: ['runs', 'run'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: messageId } }, run: { type: 'integer', minimum: 0, maximum: 19 }, after: { type: 'string', maxLength: 100 } } } } },
     async (request) => receipts.readers(await principal(request), request.params.projectId, request.body));
 
-  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/materials',
-    { schema: { querystring: page } }, async (request) => store.listMaterials(await principal(request), request.params.projectId, request.query));
-  app.post<{ Params: { projectId: string }; Body: CreateMaterialCommand }>('/api/v1/projects/:projectId/materials',
-    { schema: { body: createMaterialBody } }, async (request, reply) => reply.code(201).send(
-      await store.createMaterial(await principal(request), request.params.projectId, request.body)));
+  // A page by its id and a version of it (#1508: every saved source is a Wiki page): what a message's citation and a task's source read.
   app.get<{ Params: { materialId: string } }>('/api/v1/materials/:materialId',
     async (request) => store.getMaterial(await principal(request), request.params.materialId));
   app.get<{ Params: { materialId: string; version: string } }>('/api/v1/materials/:materialId/versions/:version',
     async (request) => store.getMaterialVersion(await principal(request), request.params.materialId, Number(request.params.version)));
-  app.patch<{ Params: { materialId: string }; Body: UpdateMaterialCommand }>('/api/v1/materials/:materialId',
-    { schema: { body: updateMaterialBody } }, async (request) => store.updateMaterial(await principal(request), request.params.materialId, request.body));
 }

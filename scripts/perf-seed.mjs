@@ -7,7 +7,7 @@
 //
 // Volume (#298): one workspace with 3 people and 10 projects; 2,000 messages in 100 threads of
 // one project; 500 tasks (300 in that project, 200 across the others) with owners; a project map
-// of 200 linked thoughts; 50 docs with 3 versions each; 20 materials; notifications follow from
+// of 200 linked thoughts; 50 docs with 3 versions each; 20 source pages; notifications follow from
 // the replies, mentions and assignments. The content is deterministic; ids are not.
 //
 // Input (environment): FLUX_PERF_API (default http://127.0.0.1:8080), FLUX_PUBLIC_ORIGIN,
@@ -221,16 +221,15 @@ await lanes(DOCS, async (index) => {
 });
 console.log(`  ${DOCS} docs with ${DOC_VERSIONS} versions each (${Date.now() - started} ms)`);
 
-// Shared material (sources people cite). Beyond #298's list, but the Conversation view reads the
-// project's materials on open and every 15 s, so a project that has some is the realistic case.
+// Sources people cite: Wiki pages of one version each (the saved sources of v0.2.1 are Wiki pages since #1508).
 await lanes(MATERIALS, async (index) => {
   const author = people[index % 3];
-  await author.session.expect('POST', `/api/v1/projects/${main.id}/materials`, {
-    clientMutationId: uuid(), title: `Source ${index + 1}: ${topics[index % topics.length]}`,
+  await author.session.expect('POST', `/api/v1/projects/${main.id}/docs`, {
+    title: `Source ${index + 1}: ${topics[index % topics.length]}`,
     body: `Measurements and links about ${topics[index % topics.length]}, collected on workday ${index + 1}.`,
   });
 });
-console.log(`  ${MATERIALS} materials (${Date.now() - started} ms)`);
+console.log(`  ${MATERIALS} source pages (${Date.now() - started} ms)`);
 
 console.log(`FLUX_PERF_SEED ${JSON.stringify({
   workspaceId: ws.id, mainProjectId: main.id, projectIds: projects.map((p) => p.id), sketchId: sketch.id,
