@@ -20,6 +20,8 @@
    core 23). */
 .sr__hit { background: none; color: var(--t1); font-weight: 600; }
 .sr__meta { display: block; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A pinned message's mark (C-74): the pin glyph and "Pinned", in the meta line's own colour. */
+.sr__pinned { display: inline-flex; align-items: center; gap: 4px; vertical-align: -1px; }
 .sr__meta time { font-variant-numeric: tabular-nums; }
 /* A file found by what it says: who, where and when give way first, down to a few letters, then the quote with the matched words (round 15
    confirm S3). */

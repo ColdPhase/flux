@@ -6,6 +6,7 @@ import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, REVEA
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, ShownObjects, shownObjects, TaskObjectRow, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
+import { PinnedLine } from '../pins/PinnedLine';
 import { useOwnMessage } from '../work/ownMessage';
 import { onMessageChanged, projectMessageEdits } from '../conversations/messageChanges';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -1005,6 +1006,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         </>}
       </div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
+      <PinnedLine messageId={message.id} />
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />

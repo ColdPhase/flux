@@ -342,13 +342,13 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     // A direct message: it reads a web page and finds, reads around and summarises the messages of that DM and of nothing else (F-042, #1290,
     // #1292); the DM itself is given in the request, and no space is reachable.
     const inDm = await asked({ kind: 'dm', dmId, threadRootId: null }, [call('flux_search', { q: 'canary' }), { text: 'Fact: done.' }]);
-    assert.deepEqual(offered(pi.gateway.requests[0]!), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image']);
+    assert.deepEqual(offered(pi.gateway.requests[0]!), ['flux_list_pinned', 'flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image']);
     assert.match(pi.gateway.requests[0]!.prompt, new RegExp(DM_CANARY), 'the DM is what the model reads');
     assert.ok((results()[0] ?? '').includes(`/dm/${dmId}#message-`), 'it finds the message of its DM');
     assert.ok(!(results()[0] ?? '').includes('/projects/'), 'and nothing of a space, though the Wiki says "canary" too');
     for (const canary of [WIKI_CANARY, OTHER_CANARY, PRIVATE_CANARY]) assert.ok(!JSON.stringify(pi.gateway.requests).includes(canary), `${canary} never reaches the provider`);
     const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
-    assert.deepEqual((dmToken.rows[0].run_tools as string[]).filter((name) => name !== 'flux_web_search'), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image']);
+    assert.deepEqual((dmToken.rows[0].run_tools as string[]).filter((name) => name !== 'flux_web_search'), ['flux_list_pinned', 'flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image']);
     // A call of any other tool is refused by the route (pi itself stops a run that asks for a tool it was not given: agent-runtime-pi.test.ts).
     const dmRun = await runs.invoke(human(owner), { kind: 'dm', dmId, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' });
     await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [dmRun.run.id]);
@@ -362,7 +362,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const names = offered(pi.gateway.requests[0]!);
     const chatTools = (await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inChat])).rows[0].run_tools as string[];
     assert.deepEqual(names, chatTools.filter((name) => name !== 'flux_web_search').sort(), 'pi was offered exactly the tools the run token was minted for');
-    assert.equal(names.length, 24, 'the 22 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382), a picture and a file for its answer (flux_attach_image, #1217; flux_attach_file, #1437)');
+    assert.equal(names.length, 25, 'the 23 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382; flux_list_pinned, #1615), a picture and a file for its answer (flux_attach_image, #1217; flux_attach_file, #1437)');
     assert.ok(names.includes('flux_attach_image') && names.includes('flux_attach_file'), 'its answer in the chat can carry a picture (founder decision on #1217) and a file (coordinator decision on #1437)');
     assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image' && tool !== 'flux_attach_file').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(pi.gateway.requests).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
@@ -379,14 +379,14 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'From the chat'`)).rows[0].n, 0);
     await end(armed.run.id);
 
-    // The space's main conversation: its own space and no other, with every switch on: the 22 read tools and every change tool (A3).
+    // The space's main conversation: its own space and no other, with every switch on: the 23 read tools and every change tool (A3).
     const quiet = await createProject(owner, ws.id, 'Quiet corner', 'workspace');
     const QUIET = `quiet-canary-${randomBytes(4).toString('hex')}`;
     const quietDoc = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${quiet.id}/docs`, { body: { title: 'Quiet notes', body: QUIET } }), 201) as { id: string }).id;
     expectStatus(await owner.browser.request('POST', `/api/v1/projects/${quiet.id}/conversations`, { body: { body: 'Short hello', clientMessageId: randomUUID() } }), 201);
     await asked({ kind: 'space', projectId: quiet.id, conversationId: null }, [call('flux_get_doc', { projectId: other.id, id: otherDocId }), call('flux_get_doc', { projectId: quiet.id, id: quietDoc }), { text: 'Fact: done.' }]);
-    assert.equal(offered(pi.gateway.requests[0]!).length, 22 + ASSISTANT_RUN_EFFECT_TOOLS.length,
-      '22 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382) and every change tool (A3)');
+    assert.equal(offered(pi.gateway.requests[0]!).length, 23 + ASSISTANT_RUN_EFFECT_TOOLS.length,
+      '23 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382; flux_list_pinned, #1615) and every change tool (A3)');
     assert.ok(JSON.stringify(pi.gateway.requests).includes(QUIET), 'its own space is read');
     assert.ok(!JSON.stringify(pi.gateway.requests).includes(OTHER_CANARY), 'another space of its owner is not');
   });

@@ -8,6 +8,7 @@ import type { Receipt } from '../app/receipts';
 import { MessageText } from '../app/MessageText';
 import { useAddToMyMap } from '../sketch/myMap';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
+import { PinnedLine } from '../pins/PinnedLine';
 import { useOwnMessage } from '../work/ownMessage';
 import { editDmMessage, removeDmMessage } from '../api/direct-messages';
 import { announceMessageChanged } from '../conversations/messageChanges';
@@ -112,6 +113,7 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
             : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
           {mine && message.via ? <p className="dm-msg__meta"><span className="dm-msg__via">via {message.via}</span></p> : null}
           {/* A message may be only files (#1438 point 10): no empty bubble of words above them. */}
+          <PinnedLine messageId={message.id} />
           <MessageContent body={own.slot ?? (message.body ? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div> : null)}
             files={message.files} references={message.references}
             context={{ author: name, at: message.createdAt, caption: message.body, onReply: writable ? onReply : undefined, onCreateTask: writable ? () => onCreateTask(message, undefined) : undefined }} />

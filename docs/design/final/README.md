@@ -667,7 +667,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   Without New (an account in no company) Search is the row's one button and says "Search", never a lone square (round 14).
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
-  Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
+  Wiki** as [underline tabs](#underline-tabs-the-views-switch), the **pinned messages' button with its count** (C-74, a fixed slot that stays
+  empty while nothing is pinned, [Pinned messages](#pinned-messages)), the people's faces (people active now first, then the others, an agent last; with a working agent's
   face only while it works), **Call** (Join while a call of the space is on, [Calls](#calls)) and ⋯. The tabs are as tall as the row, so their underline sits on the
   header's hairline. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
   at most three people (two in a header pane narrower than 70 rem, a tablet or a computer window of about 1001 to 1380 px) and,
@@ -677,7 +678,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   and an empty Everyone does not say "1 agent". The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
   where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. Where the row is
   too short for the name's 220 px slot beside everything else (a header under 780 px, as on an 820 px tablet in portrait), the
-  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings and
+  people go into ⋯ first, as its People row, with the pin button as its **Pinned** row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings and
   **Mute space** / **Unmute space**; there is no Space details panel (founder decision, Hubert, 2026-11-13, #1419): who is in the space, its
   AI switch and its **GitHub** row are all in the space's settings ([Spaces](#spaces)). It has no row for the sidebar:
   the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424, #1460): Home, My tasks, My map, an
@@ -732,7 +733,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
   v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
   - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
-    rows of ⋯. Back and ⋯ are plain icons, not buttons with a fill: a 24 px chevron and three
+    rows of ⋯, with **Pinned N** between them while something is pinned (C-74). Back and ⋯ are plain icons, not buttons with a fill: a 24 px chevron and three
     dots, drawn with the app's icon stroke in `--t1`, with an invisible 44 px hit area, no filled
     circle and no shadow. Only a press shows the 44 px target (`--act`).
   - **A live call shows Join.** The one dark pill (#1230) sits between the name and ⋯ and never
@@ -750,7 +751,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Tasks › Board shows one status at a time** (see Tasks and the task panel): the status row, then the chosen status's column at full width,
     with no sideways scroll.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
-  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, its AI section (C-73) and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then **Pinned N** while something is pinned (C-74), Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, its AI section (C-73) and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
   task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
@@ -758,7 +759,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   applied to the v0.2 message actions:
   - **In a conversation, long press** on a message opens one sheet with the message and its
     actions in the computer's order: Reply in thread, Create task, Add to map, Copy link, Copy text
-    (founder direction 2026-11-08), and Edit and Delete on your own messages.
+    (founder direction 2026-11-08), Pin or Unpin (C-74), and Edit and Delete on your own messages.
   - **Swipe right** on a message opens Reply in thread.
   - **No swipe-left actions on messages.** Messages have no done or snooze state.
   - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail) and on the Tasks Board, where a sideways swipe moves to the
@@ -971,7 +972,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
 | S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. A command is the draft's start: `/` after other words is text, and the `/` menu opens only there. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
-| S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
+| S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, **Pin** (or **Unpin**, key `P`; C-74, [Pinned messages](#pinned-messages)), then, below the line, Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. It names people as the cards inside it do: the full name, and "(you)" for the reader ("Ada Kowalska (you) created 3 tasks", audit 3274a05), each person once ("Stefan Nowak created 2 tasks and updated a task", persona round 6). |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
@@ -1660,6 +1661,34 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   - A photo in a message has a `--line2` hairline, so a light picture keeps its edge, and its toolbar stands beside the photo.
 - The composer has the paperclip, the hint and Send. A conversation with its usual audience shows
   no "who can see this" text.
+
+### Pinned messages
+
+Founder decision, Hubert, 2026-11-20 ([#1615](https://github.com/ColdPhase/flux/issues/1615), C-74; the accepted mock-up's answers A1, B1, C1).
+**One rule: a pin belongs to the conversation and everyone in it sees the same list.** It is not a personal bookmark.
+
+- **Where:** a space (its stream, its threads and the discussions on its cards are one list), a direct message (a group too) and a person's
+  chat with their own agent (their requests, its answers and its own lines, each with a ⋯ of Copy text and Pin). A reply in a thread can be pinned.
+- **Who:** whoever may write in the conversation pins and unpins, a guest who may write too. A reader (a 1:1 whose other person left) sees the list
+  and gets no Pin and no Unpin. Agents never pin.
+- **The ⋯ menu:** **Pin** / **Unpin** after Copy text, before the line that sets off Edit and Delete, with its key `P` at the row's end on a
+  computer (S6). `P` pins or unpins while focus is in the message. A deleted message has none.
+- **The line:** a pinned message shows one quiet line above its bubble, the pin glyph and "Pinned by Ada Kowalska" ("(you)" for the reader), in
+  `--t3` at meta size, on its author's side.
+- **The header (computer and tablet):** a button with the pin glyph and the count, in a fixed slot before the faces. With no pins the slot stays
+  empty, so nothing moves. It follows the faces into ⋯ (its **Pinned** row with the count) where the row has no room. A direct message and an
+  agent's chat have the same button in their header, which always has room for it.
+- **The panel:** the button opens **Pinned · N** in the one detail panel (S4); a second press closes it. The newest pin first. A row is the
+  author's face, the words in two lines (a file as its chip after them) and "Author · when · pinned by X" ("in a thread" for a reply). **Unpin**
+  shows on hover or focus. A click on a row brings the message into view and marks it, as a link to it does: a space's or a direct message's
+  message opens at its address (in its thread for a reply), and an agent's chat scrolls to it and marks it for a moment. The panel ends with one
+  quiet line: "Everyone in this space sees these. The newest pin is first." ("in this conversation"; "Only you see these." in an agent's chat).
+  With nothing pinned it says "Nothing is pinned here yet. Pin a message from its ⋯ menu."
+- **Phone:** the long-press sheet has Pin / Unpin after Copy text. The header's ⋯ has **Pinned N** as its second row, after Search (an agent's chat,
+  which has no Search, has it first). It opens the same list as a sheet; a tap closes the sheet and scrolls to the message. Unpin is always shown
+  on a touch screen.
+- **No noise:** pinning sends no notification, adds no line to the conversation and makes no Inbox item. Everyone reading sees it at once.
+- **Search (⌘K):** a pinned message that matches stands first in Messages and its meta line starts with the pin glyph and "Pinned".
 
 ### Muting a place and following a thread
 

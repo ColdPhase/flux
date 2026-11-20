@@ -42,7 +42,7 @@ export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 export * from './repositories/ai-price-list.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 111;
+export const FLUX_SCHEMA_VERSION = 112;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 
@@ -224,6 +224,7 @@ export * from './repositories/live-map.js';
 
 export * from './repositories/files.js';
 export * from './repositories/message-references.js';
+export * from './repositories/message-pins.js';
 export * from './repositories/message-changes.js';
 export * from './repositories/task-use.js';
 export * from './repositories/artifact-task-associations.js';

@@ -11,6 +11,7 @@ import { ProjectOverview } from '../project/ProjectOverview';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import type { DetailsView, OwnedView } from './shellContext';
 import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
+import { PinnedPanel } from '../pins/PinnedPanel';
 
 /**
  * Details: a direct message's people (its own panel, #107), a message's linked objects, or a task, a decision and the other objects the panel
@@ -28,6 +29,7 @@ export function Details({ view, dm = null, onBack }: {
   if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId} messageId={view.messageId} selection={view.selection} />;
   if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'thought-tasks') return <ThoughtTasksPanel key={view.thought.id} view={view} />;
+  if (typeof view === 'object' && view.kind === 'pins') return <PinnedPanel />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   if (dm) {
     return (

@@ -46,7 +46,7 @@ FROM_MESSAGE = "Replace the resistive probes with capacitive ones"
 NO_SOURCE = "Water the beds before eight in the morning"
 RULE = "Log moisture every ten minutes"
 PAGE = "Decisions and why"
-PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Edit", "Delete"]  # the viewer wrote the message (#1006)
+PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Pin", "Edit", "Delete"]  # the viewer wrote the message (#1006)
 
 
 class DecisionFlows(unittest.TestCase):
@@ -281,7 +281,7 @@ class DecisionFlows(unittest.TestCase):
         message.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Reply in thread")).to_have_count(0)
-        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Copy text", "Edit", "Delete"], "the viewer wrote it (#1006)")
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Copy text", "Pin", "Edit", "Delete"], "the viewer wrote it (#1006)")
         for gone in ("Propose a decision", "Hand off to an agent", "Cite", "Details"):
             expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")

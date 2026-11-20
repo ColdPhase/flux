@@ -1,4 +1,4 @@
-import { searchRows, sealedSearchRows, type QueryVectors, type SearchExecutor, type SQL, visibleFilterOf, memberFilterOf, accessReader, loadActor, type AccessActor, type Database } from '@flux/db';
+import { messagePinRows, searchRows, sealedSearchRows, type QueryVectors, type SearchExecutor, type SQL, visibleFilterOf, memberFilterOf, accessReader, loadActor, type AccessActor, type Database } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
@@ -89,5 +89,7 @@ export function searchUseCases(db: Database, cursors: SearchCursors, vectors?: Q
   return createSearchUseCases({ access: policySearchAccess(db), cursors,
     rows: { ...rows, page: async (audiences, plan) => withAgentOwners(db, await rows.page(audiences, plan)),
       ranked: async (audiences, plan) => withAgentOwners(db, await rows.ranked(audiences, plan)) },
-    sealed: { search: async (audiences, plan) => { const answer = await sealed.search(audiences, plan); await withAgentOwners(db, answer.rows); return answer; } } });
+    sealed: { search: async (audiences, plan) => { const answer = await sealed.search(audiences, plan); await withAgentOwners(db, answer.rows); return answer; } },
+    // C-74: the "Pinned" mark of the page's messages, an encrypted space's too (a pin holds ids only).
+    pins: { pinnedAmong: (ids) => messagePinRows(db).pinnedAmong(ids) } });
 }

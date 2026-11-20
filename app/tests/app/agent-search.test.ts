@@ -335,7 +335,7 @@ describe('flux_search and flux_read_around: the owner\'s rights at the moment of
 
     test('a run in a direct message finds the messages of that direct message and reads around them, and nothing else, while its owner is one of its people', async () => {
       const run = await dmRun(dm);
-      assert.deepEqual(run.tools.slice().sort(), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image'], 'a direct message run is minted these six tools (its model sees pictures)');
+      assert.deepEqual(run.tools.slice().sort(), ['flux_list_pinned', 'flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image'], 'a direct message run is minted these seven tools (its model sees pictures)');
       const found = await search(run.token, { q: 'zamówienie diody' });
       assert.deepEqual(found.results.map((item) => [item.kind, item.place?.type, item.place?.id, item.author?.name]).sort(),
         [['message', 'dm', dm, 'Ada Nowak'], ['message', 'dm', dm, 'Jonas Berg']], 'the two messages of this direct message, not the other one of the same words');

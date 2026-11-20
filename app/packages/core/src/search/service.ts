@@ -6,6 +6,7 @@ import {
 import { InvalidInputError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { markSearchWords, type SearchMarks } from './marks.js';
+import { isMessageKind, pinnedFirst } from './pinned.js';
 import type { SearchPlan, SearchPorts, SearchRow } from './ports.js';
 import { SEARCH_SOURCES, searchKindsOf, searchPlaceOf } from './sources.js';
 
@@ -248,8 +249,11 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       const rows = mergeRows(sqlRows, sealed.rows);
       const page = rows.slice(0, plan.limit);
       const more = rows.length > plan.limit;
+      // A pinned message is marked and stands first among the page's messages (C-74); the cursor keeps the ranked order.
+      const pinned = ports.pins ? await ports.pins.pinnedAmong(page.flatMap((row) => (isMessageKind(row.kind) ? [row.objectId] : []))) : new Set<string>();
+      const items = page.map((row) => ({ ...toResult(row, marks, plan.reader), ...(isMessageKind(row.kind) && pinned.has(row.objectId) ? { pinned: true as const } : {}) }));
       return {
-        items: page.map((row) => toResult(row, marks, plan.reader)),
+        items: pinnedFirst(items, (item) => isMessageKind(item.kind), (item) => item.pinned === true),
         next: more ? ports.cursors.seal(principal, scope, page[page.length - 1]!.position) : null,
         ...(sealed.unavailable.length ? { sealedUnavailable: sealed.unavailable } : {}),
       };

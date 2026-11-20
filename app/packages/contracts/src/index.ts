@@ -231,3 +231,4 @@ export * from './assistant.js';
 export * from './assistant-jobs.js';
 export * from './assistant-model.js';
 export * from './sidebar.js';
+export * from './pins.js';

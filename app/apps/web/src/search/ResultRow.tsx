@@ -107,7 +107,8 @@ function pieces(result: SearchResult): Array<Line | null> {
   const { task } = result;
   if (task) return [`#${task.number}`, TASK_STATE_WORD[task.status], where];
   switch (result.kind) {
-    case 'message': case 'dm_message': return [author, where, written(result)];
+    // A pinned message carries "Pinned" first, with the pin glyph (C-74, #1615).
+    case 'message': case 'dm_message': return [result.pinned ? { text: 'Pinned', node: <span key="pin" className="sr__pinned"><Icon name="pin" size={12} />Pinned</span> } : null, author, where, written(result)];
     case 'doc': {
       const snippet = plainSnippet(result.snippet);
       return snippet ? [quoted(snippet)] : [where];

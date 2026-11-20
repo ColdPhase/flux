@@ -60,7 +60,8 @@
         "wd-link",
         "create__result",
         "photo-grid__open",
-        "connection-labels__row"
+        "connection-labels__row",
+        "pins__open"
       ]
     },
     "inline": {

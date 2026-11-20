@@ -6,6 +6,7 @@ import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
+import { PinnedLine } from '../pins/PinnedLine';
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
 export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, firstDay = null, preview = null, onDenied, photo }: {
@@ -33,6 +34,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             </>}
           </div>
         ) : mine && message?.via ? <div className="thread__root-meta"><ViaTag via={message.via} /></div> : null}
+        {message ? <PinnedLine messageId={message.id} /> : null}
         <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><div className={`message-body${message?.removedAt ? ' message-body--removed' : ''}`}><MessageText body={body} people={people} /></div></WhenNoQuestion> : null} files={message?.files} references={message?.references} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
           <LinkPreviews body={body} projectId={projectId} messageId={message?.id ?? null} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} /> : null}

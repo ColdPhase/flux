@@ -117,6 +117,7 @@ real migrator on a dump of the v0.2.1 database, which every pull request that ch
 | `0109_dm_file_search` ([#1590](https://github.com/ColdPhase/flux/issues/1590)) | Adds one trigger function and one trigger so that a file sent in a direct message gets its name as a search row when it is published, with the audience of that conversation's own messages (so only the people who can read it find it); gives the direct message files **already there** the name row they lack; and **queues the readable ones** (PDF, DOCX, Markdown, text, CSV) for the worker, which reads them in the background one at a time, as for the files of a space (a picture or a scan only when `FLUX_FILE_OCR=on`, in the bounded batches above). Nothing stored changes shape, and an encrypted workspace's files get no row and no job. |
 | `0110_dm_ai_off` ([#1591](https://github.com/ColdPhase/flux/issues/1591)) | Adds the table `dm_ai_off` (empty: **no conversation has AI off after the upgrade**) and allows two more kinds of line in a conversation (`ai_off`, `ai_on`; the check only widens). Local embeddings become an index like BM25 and not AI: the rule that a space whose AI is off has no vectors (`0068`) is replaced, and **on an installation that has turned local embeddings on, the rows of spaces whose AI is off are queued** and embedded by the worker in its usual batches; on one that never did, it writes nothing. |
 | `0111_model_id_paths` ([#1593](https://github.com/ColdPhase/flux/issues/1593)) | Widens the check on a model's id in three tables (`background_compute_connections`, `assistant_settings` and `api_key_checks`) so that an id may begin with `/`: a llama.cpp server started without `--alias` names its model by the file it loaded (`/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`). The checks only widen, every id they held still matches, and no row changes. |
+| `0112_message_pins` ([#1615](https://github.com/ColdPhase/flux/issues/1615)) | Adds the table `message_pins` for pinned messages (empty: **nothing is pinned after the upgrade**). It stores which message is pinned, by whom and when, never its words. No existing row changes. |
 
 Measured on Flux's database image (2026-11-20), on the v0.2.1 test installation grown to 200,000 space messages, 50,000 space files, 5,000
 direct conversations with 200,000 messages and 20,000 files, 10,000 saved sources, a million events and 500,000 notifications: the nine
@@ -307,6 +308,12 @@ that way, with a line that says so; close the connection and retry.
   ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
 - **Spaces rows say what was said last**: each space shows its newest message and when, as a conversation in Messages does ("Maja: Sent a
   file") ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
+- **Pin a message in any conversation** ([#1615](https://github.com/ColdPhase/flux/issues/1615)): a space, a direct message (a group too) and
+  your chat with your own agent. Pin and Unpin are in the message's ⋯ menu (key `P`) and its long-press sheet; a pin is the conversation's, so
+  everyone in it sees the same list. A pinned message shows "Pinned by Ada" above it, the header's pin button with the count opens "Pinned"
+  beside the conversation (on the phone: ⋯ › Pinned), and a click brings the message into view. ⌘K lists a pinned match first in Messages, and
+  agents read the list with `flux_list_pinned` and see pinned hits first in `flux_search`. Pinning notifies nobody. After the upgrade nothing is
+  pinned (migration `0112`, above).
 - **Anyone in a direct message can turn AI off in it**, as in an encrypted space ([#1591](https://github.com/ColdPhase/flux/issues/1591)).
   "Turn off AI in this conversation" is in the conversation's details; it stays on while at least one person wants it, and each person can
   only withdraw their own choice, so nobody can override someone else's "no AI". While it is on, `/ai` there is refused with a clear line,

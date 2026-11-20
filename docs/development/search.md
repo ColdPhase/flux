@@ -47,6 +47,11 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   same words the same way. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
   order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
   writes in a restricted space, another workspace and other people's direct messages.
+- **A pinned message first** (C-74, #1615). A message pinned in its conversation (a space's or a direct message's) carries `pinned: true`
+  and stands first among the messages of its page, in ⌘K (its meta line starts with "Pinned") and in an agent's `flux_search`; every other result
+  keeps its place (`pinnedFirst` in `packages/core/src/search/pinned.ts`). Which rows are pinned is read after the page is ranked, for that page's
+  messages only (`messagePinRows.pinnedAmong`), an encrypted space's too: it is a property of the visible row, and no statistic of the index or
+  row the reader may not see moves anything. The cursor keeps the ranked order.
 - **The word being typed** is also looked up as a prefix: the index holds stems, so a scan adds `pdb.regex('<word>.*')` on the title and
   the body fields (folded by `foldSearchWord`), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
 - **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit

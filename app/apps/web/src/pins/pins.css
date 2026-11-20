@@ -1,0 +1,23 @@
+/* Pinned messages (C-74, #1615). The line above a pinned message's bubble: the pin glyph and who pinned it, quiet, at meta size. */
+.pin-line { display: flex; align-items: center; gap: 5px; margin: 2px 0 4px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.3; }
+.pin-line > svg { flex: none; }
+.is-mine > .pin-line, .is-mine .dm-msg__main > .pin-line, .dm-msg__main.is-mine > .pin-line { align-self: flex-end; justify-content: flex-end; }
+
+/* The Pinned panel and the phone's sheet (C-74): rows of the author's face, two lines of words and a quiet meta line; Unpin on hover or focus. */
+.pins { display: flex; flex-direction: column; gap: 4px; min-height: 100%; padding: 0 8px 8px; }
+.pins__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pins__row { position: relative; display: flex; align-items: flex-start; gap: 8px; border-radius: 10px; }
+.pins__row:hover, .pins__row:focus-within { background: var(--hov); }
+.pins__open { display: flex; flex: 1; min-width: 0; align-items: flex-start; gap: 10px; padding: 10px 8px; border-radius: 10px; color: var(--t1); text-align: left; }
+.pins__open:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.pins__open > :is(.ui-avatar, .author-face) { flex: none; }
+.pins__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pins__words { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-base); line-height: 1.4; overflow-wrap: anywhere; }
+.pins__file { margin-left: 4px; vertical-align: baseline; }
+.pins__meta { color: var(--t3); font-size: var(--fs-xs); line-height: 1.35; }
+.pins__unpin { flex: none; align-self: center; margin-right: 6px; visibility: hidden; }
+.pins__row:hover .pins__unpin, .pins__row:focus-within .pins__unpin { visibility: visible; }
+@media (hover: none) { .pins__unpin { visibility: visible; } }
+.pins__empty { padding: 12px 8px; color: var(--t3); font-size: var(--fs-sm); }
+.pins__foot { margin-top: auto; padding: 10px 8px 6px; border-top: 1px solid var(--line); color: var(--t3); font-size: var(--fs-xs); }
+

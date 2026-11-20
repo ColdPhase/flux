@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { messagePreview, type ConversationMessage } from '@flux/contracts';
+import { messagePreview, type ConversationMessage, type PinPart } from '@flux/contracts';
 import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { plainWords } from './messageWords';
 import { MessageSheet } from './MessageSheet';
@@ -8,12 +8,14 @@ import { swallowReleaseClick } from './releaseClick';
 import { isTyping } from '../ui/keys';
 import './message-actions.css';
 import { useBackLayer } from '../ui/backLayer';
+import { usePins } from '../pins/pins';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
 // they are two gestures, a long press (the message menu) and a swipe right (Reply in thread), plus the same menu for keyboards and
 // screen readers (founder direction 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left.
-// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, Copy text, then (on your own messages) Edit and Delete.
-// Copy text is on every message that has words and was not deleted (founder direction 2026-11-08).
+// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, Copy text, Pin (or Unpin, key P), then (on your own messages)
+// Edit and Delete. Copy text is on every message that has words and was not deleted (founder direction 2026-11-08). Pin is on every message
+// of a conversation the person may write in (C-74, #1615): a pin is the conversation's, so Unpin is everyone's too.
 // The phone's list starts with the two actions the computer shows beside the message, and opens as one bottom sheet with the message
 // at the top (MessageSheet, #1013): the list is this file's, so the computer's menu and the phone's sheet never differ.
 
@@ -43,6 +45,20 @@ export interface DmActionOptions {
   removed?: boolean;
 }
 
+/**
+ * A line of a person's chat with their own agent (C-74): its owner's request, the agent's answer or one of its own lines. Only Copy text
+ * and Pin exist for it.
+ */
+export interface AgentChatActionOptions {
+  kind: 'agent';
+  messageId: string;
+  /** A run is the request and its answer: which of the two this is. Absent for one of the agent's own lines. */
+  part?: PinPart;
+  body: string;
+  writable: true;
+  onCreateWork?: undefined; onReply?: undefined; onAddToMap?: undefined; onEdit?: undefined; onDelete?: undefined; removed?: undefined;
+}
+
 export interface MessageActionOptions {
   kind?: 'project';
   projectId: string;
@@ -63,10 +79,17 @@ export interface MessageActionOptions {
 
 /** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
 /** `stays`: choosing it leaves the person where they were (a copy), so focus goes back to ⋯, never to the page's body. */
-export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean; stays?: boolean }
+/** `keys`: the key that does it while focus is in the message (Pin's P), shown at the row's end on a computer. */
+export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean; stays?: boolean; keys?: string }
+
+type AnyActionOptions = MessageActionOptions | DmActionOptions | AgentChatActionOptions;
+
+/** The message a pin names: its id and, in an agent's chat, the run's part. */
+const pinTarget = (options: AnyActionOptions): { id: string; part?: PinPart } | null => options.kind === 'agent' ? { id: options.messageId, ...(options.part ? { part: options.part } : {}) }
+  : options.kind === 'dm' ? (options.messageId ? { id: options.messageId } : null) : { id: options.message.id };
 
 /** The words Copy text puts on the clipboard: the message's body as plain text. */
-const wordsOf = (options: MessageActionOptions | DmActionOptions) => plainWords(options.kind === 'dm' ? options.body : options.message.body);
+const wordsOf = (options: AnyActionOptions) => plainWords(options.kind === 'dm' || options.kind === 'agent' ? options.body : options.message.body);
 
 /** A message's own address: a project's message opens in its thread, a private one in its conversation. */
 const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.location.origin}${options.kind === 'dm'
@@ -78,8 +101,9 @@ const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.lo
  * The menu's items, in the one order: Reply in thread and Create task (only where the message has no toolbar beside it, that is on a
  * phone), then Add to map, Copy link and Copy text. The same list on every device and for every kind of message.
  */
-function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
+function useMenuItems(options: AnyActionOptions | null, touch: boolean): MenuItem[] {
   const toast = useToast();
+  const pins = usePins();
   if (!options) return [];
   const copyToClipboard = (what: 'link' | 'text', value: string) => {
     const done = () => toast({ message: what === 'link' ? 'Link copied' : 'Text copied', timeout: 2000 });
@@ -88,6 +112,13 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     navigator.clipboard.writeText(value).then(done, failed);
   };
   const words = wordsOf(options);
+  // Pin is the conversation's (C-74): whoever may write in it, on a message that is still there. Before its list is read it says Pin; pinning a
+  // pinned message changes nothing, so the moment cannot do harm.
+  const target = pinTarget(options);
+  const pinned = target ? pins.pinOf(target.id, target.part) : null;
+  const pin: MenuItem[] = target && options.writable && pins.canPin && !options.removed && pins.place ? [{ id: 'pin', label: pinned ? 'Unpin' : 'Pin', icon: 'pin', keys: 'P', stays: true,
+    run: () => pins.toggle(target.id, target.part) }] : [];
+  if (options.kind === 'agent') return [...(words ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words), stays: true }] : []), ...pin];
   const { writable, onCreateWork, onReply, onAddToMap, onEdit, onDelete, removed } = options;
   return [
     ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
@@ -97,6 +128,7 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)), stays: true },
     // Every message a person can read, not only their own; a deleted one has no words, and a message of files alone has none to copy.
     ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words), stays: true }] : []),
+    ...pin,
     // Below a line, after Copy link, on the person's own messages only (#1006).
     ...(onEdit && !removed ? [{ id: 'edit', label: 'Edit', icon: 'edit' as const, run: onEdit, secondary: true }] : []),
     ...(onDelete && !removed ? [{ id: 'delete', label: 'Delete', icon: 'trash' as const, run: onDelete, secondary: true }] : []),
@@ -142,7 +174,7 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
   const secondary = items.filter((item) => item.secondary);
   const render = (item: MenuItem) => (
     <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled} onClick={() => { onClose(item.stays === true); item.run(); }}>
-      <Icon name={item.icon} size={18} />{item.label}
+      <Icon name={item.icon} size={18} />{item.label}{item.keys ? <kbd aria-hidden="true" data-key={item.keys} /> : null}
     </button>
   );
   return createPortal(
@@ -188,7 +220,7 @@ function linger(pill: HTMLElement) {
  * The computer's actions on one message: reply in thread, create a task and a menu. They appear over the
  * message's corner on hover and focus and take no room in the stream; a phone has gestures instead.
  */
-export function MessageActions(options: MessageActionOptions | DmActionOptions) {
+export function MessageActions(options: AnyActionOptions) {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options, touch);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -196,7 +228,8 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
   const more = useRef<HTMLButtonElement>(null);
   const group = useRef<HTMLDivElement>(null);
   const { writable, onCreateWork, onReply, removed } = options;
-  // Guide §4: R replies in the thread and T makes a task while focus is inside this message (not in a field).
+  const pin = items.find((item) => item.id === 'pin') ?? null;
+  // Guide §4: R replies in the thread, T makes a task and P pins or unpins (C-74) while focus is inside this message (not in a field).
   useEffect(() => {
     const row = group.current?.parentElement;
     if (!row) return;
@@ -205,11 +238,12 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       if (isTyping(event.target) || (event.target as Element | null)?.closest?.('[role="menu"]')) return;
       const key = event.key.toLowerCase();
       if (key === 'r' && writable && onReply) { event.preventDefault(); onReply(); }
-      else if (key === 't' && writable && !removed) { event.preventDefault(); onCreateWork(); }
+      else if (key === 't' && writable && !removed && onCreateWork) { event.preventDefault(); onCreateWork(); }
+      else if (key === 'p' && pin) { event.preventDefault(); pin.run(); }
     };
     row.addEventListener('keydown', onKey);
     return () => row.removeEventListener('keydown', onKey);
-  }, [touch, writable, onReply, onCreateWork, removed]);
+  }, [touch, writable, onReply, onCreateWork, removed, pin]);
   // The pill stays a moment after the pointer leaves its message (founder check, Hubert 2026-11-17: it went before the pointer reached it), so a
   // pointer on its way to it, past the bubble's edge or through the room between two messages, still finds it. One pill lingers at a time, and
   // another message under the pointer takes the toolbar at once (message-actions.css), so two never show.
@@ -227,7 +261,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
   return (
     <div ref={group} className="msg-acts ui-reveal" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
-      {writable && !removed ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
+      {writable && !removed && onCreateWork ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={open} onClick={(event) => { if (open) setOpen(false); else { setAnchor(event.currentTarget); setOpen(true); } }}><Icon name="more" size={16} /></button>
       {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} label="Message actions"
         onClose={(restore) => { setOpen(false); if (restore) more.current?.focus(); }} /> : null}
@@ -260,7 +294,7 @@ interface TouchProps<E extends HTMLElement> {
  * A visible ⋯ (`dots`, beside the bubble) opens the same sheet for keyboards and screen readers, who cannot long press, and a
  * computer's Reply button does the same as the swipe, so a gesture is never the only way to an action.
  */
-export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode; dots: ReactNode } {
+export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: AnyActionOptions | null): { props: TouchProps<E>; node: ReactNode; dots: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options, touch);
   const ref = useRef<E>(null);
@@ -339,7 +373,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const node = (
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
-      {last ? <MessageSheet open={shown} focusFirst={last === 'button'} items={items} preview={options.kind === 'dm' ? messagePreview(options.body) : messagePreview(options.message.body, options.message.files?.length)}
+      {last ? <MessageSheet open={shown} focusFirst={last === 'button'} items={items} preview={options.kind === 'dm' || options.kind === 'agent' ? messagePreview(options.body) : messagePreview(options.message.body, options.message.files?.length)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );

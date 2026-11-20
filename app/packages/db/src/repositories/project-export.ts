@@ -60,6 +60,9 @@ export function projectExportRows(db: DbExecutor) {
         .orderBy(asc(msg.conversationId), asc(msg.sequence)));
       const messages = groupBy(messageRows, (row) => row.conversationId);
       const files = await fileRows(db).messageFiles(messageRows.map(row => row.id));
+      // C-74 (#1615): who pinned a message, and when.
+      const pins = new Map((await db.select({ id: schema.messagePins.projectMessageId, by: schema.messagePins.pinnedBy, at: schema.messagePins.pinnedAt }).from(schema.messagePins)
+        .where(eq(schema.messagePins.projectId, projectId))).map((pin) => [pin.id!, pin]));
       return conversations.map((row) => ({
         id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
         messages: (messages.get(row.id) ?? []).map((message) => ({
@@ -69,6 +72,7 @@ export function projectExportRows(db: DbExecutor) {
           source: message.sourceMaterialId && message.sourceMaterialVersion ? { materialId: message.sourceMaterialId, version: message.sourceMaterialVersion } : null,
           // Only an explicit native effect carries a marker, so every ordinary message exports exactly as before.
           ...(message.contributionKind !== 'text' ? { contribution: { kind: message.contributionKind } } : {}),
+          ...(pins.has(message.id) ? { pinned: { by: human(pins.get(message.id)!.by), at: iso(pins.get(message.id)!.at) } } : {}),
           createdAt: iso(message.createdAt),
         })),
       }));
