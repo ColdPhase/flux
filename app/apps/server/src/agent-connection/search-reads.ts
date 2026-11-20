@@ -11,7 +11,7 @@ import { messagesForAgents, spaceAuthorsNamed, withAgentLabels } from './authors
 import { textPageEnd } from './domain-reads.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
-import { reachesChatFile } from './chat-files.js';
+import { reachesChatFile, reachesDmFile } from './chat-files.js';
 
 // `flux_search` and `flux_read_around` (F-042, AG-12, #1290): how an agent, on the server's engine or in the owner's Claude Code or Codex, finds
 // what lies outside the messages it was given. Both are the owner's rights at the moment of the call, nothing stored: the audiences come from the
@@ -311,35 +311,44 @@ const ocrNote = (claims: FluxMcpClaims, scan: boolean) => {
     + (sees ? ` To see ${scan ? 'a page' : 'the picture'} itself, call flux_view_image with this fileId${scan ? ' and the page' : ''}.` : '');
 };
 
+/** What of a located file its answer needs, whoever sent it where. */
+interface ReadableFile { fileId: string; pages: number | null; ocr: boolean; noText: boolean; pending: boolean }
+
+/** A file's text in a page from `offset` (or the pictures of a scan's pages), or the note that says why there is none: the same answer wherever the file was sent. */
+async function pageOfFile(rows: ReturnType<typeof fileTextRows>, claims: FluxMcpClaims, file: ReadableFile, where: Record<string, unknown>, chat: boolean, offset: number) {
+  const { text: plain, parts } = chat ? await rows.chatText(file.fileId) : await rows.text(file.fileId);
+  const text = file.ocr ? ocrText(await rows.pagedParts(file.fileId, chat)) : plain;
+  if (!parts) return file.noText && !file.pending ? pagesOf(rows, claims, file.fileId, where, offset) : { ...where, totalLength: 0, body: '', nextOffset: null,
+    note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
+  const from = Math.min(offset, text.length);
+  const end = textPageEnd(text, from, claims.run !== undefined);
+  return { ...where, offset: from, totalLength: text.length, body: text.slice(from, end), nextOffset: end < text.length ? end : null };
+}
+
 async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z.output<typeof fileInput>) {
   const rows = fileTextRows(ctx.tx);
-  const file = await rows.locate(ctx.workspaceId, input.fileId.toLowerCase());
+  const fileId = input.fileId.toLowerCase();
+  const file = await rows.locate(ctx.workspaceId, fileId);
   if (!file) {
+    // A file sent in a direct message (#1590, C-64 (3)): read only in a run in that conversation, by its owner while they are one of its people.
+    const dm = await rows.locateDm(ctx.workspaceId, fileId);
+    if (dm) {
+      if (!await reachesDmFile(ctx, claims, dm)) throw fileNotFound();
+      claims.dispatch?.dm(dm.dmId);
+      return pageOfFile(rows, claims, dm, { fileId: dm.fileId, name: dm.name, dmId: dm.dmId, messageId: dm.messageId, ...(dm.pages !== null ? { pages: dm.pages } : {}),
+        ...(dm.ocr ? { ocr: true, note: ocrNote(claims, dm.pages !== null) } : {}) }, false, input.offset);
+    }
     // A file its owner sent in the agent's chat (#1438, C-64): only a run of that chat reads it, and it is no search row.
-    const chat = await rows.locateChat(ctx.workspaceId, input.fileId.toLowerCase());
+    const chat = await rows.locateChat(ctx.workspaceId, fileId);
     if (!chat || !await reachesChatFile(ctx, claims, chat)) throw fileNotFound();
-    const { text: plain, parts } = await rows.chatText(chat.fileId);
-    const text = chat.ocr ? ocrText(await rows.pagedParts(chat.fileId, true)) : plain;
-    const named = { fileId: chat.fileId, name: chat.name, ...(chat.pages !== null ? { pages: chat.pages } : {}), ...(chat.ocr ? { ocr: true, note: ocrNote(claims, chat.pages !== null) } : {}) };
-    if (!parts && chat.noText && !chat.pending) return pagesOf(rows, claims, chat.fileId, named, input.offset);
-    if (!parts) return { ...named, totalLength: 0, body: '', nextOffset: null,
-      note: chat.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
-    const offset = Math.min(input.offset, text.length);
-    const end = textPageEnd(text, offset, claims.run !== undefined);
-    return { ...named, offset, totalLength: text.length, body: text.slice(offset, end), nextOffset: end < text.length ? end : null };
+    return pageOfFile(rows, claims, chat, { fileId: chat.fileId, name: chat.name, ...(chat.pages !== null ? { pages: chat.pages } : {}),
+      ...(chat.ocr ? { ocr: true, note: ocrNote(claims, chat.pages !== null) } : {}) }, true, input.offset);
   }
   // The same reach as a search: the run's own space, or every space of a chat or a client, while AI is on there and the owner may read it.
   try { await ctx.requireProject(file.projectId); } catch (error) { throw error instanceof DomainError ? fileNotFound() : error; }
-  const { text: plain, parts } = await rows.text(file.fileId);
-  const text = file.ocr ? ocrText(await rows.pagedParts(file.fileId, false)) : plain;
   claims.dispatch?.project(file.projectId, 'project.read');
-  const where = { fileId: file.fileId, name: file.name, projectId: file.projectId, conversationId: file.conversationId, messageId: file.messageId,
-    ...(file.pages !== null ? { pages: file.pages } : {}), ...(file.ocr ? { ocr: true, note: ocrNote(claims, file.pages !== null) } : {}) };
-  if (!parts) return file.noText && !file.pending ? pagesOf(rows, claims, file.fileId, where, input.offset) : { ...where, totalLength: 0, body: '', nextOffset: null,
-    note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
-  const offset = Math.min(input.offset, text.length);
-  const end = textPageEnd(text, offset, claims.run !== undefined);
-  return { ...where, offset, totalLength: text.length, body: text.slice(offset, end), nextOffset: end < text.length ? end : null };
+  return pageOfFile(rows, claims, file, { fileId: file.fileId, name: file.name, projectId: file.projectId, conversationId: file.conversationId, messageId: file.messageId,
+    ...(file.pages !== null ? { pages: file.pages } : {}), ...(file.ocr ? { ocr: true, note: ocrNote(claims, file.pages !== null) } : {}) }, false, input.offset);
 }
 
 export function registerAgentSearchReads(server: AgentToolRegistrar, db: Database, vectors?: QueryVectors) {

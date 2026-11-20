@@ -72,9 +72,11 @@ counts. Summary all/mine counts use these predicates even when a page/search
 selects another scope. workTotal is all native work; unfinishedTotal is unparked
 open/in_progress/blocked work, not results or parked work.
 
-All Tasks preserves existing reading order: proposals, in progress, blocked,
-open, parked, finished, accepted rules, superseded rules, results. Those nine
-bands have ranks 0..8. Records within a band use createdAt DESC, id DESC. A rules
+All Tasks reads in the Board's order (#1581, which replaced "in progress, blocked,
+open"): proposals, open (To do), in progress (Doing), blocked, finished, accepted
+rules, superseded rules. Those bands have ranks 0..6, and the summary counts map a
+rank to its group through the same list (`workGroupByRank`). Records within a band
+use createdAt DESC, id DESC. A rules
 view still puts accepted before superseded. A single-kind choice has rank 0 and
 uses createdAt DESC, id DESC. Association rows use work, decision, result ranks
 0..2, each createdAt DESC, id DESC. Edges and conversation source-count entries

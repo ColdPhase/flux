@@ -9,7 +9,7 @@ import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { BUDGET_PROBLEM, budgetCents, keyFailure, money } from './AddKeyForm';
 import { ConnectAiWindow } from './ConnectAiWindow';
-import { plainPrice, priceSourceText } from './ConnectionFields';
+import { GeminiSearchTerms, plainPrice, priceSourceText } from './ConnectionFields';
 import './background.css';
 
 /** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget. A key is added in the Connect AI window, the one way (#1438 point 9). */
@@ -128,6 +128,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
               : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
           </dl>
+          {item.provider === 'gemini' ? <GeminiSearchTerms /> : null}
           <form className="background-settings__budget" noValidate onSubmit={(event) => { event.preventDefault(); void changeBudget(item, new FormData(event.currentTarget).get('dailyBudget')); }}>
             {/* The app's own field, not the browser's number box (#1362); a bad amount is said in the line above the keys. */}
             <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={(item.dailyBudgetCents / 100).toFixed(2)}

@@ -122,12 +122,13 @@ function ChangeLine({ changes, onChanged, meId, standalone, here }: { changes: A
     <section ref={home} tabIndex={-1} className="assistant-message" aria-label={via ? `What ${via} changed` : `What ${whose} assistant changed`} data-run={runId}>
       {standalone && via ? <p className="assistant-message__who">{first} · via {via}</p>
         : standalone && whose !== 'your' ? <p className="assistant-message__who">{agentNamed(changes[0]!.agentName || 'Assistant', owner.name)}</p> : null}
-      {done.length ? <p className="assistant-message__line" role="status" aria-live="polite">
+      {/* One text, so a long line wraps as words do and "· Undo" follows its last word, never alone on a line of its own (#1581). */}
+      {done.length ? <p className="assistant-message__line" role="status" aria-live="polite"><span className="assistant-message__text">
         {live.length ? <span>{assistantChangeLine(live)}</span> : <s>{assistantChangeLine(done)}</s>}
-        {live.length && live.some((change) => change.undoable) ? <><span aria-hidden="true"> · </span>
-          <Button variant="link" busy={busy} onClick={() => void undo()}>Undo</Button></> : null}
-        {!live.length ? <><span aria-hidden="true"> · </span><span>Undone by {undoneBy ?? 'you'}</span></> : null}
-      </p> : null}
+        {live.length && live.some((change) => change.undoable) ? <span className="assistant-message__tail"><span aria-hidden="true"> · </span>
+          <Button variant="link" busy={busy} onClick={() => void undo()}>Undo</Button></span> : null}
+        {!live.length ? <span className="assistant-message__tail"><span aria-hidden="true"> · </span><span>Undone by {undoneBy ?? 'you'}</span></span> : null}
+      </span></p> : null}
       {note ? <p className="assistant-message__note" role="status"><Said text={note.text} change={note.change} here={here} /></p> : null}
       {skips.map((change) => <p key={change.id} className="assistant-message__note">{change.line}</p>)}
     </section>

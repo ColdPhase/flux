@@ -1,9 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { PrincipalRef, ProjectWorkSummary, WorkCounts } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
-import { nativeWorkViewKeySource } from './work-read-keys.js';
-
-const groupByRank = ['needs', 'in_progress', 'blocked', 'open', 'finished', 'rules', 'rules'] as const;
+import { workGroupByRank, nativeWorkViewKeySource } from './work-read-keys.js';
 
 export function nativeWorkSummaryRows(db: DbExecutor) {
   const observedAt = async () => {
@@ -26,7 +24,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
   function counts(rows: readonly { rank: number; total: number }[]): WorkCounts {
     const counts: WorkCounts = { needs: 0, in_progress: 0, blocked: 0, open: 0, finished: 0, rules: 0 };
     for (const row of rows) {
-      const group = groupByRank[row.rank];
+      const group = workGroupByRank[row.rank];
       if (!group || !Number.isSafeInteger(row.total) || row.total < 0) throw new Error('Invalid native work group count');
       counts[group] += row.total;
     }

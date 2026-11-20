@@ -77,11 +77,13 @@ test('a file sent in a direct message reaches the conversation\'s people and nob
   assert.equal((await get(f.cyra, `/api/v1/dms/${f.pair.id}`)).status, 404);
   assert.equal((await upload(f.cyra, f.pair.id, Buffer.from('intruder'))).status, 404);
   assert.equal((await send(f.cyra, f.pair.id, 'hello', [])).status, 404);
-  // It is a stored file of no space: no project, and nothing in search or the file-text queue.
+  // It is a stored file of no space (no project), sent with its message. Its search rows (C-64 (3), #1590) are the conversation's own: the name at once, then its
+  // text (dm-file-search.test.ts), with the audience of the conversation's messages and no space.
   const [row] = await db.select().from(schema.projectFiles).where(eq(schema.projectFiles.id, staged.body.id));
   assert.deepEqual([row!.projectId, row!.dmId, row!.messageId, row!.dmMessageId === sent.id], [null, f.pair.id, null, true]);
-  assert.equal((await pool.query(`SELECT 1 FROM search_documents WHERE kind = 'file' AND object_id = $1`, [staged.body.id])).rows.length, 0);
-  assert.equal((await pool.query(`SELECT 1 FROM file_text_jobs WHERE file_id = $1`, [staged.body.id])).rows.length, 0);
+  const indexed = (await pool.query(`SELECT audience_key, project_id FROM search_documents WHERE kind = 'file' AND object_id = $1`, [staged.body.id])).rows as { audience_key: string; project_id: string | null }[];
+  assert.ok(indexed.length >= 1, 'its name is found from the moment it is sent');
+  for (const found of indexed) assert.deepEqual([found.audience_key, found.project_id], [`dm:${f.pair.id}`, null]);
 });
 
 test('a picture is decoded and written again, and a file over the limit is refused, as in a space', async () => {

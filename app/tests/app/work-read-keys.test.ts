@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase, nativeWorkReadKeys, schema, sql, type NativeWorkReadKey, type NativeWorkViewSelector } from '@flux/db';
+import { createDatabase, nativeWorkReadKeys, nativeWorkSummaryRows, schema, sql, type NativeWorkReadKey, type NativeWorkViewSelector } from '@flux/db';
 import type { WorkReadCursor } from '@flux/contracts';
 import { addMember, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -71,6 +71,23 @@ describe('bounded native PostgreSQL work key selection', () => {
     assert.equal(seen.find((key) => key.id === ids[1])?.createdAt, newer);
     assert.ok(seen.findIndex((key) => key.id === ids[1]) < seen.findIndex((key) => key.id === ids[0]));
     assert.equal((await read(tasks, 100)).items.length, 100, 'only returned keys, never the overfetch key, may be hydrated');
+  });
+
+  test('the List pages the Board\'s order: To do, Doing, Blocked, then Done (#1581)', async () => {
+    const work = { purpose: 'tasks', group: 'all', mine: false, workOnly: true } as const;
+    const first = await read(work, 100);
+    const status = new Map<string, string>(ids.map((id, i) => [id, (['open', 'open', 'in_progress', 'blocked', 'open', 'done', 'done', 'in_progress'] as const)[i]!]));
+    // The rank of a work key is its band: 1 To do, 2 Doing, 3 Blocked, 4 Done, and a page never goes back to an earlier band.
+    const ranks = first.items.map((key) => key.rank);
+    assert.deepEqual(ranks, [...ranks].sort((x, y) => x - y), 'the page is in band order');
+    assert.equal(ranks[0], 1, 'the page starts with To do');
+    const rankOf = (id: string) => first.items.find((key) => key.id === id)?.rank;
+    const second = first.hasAfter ? (await read(work, 100, keyCursor('next', first.items.at(-1)!))).items : [];
+    const rankIn = (id: string) => rankOf(id) ?? second.find((key) => key.id === id)?.rank;
+    assert.deepEqual(ids.map(rankIn), ids.map((id) => ({ open: 1, in_progress: 2, blocked: 3, done: 4 })[status.get(id)!]), 'each task is in its Board column\'s band');
+    // The counts read the same bands: the summary says the groups as the page does.
+    const counts = (await nativeWorkSummaryRows(db).summary(projectId, actor())).all;
+    assert.deepEqual([counts.open, counts.in_progress, counts.blocked, counts.finished], [113, 2, 1, 2]);
   });
 
   test('mine uses the native owner while keeping proposals and excluding rules', async () => {

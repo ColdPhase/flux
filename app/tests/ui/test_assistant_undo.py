@@ -216,6 +216,32 @@ class AssistantUndo(unittest.TestCase):
         # The button that was pressed is gone; focus is on the message, not on the page (AC-8, keyboard).
         expect(message).to_be_focused()
 
+    def test_05a_a_long_change_line_keeps_undo_on_its_last_words(self) -> None:
+        """#1581 (v0.2.1 review): on the phone a change that wraps left "· Undo" alone on a line of its own. The line is one text, so "· Undo" follows
+        its last word, on every line it wraps to, and Undo keeps its touch size."""
+        words = "changed the agent of #3 Plan the planting calendar for the new raised beds to Ada's Planner"
+        for phone, dark in ((True, False), (True, True)):
+            with self.subTest(phone=phone, dark=dark):
+                page = self.page(phone=phone, dark=dark)
+                change = self.applied(operation="work.update", objectType="work", objectId=str(uuid.uuid4()), objectTitle="#3 Plan the planting calendar for the new raised beds",
+                                      phrase="change task", verb="Change", done=words)
+                self.stub_undo(page, [change], [])
+                self.open_conversation(page)
+                line = page.locator(".assistant-message__line")
+                undo = line.get_by_role("button", name="Undo", exact=True)
+                expect(undo).to_be_visible()
+                geometry = line.evaluate("""el => { const text = el.querySelector('.assistant-message__text > span:first-child'), undo = el.querySelector('button');
+                  const range = document.createRange(); range.selectNodeContents(text);
+                  const rects = [...range.getClientRects()].filter((rect) => rect.width > 0), u = undo.getBoundingClientRect();
+                  return { rows: new Set(rects.map((rect) => Math.round(rect.top))).size, lastBottom: Math.max(...rects.map((rect) => rect.bottom)),
+                           lastTop: Math.max(...rects.map((rect) => rect.top)), mid: (u.top + u.bottom) / 2, height: u.height }; }""")
+                self.assertGreater(geometry["rows"], 1, f"the change wraps to more than one line {geometry}")
+                self.assertGreaterEqual(geometry["mid"], geometry["lastTop"], f"Undo is on the line of the last words {geometry}")
+                self.assertLessEqual(geometry["mid"], geometry["lastBottom"] + 1, f"Undo is not on a line of its own under the words {geometry}")
+                self.assertGreaterEqual(geometry["height"], 44, f"Undo keeps its touch size {geometry}")
+                self.no_horizontal_scroll(page)
+                shot(page, f"assistant-undo-390-{'dark' if dark else 'light'}-long-line")
+
     def test_05b_a_message_the_assistant_took_back_keeps_its_place_and_reads_as_removed(self) -> None:
         page = self.page()
 

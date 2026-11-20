@@ -324,6 +324,46 @@ class ApiKeyModels(unittest.TestCase):
                 # Every model of the provider's list stays to be chosen, the top tiers and the cheaper ones too (and "Other model id…").
                 self.assertEqual(len(values(model)), len(shown[provider]) + 1, f"{provider}: the whole list is there")
 
+    def test_02d_a_gemini_key_says_googles_terms_apply_to_its_web_search(self) -> None:
+        """#1585 (founder decision, Hubert, 2026-11-20, C-72): a Gemini key's web search is Google Search grounding and its fit to Google's
+        Gemini API terms is the key owner's: one quiet line with a link to the terms, in Connect AI and on the key's card, and for no other provider."""
+        terms = "Web search uses Google Search grounding; Google’s Gemini API terms apply to your key."
+        for phone, dark in ((False, False), (True, True)):
+            page = self.page(phone=phone, dark=dark)
+            self.form(page)
+            line = page.get_by_test_id("gemini-search-terms")
+            expect(line).to_have_count(0)
+            choose(page.get_by_label("Provider", exact=True), label="Google Gemini")
+            expect(line).to_have_text(terms)
+            link = line.get_by_role("link", name="Google’s Gemini API terms")
+            expect(link).to_have_attribute("href", "https://aistudio.google.com/docs/terms")
+            expect(link).to_have_attribute("target", "_blank")
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+            shot(page, named(f"api-key-models-{'390-dark' if phone else '1440-light'}-gemini-terms"))
+            for other in ("OpenRouter", "OpenAI", "Anthropic"):
+                choose(page.get_by_label("Provider", exact=True), label=other)
+                expect(line).to_have_count(0)
+
+        def card(provider: str, last_four: str) -> dict:
+            return {"id": f"00000000-0000-4000-8000-00000000000{last_four[-1]}", "ownerUserId": "00000000-0000-4000-8000-000000000000", "name": f"My {provider} key",
+                    "provider": provider, "model": "gemini-3.5-flash" if provider == "gemini" else "claude-sonnet-5", "modelName": "Gemini 3.5 Flash" if provider == "gemini" else "Claude Sonnet 5",
+                    "baseUrl": None, "price": {"inputMicrosPerMTok": 300000, "outputMicrosPerMTok": 2500000, "source": "owner", "checkedOn": "2026-11-20"},
+                    "keyLastFour": last_four, "keyFingerprint": "f" * 16, "dailyBudgetCents": 500, "timeZone": "UTC",
+                    "today": {"spentMicros": 0, "resetsAt": "2026-11-21T00:00:00Z"}, "createdAt": "2026-11-20T08:00:00Z"}
+
+        for phone, dark in ((False, False), (True, True)):
+            page = self.page(phone=phone, dark=dark)
+            page.route(re.compile(r".*/api/v1/background-compute-connections$"),
+                       lambda route: route.fulfill(json=[card("gemini", "AB01"), card("anthropic", "CD02")]) if route.request.method == "GET" else route.fallback())
+            page.goto("/settings/ai-connections")
+            cards = page.locator(".background-settings__connection")
+            expect(cards).to_have_count(2)
+            expect(cards.nth(0).get_by_test_id("gemini-search-terms")).to_have_text(terms)
+            expect(cards.nth(0).get_by_role("link", name="Google’s Gemini API terms")).to_have_attribute("href", "https://aistudio.google.com/docs/terms")
+            expect(cards.nth(1).get_by_test_id("gemini-search-terms")).to_have_count(0)
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
+            shot(page, named(f"api-key-cards-{'390-dark' if phone else '1440-light'}-gemini-terms"))
+
     def test_03_a_refused_key_says_so_and_connect_waits_for_another(self) -> None:
         page = self.page()
         self.form(page)

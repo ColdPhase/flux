@@ -94,7 +94,7 @@ export interface SearchRowRecord {
   projectId: string | null;
   /** Set only when the project is itself visible to the reader. */
   projectName: string | null;
-  /** The name of the DM of a DM message. */
+  /** The name of the DM of a DM message, or of a file sent in it. */
   dmName: string | null;
   sketchTitle: string | null;
   workNumber: number | null;
@@ -103,7 +103,7 @@ export interface SearchRowRecord {
   status: string | null;
   /** A message's place in its conversation (or direct message), for reading around it (#1290). */
   sequence?: number | null;
-  /** A file's part of the text (C-63): the PDF page where the part begins, and the message the file was sent with. */
+  /** A file's part of the text (C-63): the PDF page where the part begins, and the message the file was sent with (a direct message's file: the conversation is `parentId`, no space). */
   page?: number | null;
   messageId?: string | null;
   title: SearchText;
@@ -542,7 +542,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
-      h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
+      h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, coalesce(pf.message_id, pf.dm_message_id) AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
       h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name,
       (au.id IS NOT NULL AND EXISTS (SELECT 1 FROM workspace_removed_people r WHERE r.user_id = au.id AND r.workspace_id = coalesce(w.company_workspace_id, w.id))) AS author_removed, ${cleanName(sql`agu.name`)} AS agent_owner_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
@@ -567,7 +567,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN project_files pf ON pf.id = (CASE WHEN h.kind = 'file' THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
     LEFT JOIN project_work_items wi ON ${workJoin}
-    LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id END)
+    -- A direct message's file (C-64 (3)) is a row of the conversation: no space, and the conversation its parent, as for its messages.
+    LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' OR (h.kind = 'file' AND h.project_id IS NULL) THEN h.parent_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
 }
 

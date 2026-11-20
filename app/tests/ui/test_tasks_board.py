@@ -505,6 +505,8 @@ class TasksBoardJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_have_count(0)
         expect(page.get_by_text(PROPOSAL)).to_have_count(0)
         expect(page.get_by_role("region", name=re.compile("^Doing"))).to_contain_text(CALIBRATE)
+        # The List's groups are the Board's columns in the Board's order: To do, Doing, Blocked, Done (#1581).
+        self.assertEqual(page.locator(".ws-group__h").evaluate_all("els => els.map((el) => el.firstChild.textContent.trim())"), ["To do", "Doing", "Blocked", "Done"])
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "list")
         self.assertNotIn("view=", page.url)
         page.reload()
@@ -741,6 +743,33 @@ class TasksBoardJourney(unittest.TestCase):
             expect(self.column(laptop, name)).to_be_visible()
         self.no_sideways_scroll(laptop, 1024, "laptop")
         shot(laptop, "tasks-board-1024-light")
+
+    def test_11_a_floating_panel_leaves_the_board_its_room_at_200_percent(self) -> None:
+        """#1581 (v0.2.1 review look-3 d): at 200 % (720 px) the task panel floats over the board's right edge, and a card brought into view while it
+        is open was scrolled to the board's right edge, under the panel, so the columns before it were cut at the board's left edge. The board now
+        scrolls clear of the panel: the card lands left of it with its left edge whole."""
+        page = self.page("ada", viewport={"width": 720, "height": 450})
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['calibrate']}")
+        panel = page.locator(".ui-panel--float")
+        expect(panel.get_by_role("heading", name=CALIBRATE)).to_be_visible()
+        expect(self.column(page, "Done")).to_be_attached()
+        # The keyboard (or a returned focus) brings a card of the last column into view.
+        self.card(self.column(page, "Done"), PROTOCOL).get_by_role("button", name=PROTOCOL, exact=True).focus()
+        page.wait_for_timeout(400)
+        geometry = page.evaluate("""(title) => { const board = document.querySelector('.tb-board'), panel = document.querySelector('.ui-panel--float');
+          const card = [...document.querySelectorAll('.tb-card')].find((el) => el.textContent.includes(title));
+          const b = board.getBoundingClientRect(), p = panel.getBoundingClientRect(), c = card.getBoundingClientRect();
+          return { boardLeft: b.left, panelLeft: p.left, cardLeft: c.left, cardRight: c.right, scrolled: board.scrollLeft }; }""", PROTOCOL)
+        self.assertGreater(geometry["scrolled"], 0, f"the board scrolled to the card {geometry}")
+        self.assertGreaterEqual(geometry["cardLeft"], geometry["boardLeft"], f"the card's left edge is whole {geometry}")
+        self.assertLess(geometry["cardLeft"], geometry["panelLeft"] - 20, f"the card begins left of the panel, not under it {geometry}")
+        self.assertLessEqual(geometry["cardRight"], geometry["panelLeft"] - 10, f"the whole card is in the room beside the panel {geometry}")
+        # The last column can be scrolled out from under the panel.
+        reach = page.evaluate("""() => { const board = document.querySelector('.tb-board'); board.scrollLeft = board.scrollWidth;
+          const last = [...document.querySelectorAll('.tb-col')].at(-1).getBoundingClientRect(), p = document.querySelector('.ui-panel--float').getBoundingClientRect();
+          return { lastRight: last.right, panelLeft: p.left }; }""")
+        self.assertLessEqual(reach["lastRight"], reach["panelLeft"] + 1, f"the last column ends left of the panel {reach}")
+        shot(page, "tasks-board-720-panel-200")
 
     # ---------------------------------------------------------------- contrast
 

@@ -228,6 +228,10 @@ native map commits and saved wiki versions retain their existing durable event b
    server-generated WebSocket connection ID; subsequent other connections refuse.
    No client-supplied actor or connection identifier creates authority. Current
    lease/session/versions are still checked again in the final native CAS transaction.
+   A new acquire may name the session's own previous gesture it abandoned unfinished
+   (`replaces`); that lease ends in the same transaction, so a socket cancel still in
+   flight cannot make the next drag of the same thought look like another
+   collaborator's (#1588). It never ends another actor's or session's lease.
 
 3. Send bounded absolute preview positions during pointermove; peers render them
    before pointerup and see the authenticated mover. Preserve each peer's camera,

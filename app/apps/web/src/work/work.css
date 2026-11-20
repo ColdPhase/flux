@@ -332,16 +332,12 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd__scroll::after { content: ""; position: sticky; bottom: 0; z-index: 1; display: block; height: 20px; margin: 0 0 -20px; background: linear-gradient(transparent, var(--panel-bg, var(--el))); pointer-events: none; opacity: 0; }
 .wd__scroll[data-scroll-down]::after { opacity: 1; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-/* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
-/* Its bottom offset is the scroll's 20 px bottom padding, which a sticky box otherwise keeps clear: the band sits flush on the panel's edge, with
-   nothing of the next message under it (round 15 confirm S1). */
-.wd-newbelow { position: sticky; bottom: -20px; z-index: 2; height: 0; }
-/* In the panel the line stands at the scroll's foot, never under the field (a feed's own line took its room in the flow in train 37,
-   which put the panel's pill half under the field, where it could not be clicked), on a band of the panel's own surface that fades in
-   above it: what scrolls under it passes under the band, so the pill never lies over a card's words (round 15 ai P3: "2 new" over
-   "Waits for your OK" and Approve). */
-.wd-newbelow:has(.convo-newbelow__b) { height: auto; padding-top: 14px; background: linear-gradient(transparent, var(--panel-bg, var(--el)) 14px); }
-.wd-newbelow > .convo-newbelow { padding: 0 0 6px; }
+/* A task's "↓ N new" line (S23) stands on its own band between the panel's scroll and its field, in its own room while it shows (the scroll ends above
+   it, as a conversation's feed does, `.convo-stream`), so it is on no line's words, leaves no sliver of the next message and covers no row of the
+   task (round 15 confirm S1; #1581). The band is the panel's own surface; with nothing new it is empty and takes no room. */
+.wd__below { flex: none; }
+.wd__below > .convo-newbelow { padding: 6px 0; }
+.wd__below > .convo-newbelow:empty { padding: 0; }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
 .wd-row dd .ui-avatar { flex: none; }

@@ -101,6 +101,8 @@ export interface LiveCursor {
 export interface LiveMapGesture {
   gestureId: string;
   thoughts: { id: string; expectedVersion: number }[];
+  /** This session's previous gesture, abandoned unfinished: its lease goes in the same step, whether or not its socket cancel has arrived. */
+  replaces?: string;
 }
 export interface LiveMapLease { gestureId: string; leaseId: string; generation: string; expiresAt: string }
 /** One user step, reversed atomically in original reverse order with current poststate/dependency guards. */

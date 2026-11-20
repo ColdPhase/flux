@@ -556,13 +556,14 @@ class UnifiedPanel(unittest.TestCase):
         pill = ada.locator(".convo-newbelow__b")
         expect(pill).to_have_text(re.compile("1 new"))
         self.assertEqual(scroller.evaluate("element => element.scrollTop"), 0, "a reader above the end is not moved")
-        self.assert_band_flush(panel, "computer light")
+        self.assertTrue(self.assert_band_below(panel, "computer light"), "the pill shows in its band")
         shot(ada, "unified-panel-task-live-new-below")
         pill.click()
         expect(later).to_be_in_viewport()
         expect(ada.locator(".convo-newbelow__b")).to_have_count(0)
-        # Round 15 confirm S1: the band sits flush on the panel's edge with nothing of the next message under it, and never over the task's
-        # fields above the discussion (on the phone's sheet it covered Due), on the computer and the phone's sheet, light and dark.
+        # Round 15 confirm S1 and #1581: the band has its own room under the scroll, so nothing of the next message is under it and it is never over
+        # the task's fields above the discussion (on the phone's sheet it covered Due, and it cut the line above it), on the computer and the phone's
+        # sheet, light and dark.
         for phone, scheme in ((False, "dark"), (True, "light"), (True, "dark")):
             with self.subTest(phone=phone, scheme=scheme):
                 tag = f"{'phone' if phone else 'computer'} {scheme}"
@@ -571,25 +572,42 @@ class UnifiedPanel(unittest.TestCase):
                 rows = open_panel.locator(".wd__scroll")
                 rows.evaluate("element => { element.scrollTop = 0; }")
                 reader.wait_for_timeout(300)
+                field_at = lambda: open_panel.locator(".wd__foot").evaluate("el => { const r = el.getBoundingClientRect(); return [r.top, r.bottom]; }")
+                field_before = field_at()
                 send(f"One more seal note for the {tag} reader.")
                 expect(reader.locator(".convo-newbelow__b")).to_have_text(re.compile("1 new"))
-                self.assert_band_flush(open_panel, f"{tag} at the top")
-                # With the discussion's start half way up the panel, the band shows, flush on the edge.
+                self.assertTrue(self.assert_band_below(open_panel, f"{tag} at the top"), "the pill shows in its band")
+                # The band takes its room from the scroll: the field under it does not move.
+                self.assertEqual(field_at(), field_before, f"{tag}: the field stays where it was when the band shows")
+                # With the discussion's start half way up the panel, the band shows in its own room.
                 rows.evaluate("""element => { const top = element.querySelector('.wd-activity').getBoundingClientRect().top - element.getBoundingClientRect().top;
                   element.scrollTop += top - element.clientHeight / 2; }""")
                 reader.wait_for_timeout(300)
                 expect(reader.locator(".convo-newbelow__b")).to_be_in_viewport()
-                self.assertTrue(self.assert_band_flush(open_panel, f"{tag} in the discussion"), "the band shows over the discussion")
+                self.assertTrue(self.assert_band_below(open_panel, f"{tag} in the discussion"), "the band shows under the discussion")
                 shot(reader, f"unified-panel-task-new-band-{'phone' if phone else 'computer'}-{scheme}")
+                # Tab goes from the pill to the field under it (last: the cursor in the field brings the newest line into view, which ends the band).
+                reader.locator(".convo-newbelow__b").focus()
+                reader.keyboard.press("Tab")
+                self.assertTrue(open_panel.locator(".wd__foot").evaluate("el => el.contains(document.activeElement)"), f"{tag}: Tab from the pill reaches the field")
 
-    def assert_band_flush(self, panel, where):
-        """The "↓ N new" band: its top never above the discussion's start, and when it shows, its bottom on the panel's edge. Returns whether it shows."""
-        band = panel.evaluate("""root => { const scroll = root.querySelector('.wd__scroll'), band = root.querySelector('.wd-newbelow'), talk = root.querySelector('.wd-activity');
-          const s = scroll.getBoundingClientRect(), b = band.getBoundingClientRect(), t = talk.getBoundingClientRect();
-          return { gap: s.bottom - b.bottom, above: t.top - b.top, shown: b.top < s.bottom - 1 }; }""")
-        self.assertLessEqual(band["above"], 0.5, f"{where}: the band never covers the task's fields above the discussion {band}")
+    def assert_band_below(self, panel, where):
+        """The "↓ N new" band (#1581): its own band between the panel's scroll and its field, in its own room. It is outside the scroll, so it lies on
+        no line's words and on no row of the task above (Due on the phone's sheet), and the scroll and the field meet it edge to edge. Returns whether
+        the pill shows."""
+        band = panel.evaluate("""root => { const scroll = root.querySelector('.wd__scroll'), band = root.querySelector('.wd__below'), foot = root.querySelector('.wd__foot');
+          const s = scroll.getBoundingClientRect(), b = band.getBoundingClientRect(), f = foot.getBoundingClientRect(), pill = band.querySelector('.convo-newbelow__b');
+          const p = pill ? pill.getBoundingClientRect() : null;
+          return { inside: scroll.contains(band), overlap: Math.min(s.bottom, b.bottom) - Math.max(s.top, b.top), toScroll: b.top - s.bottom, toField: f.top - b.bottom,
+                   shown: !!pill, pillInBand: p ? p.top >= b.top - 0.5 && p.bottom <= b.bottom + 0.5 : null, height: b.height }; }""")
+        self.assertFalse(band["inside"], f"{where}: the band is not part of the scroll {band}")
+        self.assertLessEqual(band["overlap"], 0.5, f"{where}: no word of the panel's scroll is under the band {band}")
+        self.assertLessEqual(abs(band["toScroll"]), 1, f"{where}: the scroll ends where the band begins {band}")
+        self.assertLessEqual(abs(band["toField"]), 1, f"{where}: the band ends where the field begins {band}")
         if band["shown"]:
-            self.assertLessEqual(abs(band["gap"]), 1, f"{where}: the band sits flush on the panel's edge {band}")
+            self.assertTrue(band["pillInBand"], f"{where}: the pill is whole inside its band {band}")
+        else:
+            self.assertLessEqual(band["height"], 0.5, f"{where}: with nothing new the band takes no room {band}")
         return band["shown"]
 
     def test_15_done_in_the_panel_by_the_person_waited_for_is_the_inboxs_done(self):

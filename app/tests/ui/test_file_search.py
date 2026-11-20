@@ -1,7 +1,8 @@
 """Browser tests for search inside files (C-63, #1382): Ctrl+K finds what a PDF, a Word document and a Markdown file say, and a photo by its name
 (#1424 B), shows the file's row with a
 snippet, opens its message with its preview open (a PDF at the page that matched), and finds nothing for someone who may not read the space or once the
-message is removed. The API half (rows, access, the sandbox, agents) is tests/app/file-text.test.ts. Runs through scripts/check_ui.sh test_file_search.
+message is removed; a direct message's file is found by its people and opens the conversation (#1590). The API half (rows, access, the sandbox, agents) is
+tests/app/file-text.test.ts and dm-file-search.test.ts. Runs through scripts/check_ui.sh test_file_search.
 FLUX_UI_BROWSER selects chromium (default) or webkit.
 """
 
@@ -29,7 +30,7 @@ STAMP = int(time.time() * 1000)
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.files+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.files+{STAMP}@example.test"),
           "wera": ("Wera Lis", f"wera.files+{STAMP}@example.test")}
 # Words nobody else writes, so each finds its file alone.
-PDF_WORD, DOCX_WORD, MD_WORD = "zorbalux", "quindrelle", "plimsoleth"
+PDF_WORD, DOCX_WORD, MD_WORD, DM_WORD = "zorbalux", "quindrelle", "plimsoleth", "travenquilt"
 # A real, decodable baseline JPEG of 16x8 (tests/app/support/pictures.ts holds the same bytes), with its JFIF header.
 JPEG = b"\xff\xd8" + b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + base64.b64decode("/9j/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAIABADAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAABf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAWAQEBAQAAAAAAAAAAAAAAAAAGBAf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwAccFCydqD/2Q==")[2:]
 
@@ -93,6 +94,7 @@ class FileSearch(unittest.TestCase):
             return response.json()
 
         ws = post("ada", "/api/v1/workspaces", {"name": "Studio"})
+        cls.ids["workspace"] = ws["id"]
         for other in ("jonas", "wera"):
             post("ada", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE[other][1], "role": "member"})
         pid = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Contracts", "visibility": "restricted"})["id"]
@@ -114,9 +116,17 @@ class FileSearch(unittest.TestCase):
         root("md", "Notes for the lab", "lab-notes.md", f"# Lab notes\n\nThe {MD_WORD} section is finished.\n".encode())
         # A photo is found by its name alone (#1424 B): nothing inside it is read.
         root("photo", "From the site visit", "IMG_2041.jpg", JPEG)
+        # A PDF in a direct message between Ada and Jonas (C-64 (3), #1590): found by them alone, and it opens the conversation with its preview.
+        dm = post("ada", f"/api/v1/workspaces/{ws['id']}/dms", {"participantIds": [cls.ids["jonas"]]})["id"]
+        staged = cls.contexts["ada"].request.post(f"/api/v1/dms/{dm}/files?uploadId={uuid.uuid4()}&name=delivery-terms.pdf",
+                                                  data=pdf_bytes(["Delivery terms", f"The {DM_WORD} ships on Thursday."]),
+                                                  headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
+        assert staged.status == 201, staged.text()
+        sent = post("ada", f"/api/v1/dms/{dm}/messages", {"body": "The terms we agreed", "attachmentIds": [staged.json()["id"]], "clientMessageId": str(uuid.uuid4())})
+        cls.ids.update({"dm": dm, "dm:message": sent["id"], "file:dm": staged.json()["id"]})
         # The worker reads each file a moment after its message is sent: wait until all three are found, as Ada.
         deadline = time.time() + 90
-        pending = {PDF_WORD, DOCX_WORD, MD_WORD}
+        pending = {PDF_WORD, DOCX_WORD, MD_WORD, DM_WORD}
         while pending and time.time() < deadline:
             for word in list(pending):
                 found = cls.contexts["ada"].request.get(f"/api/v1/search?q={word}").json()["items"]
@@ -306,6 +316,35 @@ class FileSearch(unittest.TestCase):
               return { right: mark.getBoundingClientRect().right, clip }; }""")
             self.assertLessEqual(seen["right"], seen["clip"] - 12, f"the matched word shows whole, before any ellipsis: {seen} {metas[index]}")
         self.shot(page, "file-search-same-name")
+
+    def test_07_a_file_in_a_direct_message_is_found_by_its_people_and_opens_the_conversation_with_its_preview(self) -> None:
+        """#1590 (C-64 (3)): the result opens /dm/<id>?file=<id>&page=N#message-<id>: the conversation, at the page that matched."""
+        page = self.page("jonas")
+        page.goto("/")
+        dialog, field = self.jump(page, DM_WORD)
+        row = dialog.get_by_role("option", name=re.compile("delivery-terms.pdf"))
+        expect(row).to_have_count(1)
+        expect(row).to_contain_text("Page 2")
+        expect(row.locator(".sr__meta")).to_contain_text("Ada Kowalska")
+        self.shot(page, "file-search-dm")
+        field.press("Enter")
+        expect(page).to_have_url(re.compile(rf"/dm/{self.ids['dm']}\?file={self.ids['file:dm']}&page=2#message-{self.ids['dm:message']}"))
+        viewer = page.get_by_role("dialog", name="delivery-terms.pdf")
+        expect(viewer).to_be_visible()
+        expect(page.frame_locator(".file-viewer iframe").locator(".page canvas").first).to_be_attached()
+        expect(page.locator(f"#message-{self.ids['dm:message']}")).to_be_attached()
+        self.shot(page, "file-search-dm-opened")
+        page.keyboard.press("Escape")
+        expect(viewer).to_have_count(0)
+        expect(page).to_have_url(re.compile(r"^(?!.*[?&]file=)"))
+        self.assertIn(f"/dm/{self.ids['dm']}", page.url)
+        # Wera is in the company but not in the conversation: nothing, in Ctrl+K and from the API.
+        other = self.page("wera")
+        other.goto("/")
+        dialog, _ = self.jump(other, DM_WORD)
+        expect(dialog.get_by_role("option")).to_have_count(0)
+        self.assertEqual(self.contexts["wera"].request.get(f"/api/v1/search?q={DM_WORD}").json()["items"], [])
+        self.assertEqual([item for item in self.contexts["wera"].request.get("/api/v1/search?q=delivery").json()["items"] if item["kind"] == "file"], [])
 
     def test_99_a_removed_message_takes_its_file_out_of_search_at_once(self) -> None:
         response = self.contexts["ada"].request.delete(f"/api/v1/conversations/{self.ids['conversation:md']}/messages/{self.ids['md']}", headers={"origin": ORIGIN})

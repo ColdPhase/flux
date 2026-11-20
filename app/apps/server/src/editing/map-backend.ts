@@ -83,12 +83,16 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const current=await project(body);await boundary.beforeHandoff?.();await c.finalFence();handoff(current);
     },'transient');},
     acquire(who,sketchId,gesture){return run(who,sketchId,true,async c=>{
-      closed(gesture,['gestureId','thoughts']);id(gesture.gestureId);if(!Array.isArray(gesture.thoughts)||!gesture.thoughts.length||gesture.thoughts.length>200)throw new InvalidInputError('A drag selects1–200 thoughts');
+      closed(gesture,['gestureId','thoughts','replaces']);id(gesture.gestureId);const replaces=gesture.replaces===undefined?null:id(gesture.replaces);if(!Array.isArray(gesture.thoughts)||!gesture.thoughts.length||gesture.thoughts.length>200)throw new InvalidInputError('A drag selects1–200 thoughts');
       const requested=gesture.thoughts.map(t=>{closed(t,['id','expectedVersion']);if(!Number.isSafeInteger(t.expectedVersion)||t.expectedVersion<1)throw new InvalidInputError('A native base version is required');return{id:id(t.id),expectedVersion:t.expectedVersion};});
       if(new Set(requested.map(t=>t.id)).size!==requested.length)throw new InvalidInputError('Each selected thought may appear once');
       const current=await sketchRepository(c.db).lockThoughts(sketchId,requested.map(t=>t.id));
       if(current.length!==requested.length||requested.some(t=>current.find(row=>row.id===t.id)?.version!==t.expectedVersion))throw stale();
-      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.expire(sketchId);const leases=await rows.gestures(sketchId,c.room.generation);
+      const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);await rows.expire(sketchId);let leases=await rows.gestures(sketchId,c.room.generation);
+      // The session's own abandoned drag ends here, in order: its cancel goes over the socket and could arrive after this request,
+      // which then saw the old lease as another collaborator's (#1588). Only this actor and session's lease of that gesture qualifies.
+      const replaced=replaces&&replaces!==id(gesture.gestureId)?leases.find(l=>l.lease.actorId===who.actorId&&l.lease.sessionId===who.sessionId&&l.lease.gestureId===replaces):undefined;
+      if(replaced){await rows.removeGesture(replaced.lease.leaseId);await rows.notify(sketchId);leases=leases.filter(l=>l!==replaced);}
       const exact=leases.find(l=>l.lease.actorId===who.actorId&&l.lease.sessionId===who.sessionId&&l.lease.gestureId===gesture.gestureId);
       if(exact){if(JSON.stringify(exact.lease.thoughts)!==JSON.stringify(requested))throw stale();return{leaseId:exact.lease.leaseId,gestureId:gesture.gestureId,generation:c.room.generation,expiresAt:exact.lease.expiresAt.toISOString()};}
       if(leases.some(l=>l.lease.thoughts.some(t=>requested.some(w=>w.id===t.id))))throw new ConflictError('Another collaborator is moving a selected thought','EDITING_GESTURE_CONFLICT');

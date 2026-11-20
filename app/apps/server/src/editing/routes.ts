@@ -92,7 +92,7 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
       await map().bootstrap(session,request.params.sketchId,(head,preparation)=>{if(lifetime.canSend)mapSend(reply,preparation.encode(head),lifetime);});
     } finally {lifetime.settled();}
   });
-  app.post<{Params:{sketchId:string};Body:LiveMapGesture}>(liveMapGesturePath(':sketchId'),{bodyLimit:65_536,preValidation:async request=>{closed(request.body,['gestureId','thoughts']);if(Array.isArray(request.body.thoughts))for(const thought of request.body.thoughts)closed(thought,['id','expectedVersion']);},schema:{body:{type:'object',additionalProperties:false,required:['gestureId','thoughts'],properties:{gestureId:uuid,
+  app.post<{Params:{sketchId:string};Body:LiveMapGesture}>(liveMapGesturePath(':sketchId'),{bodyLimit:65_536,preValidation:async request=>{closed(request.body,['gestureId','thoughts','replaces']);if(Array.isArray(request.body.thoughts))for(const thought of request.body.thoughts)closed(thought,['id','expectedVersion']);},schema:{body:{type:'object',additionalProperties:false,required:['gestureId','thoughts'],properties:{gestureId:uuid,replaces:uuid,
     thoughts:{type:'array',minItems:1,maxItems:200,items:{type:'object',additionalProperties:false,required:['id','expectedVersion'],properties:{id:uuid,expectedVersion:{type:'integer',minimum:1}}}}}}}},async(request,reply)=>{
     const lifetime=editingHTTPLifetime(reply.raw,outputBudget);try {
     const session=await sessions.requirePrincipal(request);const result=await map().acquire(session,request.params.sketchId,request.body);

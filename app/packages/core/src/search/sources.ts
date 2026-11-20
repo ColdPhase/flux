@@ -57,10 +57,13 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
       ...((row.version ?? 1) >= (row.currentVersion ?? row.version ?? 1) ? { current: true as const } : {}) }),
   },
   // A file someone sent (C-63): its name is the title, the matching part of its text the snippet; it opens its message with its preview open.
+  // One sent in a direct message (C-64 (3), #1590) has no space: its rows carry the conversation's audience (`dm:<id>`, the parent) and open it.
   file: {
     filter: 'file', audience: 'project', textIsTitle: false, label: (row) => (row.page ? `File · page ${row.page}` : 'File'),
-    target: (row) => ({ type: 'file', projectId: inProject(row), conversationId: row.parentId ?? '', messageId: row.messageId ?? '', fileId: row.objectId,
-      ...(row.page ? { page: row.page } : {}) }),
+    target: (row) => (row.projectId === null
+      ? { type: 'dm_file', dmId: row.parentId ?? '', messageId: row.messageId ?? '', fileId: row.objectId, ...(row.page ? { page: row.page } : {}) }
+      : { type: 'file', projectId: inProject(row), conversationId: row.parentId ?? '', messageId: row.messageId ?? '', fileId: row.objectId,
+        ...(row.page ? { page: row.page } : {}) }),
   },
   work: {
     filter: 'work', audience: 'project', textIsTitle: false, label: (row) => WORK_STATUS[row.status ?? ''] ?? 'Task',
@@ -97,7 +100,7 @@ export function searchKindsOf(filter: SearchFilterType): SearchKind[] {
 export function searchPlaceOf(row: SearchRow): SearchPlace {
   // A project's place is its workspace: its name is the result itself, not a place it lives in.
   if (row.kind === 'project') return { type: 'workspace', id: row.workspaceId, name: row.workspaceName ?? '' };
-  if (row.kind === 'dm_message' && row.parentId) return { type: 'dm', id: row.parentId, name: row.dmName ?? 'Direct message' };
+  if ((row.kind === 'dm_message' || (row.kind === 'file' && row.projectId === null)) && row.parentId) return { type: 'dm', id: row.parentId, name: row.dmName ?? 'Direct message' };
   if (row.kind === 'person') return { type: 'workspace', id: row.workspaceId, name: row.workspaceName ?? '' };
   // The project is named only when it is itself visible to the reader (the rows check it).
   if (row.projectId && row.projectName !== null) return { type: 'project', id: row.projectId, name: row.projectName };

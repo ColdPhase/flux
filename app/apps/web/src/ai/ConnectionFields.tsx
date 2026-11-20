@@ -57,6 +57,12 @@ const KEY_LISTED: ReadonlySet<AiProviderKind> = new Set(['anthropic', 'openai', 
  * stays three lines and the window still fits 1440 × 900 with More open.
  */
 const KEY_HELP = 'Paste the key from your provider’s website. Flux uses it only for your agents.';
+/** Google's Gemini API terms (#1585, C-72: their fit to a Gemini key's web search is the key owner's responsibility). */
+const GEMINI_TERMS = 'https://aistudio.google.com/docs/terms';
+/** The one quiet line of a Gemini key, in Connect AI and on its card (founder decision, Hubert, 2026-11-20, C-72). */
+export function GeminiSearchTerms() {
+  return <p className="background-settings__help" data-testid="gemini-search-terms">Web search uses Google Search grounding; <a href={GEMINI_TERMS} target="_blank" rel="noopener noreferrer">Google’s Gemini API terms</a> apply to your key.</p>;
+}
 const OTHER = '__other__';
 
 const listFailure = (provider: AiProviderKind, status: Exclude<AiModelList['status'], 'listed'>) => {
@@ -219,6 +225,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
       onChange={() => { if (keyProblem) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
     {keyProblem ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{keyProblem}</p> : null}
     {keyHelp ? <p id={keyHelpId} className="background-settings__help">{KEY_HELP}{info ? ` ${info.keyHint}` : ''}{provider === 'anthropic' ? ' A key of your Claude Max, Ultra or Team plan uses its monthly API credits.' : ''}</p> : null}
+    {provider === 'gemini' ? <GeminiSearchTerms /> : null}
     {dropdown ? (
       <label>Model
         <Select name={other ? undefined : 'model'} required={!other} aria-label="Model" value={other ? OTHER : model} placeholder="Choose a model" disabled={disabled} aria-describedby={`${id}-model`}

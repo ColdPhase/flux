@@ -33,9 +33,10 @@ export interface AiProviderInfo {
    */
   reportsCost: boolean;
   /**
-   * Whether the provider has its own built-in web search on the wire format Flux speaks to it (#954, C-29): Anthropic's `web_search`
-   * server tool, OpenAI's Responses `web_search` tool. A run with tools is offered it while the operator's `FLUX_WEB_READS` is on;
-   * a provider without one simply has no search.
+   * Whether the provider has a hosted web search Flux can ask it for (#954, C-29, C-72): Anthropic's `web_search` server tool,
+   * OpenAI's Responses `web_search` tool, Gemini's Google Search grounding (its own `generateContent` API, #1585) and OpenRouter's
+   * `web` plugin (#1585). An agent in pi searches with it through `flux_web_search` while the operator's `FLUX_WEB_READS` is on; a
+   * provider without one (an endpoint of the owner's own) simply has no search.
    */
   searchesWeb: boolean;
   /**
@@ -60,11 +61,11 @@ export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   },
   openrouter: {
     kind: 'openrouter', label: 'OpenRouter', wire: 'openai_chat_completions', baseUrl: 'https://openrouter.ai/api/v1',
-    keyHint: 'OpenRouter keys begin with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: false, seesPictures: false,
+    keyHint: 'OpenRouter keys begin with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: true, seesPictures: false,
   },
   gemini: {
     kind: 'gemini', label: 'Google Gemini', wire: 'openai_chat_completions', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    keyHint: 'Gemini API keys begin with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: false, seesPictures: true,
+    keyHint: 'Gemini API keys begin with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
   },
   openai_compatible: {
     kind: 'openai_compatible', label: 'OpenAI-compatible endpoint', wire: 'openai_chat_completions', baseUrl: null,
@@ -212,6 +213,30 @@ const ANTHROPIC_PRICING = 'https://platform.claude.com/docs/en/about-claude/pric
  * provider reports it, and the key's daily budget is what stops spending.
  */
 export const WEB_SEARCH_MICROS = 10_000;
+
+/**
+ * Gemini models that Google bills per grounded prompt rather than per search query (#1585, C-72): Gemini 2.5 and older, at $35 per 1,000
+ * grounded prompts; Gemini 3 and newer at $14 per 1,000 search queries the model runs (aistudio.google.com/docs/pricing and
+ * /docs/google-search, read 2026-11-20). The free allowances (1,500 grounded prompts a day on 2.5, 5,000 queries a month on 3 and newer)
+ * are not counted: Flux charges every one, which never undercounts.
+ */
+export const geminiSearchBilledPerPrompt = (model: string): boolean => /^(models\/)?gemini-(1|2)(\.|-)/i.test(model);
+
+/** OpenRouter's web search as Flux asks for it (#1585, C-72): the `web` plugin on the Exa engine, five results, one search a request. */
+export const OPENROUTER_WEB_PLUGIN = { id: 'web', engine: 'exa', max_results: 5 } as const;
+const OPENROUTER_SEARCH_MICROS = 7_000;
+
+/**
+ * What one search of a provider's hosted web search costs Flux's budget (#954, #1585, C-72), in micro-dollars: one counted search is one
+ * Anthropic search or OpenAI `web_search` call ($10 per 1,000), one Gemini query or grounded prompt (above), or one OpenRouter `web` plugin
+ * request on its Exa engine ($0.007 a request of up to 10 results; openrouter.ai/docs/guides/features/plugins/web-search, read 2026-11-20).
+ * Zero for a provider without one.
+ */
+export function webSearchMicros(provider: AiProviderKind, model: string): number {
+  if (provider === 'gemini') return geminiSearchBilledPerPrompt(model) ? 35_000 : 14_000;
+  if (provider === 'openrouter') return OPENROUTER_SEARCH_MICROS;
+  return AI_PROVIDERS[provider].searchesWeb ? WEB_SEARCH_MICROS : 0;
+}
 
 /**
  * Prompt caching that Flux asks for (#1410): Anthropic caches what a request marks with `cache_control` (the tool definitions, the
