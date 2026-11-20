@@ -218,7 +218,8 @@ class DmThreadsReceipts(unittest.TestCase):
         self.assertEqual(actions.get_by_role("button", name="Reply in thread").count() + actions.get_by_role("button", name="Create task").count(), 0, "nothing can be sent")
         actions.get_by_role("button", name="More actions").click()
         menu = gone.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link", "Copy text", "Pin"])
+        # A 1:1 whose other person left takes no new messages: its list is read only, so no Pin (C-74).
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link", "Copy text"])
 
     def test_02_a_private_reply_thread_with_a_visible_count_that_survives_reload(self) -> None:
         kai = self.page("kai")
