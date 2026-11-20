@@ -62,6 +62,23 @@ disk…`, the API logs `Encrypted workspaces stay locked here…` at start, and 
 encrypted." The check runs again every 5 seconds and drops every key if it starts failing.
 Hibernation, suspend-to-disk and VM memory snapshots are not covered by any of this.
 
+**A running container's swap limit does not stay.** `systemctl daemon-reload` sets `memory.swap.max`
+of every container's cgroup back to `max` (reproduced on Ubuntu 24.04 with Docker 29.9.3, cgroup v2 and
+the `systemd` cgroup driver; `memory.max` keeps its value), and package upgrades and most configuration
+tools run it. On a host with a disk swap device the containers could then swap. So the keyring asks the
+rule again every minute and before every request, and `api` and `worker` every 5 seconds. When it fails
+the keyring wipes its boot key and logs one line:
+
+```text
+Flux keyring locked itself: this container can now write memory to disk (its swap limit is gone, as `systemctl daemon-reload` does), so it wiped its boot key and refuses every request. …
+```
+
+Every encrypted space is then locked with the reason above, and the keyring's health check turns red
+(`docker compose ps` shows it unhealthy after about 90 seconds, and `./flux up` prints the line). Restart the keyring (`docker compose restart keyring`; Docker then sets the limit again), and
+the admins unlock their spaces again. Or, only if every swap device is encrypted with a key that is
+not stored on the disk, set `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap`. A host with no swap device, or only
+`zram`, is not affected.
+
 Search inside an unlocked encrypted space runs from an index in the API's memory, bounded to a
 quarter of the API container's memory (64–512 MiB). A space too large for it answers that search is
 unavailable. The bounds are [override-only settings](configuration.md#encrypted-spaces-and-the-keyring);
@@ -85,7 +102,7 @@ raise `FLUX_API_MEMORY` before raising them.
 ## Checks
 
 From the checkout, the keyring's own lines (its health polls of `/v1/boot` filtered out) say
-`Flux keyring ready`, that it is idle without a token, or why it refuses to start; warnings of the
+`Flux keyring ready`, that it is idle without a token, why it refuses to start, or that it locked itself; warnings of the
 API are JSON lines with `"level":40`:
 
 ```sh

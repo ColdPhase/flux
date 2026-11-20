@@ -17,7 +17,7 @@ runs in containers, so the host needs only Docker and a few standard tools.
 | **Swap** | off, or encrypted | Only matters for [encrypted spaces](encrypted-spaces.md#swap-and-memory). |
 
 Memory in more detail. Compose limits each service, and memory and swap to the same value
-([`FLUX_API_MEMORY`, `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`, `FLUX_DB_MEMORY`](configuration.md#memory-limits)):
+([`FLUX_API_MEMORY`, `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`, `FLUX_DB_MEMORY`](configuration.md#memory-limits), and `FLUX_LIVEKIT_MEMORY` with calls on):
 
 | Service | Limit | Observed |
 | --- | --- | --- |
@@ -25,6 +25,7 @@ Memory in more detail. Compose limits each service, and memory and swap to the s
 | `worker` | 512 MB | 84 MiB idle; peak 111 MB; while it reads a file for search ([C-63](../product/decisions.md)) a child process of at most 320 MiB runs beside it, for at most 20 seconds, one file at a time |
 | `keyring` | 128 MB | 18 MiB idle; peak 42 MB |
 | `db` | 768 MB | 69 MiB idle |
+| `livekit` (only with [calls](calls.md#resources)) | 512 MB, 1 CPU (`FLUX_LIVEKIT_MEMORY`, `FLUX_LIVEKIT_CPUS`) | 75 to 86 MB and 3 to 9 % of one core in a synthetic 16-person call, 4 of them publishing video (2026-11-20) |
 
 Idle figures: `docker stats` on a fresh source install on 2026-10-31 (Docker Engine 29.4.2, Linux
 `x86_64`). Peaks: cgroup `memory.peak` on 2026-10-23 during the encryption check
@@ -35,7 +36,8 @@ a limit if a container is killed for memory.
 
 The [agent runtime](agent-runtime.md), which Flux AI needs, adds a manager, an egress proxy and about 1 GB for
 each agent while it runs; an idle person costs nothing. About 2 agents run at once on 4 GB. Optional [live media](../development/live-media.md) adds a
-LiveKit server whose CPU and bandwidth grow with each call.
+LiveKit server whose CPU and bandwidth grow with each call; its memory and CPU are limited (512 MB and one CPU by default, [calls](calls.md#resources)); the
+base stack's 2.9 GB above does not include it.
 
 ## Local embeddings (optional)
 

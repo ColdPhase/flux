@@ -21,11 +21,15 @@ export type EncryptionAvailability = 'ok' | 'keyring_off' | 'keyring_unavailable
  * composition root and passed in; nothing else holds DEKs. It knows the keyring's last boot id (refreshed by the 5 s
  * heartbeat, which also runs `swapSafety()` again) and caches each opened DEK by `(workspace, version, boot id,
  * unlocked at)`, so a re-unlock or a new boot never reuses an old entry. While swap is possible, or before the keyring
- * was ever reached, it opens nothing: every sealed workspace is then locked here.
+ * was ever reached, it opens nothing: every sealed workspace is then locked here. Swap is possible when this process's own
+ * check says so, and when the keyring says it found swap possible and locked itself (#1559): a container's swap limit can be
+ * reset while it runs, and the keyring wipes its boot key then, so no process may go on using keys it opened before.
  */
 export class ProcessKeys {
   private known: string | null = null;
   private verdict: SwapVerdict;
+  /** The keyring answered 503 SWAP_UNSAFE at its last heartbeat: it wiped its boot key and serves again only after a restart. */
+  private keyringSwap = false;
   private reached = false;
   /** When the keyring last failed to answer: a short negative cache, so a down keyring does not cost every request a timeout. */
   private failedAt = 0;
@@ -38,19 +42,19 @@ export class ProcessKeys {
 
   /** The keyring boot this process last saw; null before the first answer, or with no keyring. */
   get bootId(): string | null { return this.known; }
-  get swapSafe(): boolean { return this.verdict.safe; }
+  get swapSafe(): boolean { return this.verdict.safe && !this.keyringSwap; }
   /** The boot under which this process can open keys now: null while swap is unsafe or before the keyring answered. */
-  get openableBoot(): string | null { return this.verdict.safe ? this.known : null; }
+  get openableBoot(): string | null { return this.swapSafe ? this.known : null; }
 
   get availability(): EncryptionAvailability {
     if (!this.keyring) return 'keyring_off';
-    if (!this.verdict.safe) return 'swap_unsafe';
+    if (!this.swapSafe) return 'swap_unsafe';
     return this.known && this.reached ? 'ok' : 'keyring_unavailable';
   }
 
   /** Throws the 503 that unlock and creation answer when this process cannot hold a key. */
   requireAvailable(): void {
-    if (!this.verdict.safe) throw new SwapUnsafeError();
+    if (!this.swapSafe) throw new SwapUnsafeError();
     if (!this.keyring || !this.known) throw new KeyringUnavailableError();
   }
 
@@ -59,17 +63,27 @@ export class ProcessKeys {
 
   /**
    * One heartbeat: swap again, then the boot id. An unreachable keyring keeps cached keys in use (availability, not
-   * secrecy, is at stake); a different boot drops every cached key. Returns the boot change, if any.
+   * secrecy, is at stake); a keyring that locked itself because swap became possible drops every cached key, as does a
+   * different boot. Returns the boot change, if any.
    */
   async refresh(options: { force?: boolean } = {}): Promise<{ previous: string | null; current: string | null; observedAt: Date } | null> {
-    const wasSafe = this.verdict.safe;
+    const wasSafe = this.swapSafe;
     this.verdict = this.swap();
     if (wasSafe && !this.verdict.safe) this.forget(null);
     if (!this.keyring) return null;
     if (!options.force && Date.now() - this.failedAt < NEGATIVE_CACHE_MS) return null;
     let current: string;
-    try { current = await this.keyring.boot(); } catch { this.failedAt = Date.now(); return null; }
+    try { current = await this.keyring.boot(); } catch (error) {
+      this.failedAt = Date.now();
+      if (error instanceof SwapUnsafeError) {
+        const dropped = !this.swapSafe;
+        this.keyringSwap = true;
+        if (!dropped) this.forget(null);
+      }
+      return null;
+    }
     this.failedAt = 0;
+    this.keyringSwap = false;
     this.reached = true;
     const previous = this.known;
     if (previous === current) return null;
@@ -100,7 +114,7 @@ export class ProcessKeys {
    * caller treats the workspace as locked.
    */
   async key(workspaceId: string, row: UnlockRow): Promise<WorkspaceKey> {
-    if (!this.keyring || !this.verdict.safe || row.bootId !== this.known) throw new KeyringUnavailableError();
+    if (!this.keyring || !this.swapSafe || row.bootId !== this.known) throw new KeyringUnavailableError();
     const name = `${workspaceId}:${row.keyVersion}:${row.bootId}:${row.unlockedAt.getTime()}`;
     const cached = this.cache.get(name);
     if (cached) return cached;

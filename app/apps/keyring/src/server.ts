@@ -16,6 +16,16 @@ export interface KeyringOptions {
   token: string;
   log?: (line: string) => void;
   /**
+   * The swap rule (`swapSafe` in `./swap.ts`), asked again every `swapCheckMs` and before every authenticated request (#1559): a
+   * container's swap limit can be reset while it runs (`systemctl daemon-reload` writes `memory.swap.max = max`), and the keyring's
+   * start check would never notice. When it fails, the keyring wipes its boot key and answers 503 until it is restarted. Without
+   * it, nothing is re-checked (the unit tests that do not care).
+   */
+  swapSafe?: () => boolean;
+  swapCheckMs?: number;
+  /** One line to the operator when the keyring locks itself. Default: stderr. */
+  warn?: (line: string) => void;
+  /**
    * TEST ONLY (`scripts/check_encryption.sh`): `GET /v1/test/boot-key` answers the boot key, so the log scan can search for
    * it. Only in a test deployment with `FLUX_KEYRING_REVEAL_BOOT_KEY=true`; otherwise the route does not exist.
    */
@@ -31,7 +41,13 @@ const FIXED = {
   badRequest: [400, { error: 'bad_request' }],
   tooLarge: [413, { error: 'too_large' }],
   staleBoot: [409, { error: 'stale_boot', code: 'STALE_BOOT' }],
+  swapUnsafe: [503, { error: 'swap_unsafe', code: 'SWAP_UNSAFE' }],
 } as const;
+
+/** The one line the keyring writes when it locks itself (and `./flux up` shows): what happened, what it did, the fix. */
+export const LOCKED_LINE = 'Flux keyring locked itself: this container can now write memory to disk (its swap limit is gone, as `systemctl daemon-reload` does), '
+  + 'so it wiped its boot key and refuses every request. Encrypted spaces stay locked until you restart the keyring (`docker compose restart keyring`; '
+  + 'a restart sets the limit again) and unlock them again, or set FLUX_SWAP_ACKNOWLEDGED=encrypted-swap if every swap device is encrypted with a key not on disk.';
 
 /** Each component as its UTF-8 bytes preceded by a 4-byte big-endian length (the contract's context encoding). */
 function encodeContext(parts: readonly (string | number)[]): Buffer {
@@ -50,10 +66,20 @@ export function tokenMatches(header: string | undefined, token: string): boolean
   return timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`));
 }
 
-export function createKeyring({ token, log = (line) => process.stdout.write(`${line}\n`), revealBootKey = false }: KeyringOptions) {
+export function createKeyring({ token, log = (line) => process.stdout.write(`${line}\n`), revealBootKey = false, swapSafe, swapCheckMs = 60_000,
+  warn = (line) => process.stderr.write(`${line}\n`) }: KeyringOptions) {
   if (token.length < 32) throw new Error('FLUX_KEYRING_TOKEN must be at least 32 characters');
   const bootKey = randomBytes(32);
   const bootId = randomUUID();
+  // Once the swap rule fails the boot key is zeroed for good: every unlock row sealed under it is unopenable, and only a new
+  // process (a new boot key and boot id) serves again.
+  let locked = false;
+  function recheck() {
+    if (locked || !swapSafe || swapSafe()) return;
+    locked = true;
+    bootKey.fill(0);
+    warn(LOCKED_LINE);
+  }
   const aad = (workspaceId: string, boot: string, keyVersion: number) => encodeContext(['flux unlock v1', workspaceId.toLowerCase(), boot, keyVersion]);
 
   function seal(workspaceId: string, keyVersion: number, dek: Buffer): string {
@@ -95,6 +121,8 @@ export function createKeyring({ token, log = (line) => process.stdout.write(`${l
 
   async function route(request: IncomingMessage): Promise<readonly [number, unknown]> {
     if (!tokenMatches(request.headers.authorization, token)) return FIXED.unauthorized;
+    recheck();
+    if (locked) return FIXED.swapUnsafe;
     const path = (request.url ?? '').split('?')[0];
     if (request.method === 'GET' && path === '/v1/boot') return [200, { bootId }];
     if (revealBootKey && request.method === 'GET' && path === '/v1/test/boot-key') return [200, { bootKey: bootKey.toString('base64url') }];
@@ -139,10 +167,19 @@ export function createKeyring({ token, log = (line) => process.stdout.write(`${l
   server.headersTimeout = 5_000;
   server.requestTimeout = 5_000;
   server.maxHeadersCount = 32;
+  const timer = swapSafe ? setInterval(recheck, swapCheckMs) : null;
+  timer?.unref();
   return {
     bootId,
     server,
+    /** True once the swap rule failed: the boot key is wiped and every authenticated request answers 503. */
+    get locked() { return locked; },
     /** Zeroes the boot key; every unlock row sealed under it becomes unopenable. */
-    close: () => new Promise<void>((resolve) => { bootKey.fill(0); server.close(() => resolve()); server.closeAllConnections(); }),
+    close: () => new Promise<void>((resolve) => {
+      if (timer) clearInterval(timer);
+      bootKey.fill(0);
+      server.close(() => resolve());
+      server.closeAllConnections();
+    }),
   };
 }

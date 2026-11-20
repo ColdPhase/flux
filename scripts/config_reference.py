@@ -237,6 +237,12 @@ VARIABLES: dict[str, Var] = {
     "FLUX_LIVEKIT_DOMAIN": Var("media", "DNS name", "Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./flux` uses the origin's host and ignores this line.", "media.example.org"),
     "FLUX_LIVEKIT_MEDIA_CIDR": Var("media", "CIDR",
         "The SFU's media interface when the host has several; the default keeps every IPv4 interface.", "203.0.113.20/32"),
+    "FLUX_LIVEKIT_MEMORY": Var("media", "Compose memory size",
+        "Memory of the `livekit` container, memory and swap alike, so a busy call cannot take memory from the database and the keyring. "
+        "A 16-person call (four people publishing high-resolution video, twelve watching) peaked at 75 to 86 MB (#1558); the default leaves room for screen sharing at a larger size.", "512m"),
+    "FLUX_LIVEKIT_CPUS": Var("media", "Compose CPU count",
+        "CPUs the `livekit` container may use. One by default, which also starts on a 1-core server (Docker refuses a limit above the host's cores); "
+        "the same call used 3 to 4 % of one core on average and 7 to 9 % at its peak. Raise it for many calls at once.", "1"),
     "FLUX_LIVEKIT_ICE_TCP_PORT": Var("media", "port", "Host port of ICE over TCP."),
     "FLUX_LIVEKIT_ICE_UDP_PORT": Var("media", "port", "Host port of the ICE UDP mux."),
     "FLUX_LIVEKIT_TURN_UDP_PORT": Var("media", "port", "Host port of TURN/UDP and STUN."),
@@ -429,6 +435,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_TEST_ROTATION_PAGE_SIZE": "Test deployments only.",
     "FLUX_TEST_ROTATION_SWEEP_MS": "Test deployments only.",
     "FLUX_TEST_SWAP_ROOT": "Test deployments only.",
+    "FLUX_TEST_SWAP_CHECK_MS": "Test deployments only: how often the keyring asks the swap rule again (default 60 s).",
     "FLUX_KEYRING_REVEAL_BOOT_KEY": "Test deployments only; ignored without the test switches.",
     "FLUX_PUSH_ALLOW_PRIVATE_NETWORK": "Phone-emulation tests only: lets push reach a private test service.",
     "FLUX_OIDC_ALLOW_HTTP_ISSUER": "Isolated test identity provider only; never production.",

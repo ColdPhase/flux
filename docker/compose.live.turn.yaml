@@ -2,6 +2,8 @@
 # compose.yaml) and compose.live.yaml. A separate DNS name/certificate is required for TURN/TLS.
 services:
   livekit:
+    # TURN/TLS listens on 443 inside the container, a privileged port, and compose.live.yaml drops every capability.
+    cap_add: [NET_BIND_SERVICE]
     environment:
       LIVEKIT_CONFIG: |
         port: 7880

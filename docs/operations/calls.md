@@ -63,6 +63,21 @@ IPv4 address:
 - **A CDN or another proxy in front of the name** (its address, not the server's): media cannot flow.
   Point the name at the server itself.
 
+## Resources
+
+The media server has limits of its own, like every other Flux service ([#1558](https://github.com/ColdPhase/flux/issues/1558)): `FLUX_LIVEKIT_MEMORY`
+(default `512m`, memory and swap alike, so it cannot swap) and `FLUX_LIVEKIT_CPUS` (default `1`; Docker refuses a CPU limit above the
+server's cores, so one also starts on a 1-core server). Without them a call with many people or a misbehaving client could take the
+whole server's memory and CPU from the database and the keyring. It also runs with no capabilities, no new privileges, a read-only
+root, at most 512 processes and an init process.
+
+**Measured 2026-11-20** (LiveKit 1.13.11, Docker 29.4.2, Linux x86_64; the container's cgroup, sampled every 1 to 2 seconds): a room with the
+most people a call holds, 16: four publishing high-resolution simulcast video (the LiveKit CLI's load test, `lk load-test`, 60 seconds) and
+twelve receiving all four. LiveKit used **75 MB at its peak and 3 to 4 % of one core on average (7 % peak)** with the speaker layout, and
+**86 MB and 3 % (9 % peak)** with the 4×4 layout and speaker changes; 10 processes, 31 and 12 Mbit/s out, no packet lost. The defaults leave
+about six times that memory and ten times that CPU. It is a synthetic load, not a real call: the load test sends prepared video without audio or
+text, from the same host. Watch `docker stats` on your server during a real call and raise the limits if it reaches them.
+
 ## The limit: no TURN over TLS
 
 With one public address, port 443 belongs to the HTTPS proxy, so the media server cannot also offer

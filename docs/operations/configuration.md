@@ -70,10 +70,12 @@ exists. A wrong value stops the service at start with a message that names the v
 | [`FLUX_LINK_PREVIEWS`](#flux_link_previews) | Collaboration, link cards and the live stream | `off` |
 | [`FLUX_LIVEKIT_API_KEY`](#flux_livekit_api_key) | Live media: LiveKit and TURN | **required** |
 | [`FLUX_LIVEKIT_API_SECRET`](#flux_livekit_api_secret) | Live media: LiveKit and TURN | **required** |
+| [`FLUX_LIVEKIT_CPUS`](#flux_livekit_cpus) | Live media: LiveKit and TURN | `1` |
 | [`FLUX_LIVEKIT_DOMAIN`](#flux_livekit_domain) | Live media: LiveKit and TURN | **required** |
 | [`FLUX_LIVEKIT_ICE_TCP_PORT`](#flux_livekit_ice_tcp_port) | Live media: LiveKit and TURN | `7881` |
 | [`FLUX_LIVEKIT_ICE_UDP_PORT`](#flux_livekit_ice_udp_port) | Live media: LiveKit and TURN | `7882` |
 | [`FLUX_LIVEKIT_MEDIA_CIDR`](#flux_livekit_media_cidr) | Live media: LiveKit and TURN | `0.0.0.0/0` |
+| [`FLUX_LIVEKIT_MEMORY`](#flux_livekit_memory) | Live media: LiveKit and TURN | `512m` |
 | [`FLUX_LIVEKIT_PUBLIC_IP`](#flux_livekit_public_ip) | Live media: LiveKit and TURN | **required** |
 | [`FLUX_LIVEKIT_TURN_CERT_DIR`](#flux_livekit_turn_cert_dir) | Live media: LiveKit and TURN | **required** |
 | [`FLUX_LIVEKIT_TURN_DOMAIN`](#flux_livekit_turn_domain) | Live media: LiveKit and TURN | **required** |
@@ -376,6 +378,18 @@ Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./f
 **Type** CIDR · **Default** `0.0.0.0/0` · **Used by** livekit (live-media overlay, TURN overlay)
 
 The SFU's media interface when the host has several; the default keeps every IPv4 interface. Example: `203.0.113.20/32`.
+
+### `FLUX_LIVEKIT_MEMORY`
+
+**Type** Compose memory size · **Default** `512m` · **Used by** livekit (live-media overlay)
+
+Memory of the `livekit` container, memory and swap alike, so a busy call cannot take memory from the database and the keyring. A 16-person call (four people publishing high-resolution video, twelve watching) peaked at 75 to 86 MB (#1558); the default leaves room for screen sharing at a larger size. Example: `512m`.
+
+### `FLUX_LIVEKIT_CPUS`
+
+**Type** Compose CPU count · **Default** `1` · **Used by** livekit (live-media overlay)
+
+CPUs the `livekit` container may use. One by default, which also starts on a 1-core server (Docker refuses a limit above the host's cores); the same call used 3 to 4 % of one core on average and 7 to 9 % at its peak. Raise it for many calls at once. Example: `1`.
 
 ### `FLUX_LIVEKIT_ICE_TCP_PORT`
 
@@ -713,7 +727,7 @@ Password `./flux demo` gives the second demo account.
 
 ## Set by Flux, not by you
 
-The services also read 80 names that Compose, the launcher or the code sets: wiring
+The services also read 81 names that Compose, the launcher or the code sets: wiring
 between services and test switches. Do not set them. They are listed for developers in
 [internal configuration names](../development/configuration-internal.md).
 
