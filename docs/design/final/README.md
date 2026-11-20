@@ -2150,7 +2150,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   (the phone has only the header's Back).
 - **Notifications:** "The Inbox always shows everything that waits for you."
   - **Tell me about** is one level. Only what needs me covers decisions, questions, blocked tasks,
-    mentions and agents waiting for you. Everything adds every new message in your spaces (a push and a notice, never an Inbox item or an email; founder report, Hubert, 2026-11-19, [#1550](https://github.com/ColdPhase/flux/issues/1550), C-65) and the calls started in them; "task updates" are not sent yet, which is open for the founder. Nothing
+    mentions and agents waiting for you. Everything adds every new message in your spaces (a push and a notice, never an Inbox item or an email; founder report, Hubert, 2026-11-19, [#1550](https://github.com/ColdPhase/flux/issues/1550), C-65), the calls started in them, and task updates. Nothing
     shows only the count on the Inbox.
   - **Where:** Email me too, On this device, **Hide previews** ([below](#hide-previews), #1346) and Quiet hours
     ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change). **Sounds** is one more row in its own card under it (below).
