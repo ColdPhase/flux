@@ -54,6 +54,8 @@ export interface ProjectMessageFacts {
    * nobody asks, its proposer or an agent proposer's owner (persona round 8 P2 3). Absent for any other conversation.
    */
   decision?: { title: string; askee: string | null } | null;
+  /** This conversation is a task's one discussion (#868): on the task's card, never a message of the space's stream. Absent for any other conversation. */
+  inTask?: boolean;
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
   /**

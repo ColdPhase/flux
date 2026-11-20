@@ -255,7 +255,7 @@ hold the notice, the sound and push alike; the Inbox always keeps the row.
 | My agent waiting for my OK | `approval` | Only what needs me |
 | My agent finished a task ("Done: #4 …" in its chat) | not yet a notification: the chat is unread (its name is bold in Messages) | Everything, once it is one |
 | A reply in a conversation I am part of | `reply` | Everything |
-| A new message in a space I am in, that does not name me and is not in a thread I follow (C-65, #1550) | `message`: push and notice only, never an Inbox item, never email | Everything |
+| A new message in a space I am in (one that opens a conversation) that does not name me (C-65, #1550) | `message`: push and notice only, never an Inbox item, never email | Everything |
 | A call started in my space ([F-039](live-collaboration.md), #1223) | the call's notice | Notice at Only what needs me; push at Everything |
 | An invitation to a call | `invitation` | Only what needs me (with the chime) |
 | Being added to a space | not yet a notification | Only what needs me, once it is one |

@@ -40,13 +40,13 @@ const event = (kind: 'project.conversation_created.v1' | 'project.message_sent.v
   ({ id: randomUUID(), seq: 1, kind, workspaceId, objectId: projectId, actorId: 'human:ada', data: { messageId: read.id } });
 
 describe('who a new message in a space is for (C-65)', () => {
-  test('everyone the space\'s message reached but its author gets a `message`; a name or a followed thread keeps its own, more specific reason', async () => {
-    const read = message({ body: '@Lee Moreno the rack is up', earlierAuthors: ['max'], sequence: 3 });
-    const found = await candidatesFor(event('project.message_sent.v1', read), facts(read, ['ada', 'kai', 'lee', 'max']));
+  test('everyone the space\'s message reached but its author gets a `message`; a name keeps its own, more specific reason, so nobody is told twice', async () => {
+    const read = message({ body: '@Lee Moreno the rack is up' });
+    const found = await candidatesFor(event('project.conversation_created.v1', read), facts(read, ['ada', 'kai', 'lee', 'max']));
     const reasons = Object.fromEntries(found.map((one) => [one.userId, one.reason]));
-    // Lee is named (a mention), Max wrote here before (follows the thread: a reply), Kai is no more involved than anyone: a message. Never Ada.
-    assert.deepEqual(reasons, { kai: 'message', lee: 'mention', max: 'reply' });
-    assert.equal(found.length, 3, 'one notification per person: nobody is told twice for one message');
+    // Lee is named (a mention); Kai and Max are no more involved than anyone: a message. Never Ada, the author.
+    assert.deepEqual(reasons, { kai: 'message', lee: 'mention', max: 'message' });
+    assert.equal(found.length, 3, 'one notification per person');
   });
 
   test('a new top-level message starts a conversation nobody follows: it notifies the others as a message, in the words "Ada wrote in Tool library"', async () => {
@@ -64,10 +64,17 @@ describe('who a new message in a space is for (C-65)', () => {
     assert.equal(hiddenNotificationTitle('message', 'Ada Quill', ''), 'Ada Quill wrote');
   });
 
-  test('a reply in a thread someone does not follow is a message for them, in the words of a reply', async () => {
-    const read = message({ sequence: 2, body: 'It is on the second shelf' });
-    const found = await candidatesFor(event('project.message_sent.v1', read), facts(read, ['ada', 'kai']));
-    assert.deepEqual(found.map((one) => [one.userId, one.reason, one.title]), [['kai', 'message', 'Ada Quill replied in “Who has the planer?”']]);
+  test('a reply is its thread\'s: those who follow it hear a reply as before, and nobody else is told, at any level', async () => {
+    const read = message({ sequence: 3, body: 'It is on the second shelf', earlierAuthors: ['max'] });
+    const found = await candidatesFor(event('project.message_sent.v1', read), facts(read, ['ada', 'kai', 'lee', 'max'], ['kai', 'lee', 'max']));
+    assert.deepEqual(found.map((one) => [one.userId, one.reason, one.title]), [['max', 'reply', 'Ada Quill replied in “Who has the planer?”']]);
+  });
+
+  test('the discussion of a decision or of a task is on its card, not a message of the space\'s stream', async () => {
+    const decision = message({ decision: { title: 'Use a ToF sensor', askee: 'ada' } });
+    assert.deepEqual(await candidatesFor(event('project.conversation_created.v1', decision), facts(decision, ['ada', 'kai'])), []);
+    const task = message({ inTask: true });
+    assert.deepEqual(await candidatesFor(event('project.conversation_created.v1', task), facts(task, ['ada', 'kai'])), []);
   });
 
   test('only people at Everything are candidates when the store says who they are (one read for the whole audience); without it every person is, and the level decides later', async () => {
@@ -83,9 +90,9 @@ describe('who a new message in a space is for (C-65)', () => {
 
   test('a server agent\'s line that is for its owner alone notifies nobody else, and an agent question card asks exactly one person', async () => {
     const line = message({ onlyNotifies: 'kai', author: { kind: 'agent', id: randomUUID() }, authorName: 'Planner' });
-    assert.deepEqual((await candidatesFor(event('project.message_sent.v1', line), facts(line, ['ada', 'kai', 'lee']))).map((one) => one.userId), ['kai']);
+    assert.deepEqual((await candidatesFor(event('project.conversation_created.v1', line), facts(line, ['ada', 'kai', 'lee']))).map((one) => one.userId), ['kai']);
     const card = message({ asked: { userId: 'lee', question: 'Which shelf?' }, author: { kind: 'agent', id: randomUUID() }, authorName: 'Planner' });
-    assert.deepEqual((await candidatesFor(event('project.message_sent.v1', card), facts(card, ['ada', 'kai', 'lee']))).map((one) => [one.userId, one.reason]), [['lee', 'question']]);
+    assert.deepEqual((await candidatesFor(event('project.conversation_created.v1', card), facts(card, ['ada', 'kai', 'lee']))).map((one) => [one.userId, one.reason]), [['lee', 'question']]);
   });
 });
 
@@ -187,11 +194,18 @@ describe('a new message at Everything, through the running application (#1550)',
     assert.equal(await noteFor(ada, made.messages[0]!.id), undefined, 'the author is not told of their own message');
   });
 
-  test('a message that names her is a mention, once; a reply in a thread she wrote in is a reply; muting the space silences a plain message', async () => {
+  test('a message that names her is a mention, once; a reply in a thread she does not follow is not told; muting the space silences a plain message', async () => {
     const named = await write(ada, '@Bea Everything come and look at the rack');
     const mention = await waitFor(async () => (await noteFor(bea, named.messages[0]!.id)) ?? null, 'the mention');
     assert.equal(mention.reason, 'mention');
     assert.equal((await notes(bea)).filter((row) => row.url.endsWith(named.messages[0]!.id)).length, 1, 'one notification for the message');
+
+    // The thread's first message is a new message in the space for her; a reply in it is its followers' (Ada's), never hers.
+    const thread = await write(ada, 'A thread Bea has not joined');
+    assert.equal((await waitFor(async () => (await noteFor(bea, thread.messages[0]!.id)) ?? null, 'the thread\'s first message')).reason, 'message');
+    const more = expectStatus(await ada.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: 'More about the rack', clientMessageId: randomUUID() } }), 201) as { id: string };
+    await caughtUp();
+    assert.equal(await noteFor(bea, more.id), undefined, 'a reply in a thread she does not follow tells her nothing');
 
     expectStatus(await bea.browser.request('PUT', NOTIFICATION_MUTES_PATH, { body: { type: 'project', id: space, muted: true } }), 200);
     const quiet = await write(ada, 'Another plain message while she has muted the space');

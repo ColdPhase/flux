@@ -1736,7 +1736,7 @@ information: it reads as part of the conversation, never as a log line, and it n
   and Ada", "Seen by Maurycy, Ada, Jonas and 47 others"); the faces and the "+N" are decoration for
   the screen reader. The list is a dialog named "Seen by", its rows are plain list items, and Escape
   returns focus to the button.
-- **Load rules** (#862): the server answers per group only the count and the 3 newest readers; the
+- **Load rules** (#862): the server answers per message (one request run each, #1551) only the count and the 3 newest readers; the
   list is a separate request made when it is opened; faces come from the receipts already read
   for the newest groups, updated by the live event `project.messages_observed.v1`; the 8 s look
   runs only while the live stream is down.

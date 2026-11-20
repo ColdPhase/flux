@@ -274,8 +274,11 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(schema.projectDecisionDiscussions.conversationId, message.conversationId)));
       const askee = !bound ? null : bound.proposedByKind === 'human' ? bound.proposedById
         : (await db.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, bound.proposedById)))[0]?.owner ?? null;
+      // A task's one discussion is on the task's card, not a message of the space's stream (only its first message can open one).
+      const [task] = message.sequence === 1 ? await db.select({ id: schema.projectTaskDiscussions.workId }).from(schema.projectTaskDiscussions)
+        .where(eq(schema.projectTaskDiscussions.conversationId, message.conversationId)).limit(1) : [];
       return {
-        asked: asked ?? null, ...(bound ? { decision: { title: bound.title, askee } } : {}),
+        asked: asked ?? null, ...(bound ? { decision: { title: bound.title, askee } } : {}), ...(task ? { inTask: true } : {}),
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },

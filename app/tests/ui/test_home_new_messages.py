@@ -121,7 +121,7 @@ class HomeNewMessages(unittest.TestCase):
         time.sleep(0.05)
         self.say("jonas", "Tool library", "Who has the planer?")
         self.__class__.dm_id = self.post("maja", f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["ada"]]})["id"]
-        self.post("maja", f"/api/v1/dms/{self.dm_id}/messages", {"body": "Lunch at the harbour on Friday?", "clientMessageId": str(uuid.uuid4())})
+        self.post("maja", f"/api/v1/dms/{self.dm_id}/messages", {"body": "Lunch at the harbour on Friday", "clientMessageId": str(uuid.uuid4())})
         page = self.page()
         page.goto("/")
         news = self.news(page)
@@ -130,7 +130,7 @@ class HomeNewMessages(unittest.TestCase):
         expect(rows).to_have_count(3)
         # Newest first: the direct message, then the Tool library, then the garden.
         expect(rows.nth(0)).to_contain_text("Maja Wiśniewska")
-        expect(rows.nth(0)).to_contain_text("Lunch at the harbour on Friday?")
+        expect(rows.nth(0)).to_contain_text("Lunch at the harbour on Friday")
         expect(rows.nth(1)).to_contain_text("Tool library")
         expect(rows.nth(1)).to_contain_text("Jonas: Who has the planer?")
         expect(rows.nth(2)).to_contain_text("Community garden sensors")
@@ -176,7 +176,7 @@ class HomeNewMessages(unittest.TestCase):
         # A click opens the direct message; reading it removes it from Home.
         self.rows(page).filter(has_text="Maja Wiśniewska").click()
         expect(page).to_have_url(re.compile(rf"/dm/{self.dm_id}"))
-        expect(page.get_by_text("Lunch at the harbour on Friday?").first).to_be_visible()
+        expect(page.get_by_text("Lunch at the harbour on Friday").first).to_be_visible()
         page.wait_for_timeout(1500)
         page.get_by_role("link", name="Home").first.click()
         expect(page.get_by_role("heading", level=2, name=re.compile(r"^Good (morning|afternoon|evening), Ada$"))).to_be_visible()

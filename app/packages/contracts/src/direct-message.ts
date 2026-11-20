@@ -149,7 +149,7 @@ export interface ObserveMessagesResult { observed: number }
 
 /**
  * `POST /api/v1/dms/:dmId/receipts` (#534, #1231): each run lists consecutive messages of one author, at one level
- * (roots, or the replies of one thread), oldest run first. A reader is a CURRENT participant, other than the author, who
+ * (roots, or the replies of one thread), oldest run first. The web app asks about each of the author's messages as a run of its own (#1551). A reader is a CURRENT participant, other than the author, who
  * observed EVERY message of the run. Each reader is placed once, in the NEWEST run they observed whole; `count` is how many
  * readers the run has and `readers` only the `RECEIPT_LIMITS.faces` newest of them (#1231), so an answer never grows with the audience.
  */
