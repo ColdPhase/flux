@@ -42,6 +42,13 @@
 .assistant-message__line { display: flex; align-items: center; flex-wrap: wrap; column-gap: 0; margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .assistant-message__line .ui-link { font-size: var(--fs-sm); min-height: 24px; }
 .assistant-message__line > [aria-hidden="true"] { white-space: pre; }
+/* The change line is one text (#1581): its words wrap as words do, and the tail ("· Undo", "· Undone by Ada") is one piece that follows the last word, so it is
+   never alone on a line of its own. */
+.assistant-message__text { min-width: 0; }
+.assistant-message__tail { white-space: nowrap; }
+.assistant-message__tail > [aria-hidden="true"] { white-space: pre; }
+/* Undo keeps its own size (32 px, 44 on touch) without making its line taller than the words around it: the lines of a wrapped change keep one rhythm. */
+.assistant-message__tail > .ui-btn { margin-block: -12px; }
 .assistant-message__note { margin: 4px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .assistant-queued { margin-top: 6px; font-size: var(--fs-sm); color: var(--t2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 

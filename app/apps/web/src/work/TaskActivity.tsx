@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { agentNamed, type AssistantChange, type ConversationMessage, type LiveCallLine, type NamedPrincipal, type ObjectLink, type Project, type TaskActivityEntry, type TaskDiscussion as Discussion, type WorkItem, type WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
@@ -268,8 +269,14 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const section = useRef<HTMLElement>(null);
   const timeline = useRef<HTMLOListElement>(null);
   const [feed, setFeed] = useState<HTMLElement | null>(null);
+  // The "↓ N new" band has its own place between the panel's scroll and its field (`.wd__below`, WorkDetails): it takes its room, so it is on no line's words.
+  const [band, setBand] = useState<HTMLElement | null>(null);
   const scroller = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => { scroller.current = section.current?.closest<HTMLElement>('.wd__scroll') ?? null; setFeed(scroller.current); }, []);
+  useLayoutEffect(() => {
+    scroller.current = section.current?.closest<HTMLElement>('.wd__scroll') ?? null;
+    setFeed(scroller.current);
+    setBand(scroller.current?.parentElement?.querySelector<HTMLElement>(':scope > .wd__below') ?? null);
+  }, []);
   // Reading here is reading the discussion (personas-36): what another person wrote, seen in the panel, moves this reader's place in it as
   // the thread does, so the same discussion opened as a thread (from Search, a notice) shows "New" only above what was not seen here.
   const others = useMemo(() => state.lines.flatMap((line) => line.kind === 'message' && line.message.authorId !== me.id ? [line.message.id] : []), [state.lines, me.id]);
@@ -418,9 +425,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             : <p className="wd-muted" role="status">{pending.state === 'failed' ? 'Unsent message kept.' : 'Send not confirmed. Your message is kept.'} You cannot send to this task.</p>}
         </li>
       ))}</ol> : null}
-      {/* The "↓ N new" line, held over the foot of the panel's scroll while the reader is above the end (S23). Inside the discussion, so it
-          never rises over the task's fields above it (round 15 confirm S1: it covered Due on the phone's sheet). */}
-      <div className="wd-newbelow"><NewBelow count={below.count} onClick={below.toEnd} /></div>
+      {/* The "↓ N new" line while the reader is above the end (S23): on its own band between the scroll and the field, in its own room, so it lies on
+          no line's words and on no row of the task (round 15 confirm S1: it cut a line, left a sliver of the next message and covered Due on the phone's sheet). */}
+      {band ? createPortal(<NewBelow count={below.count} onClick={below.toEnd} />, band) : null}
     </section>
   </>);
 }

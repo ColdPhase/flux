@@ -259,7 +259,11 @@ looks ugly"):
   an ellipsis); where the number, a due day and the owner's face, mark and a few letters do not fit one line (a column beside the open
   panel), the owner takes the line under them, at the right, never shrinking to "AK (you)" with "(you)" past the card (round 15 look-3 F1);
   a List row's line says its due day as the card does ("Due 25 Nov"), and the row of the task open in the panel is marked as its card is
-  (round 15 look-3 e); a board that runs past the pane fades at its edges and ends with the page's margin; a panel floating over the work lies
+  (round 15 look-3 e); a board that runs past the pane fades at its edges and ends with the page's margin; **a panel floating over the board** (641 to 1000 px, or
+  200 % on a laptop) leaves the board its room to its left: the board narrows beside it as it does beside a docked panel, its columns no wider
+  than that room (160 px at least), so a card brought into view (a click, the keyboard) stands left of the panel with its left edge whole, never
+  scrolled under the panel with the first columns cut at the board's left edge, and the last column scrolls clear of the panel (#1581,
+  round 15 look-3 d); a panel floating over the work lies
   in a 10 px gutter of `--bg`; the blocked card's words take the card's whole width and Edit and Unblock (or Done) take the line under
   them, starting where the words start, on the computer and the phone; a multi-line
   value keeps its label on its first line; the thought chooser scrolls into view when it opens. **A name keeps its mark:** where a row is
@@ -290,7 +294,9 @@ looks ugly"):
 - **A stream keeps its end:** a reader at the end stays at the end when the composer grows (two lines, staged files). Coming back to a
   conversation whose place was a task card, a decision or a fold reads back to the message above it, so the place returns.
 - **The phone's staged tiles** stand one under the other at one width, so their × form one column.
-- **A task's "↓ N new"** in its panel stands on a band of the panel's colour at the scroll's foot, never on the words of a line.
+- **A task's "↓ N new"** in its panel stands on its own band of the panel's colour between the scroll and the field: it takes its
+  room (the scroll ends above it, as a conversation's feed does), so it never lies on the words of a line, leaves no sliver of the next
+  message above it and, on the phone's sheet, never covers a row of the task (Due) (#1581; round 15 confirm S1).
 - **Task updates** give their numbers one width (4ch), so the titles of #8 and #10 start at one edge.
 - **A direct message's start** names nobody again: the header says who is in it, the start says "Only the people in it can read this
   conversation. It stays outside every space." Its faces stand side by side, 4 px apart, never overlapped into one word.
@@ -1958,6 +1964,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   that same 838 px column, so "+ Task" ends where the list ends; over the Board it stays that column, so
   nothing in the row moves when the view changes (principle 7). The List updates live and has no Refresh; under it
   are only Previous and Next when there is another page ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
+- **The List has the Board's order** (#1581; v0.2.1 review look-3 e): its groups are To do, Doing, Blocked and Done, as the Board's columns
+  are, each with its count; the server pages the List in the same order, so a page never ends in the middle of a group that an
+  earlier page started with other states between. A state that has no task has no group.
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
   tag ("Ada's Planner") or "No owner". **"No owner" is the one word for a task nobody owns** (v0.2.1 personas round): Create's
@@ -2003,8 +2012,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   its top too. **A blocked task's "Waiting for" card stands under its title**, as a decision's answer
   stands under its reason, so the half sheet shows what the task is and what it waits for without scrolling the title under its header
   (round 15 look-1 P2-1, look-3 F2). A decision's reason starts a step (12 px) under the title's hairline, and its "Proposed" row keeps
-  "· today" on the line of an agent's label (round 15 daily P3-8, ai). A task's "↓ N new" stands at the scroll's foot on a band of the panel's
-  surface, so it never lies over a card's words (round 15 ai). The cursor put in its field (Discuss, `R`, a tap) brings the newest line into
+  "· today" on the line of an agent's label (round 15 daily P3-8, ai). A task's "↓ N new" stands on its own band of the panel's
+  surface under the scroll, so it never lies over a card's words (round 15 ai, #1581). The cursor put in its field (Discuss, `R`, a tap) brings the newest line into
   view, as a conversation's composer does; what arrives or is sent after that stays in view as everywhere. The discussion has no heading ("Activity" is
   removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
@@ -2560,6 +2569,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - An agent may ask another person's agent, and both owners must be in the task.
   - A message that changed something ends with its change line and Undo; after Undo the line is
     struck through and ends "Undone by Ada".
+    The line runs as one text, so "· Undo" follows its last word and never stands alone on a line of its own, on the phone or the computer (#1581).
 - **One state line** under the agent's last message, always in the same place:
   - "Waiting for room on the server";
   - "Working…" with Stop;

@@ -570,6 +570,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
         <ActivityTimeline state={activity} composer={composer} item={item} project={context.project} me={{ id: me.user.id, name: me.user.name }} writable={writable} composerId={composerId} />
       </div>
+      {/* The "↓ N new" band of the discussion stands here, under the scroll (TaskActivity). */}
+      <div className="wd__below" />
       <div className="wd__foot" data-version={item.version}>
         <TaskComposer state={activity} composer={composer} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId} />
       </div>
