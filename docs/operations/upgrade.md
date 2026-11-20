@@ -1,9 +1,12 @@
 # Upgrade
 
 ```sh
-cd /srv/flux && ./flux upgrade --check    # the plan, changing nothing
 cd /srv/flux && ./flux upgrade            # the latest release; or ./flux upgrade v0.2.2 for that one
+cd /srv/flux && ./flux upgrade --check    # the plan, changing nothing: only when this folder already runs v0.2.2 or later
 ```
+
+`--check` is part of the launcher from v0.2.2 on, and the launcher that runs is the one already in the folder: a v0.2.1 folder
+cannot use it ([see the plan first](#see-the-plan-first)).
 
 **v0.1 is not upgraded.** v0.1.0 had no users, so Flux v0.2 converts none of its data. If the instance was
 written by v0.1, `./flux upgrade` refuses it and tells you to install v0.2 fresh: [see below](#from-v01-install-v02-fresh).
@@ -50,8 +53,19 @@ operators: the engineering side is in [upgrade compatibility](../development/upg
 ## See the plan first
 
 `./flux upgrade --check` (with a VERSION or `--file flux.tar.gz` like the upgrade itself) changes nothing and keeps Flux running
-([#1552](https://github.com/ColdPhase/flux/issues/1552), C-68). It downloads and checks the release as step 1 below, reads the new
-release's migrations from its image, and prints:
+([#1552](https://github.com/ColdPhase/flux/issues/1552), C-68). **It exists only in the launcher of v0.2.2 and later, and the launcher
+that runs is the one already in your folder**: a folder installed from v0.2.1 has a v0.2.1 launcher, which refuses the option
+(`upgrade: unknown option --check (use [VERSION], --file FILE, --output DIR, -y)`). So the upgrade from v0.2.1 to v0.2.2 has no `--check`;
+every upgrade after it has. On v0.2.1 run `./flux upgrade` itself: its steps 1 and 2 (download and check the release, pull its images) run
+with Flux running, and then it prints one line and asks before it changes anything:
+
+```text
+Upgrade flux-3f2a9c1d (schema 95): back up, move to Flux v0.2.2 (schema N), migrate and restart? API and worker stay stopped from the backup until the new version runs. [y/N]
+```
+
+Answer `n` or press Enter and it ends with `Cancelled; nothing was changed.` (the images it pulled stay on the machine). The backup, the
+stop of API and worker and everything after it start only with `y` (or `-y`). From v0.2.2 on, `--check` downloads and checks the release
+as step 1 below, reads the new release's migrations from its image, and prints:
 
 ```text
 Flux v0.2.2 (checked against its signed SHA256SUMS):
@@ -81,7 +95,8 @@ founder decision 5):
    (a downgrade) and says so when this folder already runs that release.
 2. **Pull the new images, while Flux runs.** The images that the new `docker/release.env` names, pinned by digest (the agent
    runtime's only while it is on), so the downtime does not include the download.
-3. It asks for confirmation (`-y` answers yes) and reads the current schema from the database.
+3. It reads the current schema from the database and asks for confirmation (`-y` answers yes; anything else cancels with nothing
+   changed).
 4. **Backup.** It runs [`./flux backup`](backup-restore.md) into `backups/` (or `--output DIR`), with one difference: API and
    worker **stay stopped** after the backup. Nothing can be written between the backup and the new version, so going back to the
    backup loses nothing.
