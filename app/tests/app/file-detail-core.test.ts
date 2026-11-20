@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { fileDetailOf, pdfPages, readsDetail, tableRows } from '@flux/core';
+import { detailReader, fileDetailOf, pdfPages, readsDetail, tableRows } from '@flux/core';
 
 // What the bytes of a file say about it (#469): pages, data rows, playing time. Each reader answers nothing rather than a guess.
 
@@ -90,5 +90,45 @@ describe('file detail from the bytes', () => {
     assert.equal(readsDetail('x.PDF'), true);
     assert.equal(readsDetail('x.png'), false);
     assert.equal(readsDetail('pdf'), false);
+  });
+});
+
+/** The bytes cut at every `step` bytes, as an upload's chunks arrive. */
+function chunks(bytes: Buffer, step: number): Buffer[] {
+  const out: Buffer[] = [];
+  for (let at = 0; at < bytes.length; at += step) out.push(bytes.subarray(at, at + step));
+  return out;
+}
+const read = (name: string, parts: Buffer[]) => { const reader = detailReader(name); for (const part of parts) reader.push(part); return reader.detail(); };
+
+const pdf = (...objects: string[]) => text(`%PDF-1.4\n${objects.map((body, index) => `${index + 1} 0 obj\n${body}\nendobj\n`).join('')}trailer\n%%EOF`);
+
+describe('file detail as the bytes arrive (#1549)', () => {
+  test('pages and rows counted over chunks equal those of the whole file, whatever the cut', () => {
+    const tree = pdf('<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>', '<< /Type /Page /Parent 2 0 R >>',
+      '<< /Type /Page /Parent 2 0 R >>', '<< /Type /Page /Parent 2 0 R >>');
+    const table = text('name,note\r\nbed,"two\r\nlines"\r\nbed,x\r\n\r\nshed,y');
+    for (const step of [1, 2, 3, 5, 7, 64]) {
+      assert.deepEqual(read('a.pdf', chunks(tree, step)), { pages: 3 }, `PDF cut every ${step} bytes`);
+      assert.deepEqual(read('a.csv', chunks(table, step)), { rows: 3 }, `CSV cut every ${step} bytes (a CRLF split across two chunks is one break)`);
+    }
+    assert.equal(tableRows(table), 3);
+    assert.deepEqual(read('a.pdf', chunks(text('not a pdf /Type /Pages /Count 9'), 2)), {});
+  });
+
+  test('a PDF whose page tree comes after a picture of several MiB is counted, holding only a bounded piece of it', () => {
+    const picture = Buffer.alloc(6 * 1024 * 1024, 0x41);
+    const bytes = Buffer.concat([text('%PDF-1.7\n1 0 obj << /Type /Page /Parent 9 0 R >> endobj\n2 0 obj << /Length 0 >> stream\n'), picture,
+      text('\nendstream endobj\n9 0 obj << /Type /Pages /Kids [1 0 R] /Count 1 >> endobj\n')]);
+    assert.deepEqual(read('scan.pdf', chunks(bytes, 64 * 1024)), { pages: 1 });
+    assert.equal(pdfPages(bytes), 1);
+  });
+
+  test('the playing time of a file larger than its head: a declared length counts, an Ogg end that was not read gives nothing', () => {
+    const note = wav(2);
+    assert.deepEqual(fileDetailOf('note.wav', note.subarray(0, 100), note.length), { durationMs: 2000 });
+    const voice = ogg('opus', 48000 * 3 + 312);
+    assert.deepEqual(fileDetailOf('note.opus', voice.subarray(0, 40), voice.length), {});
+    assert.deepEqual(read('note.opus', chunks(voice, 7)), { durationMs: 3000 });
   });
 });

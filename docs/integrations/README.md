@@ -137,7 +137,7 @@ text. The codes in the contract are:
 | `IDEMPOTENCY_CONFLICT` | The `clientCommandId` was used for a different input. | Use a new ID for a new effect. |
 | `RUNTIME_UNAVAILABLE` | The client session expired, or the connection's binding or scopes changed. | Bootstrap with a new `clientSessionId`. |
 | `INVALID_INPUT` | An input breaks a tool rule, for example a malformed ID. | Fix the input. Do not retry it unchanged. |
-| `MCP_TOOL_UNAVAILABLE` | An unexpected server failure. | Retry later with the same `clientCommandId`, then report it. |
+| `TOOL_FAILED` | An error inside Flux, not in what you sent. The message carries an error id that Flux's log records with the tool, the run and the stack. | Tell the person it failed and give them the error id. Retry later with the same `clientCommandId`. |
 
 HTTP-level failures:
 

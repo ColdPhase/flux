@@ -1,3 +1,4 @@
+import { FILE_LIMITS } from '@flux/contracts';
 /**
  * What a file is, from its name alone (#348): the page icon's pictogram and mono label, and the word
  * in "type · size". Only a display hint: a photo is shown as one only after its bytes are checked.
@@ -52,8 +53,15 @@ const SOURCE = ['txt', 'log', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'go'
   'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'css', 'scss', 'xml', 'ino', 'lua', 'r', 'pl', 'diff', 'patch', 'svg'];
 const PREVIEW: Record<string, PreviewFormat> = { html: 'html', htm: 'html', pdf: 'pdf', md: 'markdown', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv',
   ...Object.fromEntries(SOURCE.map((extension) => [extension, 'text' as const])) };
-/** By name. A video is never one by its name: the server says it is (`MessageFile.video`, C-61), after reading its bytes. */
-export const previewFormat = (name: string): PreviewFormat | null => PREVIEW[extensionOf(name)] ?? null;
+/**
+ * By name. A video is never one by its name: the server says it is (`MessageFile.video`, C-61), after reading its bytes. With `size`, a file drawn
+ * as text or as a page (everything but a PDF) previews up to `FILE_LIMITS.wholeBytes` and a larger one only downloads (#1549); a PDF is drawn by
+ * pages at any size.
+ */
+export const previewFormat = (name: string, size = 0): PreviewFormat | null => {
+  const format = PREVIEW[extensionOf(name)] ?? null;
+  return format && format !== 'pdf' && size > FILE_LIMITS.wholeBytes ? null : format;
+};
 
 /** Named like a photo (a hint only; the bytes decide). */
 export const looksLikePhoto = (name: string) => PHOTO.has(extensionOf(name));
@@ -66,9 +74,11 @@ export function playTime(milliseconds: number): string {
 }
 
 /** The "detail" of "type · detail · size" (#469): pages, data rows or playing time, as the server read them from the bytes; empty when it did not. */
-export function detailLine(detail: { pages?: number; rows?: number; durationMs?: number } | undefined): string {
+export function detailLine(detail: { pages?: number; rows?: number; durationMs?: number; noText?: true } | undefined): string {
   if (!detail) return '';
-  if (detail.pages !== undefined) return `${detail.pages} ${detail.pages === 1 ? 'page' : 'pages'}`;
+  // A PDF Flux found no text in (C-69, #1557): the row says so, so nobody expects search or an agent to read its words.
+  if (detail.pages !== undefined) return `${detail.pages} ${detail.pages === 1 ? 'page' : 'pages'}${detail.noText ? ' · no text' : ''}`;
+  if (detail.noText) return 'no text';
   if (detail.rows !== undefined) return `${detail.rows} ${detail.rows === 1 ? 'row' : 'rows'}`;
   if (detail.durationMs !== undefined) return playTime(detail.durationMs);
   return '';

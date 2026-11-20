@@ -73,7 +73,7 @@ function validFile(file: unknown): boolean {
   const value = file as Partial<ThoughtFile> | null;
   return !!value && typeof value === 'object' && isUuid(value.id) && typeof value.name === 'string' && value.name.length >= 1
     && value.name.length <= FILE_LIMITS.nameChars && typeof value.size === 'number' && Number.isInteger(value.size)
-    && value.size >= 1 && value.size <= FILE_LIMITS.fileBytes;
+    && value.size >= 1 && value.size <= FILE_LIMITS.wholeBytes;
 }
 const PREFIX = 'flux:thought-draft:';
 const UNUSED = 'flux:thought-unused:';

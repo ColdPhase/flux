@@ -17,7 +17,10 @@ import { FILE_TEXT_LIMITS, type FileTextFormat, type TextSegment } from '@flux/c
  * cannot read this process's environment, memory or descriptors through /proc even if it escaped its own limits.
  */
 export type ExtractFailure = 'not-text' | 'empty' | 'encrypted' | 'unreadable' | 'too-large' | 'timeout' | 'memory' | 'output' | 'crashed' | 'unconfined';
-export type ExtractResult = { ok: true; segments: TextSegment[]; pages: number | null } | { ok: false; reason: ExtractFailure; detail?: string };
+export type ExtractResult = { ok: true; segments: TextSegment[]; pages: number | null }
+  | { ok: false; reason: ExtractFailure; detail?: string; pictures?: PagePicture[] };
+/** A page's picture of a PDF without text, checked as it leaves the child (C-69): its page, its size within the bounds, and a PNG. */
+export interface PagePicture { page: number; width: number; height: number; png: Buffer }
 
 export interface FileTextSandbox {
   /** Why nothing can be read here, or null when the sandbox is in place. */
@@ -55,7 +58,8 @@ function residentBytes(pid: number): number {
 export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSandbox {
   const timeoutMs = options.timeoutMs ?? FILE_TEXT_LIMITS.timeoutMs;
   const memoryBytes = options.memoryBytes ?? FILE_TEXT_LIMITS.memoryBytes;
-  const outputBytes = options.outputBytes ?? FILE_TEXT_LIMITS.outputBytes;
+  // A PDF without text answers with its pages' pictures too (C-69).
+  const outputBytes = options.outputBytes ?? FILE_TEXT_LIMITS.outputBytes + FILE_TEXT_LIMITS.pictureOutputBytes;
   const entry = options.entry ?? findEntry();
   const addon = options.addon ?? join(workerRoot, 'native', 'sandbox.node');
   const node = options.node ?? process.execPath;
@@ -70,7 +74,8 @@ export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSan
   const reads = unavailable ? [] : [dirname(entry!), pdfjs!, join(workerRoot, 'node_modules', 'pdfjs-dist'), addon, join(workerRoot, 'package.json')];
   // `reads` binds the child in the kernel too, where it has Landlock (sandbox.c).
   const limits = JSON.stringify({ pages: FILE_TEXT_LIMITS.pages, chars: FILE_TEXT_LIMITS.chars, fileBytes: FILE_TEXT_LIMITS.fileBytes, zipEntries: FILE_TEXT_LIMITS.zipEntries,
-    zipDirectoryBytes: FILE_TEXT_LIMITS.zipDirectoryBytes, xmlBytes: FILE_TEXT_LIMITS.xmlBytes, extraBytes: FILE_TEXT_LIMITS.extraBytes, cpuSeconds: FILE_TEXT_LIMITS.cpuSeconds, pdfjs, reads });
+    zipDirectoryBytes: FILE_TEXT_LIMITS.zipDirectoryBytes, xmlBytes: FILE_TEXT_LIMITS.xmlBytes, extraBytes: FILE_TEXT_LIMITS.extraBytes, cpuSeconds: FILE_TEXT_LIMITS.cpuSeconds, pdfjs, reads,
+    pictures: FILE_TEXT_LIMITS.pictures });
 
   return {
     unavailable,
@@ -99,15 +104,40 @@ export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSan
           if (code === UNCONFINED) return done({ ok: false, reason: 'unconfined', detail: diagnostics.trim().slice(0, 300) });
           if (code !== 0) return done({ ok: false, reason: 'crashed', detail: `${signal ?? `exit ${code}`}: ${diagnostics.trim().slice(0, 300)}` });
           try {
-            const answer = JSON.parse(Buffer.concat(out).toString('utf8')) as { ok: boolean; reason?: ExtractFailure; segments?: TextSegment[]; pages?: number };
+            const answer = JSON.parse(Buffer.concat(out).toString('utf8')) as { ok: boolean; reason?: ExtractFailure; segments?: TextSegment[]; pages?: number; pictures?: unknown };
             if (answer.ok && Array.isArray(answer.segments)) return done({ ok: true, segments: answer.segments.filter((s) => typeof s.text === 'string'), pages: answer.pages ?? null });
-            return done({ ok: false, reason: answer.reason ?? 'unreadable' });
+            const pictures = format === 'pdf' && answer.reason === 'empty' ? checkedPictures(answer.pictures) : [];
+            return done({ ok: false, reason: answer.reason ?? 'unreadable', ...(pictures.length ? { pictures } : {}) });
           } catch { return done({ ok: false, reason: 'crashed', detail: 'the child answered with something that is not JSON' }); }
         });
         child.stdin.end(bytes);
       });
     },
   };
+}
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/**
+ * The child's pictures as this process keeps them: only well-formed ones within the bounds (C-69). A child that misbehaved can at worst hand
+ * over a PNG of the right size that is not the page; the API serves it only as a picture of that file, to whoever may read the file.
+ */
+function checkedPictures(value: unknown): PagePicture[] {
+  if (!Array.isArray(value)) return [];
+  const { pages, side, pictureBytes, totalBytes } = FILE_TEXT_LIMITS.pictures;
+  const kept: PagePicture[] = [];
+  let total = 0;
+  for (const item of value.slice(0, pages)) {
+    const { page, width, height, png } = (item ?? {}) as Record<string, unknown>;
+    if (!Number.isInteger(page) || (page as number) < 1 || (page as number) > pages || kept.some((picture) => picture.page === page)) continue;
+    if (!Number.isInteger(width) || !Number.isInteger(height) || (width as number) < 1 || (height as number) < 1 || (width as number) > side || (height as number) > side) continue;
+    if (typeof png !== 'string') continue;
+    const bytes = Buffer.from(png, 'base64');
+    if (bytes.length < 33 || bytes.length > pictureBytes || total + bytes.length > totalBytes || !bytes.subarray(0, 8).equals(PNG)
+      || bytes.readUInt32BE(16) !== width || bytes.readUInt32BE(20) !== height) continue;
+    total += bytes.length;
+    kept.push({ page: page as number, width: width as number, height: height as number, png: bytes });
+  }
+  return kept;
 }
 
 /** Makes this process not dumpable with the real addon (the tests' stand-ins are never loaded here); why it could not, or null. */

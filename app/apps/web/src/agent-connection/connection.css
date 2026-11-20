@@ -162,12 +162,6 @@
 .connection__created { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: var(--fs-sm); margin: 0; }
 .connection__order { color: var(--t2); font-size: var(--fs-sm); margin: 0; }
 
-/* A segmented choice whose labels differ in length (a plan's Model): each option is as wide as its label plus 14 px each side, never an equal share
-   of the group, so the longest label keeps its room (#1219). Where the group has no room for one row the options wrap onto the next and keep their
-   label width, so an option alone on a row is not a full-width bar; the track takes the large radius so its rows stay inside it. Equal slots stay where
-   the design draws them (the map's mode, the live stage). */
-.seg--fit { flex-wrap: wrap; max-width: 100%; border-radius: var(--r-lg); }
-.seg--fit .seg__b { flex: 0 0 auto; min-width: auto; padding: 0 14px; }
 /* "Ask me first" (F-036 AG-3, #1419): one switch on an agent's page and on each local app's card, flush with the card's text. */
 .ask-first .sset-row { padding-inline: 0; }
 

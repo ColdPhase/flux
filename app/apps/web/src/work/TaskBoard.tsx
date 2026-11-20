@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentIdentity, Button, Icon, PersonName, StatusGlyph, initials, useRowMotion } from '../ui';
+import { AgentIdentity, Button, Icon, MEDIA, PersonName, StatusGlyph, Tabs, initials, useMediaQuery, useRowMotion } from '../ui';
 import { updateWork } from './api';
 import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
@@ -18,6 +18,9 @@ import './board.css';
 // The Tasks board (#136, UI116-4, #868): four columns, the four states, and no
 // card order. A card moves by dragging with a mouse or pen or by keyboard (Space, arrows, Space); on touch its state changes
 // in its panel. Every move is the existing versioned status command.
+//
+// On the phone (up to 640 px) the board shows ONE status at a time under a row of the four statuses with their counts (#1560): a tap on a status or a
+// swipe sideways moves to it, and nothing scrolls sideways. The other widths keep the four columns.
 //
 // Cards are bounded native rows (#155), never a full project work collection: each column is the
 // first page (at most 50, newest first) of its native Tasks group, read for this account and
@@ -182,6 +185,9 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const shownWork = shownObject?.kind === 'work' ? shownObject.id : null;
   const hintId = useId();
   const boardRef = useRef<HTMLDivElement>(null);
+  // The phone's one status at a time (#1560): it opens on To do; a tap on the status row or a sideways swipe on the column moves it.
+  const phone = useMediaQuery(MEDIA.phone);
+  const [shownColumn, setShownColumn] = useState<ColumnId>('open');
   const ghostRef = useRef<HTMLDivElement>(null);
   // Moves in flight (shown in their target column) and the stored result of each finished move
   // until the board's own reads catch up with that version.
@@ -474,6 +480,47 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   };
   const truncated = Object.values(hidden).some(Boolean);
 
+  const showColumn = (id: ColumnId) => {
+    setShownColumn(id);
+    boardRef.current?.closest<HTMLElement>('.pane-scroll')?.scrollTo({ top: 0 });
+  };
+  const columnIds = `${hintId}-col`;
+  // A sideways swipe anywhere in the tab's scroll area (a short column leaves most of it empty) moves to the next or the previous status; the status row's tap is
+  // its visible alternative. A mostly vertical move is the page scrolling, and `touch-action: pan-y pinch-zoom` keeps the browser from taking a sideways one
+  // while a pinch still zooms the page (a two-finger pinch is the browser's, which cancels the swipe).
+  useEffect(() => {
+    const scroller = phone ? boardRef.current?.closest<HTMLElement>('.pane-scroll') : null;
+    if (!scroller) return undefined;
+    let start: { x: number; y: number; id: number } | null = null;
+    const down = (event: PointerEvent) => { start = event.pointerType === 'touch' ? { x: event.clientX, y: event.clientY, id: event.pointerId } : null; };
+    const up = (event: PointerEvent) => {
+      const from = start;
+      start = null;
+      if (!from || from.id !== event.pointerId) return;
+      const dx = event.clientX - from.x;
+      const dy = event.clientY - from.y;
+      if (Math.abs(dx) < 48 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      // Past the first or the last status nothing moves, and the column keeps its scroll.
+      const shown = boardRef.current?.querySelector<HTMLElement>('.tb-col:not([hidden])')?.dataset.column;
+      const next = COLUMNS[COLUMNS.findIndex((column) => column.id === shown) + (dx < 0 ? 1 : -1)]?.id;
+      if (!next) return;
+      setShownColumn(next);
+      scroller.scrollTo({ top: 0 });
+    };
+    const cancel = () => { start = null; };
+    const touchAction = scroller.style.touchAction;
+    scroller.style.touchAction = 'pan-y pinch-zoom';
+    scroller.addEventListener('pointerdown', down);
+    scroller.addEventListener('pointerup', up);
+    scroller.addEventListener('pointercancel', cancel);
+    return () => {
+      scroller.style.touchAction = touchAction;
+      scroller.removeEventListener('pointerdown', down);
+      scroller.removeEventListener('pointerup', up);
+      scroller.removeEventListener('pointercancel', cancel);
+    };
+  }, [phone]);
+
   return (
     <div className="tb-wrap">
       <p id={hintId} className="ui-vh">Space picks the task up to move it between columns. The keys 1 to 4 set its state: To do, Doing, Blocked, Done. Z undoes the last change.</p>
@@ -507,12 +554,21 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
           <Button variant="link" size="sm" onClick={clearFilters}>Show every task</Button>
         </p>
       ) : null}
-      <div className={`tb-board${writable ? ' tb-board--movable' : ''}`} ref={boardRef}>
+      {phone ? (
+        // The four statuses, each with its glyph and count, always in view (it sticks under the control row while the column scrolls).
+        <Tabs variant="segmented" className="tb-status" label="Task status" panelIdPrefix={columnIds} value={shownColumn} onChange={(id) => showColumn(id as ColumnId)}
+          items={COLUMNS.map((column) => ({
+            id: column.id, label: column.label, glyph: <StatusGlyph status={column.status} size={14} />,
+            ...(failedRead[column.id] ? {} : { count: totals[column.id], countLabel: `, ${totals[column.id]} ${totals[column.id] === 1 ? 'task' : 'tasks'}` }),
+          }))} />
+      ) : null}
+      <div className={`tb-board${writable ? ' tb-board--movable' : ''}${phone ? ' tb-board--one' : ''}`} ref={boardRef}>
         {COLUMNS.map((column) => {
           const list = cards[column.id];
           const headingId = `${hintId}-${column.id}`;
           return (
-            <section key={column.id} className="tb-col" data-column={column.id} aria-labelledby={headingId}>
+            <section key={column.id} className="tb-col" data-column={column.id} id={phone ? `${columnIds}-${column.id}` : undefined}
+              role={phone ? 'tabpanel' : undefined} aria-labelledby={phone ? `${columnIds}-tab-${column.id}` : headingId} hidden={phone && column.id !== shownColumn}>
               <div className="tb-col__head">
                 <StatusGlyph status={column.status} className="tb-col__g" />
                 <h2 className="tb-col__h" id={headingId}>{column.label}</h2>

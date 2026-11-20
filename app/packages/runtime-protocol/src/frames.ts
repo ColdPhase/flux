@@ -87,11 +87,19 @@ export const PLAN_MODEL_LIMITS = { name: 80, note: 200 } as const;
  * `model_unavailable`: the CLI said the chosen model is not available to the account (F-027 AST-11).
  * `budget` and `credits` (#1441, pi only): Flux's model gateway refused a request because the key's daily budget is used (CA-3, #854), or
  *   the provider said the key's API credits ran out. Nothing falls back to another connection.
+ * `gateway_unreachable` (#1556, pi only): pi could not connect to Flux's model gateway (refused, timed out, no such host); the provider was
+ *   never asked, so it is no provider failure.
  */
 export const RUN_OUTCOMES = [
   'completed', 'stopped', 'local_tool', 'sign_in_again', 'plan_limit', 'max_turns', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'unknown', 'refused',
-  'model_unavailable', 'input_too_large', 'budget', 'credits',
+  'model_unavailable', 'input_too_large', 'budget', 'credits', 'gateway_unreachable',
 ] as const;
+/**
+ * Why a run ended without an answer, for the operator's log line only (#1556): the class of the engine's error (`connection_refused`,
+ * `connect_timeout`, `dns`, `http_502`, `no_result`, `exit_1`…) and the type of the last event it printed. Never its words or content.
+ */
+export interface RunCause { error: string; lastEvent: string | null }
+export const RUN_CAUSE = /^[a-z0-9_]{1,40}$/;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 
 /** A plan's remaining usage, as the slot passes it on (#854): the most-used window's share left, which window, when it resets. */
@@ -140,7 +148,9 @@ export type SupervisorResult =
   /** The CLI's answer (at most the run's answer size) only when `completed`. */
   | { kind: 'run'; runId: string; outcome: RunOutcome; answer: string | null; resetsAt: string | null; turns: number;
     /** Codex only: the plan's remaining usage as its app-server reported it after the run (#854); display facts only. */
-    usage?: RunUsage | null }
+    usage?: RunUsage | null;
+    /** Why it ended without an answer, when the slot knows (pi, #1556): logged by runtime-manager, never shown or stored. */
+    cause?: RunCause }
   | { kind: 'status'; slot: SlotReport }
   | { kind: 'status'; client: ClientStatus }
   /** The models the CLI offers the signed-in account, at least one (a CLI that lists none is `not_available`). */
@@ -207,10 +217,11 @@ const isClientStatus = object({
 const isPlanModel = object({ id: str(MODEL_ID, 64), name: text(PLAN_MODEL_LIMITS.name, 1), note: text(PLAN_MODEL_LIMITS.note), default: bool, seesPictures: bool }) as unknown as Check<PlanModel>;
 const nullableIso = nullable(str(ISO_INSTANT, 30));
 const isRunUsage = object({ leftPercent: int(0, 100), window: nullable(oneOf(['five_hour', 'weekly'] as const)), resetsAt: nullableIso }) as unknown as Check<RunUsage>;
+const isRunCause = object({ error: str(RUN_CAUSE, 40), lastEvent: nullable(str(RUN_CAUSE, 40)) }) as unknown as Check<RunCause>;
 const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('bind'), bindingId: str(BINDING_ID, 36) }),
   object({ kind: literal('run'), runId: str(UUID, 36), outcome: oneOf(RUN_OUTCOMES), answer: nullable(text(RUN_CAP_BOUNDS.maxAnswerBytes.max)),
-    resetsAt: nullableIso, turns: int(0, 1000) }, { usage: nullable(isRunUsage) }),
+    resetsAt: nullableIso, turns: int(0, 1000) }, { usage: nullable(isRunUsage), cause: isRunCause }),
   object({ kind: literal('status'), slot: isSlotReport }),
   object({ kind: literal('status'), client: isClientStatus }),
   object({ kind: literal('models'), client, models: (value: unknown): value is PlanModel[] => arrayOf(isPlanModel, MAX_PLAN_MODELS, 1)(value) && new Set(value.map((model) => model.id)).size === value.length }),

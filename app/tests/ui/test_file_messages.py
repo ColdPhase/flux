@@ -1155,7 +1155,8 @@ class FilesReferencesPhotos(unittest.TestCase):
         # Near the count (8 of 10): the limits are said once, in full.
         choose([{**text, "name": f"more-{index}.txt"} for index in range(5)])
         expect(draft.get_by_role("listitem")).to_have_count(8)
-        expect(limits).to_have_text(re.compile(r"^Only you see these files until you send · 5 MB each, videos \d+ MB · 10 files / 20 MB per message$"))
+        # The check stack's caps (scripts/check_ui.sh): FLUX_FILE_MAX_MIB=8, so a message carries 4 × 8 MB (#1549).
+        expect(limits).to_have_text(re.compile(r"^Only you see these files until you send · 8 MB each, videos \d+ MB · 10 files / 32 MB per message$"))
         # Each press waits for the draft to settle, as a person's eye does: a row's line changes from "Uploading" to "Ready to send" (the
         # rows wrap again), and at 7 files the limits line goes and the composer, anchored at the bottom, moves the rows down. A press
         # aimed before either landed beside the × (WebKit, trains 28 and 29).
@@ -1167,10 +1168,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(draft.get_by_role("listitem")).to_have_count(6)
         expect(limits).to_have_count(0)
         # A refused file says so on its row, why and how to send the rest under the draft (persona round 26), and brings the limits.
-        choose([{"name": "too-big.bin", "mimeType": "application/octet-stream", "buffer": b"\x00" * (5 * 1024 * 1024 + 1)}])
+        choose([{"name": "too-big.bin", "mimeType": "application/octet-stream", "buffer": b"\x00" * (8 * 1024 * 1024 + 1)}])
         expect(draft.get_by_role("listitem").filter(has_text="too-big.bin")).to_contain_text("Can’t be sent")
         refused = page.locator("[data-refused-file]")
-        expect(refused).to_have_text("A file can be at most 5 MB. Remove too-big.bin to send the rest.")
+        expect(refused).to_have_text("Files can be up to 8 MB on this server. Remove too-big.bin to send the rest.")
         expect(refused).to_have_attribute("role", "alert")
         expect(limits).to_have_count(1)
         draft.get_by_role("button", name="Remove too-big.bin").click()

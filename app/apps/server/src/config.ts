@@ -28,7 +28,7 @@ export interface ServerConfig {
   push: PushServerConfig;
   fixture: FixtureConfig;
   filesDir: string;
-  /** `FLUX_VIDEO_MAX_MIB` (C-61, #1352): the cap for one video of a plain space. */
+  /** `FLUX_FILE_MAX_MIB` and `FLUX_VIDEO_MAX_MIB` (C-61, #1352, #1549): the caps for one file and one video of a plain space. */
   files: FilesConfig;
   /** Stream ping, session revalidation and polling interval. */
   heartbeatMs: number;

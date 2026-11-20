@@ -21,8 +21,18 @@ const migrationsDir = 'packages/db/migrations';
 // The tables of what people wrote, as scripts/release/smoke_artifacts.sh compares them across an upgrade.
 const CONTENT_TABLES = [
   'workspaces', 'workspace_members', 'projects', 'project_grants', 'project_materials', 'project_material_versions', 'project_conversations',
-  'project_messages', 'project_work_items', 'project_decisions', 'agents',
+  'project_messages', 'project_work_items', 'project_decisions', 'agents', 'auth_users', 'project_files',
 ];
+/**
+ * #1552 (C-68): data moves, not only shape. These rows of a release keep their values across the upgrade: messages, tasks, decisions, files,
+ * people and agents, by id. A migration that changes what one of these columns means converts the rows and changes this list in the same PR.
+ */
+const KEPT_VALUES: Record<string, string[]> = {
+  project_messages: ['body'], project_work_items: ['title'], project_decisions: ['title'], project_files: ['name', 'size', 'sha256'],
+  auth_users: ['email'], agents: ['name'], project_material_versions: ['title', 'body'],
+};
+/** The schema of a database, one line per object (app/packages/db/schema/snapshot.sql). */
+const SNAPSHOT = await readFile('packages/db/schema/snapshot.sql', 'utf8');
 
 const releases = (await readdir(fixtures)).filter((name) => name.endsWith('.sql.gz')).sort();
 
@@ -58,6 +68,36 @@ async function migrator(url: string): Promise<{ code: number; stdout: string; st
 }
 
 type Pool = ReturnType<typeof createDatabase>['pool'];
+
+async function schemaOf(url: string): Promise<string[]> {
+  const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 120_000, max: 1 });
+  try { return (await pool.query(SNAPSHOT)).rows.map((row: { line: string }) => row.line); } finally { await pool.end(); }
+}
+/** What only one of two schemas has, said as the lines that differ (at most 40 of them). */
+function schemaDifference(fresh: string[], upgraded: string[]): string[] {
+  const left = new Set(fresh); const right = new Set(upgraded);
+  return [...fresh.filter((line) => !right.has(line)).map((line) => `only fresh:    ${line}`),
+    ...upgraded.filter((line) => !left.has(line)).map((line) => `only upgraded: ${line}`)].slice(0, 40);
+}
+/** The schema of this tree's migrations on an empty database, read once. */
+let freshSchema: Promise<string[]> | null = null;
+const fresh = () => freshSchema ??= new Promise<string[]>((resolve, reject) => {
+  withReleasedDatabase(null, async (url) => {
+    const result = await migrator(url);
+    if (result.code !== 0) throw new Error(`the migrator failed on an empty database: ${result.stdout}${result.stderr}`);
+    resolve(await schemaOf(url));
+  }).catch(reject);
+});
+
+async function keptValues(pool: Pool): Promise<Record<string, Map<string, string>>> {
+  const out: Record<string, Map<string, string>> = {};
+  for (const [table, columns] of Object.entries(KEPT_VALUES)) {
+    const key = table === 'project_material_versions' ? `material_id::text || ':' || version` : 'id::text';
+    const rows = (await pool.query(`SELECT ${key} AS key, json_build_array(${columns.join(', ')})::text AS value FROM ${table}`)).rows as { key: string; value: string }[];
+    out[table] = new Map(rows.map((row) => [row.key, row.value]));
+  }
+  return out;
+}
 
 async function rowCounts(pool: Pool): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
@@ -103,10 +143,46 @@ describe('the migrator on a database dumped from each release (#1241)', () => {
       });
     });
 
-    test(`${tag}: an agent or local app left on "Only read" is Ask me first after the upgrade, and "Only read" can no longer be stored (#1419)`, async () => {
+    test(`${tag}: upgraded, its schema is a fresh install's object by object, and its people, messages, tasks, files and agents keep their values (#1552)`, async () => {
+      await withReleasedDatabase(release, async (url) => {
+        const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 120_000, max: 1 });
+        let before: Awaited<ReturnType<typeof keptValues>>;
+        try { before = await keptValues(pool); } finally { await pool.end(); }
+        assert.ok(before.project_messages!.size >= 5 && before.project_files!.size >= 1 && before.agents!.size >= 1, `the dump of ${tag} is a used instance`);
+        const result = await migrator(url);
+        assert.equal(result.code, 0, `${result.stdout}${result.stderr}`);
+        const difference = schemaDifference(await fresh(), await schemaOf(url));
+        assert.deepEqual(difference, [], `${tag} upgraded differs from a fresh install of this tree:\n${difference.join('\n')}`);
+        const { pool: after } = createDatabase(url, undefined, { queryTimeoutMs: 120_000, max: 1 });
+        try {
+          const now = await keptValues(after);
+          for (const [table, rows] of Object.entries(before)) {
+            for (const [key, value] of rows) assert.equal(now[table]!.get(key), value, `${table} ${key} of ${tag} kept its values`);
+          }
+        } finally { await after.end(); }
+      });
+    });
+
+    test(`${tag}: a table or column a migration left behind is a difference from a fresh install (negative control, #1552)`, async () => {
+      await withReleasedDatabase(release, async (url) => {
+        assert.equal((await migrator(url)).code, 0);
+        const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 60_000, max: 1 });
+        try {
+          await pool.query('CREATE TABLE leftover_of_a_redesign (id uuid PRIMARY KEY)');
+          await pool.query('ALTER TABLE project_messages ADD COLUMN stale_flag boolean');
+        } finally { await pool.end(); }
+        const difference = schemaDifference(await fresh(), await schemaOf(url));
+        assert.ok(difference.includes('only upgraded: relation leftover_of_a_redesign r'), difference.join('\n'));
+        assert.ok(difference.includes('only upgraded: column project_messages.stale_flag boolean'), difference.join('\n'));
+      });
+    });
+
+    test(`${tag}: an agent or local app left on "Only read" is Ask me first after the upgrade, and "Only read" can no longer be stored (#1419)`, async (t) => {
       await withReleasedDatabase(release, async (url) => {
         const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 120_000, max: 1 });
         try {
+          // A release from v0.2.1 on already holds 0073: its own CHECK refuses 'read', so it has nothing to convert.
+          if ((await readAppliedMigrationVersions(pool)).includes(73)) { t.skip(`${tag} already has migration 0073`); return; }
           // The release's own CHECK still allows 'read': one connection is left on it, one on each other value, as a v0.2 instance can hold them.
           const rows = (await pool.query('SELECT id FROM agent_connections ORDER BY id')).rows as { id: string }[];
           assert.ok(rows.length >= 2, `the dump of ${tag} holds agent connections`);

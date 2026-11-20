@@ -49,6 +49,7 @@ import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { modelListRefresh } from './ai-keys/model-refresh.js';
 import { aiKeyRoutes } from './ai-keys/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
+import { configureToolLog } from './agent-connection/tool-results.js';
 import { configureRunCredentialScan } from './agent-connection/run-credentials.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
 import { configureAgentPictures } from './agent-connection/picture-actions.js';
@@ -209,7 +210,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   // F-030: an encrypted workspace's file objects are sealed as they arrive and opened only after their tag verifies.
-  const fileStorage = await diskFileStorage(filesDir, { cipherFor: async (objectId) => {
+  const fileStorage = await diskFileStorage(filesDir, { fileBytes: config.files.fileBytes, cipherFor: async (objectId) => {
     const executor = db as unknown as DbExecutor;
     const [row] = (await executor.execute<{ workspace_id: string }>(dbSql`SELECT workspace_id FROM project_files WHERE id = ${objectId}::uuid`)).rows;
     // A profile photo's rendition is account data, and a space with an icon is never an encrypted one: neither is sealed (F-039, F-040). An object without its row is refused, never written or served
@@ -354,6 +355,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const queryVectors = searchQueryVectors(config.embeddings);
   // pi's web search (#1441, RT-5): the key's provider's hosted search, run here with the run owner's key.
   const keySearcher = overrides.keySearcher ?? keyWebSearcher(env, db, config.backgroundMasterKey, personalRuns.providerEnabled);
+  // Every agent tool call is one line of the API's log, and an error inside a tool one more with its id (#1555).
+  configureToolLog(app.log);
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader, queryVectors, keySearcher);

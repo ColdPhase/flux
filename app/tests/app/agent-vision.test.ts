@@ -131,7 +131,7 @@ describe('each wire format carries a picture as its own image input (#1217)', ()
   test('Chat Completions: the tool message stays text, and one user message after it carries the picture', () => {
     const messages = chatMessages('system', 'hi', [turn]);
     assert.deepEqual(messages.at(-2), { role: 'tool', tool_call_id: 'c1', content: 'The picture "a.png"' });
-    assert.deepEqual(messages.at(-1), { role: 'user', content: [{ type: 'text', text: 'The pictures flux_view_image returned:' },
+    assert.deepEqual(messages.at(-1), { role: 'user', content: [{ type: 'text', text: 'The pictures your tools returned:' },
       { type: 'image_url', image_url: { url: `data:image/png;base64,${data}` } }] });
   });
   test('a turn without pictures is sent exactly as before', () => {

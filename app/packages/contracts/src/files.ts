@@ -42,30 +42,46 @@ export const FILE_LIMITS_PATH = '/api/v1/files/limits';
 export const filePreviewPath = (fileId: string, scripts = false) => `/api/v1/files/${fileId}/preview${scripts ? '?scripts=1' : ''}`;
 
 export const FILE_LIMITS = {
-  /** One file: 1 byte to 5 MiB. Empty files are refused. */
-  fileBytes: 5 * 1024 * 1024,
+  /**
+   * One file (C-61, #1549): the default of the operator's `FLUX_FILE_MAX_MIB`, which can be 1 to `fileMaxMib` MiB. In a plain space, a direct
+   * message or an agent chat; a picture, a file of an encrypted space and a map's image stay at `wholeBytes`. Empty files are refused.
+   */
+  fileBytes: 25 * 1024 * 1024,
+  fileMaxMib: 1024,
+  /**
+   * A file up to this is read whole and its SHA-256 verified on every read; a larger one is streamed from disk (C-61). It is also the most a
+   * picture (decoded and written again whole, #1343), a file of an encrypted space (one sealed message), a map's image and a file an agent
+   * attaches in its private chat may be.
+   */
+  wholeBytes: 5 * 1024 * 1024,
   /** One video (C-61): the default of the operator's `FLUX_VIDEO_MAX_MIB`, which can be 1 to `videoMaxMib` MiB. A plain space's video only. */
   videoBytes: 200 * 1024 * 1024,
   videoMaxMib: 1024,
-  /** A video has this long to arrive; the rest of the files have `receiveSeconds`. */
-  videoReceiveSeconds: 20 * 60,
+  /** A video or a file over `wholeBytes` has this long to arrive; the rest have `receiveSeconds`. */
+  largeReceiveSeconds: 20 * 60,
   /** A video's poster (C-61): at most this many bytes are taken, and the server keeps a WebP of at most `posterEdge` px on a side. */
   posterBytes: 512 * 1024,
   posterEdge: 640,
-  /** One message: at most 10 files and 20 MiB together. */
+  /** One message: at most 10 files; its files other than videos together at most `messageBytesFor` the file cap. */
   messageFiles: 10,
-  messageBytes: 20 * 1024 * 1024,
   /** Display name: 1–200 characters, no control or path characters, never "." or "..". */
   nameChars: 200,
-  /** Live staged bytes per uploader and project: uploads in progress plus ready unpublished files. */
+  /** Live staged bytes per uploader and place, at the least: uploads in progress plus ready unpublished files (`stagedBytesFor`). */
   stagedBytes: 100 * 1024 * 1024,
-  /** The bytes of one upload must arrive within this time. */
+  /** The bytes of one upload of at most `wholeBytes` must arrive within this time. */
   receiveSeconds: 30,
   /** An upload that never finished frees its reservation after this. */
   reservationMinutes: 15,
   /** A ready file that was never attached is removed this long after it became ready. */
   unpublishedDays: 7,
 } as const;
+
+/** One message's files other than videos, together (C-61, #1549): four files at the operator's cap. */
+export const messageBytesFor = (fileBytes: number) => 4 * fileBytes;
+/** What one person may have waiting to be sent in one place, videos apart: 100 MiB, or one full message when that is more. */
+export const stagedBytesFor = (fileBytes: number) => Math.max(FILE_LIMITS.stagedBytes, messageBytesFor(fileBytes));
+/** A size in the words the app says it ("25 MB"), in MiB rounded to a tenth. */
+export const megabytesText = (bytes: number) => `${Math.round(bytes / (1024 * 1024) * 10) / 10} MB`;
 
 /**
  * How big a picture may be (#1343, C-59): at most 8,000 pixels on a side and 40 million in all. A stored picture is checked against this
@@ -85,6 +101,8 @@ export interface FileDetail {
   durationMs?: number;
   /** The container the server recognised from a video's bytes (C-61); absent for every other file and in an encrypted space. */
   video?: VideoContainer;
+  /** C-69 (#1557): a PDF Flux read and found no text in (a scan or a picture); absent until it is read, and for every other file. */
+  noText?: true;
 }
 
 /** A file staged by the signed-in person, ready to attach. */
@@ -115,8 +133,9 @@ export interface MessageFile extends FileDetail {
   poster?: string;
 }
 
-/** What this instance accepts (`FILE_LIMITS_PATH`): the operator's video cap is the only number that varies. */
+/** What this instance accepts (`FILE_LIMITS_PATH`): the operator's file and video caps, and what follows from them. */
 export interface FileLimits {
+  /** One file of a plain place (`FLUX_FILE_MAX_MIB`); a picture and a file of an encrypted space stay at `FILE_LIMITS.wholeBytes`. */
   fileBytes: number;
   videoBytes: number;
   messageFiles: number;

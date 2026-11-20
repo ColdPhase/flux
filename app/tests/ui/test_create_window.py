@@ -351,18 +351,21 @@ class CreateWindow(unittest.TestCase):
         tablist = window.get_by_role("tablist", name="Create")
         tabs = tablist.get_by_role("tab")
         self.assertEqual(tabs.count(), 5)
-        # #1424: all five kinds are inside the tab bar (none cut at its edge, none scrolled away) and end before Close, which is whole.
+        # #1561: five words do not fit beside Close at equal widths on 320 px, so Close moves to the line below and the five kinds take the whole row at their
+        # own words' width: none is narrower than its word, cut at the bar's edge or scrolled away, and Close is whole and 44 px.
         bar = tablist.bounding_box()
         close = window.get_by_role("button", name="Close", exact=True).bounding_box()
         self.assertIsNotNone(bar)
         self.assertIsNotNone(close)
+        expect(window.locator(".create__in--close-below")).to_have_count(1)
         for tab in tabs.all():
             box = tab.bounding_box()
             self.assertGreaterEqual(box["x"], bar["x"] - 0.5, tab.inner_text())
             self.assertLessEqual(box["x"] + box["width"], bar["x"] + bar["width"] + 0.5, f"{tab.inner_text()} runs past the tab bar")
-            self.assertGreaterEqual(box["width"], 43.9, f"{tab.inner_text()} is a 44 px wide target")
+            self.assertTrue(tab.evaluate("el => el.scrollWidth <= el.clientWidth + 1"), f"{tab.inner_text()} is narrower than its word")
             self.assertGreaterEqual(box["height"], 43.9)
-        self.assertLessEqual(bar["x"] + bar["width"], close["x"] + 0.5, "the tabs end where Close begins")
+        self.assertGreaterEqual(bar["width"], 320 - 12 - 1, "the kinds take the whole row")
+        self.assertGreaterEqual(close["y"], bar["y"] + bar["height"] - 0.5, "Close is on the line below the tabs")
         self.assertGreaterEqual(close["x"], 0)
         self.assertLessEqual(close["x"] + close["width"], 320.5, "Close is whole")
         self.assertGreaterEqual(min(close["width"], close["height"]), 43.9, "Close is a 44 px target")
