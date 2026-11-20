@@ -19,7 +19,7 @@ import { lastSpace } from '../app/lastSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
-import { Avatar, Button, Icon, Kreska, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast } from '../ui';
+import { Avatar, Button, Icon, Kreska, MEDIA, Overlay, SearchField, Spinner, Tabs, useMediaQuery, useToast } from '../ui';
 import { Select, Option, OptionGroup } from '../ui/Select';
 import { DateField } from '../ui/DateField';
 import { dueLabel } from '../work/format';
@@ -767,8 +767,8 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
     // The window grows for results only once something is typed: an empty search keeps its height, with one line that says what to type
     // (round 15 look-2 P2-5: 170 px of empty window under the field).
     <div ref={box} className={`create__picker${text ? ' create__picker--searching' : ''}`}>
-      <input className="ui-input" type="search" autoFocus={writeNow} aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
-        onChange={(event) => setQuery(event.target.value)}
+      <SearchField className="ui-input" phoneIcon autoFocus={writeNow} aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search messages and thoughts" value={query}
+        onValue={setQuery}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.stopPropagation(); onDone(); }
           else if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); const first = items[0]; if (first) onPick(first.ref, first.label); }

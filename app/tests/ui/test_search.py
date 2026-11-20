@@ -418,6 +418,91 @@ class SearchJourney(unittest.TestCase):
         self.no_horizontal_scroll(fresh)
         shot(fresh, "search-jump-phone-390-empty")
 
+    # A phone's search fields are one flat pill (README §4 Phone, "Search fields"; founder direction 2026-11-20): the fill and nothing else, the
+    # magnifier inside at its start, a clear x inside at its end only while there is text, and Cancel outside the field to its right.
+    PILL_JS = """(el) => {
+      const s = getComputedStyle(el), r = el.getBoundingClientRect();
+      const probe = document.createElement('span'); probe.style.backgroundColor = 'var(--sub)'; document.body.appendChild(probe);
+      const sub = getComputedStyle(probe).backgroundColor; probe.remove();
+      const icon = el.querySelector('.ui-search__icon').getBoundingClientRect(), input = el.querySelector('input').getBoundingClientRect();
+      return {shadow: s.boxShadow, border: [s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderLeftWidth], radius: parseFloat(s.borderTopLeftRadius),
+              background: s.backgroundColor, sub, height: r.height, left: r.left, right: r.right,
+              iconAtStart: icon.left >= r.left && icon.right <= input.left, inputSize: parseFloat(getComputedStyle(el.querySelector('input')).fontSize)};
+    }"""
+
+    def assert_pill(self, field, where: str, *, clear: bool = True) -> None:
+        pill = field.locator("xpath=..")
+        expect(pill).to_be_visible()
+        look = pill.evaluate(self.PILL_JS)
+        self.assertEqual(look["shadow"], "none", f"{where}: a flat pill, no shadow: {look}")
+        self.assertEqual(look["border"], ["0px"] * 4, f"{where}: no edge: {look}")
+        self.assertGreaterEqual(look["radius"], look["height"] / 2 - 0.5, f"{where}: a pill: {look}")
+        self.assertEqual(look["background"], look["sub"], f"{where}: filled with --sub: {look}")
+        self.assertTrue(44 <= look["height"] <= 48, f"{where}: 44 px tall: {look}")
+        self.assertTrue(look["iconAtStart"], f"{where}: the magnifier is inside at the start: {look}")
+        self.assertGreaterEqual(look["inputSize"], 16, f"{where}: 16 px text, so iOS does not zoom: {look}")
+        clear_button = pill.get_by_role("button", name="Clear search")
+        self.assertEqual(clear_button.count(), 0, f"{where}: no clear while the field is empty")
+        if not clear:
+            return
+        field.fill("lamp")
+        expect(clear_button).to_be_visible()
+        box, edge = clear_button.bounding_box(), pill.bounding_box()
+        assert box is not None and edge is not None
+        self.assertTrue(has_minimum_touch_size(box["width"]) and has_minimum_touch_size(box["height"]), f"{where}: the clear is a 44 px target: {box}")
+        self.assertTrue(edge["x"] + edge["width"] / 2 < box["x"] and box["x"] + box["width"] <= edge["x"] + edge["width"] + 0.5, f"{where}: the clear is inside, at the end: {box} in {edge}")
+        clear_button.tap()
+        expect(field).to_have_value("")
+        expect(field).to_be_focused()  # the keyboard that was up stays up
+        self.assertEqual(clear_button.count(), 0, f"{where}: the clear goes with the text")
+
+    def test_08b_the_phone_search_fields_are_one_flat_pill_and_cancel_stands_outside(self) -> None:
+        lamp = self.ids["lamp"]
+        for width in (390, 360):
+            with self.subTest(width=width):
+                context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block",
+                                                   viewport={"width": width, "height": 800}, device_scale_factor=2, is_mobile=True, has_touch=True, storage_state=self.states["nia"])
+                self.addCleanup(context.close)
+                page = context.new_page()
+                page.goto("/")
+                page.get_by_role("button", name="Search", exact=True).click()
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
+                field = dialog.get_by_role("combobox", name="Search", exact=True)
+                expect(field).to_be_visible()
+                # Search: no title above the field, the field is the header row, and Cancel is outside the pill, to its right, as plain text.
+                self.assertEqual(dialog.get_by_role("heading").count(), 0, "no title: the field is the sheet's header")
+                self.assert_pill(field, f"Search at {width}")
+                pill, cancel = field.locator("xpath=.."), dialog.get_by_role("button", name="Cancel")
+                self.assertEqual(pill.get_by_role("button", name="Cancel").count(), 0, "Cancel is not inside the pill")
+                edge, button = pill.bounding_box(), cancel.bounding_box()
+                assert edge is not None and button is not None
+                self.assertGreaterEqual(button["x"], edge["x"] + edge["width"] - 0.5, f"Cancel is to the right of the pill: {button} {edge}")
+                self.assertLessEqual(abs((button["y"] + button["height"] / 2) - (edge["y"] + edge["height"] / 2)), 1, "Cancel is on the pill's line")
+                self.assertGreaterEqual(button["height"], 44 - 0.0001)
+                look = cancel.evaluate("el => { const s = getComputedStyle(el); return [s.backgroundColor, s.boxShadow, s.borderTopWidth] }")
+                self.assertEqual(look, ["rgba(0, 0, 0, 0)", "none", "0px"], "Cancel is a plain text button")
+                self.no_horizontal_scroll(page)
+                cancel.click()
+                expect(dialog).to_have_count(0)
+                # The same pill in the other places a phone searches or finds.
+                page.goto(f"/projects/{lamp}/tasks")
+                tasks = page.get_by_label("Search tasks")
+                expect(tasks).to_be_visible()
+                self.assert_pill(tasks, f"Tasks search at {width}")
+                row = page.locator(".tb-mine").bounding_box()
+                assert row is not None
+                self.assertGreaterEqual(tasks.locator("xpath=..").bounding_box()["y"], row["y"] + row["height"], "the Tasks search is on its own line, under Board | List and Mine")
+                page.goto(f"/projects/{lamp}/docs/{self.ids['doc']}")
+                page.locator(".wiki-switch__t").first.click()
+                self.assert_pill(page.get_by_label("Find a page"), f"Find a page at {width}")
+                page.goto(f"/projects/{lamp}/map/{self.ids['sketch']}")
+                page.locator(".wiki-switch__t").first.click()
+                self.assert_pill(page.get_by_label("Find a map"), f"Find a map at {width}")
+                page.goto("/dm/new")
+                self.assert_pill(page.get_by_placeholder("Find people by name or email"), f"Find people at {width}")
+                if width == 390:
+                    shot(page, "search-field-phone-390-find-people")
+
     def test_09_dark_desktop_dialog(self) -> None:
         page = self.page("nia", dark=True)
         page.goto("/")

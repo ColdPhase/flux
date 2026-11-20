@@ -4,7 +4,7 @@ import { UNTITLED_SKETCH, type Sketch } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { createProjectSketch, listProjectSketches } from '../project/data';
-import { Icon, usePop, useToast } from '../ui';
+import { Icon, SearchField, usePop, useToast } from '../ui';
 import '../docs/docs.css';
 import { focusOnOpen } from '../ui/focusField';
 import { useBackLayer } from '../ui/backLayer';
@@ -111,12 +111,8 @@ export function MapSwitcher({ sketch, canWrite, onRename }: { sketch: Pick<Sketc
       {pop.mounted ? (
         <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-switcher sk-switcher" role="dialog" aria-label="Maps in this space" onKeyDown={onKeyDown}
           style={at ? { position: 'fixed', top: at.top, left: at.left, width: at.width, right: 'auto' } : undefined}>
-          <label className="wiki-find">
-            <Icon name="search" size={15} />
-            <input ref={findRef} type="text" placeholder="Find a map" aria-label="Find a map" autoComplete="off" value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(href(shown[0].id)); } }} />
-          </label>
+          <SearchField ref={findRef} className="wiki-find" iconSize={15} placeholder="Find a map" aria-label="Find a map" autoComplete="off" value={query} onValue={setQuery}
+            onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(href(shown[0].id)); } }} />
           <ul className="wiki-menu__list" aria-label="Maps">
             {shown.map((item) => (
               <li key={item.id}>

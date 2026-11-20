@@ -164,21 +164,20 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 .tb-board--one .tb-col__head { display: none; }
 
 /* ---------- Phone (#868): the same control row as the computer, without "+ Task" (the floating Create is the phone's one "+") ---------- */
-.tb-search__l { display: none; }
 @media (max-width: 640px) {
   .tb-add.ui-btn { display: none; }
-  /* One row; only where Board | List and Mine leave the search less than its word (large text) does the search take the line below, whole
-     (Board | List's options are never narrower than their labels, #1561, so the row cannot squeeze them instead). */
+  /* Board | List and Mine are one row; the search is the phone's flat pill (README §4 Phone, "Search fields") on its own line under them, as wide as
+     the toolbar: a pill with its clear does not fit in the 78 to 108 px the row left it at 360 to 390 px (Board | List's options are never
+     narrower than their labels, #1561, so the row cannot squeeze them instead). */
   .tb-bar { padding-top: 10px; }
-  .tb-search { flex: 1 1 0; margin-left: 2px; min-width: 4.5rem; }
+  .tb-search { flex: 1 1 100%; max-width: none; margin-left: 0; }
 }
-/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc".
-   Board | List keeps 56 px options (a pill, never a circle, #1561), so Mine and the gaps give up the room it took (release audit P3 20 still holds). */
+/* A 320 px phone: Board | List keeps 56 px options (a pill, never a circle, #1561), so Mine and the gaps give up the room it took, and the row
+   stays one line (release audit P3 20). */
 @media (max-width: 359px) {
   .tb-bar { gap: 4px; }
   .tb-mode .seg__b { min-width: 3.5rem; padding: 0 9px; }
   .tb-bar .tb-mine { padding-inline: 6px; }
-  .tb-search { gap: 4px; margin-left: 0; }
 }
 
 @media (pointer: coarse) {

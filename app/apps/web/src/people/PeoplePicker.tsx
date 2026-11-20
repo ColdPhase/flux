@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
-import { Avatar, Button, Icon } from '../ui';
+import { Avatar, Button, Icon, SearchField } from '../ui';
 import './space.css';
 import { awaitField } from '../ui/keys';
 import { focusOnOpen } from '../ui/focusField';
@@ -50,7 +50,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
       </div>}
       {open ? (
         <div className="pick__list" id={listId} role="group" aria-label={`People in ${companyName}`}>
-          {candidates.length ? <input className="ui-input pick__filter" type="search" aria-label="Search people" placeholder="Search by name or address" value={filter} onChange={(event) => setFilter(event.target.value)}
+          {candidates.length ? <SearchField className="ui-input pick__filter" phoneIcon aria-label="Search people" placeholder="Search by name or address" value={filter} onValue={setFilter}
             // Enter picks the one person the search found, as New message's Find people does (persona round 31); it never sends the form.
             onKeyDown={(event) => {
               if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;

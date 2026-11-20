@@ -6,7 +6,7 @@ import { listProjectSketches } from '../project/data';
 import { useWorkChoices } from '../work/useDetailReads';
 import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
-import { Icon } from '../ui';
+import { SearchField } from '../ui';
 import { Select, Option } from '../ui/Select';
 import { getConversation, listConversations } from '../conversations/api';
 import { listProjectDocs } from './api';
@@ -101,12 +101,9 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
 
   return (
     <div className="doc-picker" role="dialog" aria-label="Link to something in this space">
-      <div className="doc-picker__search">
-        <Icon name="search" size={14} />
-        <input ref={inputRef} role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
-          maxLength={200} aria-label="Find a Wiki page, decision, task, map or message" placeholder={type === 'all' ? 'Find space objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
-          onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKey} />
-      </div>
+      <SearchField ref={inputRef} className="doc-picker__search" iconSize={14} role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
+        maxLength={200} aria-label="Find a Wiki page, decision, task, map or message" placeholder={type === 'all' ? 'Find space objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
+        onValue={(next) => { setQuery(next); setActive(0); }} onKeyDown={onKey} />
       <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><Select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(next) => setType(next as ReferenceType)}>
         {TYPES.map((kind) => <Option key={kind} value={kind}>{kind === 'all' ? 'All types' : kindLabel(kind)}</Option>)}
       </Select></div>

@@ -184,6 +184,33 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .ui-field__error svg { margin-top: 2px; }
 @media (pointer: coarse) { .ui-input { font-size: var(--fs-input-touch); } } /* no iOS zoom on focus */
 
+/* ---------- Search field (README §4 Phone, "Search fields"; founder direction 2026-11-20) ----------
+   `SearchField` is the one markup. On the computer and the tablet it is a bare row inside the place's own box (its `className`: .wiki-find,
+   .tb-search, .jump__search, .ui-input …); on the phone every one is this flat pill, so no place can draw its own. */
+:where(.ui-search) { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Zero specificity (:where): the place's own rules on its input (Search's height and 16 px text) stay as they are on the computer. */
+:where(.ui-search) > input { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; outline: none; }
+:where(.ui-search) > input:focus-visible { outline: none; }
+.ui-search__icon { flex: none; }
+@media (pointer: coarse) { :where(.ui-search) > input { font-size: var(--fs-input-touch); } }  /* no iOS zoom on focus, whatever the place's text size */
+.ui-search > .ui-search__clear, .ui-search--phone-icon > .ui-search__icon { display: none; }
+.ui-search.ui-input:has(> input:focus) { outline: 2px solid var(--ring); outline-offset: -1px; }  /* a search field drawn as a field: the ring of .ui-input */
+@media (max-width: 640px) {
+  /* Doubled class: the pill outranks every place's own box, whichever stylesheet arrives last. No hairline, no edge, no shadow: the fill is its edge. */
+  .ui-search.ui-search {
+    box-sizing: border-box; height: 44px; min-height: 44px; padding: 0 14px; gap: 8px; border: 0; border-radius: var(--r-pill);
+    background: var(--sub); box-shadow: none; color: var(--t3); font-size: var(--fs-input-touch); line-height: 1.4; transition: none;
+  }
+  .ui-search.ui-search:focus-within { box-shadow: none; color: var(--t3); }  /* a place's focus edge (.wiki-find, .tb-search) never stays on the phone */
+  .ui-search.ui-search > .ui-search__icon { display: block; color: var(--t3); }
+  .ui-search.ui-search > input { height: 100%; font-size: var(--fs-input-touch); color: var(--t1); }
+  .ui-search.ui-search > input::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+  /* The ring is the pill's edge, for the keyboard and for a tap in the field (the app's one ring, transparent after a tap elsewhere). */
+  .ui-search.ui-search:has(> input:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
+  /* The clear stands only while there is text; its 44 px target ends at the pill's edge, the 16 px cross 22 px in. */
+  .ui-search.ui-search > .ui-search__clear { display: inline-grid; width: 44px; height: 44px; margin-right: -14px; color: var(--t2); }
+}
+
 /* ---------- Tabs (view switcher) ---------- */
 .ui-tabs { position: relative; min-width: 0; }
 .ui-tabs__bar { position: relative; display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; }

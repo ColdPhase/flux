@@ -551,14 +551,19 @@ class TasksBoardJourney(unittest.TestCase):
     def test_09_phone_has_the_same_control_row_and_changes_state_with_one_tap(self) -> None:
         page = self.page("kai", phone=True, dark=True)
         page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
-        # The phone has the computer's one control row, Board | List, Mine and Search, without "+ Task" (#868): the floating
-        # Create is the phone's one "+". Mine is in the same place in both views.
+        # The phone has the computer's controls, Board | List, Mine and Search, without "+ Task" (#868): the floating
+        # Create is the phone's one "+". Board | List and Mine are one row and the Search, the phone's flat pill, is its own line under
+        # them (founder direction 2026-11-20). Mine is in the same place in both views.
         rows = page.locator(".ws-task")
         expect(rows.first).to_be_visible()
         bar = page.locator(".tb-bar")
         expect(bar).to_be_visible()
-        self.assertLessEqual(bar.bounding_box()["height"], 60, "one row on the phone")
-        expect(bar.get_by_role("radio", name="Board", exact=True)).to_be_visible()
+        mode = bar.get_by_role("radio", name="Board", exact=True)
+        expect(mode).to_be_visible()
+        row, board, pill = bar.get_by_role("button", name="Mine", exact=True).bounding_box(), mode.bounding_box(), bar.get_by_label("Search tasks").locator("xpath=..").bounding_box()
+        self.assertLessEqual(abs((row["y"] + row["height"] / 2) - (board["y"] + board["height"] / 2)), 4, "Board | List and Mine are one row")
+        self.assertGreaterEqual(pill["y"], row["y"] + row["height"], "the Search is its own line under them")
+        self.assertLessEqual(bar.bounding_box()["height"], 124, "two lines, not three")
         expect(page.get_by_role("group", name="Whose tasks")).to_have_count(0)
         expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
         mine = bar.get_by_role("button", name="Mine", exact=True)

@@ -138,6 +138,7 @@ class TypeTokens(unittest.TestCase):
         page.get_by_role("button", name="Search").first.tap()
         field = page.get_by_role("combobox", name="Search")
         expect(field).to_be_visible()
+        field.tap()  # a touch screen opens Search with no keyboard (#1546): the ring is drawn once the field is tapped
         close = page.locator(".jump__close")
         # Close says its word, its key beside it (release audit ffcb07c P3; WCAG 2.5.3): the visible label is the accessible name.
         expect(page.get_by_role("button", name="Close", exact=True)).to_have_count(1)

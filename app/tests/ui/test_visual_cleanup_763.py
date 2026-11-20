@@ -180,7 +180,7 @@ class VisualCleanup763(unittest.TestCase):
     def test_06_placeholder_without_the_shared_input_style(self) -> None:
         page = self.page(DESKTOP)
         page.goto("/dm/new")
-        search = page.locator("input.dm-new__search")
+        search = page.locator(".dm-new__search input")
         expect(search).to_be_visible()
         colours = search.evaluate("""(el) => {
           const probe = document.createElement('span');

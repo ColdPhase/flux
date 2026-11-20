@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { redirect, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { decisionAppPath, type Project, type ProjectWorkViewQuery, type WorkItem, type WorkObjectType, type WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, SearchField, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
 import { WORK_EVENT, streamLive, useStreamEvents } from '../api/stream';
 import { useShellActions } from '../app/shellContext';
@@ -65,7 +65,6 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
   mine: boolean; onMine: (mine: boolean) => void; onNew: () => void; phone: boolean;
 }) {
-  const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
   // One radio group: arrows choose and focus the other view, as the Map's Map | List does.
   const onRadioKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -85,14 +84,9 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
         ))}
       </div>
       <Button variant="outline" size="sm" icon="person" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}>Mine</Button>
-      <div className={`tb-search${query ? ' has-query' : ''}`}>
-        <Icon name="search" size={14} />
-        <span className="tb-search__l" aria-hidden="true">Search</span>
-        <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
-        <input id={searchId} type="search" value={query} placeholder={phone ? 'Search' : 'Search tasks'} autoComplete="off" maxLength={200}
-          onChange={(event) => onQuery(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
-      </div>
+      <SearchField className="tb-search" iconSize={14} aria-label="Search tasks" placeholder={phone ? 'Search' : 'Search tasks'} autoComplete="off" maxLength={200}
+        value={query} onValue={onQuery}
+        onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
       {/* "+ Task" is the right end of this row on every computer and tablet, in both views and every orientation (§7 Tasks, rule 7, #1366);
           the space's header holds only its own slots. The phone's floating "+" is its one Create, so the row hides it there. */}
       <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>

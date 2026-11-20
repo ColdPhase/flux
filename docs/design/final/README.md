@@ -771,6 +771,26 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     messages, left of your own), the touch twin of the computer's pill. The layout keeps a 32 px lane free beside the bubble
     (the other 12 px of the 44 px target reach into the pane's own side padding), so the ⋯ never covers a word, a card or a button of the message,
     in a group or alone, in a space, a thread or a direct message. It opens the same sheet as a long press.
+- **Search fields** (founder direction, Hubert, 2026-11-20, from his phone: the Search page's field was a raised card with Cancel inside it).
+  **One look for every field on the phone that searches or finds in a list**: Search, the Tasks toolbar's Search, the Wiki's "Find a page", the
+  map's "Find a map", the people searches ("Find people by name or email", "Search by name or address") and Create's "Search messages and
+  thoughts". It is the platform's search bar (HIG-49, HIG-53; Material's search bar), not a form field, and it is built once
+  (`SearchField`, `ui/ui.css`) so no place can draw its own:
+  - **A flat pill**: `--r-pill`, 44 px tall, filled `--sub`, with no hairline, no edge and no shadow (the fill is its edge; this is the one
+    field without the `--line2` hairline of "Fields" above, because it is not a form field and holds no form's value). On `--el` or `--bg`
+    it needs no more.
+  - **Inside it**: the magnifier (the `search` glyph, 16 px, `--t3`) at the start, the placeholder in `--t3` saying what is searched
+    ("Search", "Find a page"), the typed text 16 px in `--t1`; and at the end a **clear ×** (16 px `--t2`, a 44 × 44 target) **only while the
+    field holds text**. The clear empties the field and leaves the focus where it was, so a keyboard that was up stays up. The browser's own
+    cross is never drawn here.
+  - **The ring** is the field's one 2 px `--ring`, on the pill's edge (offset −2 px), for the keyboard and for a tap in the field, as
+    every text field's ("A text field's ring is its edge").
+  - **Cancel is outside the field**, to its right, a plain text button (`--t1`, no fill, 44 px), and only where the search is a screen of
+    its own: **Search**. Search has **no title** above its field on the phone: the field is the sheet's header row (the dialog is still
+    named "Search"), and Recent or the results start under it. It opens with no keyboard on a touch screen (#1546); a tap in the field
+    brings it.
+  - **The Tasks toolbar's Search takes its own line** under Board | List and Mine, as wide as the toolbar: a pill with a clear does not fit in
+    the 78–108 px the row leaves it at 360–390 px. **The computer and the tablet (wider than 640 px) keep their own fields**, as drawn.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.
 - **Back closes what sits on top, then leaves the place** (founder direction, Hubert, 2026-11-19, #1545, #1547; the history rules are in
@@ -2009,7 +2029,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   right, "+ Task". **Search tasks filters both views and is never greyed** (#1424): on the Board it looks through the loaded
   cards, in the List through the page of rows on screen (the List's groups then count what matches, its line says "2 matches · 9 tasks",
   and when there are more pages one note says that the search looks through this page, with Previous and Next for the others). Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
-  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle. "+ Task" is the right end of this row on
+  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle. **On the phone the search is the flat pill of [Phone › Search fields](#phone) on its own line under Board | List and Mine** (2026-11-20). "+ Task" is the right end of this row on
   every computer and tablet, in both views and in either orientation, and the space's header holds
   only its own slots (#1366). Over the List, a centred column on a wide window (from 2000 px), the row is
   that same 838 px column, so "+ Task" ends where the list ends; over the Board it stays that column, so
@@ -2173,8 +2193,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   row whichever of its Conversation, Tasks, Map and Wiki were opened, naming the view opened last ("Gesture lamp · Map"; a Wiki page by its own
   title), and the space in view is not listed ([#1424](https://github.com/ColdPhase/flux/issues/1424)); and one action, **Go to
   Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
-  no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
+  no sidebar toggle. On the computer and the tablet the field and **Close** are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
   the field's row carries the 2 px `--ring` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
+  **On the phone** the sheet has no title: its first row is the field, the flat pill of [Phone › Search fields](#phone), with **Cancel** as a
+  plain text button to its right, outside it (founder direction, Hubert, 2026-11-20); the pill shows a clear × while it holds text.
 
 ### My map
 

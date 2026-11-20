@@ -38,7 +38,9 @@
 .jump { display: flex; flex-direction: column; }
 .jump__in { display: flex; flex-direction: column; min-height: 0; max-height: inherit; flex: 1; }
 .jump__field { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 20px; border-bottom: 1px solid var(--line); flex: none; }
-.jump__icon { color: var(--t1); flex: none; }
+/* The pill's magnifier, the input and Search's spinner: the field's row holds them and Close. On the computer they keep the row's own 12 px gaps. */
+.jump__search { flex: 1; gap: 12px; }
+.jump__search > .ui-search__icon { color: var(--t1); }
 .jump__input { flex: 1; min-width: 0; height: var(--ctl); border: 0; background: none; font: inherit; font-size: var(--fs-lg); color: var(--t1); outline: none; }
 .jump__input:focus-visible { outline: none; }  /* the field's row is the target, as the mockup draws it: no box inside it */
 .jump__field:has(.jump__input:focus-visible) { outline: 2px solid var(--ring); outline-offset: -4px; border-radius: var(--r); }  /* the ring of README §2 (#1380) */
@@ -81,17 +83,12 @@
   .jump__opt:not(.sr) { min-height: 44px; }
 }
 
-/* The phone's Search: a title, the field, and a calm empty state. */
-.jump__title { margin: 0; padding: calc(12px + env(safe-area-inset-top)) 20px 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: var(--tracking-title); }
+/* The phone's Search: no title; the field's row is its header (README §4 Phone, "Search fields"): the flat pill of ui/ui.css, then Cancel outside it as
+   a plain text button, and a calm empty state. */
 .jump__none { padding: 40px 24px; }
 @media (max-width: 640px) {
-  .jump__field { padding-top: env(safe-area-inset-top); min-height: calc(56px + env(safe-area-inset-top)); }
-  .jump__input { font-size: var(--fs-input-touch); }
-  .jump__close { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; }
-  /* The pill has a field's hairline; focused, the app's ring is its edge, never a black frame (visual review 2026-11-17, core 4). */
-  .jump__in .jump__field { margin: 12px 16px 0; padding: 0 8px 0 14px; border: 0; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-field); min-height: 52px; }
-  .jump__in .jump__field:focus-within { box-shadow: inset 0 0 0 2px var(--ring), var(--sh-1); }
-  .jump__title + .jump__field { padding-top: 0; }
+  .jump__field { gap: 4px; min-height: 0; padding: calc(8px + env(safe-area-inset-top)) 8px 8px 16px; border-bottom: 0; }
+  .jump__close { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 8px; font-size: var(--fs-input-touch); }
   .jump__field:has(.jump__input:focus-visible) { outline: none; }  /* the pill's own 2 px edge is the ring here */
 }
 @media (pointer: coarse) { .jump__close { min-width: 44px; justify-content: center; } }
