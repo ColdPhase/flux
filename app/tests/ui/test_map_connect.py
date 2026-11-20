@@ -231,16 +231,17 @@ class MapConnectJourney(unittest.TestCase):
                 page.locator('.sk-node', has_text=B).tap()
                 expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
                 expect(page.locator('.sk-dot.is-on')).to_have_count(2)
-                before = {t['text']: (t['x'], t['y']) for t in self.stored(page, sketch)['thoughts']}
+                before = {t['id']: (t['x'], t['y']) for t in self.stored(page, sketch)['thoughts']}
                 box = page.locator('.sk-node', has_text=B).bounding_box()
                 page.mouse.move(box['x'] + box['width'] / 2, box['y'] + 10)
                 page.mouse.down()
-                page.mouse.move(box['x'] + box['width'] / 2 + 60, box['y'] + 70, steps=6)
+                page.mouse.move(box['x'] + box['width'] / 2 - 60, box['y'] + 70, steps=6)
                 page.mouse.up()
-                after = self.eventually(page, sketch, lambda s: any((t['x'], t['y']) != before[t['text']] for t in s['thoughts']))
-                moved = {t['text']: (t['x'], t['y']) for t in after['thoughts']}
-                self.assertGreater(moved[B][0], before[B][0] + 30, 'the thought moved on the shared map')
-                self.assertEqual({k: v for k, v in moved.items() if k != B}, {k: v for k, v in before.items() if k != B})
+                after = self.eventually(page, sketch, lambda s: any((t['x'], t['y']) != before[t['id']] for t in s['thoughts']))
+                moved = {t['id']: (t['x'], t['y']) for t in after['thoughts']}
+                b = self.ids[B]
+                self.assertGreater(moved[b][1], before[b][1] + 30, 'the thought moved on the shared map')
+                self.assertEqual({k: v for k, v in moved.items() if k != b}, {k: v for k, v in before.items() if k != b})
                 shot(page, f'map-connect-phone-390-{scheme}')
                 add.tap()
                 draft = page.get_by_role('form', name='New thought draft')

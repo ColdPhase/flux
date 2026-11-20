@@ -493,7 +493,8 @@ class MapSamePlane(unittest.TestCase):
                 page = self.page(PHONE, scheme, touch=True)
                 self.open(page, project, sketch)
                 url = page.url
-                source, target = ROWS[3][0], ROWS[4][0]
+                # Two thoughts of the first column, well inside the phone's screen (a drag at its edge would pan the map, test_11).
+                source, target = ROWS[0][0], ROWS[3][0]
                 self.node(page, source).tap()
                 expect(self.node(page, source)).to_have_attribute('aria-pressed', 'true')
                 dot = self.dot(page, source)
@@ -507,7 +508,7 @@ class MapSamePlane(unittest.TestCase):
                 self.drag(page, middle, self.centre(page, target), before_release=lambda: shot(page, f'phone-dot-link-390-{scheme}'))
                 stored = self.eventually(page, sketch, lambda s: len(s['links']) == links + 1)
                 self.assertEqual(len(stored['links']), links + 1, 'a drag from the dot onto a thought links them')
-                self.assertTrue(any({l['fromId'], l['toId']} == {ids[3], ids[4]} for l in stored['links']))
+                self.assertTrue(any({l['fromId'], l['toId']} == {ids[0], ids[3]} for l in stored['links']))
                 expect(self.node(page, target)).to_have_attribute('aria-pressed', 'true')
                 expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
                 # From the target's dot onto empty plane: a connected draft that takes typing at once.
@@ -529,7 +530,7 @@ class MapSamePlane(unittest.TestCase):
                 draft.get_by_role('button', name='Save thought').tap()
                 stored = self.eventually(page, sketch, lambda s: any(t['text'] == 'Ulotki w schronisku' for t in s['thoughts']))
                 made = next(t for t in stored['thoughts'] if t['text'] == 'Ulotki w schronisku')
-                self.assertTrue(any({l['fromId'], l['toId']} == {ids[4], made['id']} for l in stored['links']), 'the new thought is connected to its dot\'s thought')
+                self.assertTrue(any({l['fromId'], l['toId']} == {ids[3], made['id']} for l in stored['links']), 'the new thought is connected to its dot\'s thought')
                 self.page_still(page, url)
                 shot(page, f'phone-arranged-390-{scheme}')
 

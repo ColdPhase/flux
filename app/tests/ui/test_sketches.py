@@ -616,7 +616,8 @@ class SketchJourney(unittest.TestCase):
         page.reload()
         expect(page.locator(".sk-node")).to_have_count(3)
         options = open_map_options(page, touch=touch) if viewport['width'] <= 640 else None
-        page.get_by_role("button", name=re.compile(r"^Zoom \d+%")).click()  # reset before the explicit Fit
+        if options is None:  # the phone has no zoom buttons (S15, #1600): its view is moved below before the explicit Fit
+            page.get_by_role("button", name=re.compile(r"^Zoom \d+%")).click()  # reset before the explicit Fit
         canvas.evaluate("el => { el.scrollLeft = 100; el.scrollTop = 100; }")
         page.get_by_role("button", name="Fit the map to the view").click()
         if options is not None:

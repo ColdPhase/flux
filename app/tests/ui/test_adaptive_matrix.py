@@ -256,7 +256,8 @@ UNSAFE_HITS = """(insets) => {
       if (style.position === 'fixed' || style.position === 'sticky') return false;
       const can = (axis) => /(auto|scroll)/.test(axis === 'y' ? style.overflowY : style.overflowX)
         && (axis === 'y' ? node.scrollHeight > node.clientHeight + 1 : node.scrollWidth > node.clientWidth + 1);
-      if (node !== el && (can('y') || can('x'))) return true;
+      // The map's plane (C-67) is itself the scrolling box: what lies under an inset there is plane, panned away with a finger.
+      if ((node !== el || !el.matches('a[href], button, input, textarea, select, summary, [role=button], [role=link], [role=tab], [role=menuitem]')) && (can('y') || can('x'))) return true;
     }
     return false;
   };
