@@ -307,11 +307,8 @@ buttons above, which read as too strong:
 - Destructive actions keep a clear style: a 1 px `--t2` outline with `--t1` text, never the inverted fill.
 - No gradient and no drop shadow on any button; `--grad-btn`, `--sh-btn` and `--sh-pri` are retired.
 - Button radius 10 (`--r-btn`); `--r-pill` stays for chips, avatars and segmented tracks.
-- A segmented choice with options of different lengths (Model) sizes each option to
-  its label with 14 px each side and never gives the longest an equal share (`seg--fit`); where the
-  group has no room for one row (a phone) its options wrap onto the next row and keep their label width (an
-  option alone on a row is not a bar), and the track takes the large radius (`--r-lg`). Equal slots stay for the views, the map's
-  Map / List and the live stage's picker.
+- A segmented choice is one control with equal options, Model included (the rule in **Segmented controls** below, [#1561](https://github.com/ColdPhase/flux/issues/1561));
+  where Model's group has no room for one row (a phone) its options lie in two equal columns and the track takes the large radius (`--r-lg`).
 - Buttons are 32 px high in rows and toolbars and 36 px in dialogs; a primary button and the
   button beside it have the same height. Touch targets stay at least 44 px (the system below).
 - Counts are quiet mono numbers ("Waiting for you 5", "Inbox 5"), never pills.
@@ -371,8 +368,8 @@ live panel and the connection's permissions (#1238).
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
 **Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model,
-the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
-tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
+the live stage and screen mode, the Create window's kinds and the phone Board's statuses. (The space views, Conversation | Tasks | Map | Wiki, are
+underline tabs, #1239.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
 - The track is `--seg` and the selected option is a raised pill, `--seg-on`, with a 1 px `--line2` edge and `--sh-raise`. In light that is
   `--el` on `--act` (1.51:1); in dark `--pick` on `--sub` (1.51:1). In dark the pill is lighter than the track (it was darker, 1.1:1).
@@ -381,7 +378,24 @@ tabs under #1239; until then they read the same three tokens.) A selected state 
   the edge adds 2.3:1 against the track.
 - The selected label is `--t1`, an unselected label `--seg-off` (`--t2` in light, `--t3` in dark, 6:1 on the track); a hovered one is `--t1`.
 - High-contrast mode (`forced-colors`) keeps the selection: the pill is `Highlight` with `HighlightText`.
-- Sizing is not part of this rule (the options' widths follow their labels, #1219).
+- **Equal options** (founder direction, Hubert, 2026-11-20, [#1561](https://github.com/ColdPhase/flux/issues/1561), C-66; it replaces #1219's
+  "the options' widths follow their labels"). The options of one segmented control take **equal shares of the track and are never narrower than
+  their own label**: the rule of the phone's bottom bar (`flex: 1 1 0; min-width: max-content`), drawn as `grid-auto-columns: 1fr` over options with
+  `min-width: max-content`. A track that hugs its options is as wide as its widest label times the number of options, so the selected pill keeps one
+  size and one shape whichever option is chosen and only moves to the next (a Tabs control slides it); a track given a width (the phone's status row,
+  the Create sheet's kinds) shares it equally, and an option whose word needs more than its share takes what it needs. **Nothing scrolls sideways
+  and no text is smaller**: a control never shrinks its labels to fit, and it never scrolls its row. The track's inset is 3 px, and the options are
+  the same height inside it on every screen: 26 px with a mouse (a 32 px track, the toolbar's height) and 44 px on touch (a 50 px track), at `--fs-sm`.
+  An option has 14 px of room each side (18 px on touch), so the pill is a pill and never a circle; a space-tight place may set `--seg-pad`
+  (the Create sheet 3 px, a 320 px phone's Board | List 9 px with options at least 56 px wide), and no screen styles a segmented control otherwise. The controls drawn as radio groups
+  (`.seg`) and the ones drawn as tabs (`.ui-tabs--seg`) share **one set of rules** in `ui/ui.css`, so they cannot drift apart.
+  `tests/ui/test_switches_visible.py` measures every segmented control on the computer (1440) and on the phone with touch (390, 320): equal widths
+  (±1 px) wherever the labels fit at equal widths, no option narrower than its label, the same pill size whichever option is selected, the pill
+  inside the track, and no sideways overflow.
+- **The Create sheet's kinds on a phone.** The five kinds are one segmented control that takes the row beside Close (44 px) and shares it equally. Where
+  the five words do not fit beside Close at equal widths (a 320 px phone, larger text), **Close moves to the line below**, at the right end of the
+  "where" line ("Only you see it", the space), which leaves room for it, and the kinds take the whole width; they never shrink, scroll or lose
+  size. Close stays whole and 44 px either way.
 
 **Concentric corners** (founder, 2026-10-08): a frame that tightly holds a tile or an avatar takes
 the inner radius plus the gap. A space tile (radius 6) inside a place picker with a 4 px inset sits
@@ -690,8 +704,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **One "+".** A floating soft-fill button above the tab bar opens the Create window, **straight on Task**
   (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8). There is no list of types first: Task,
   Thought, Decision, Page and Space are the window's own tabs, the same five as on the computer, so a task is two taps (the "+", then
-  the title) and the other four are one tap more. All five tabs and Close share the sheet's head row down to a 320 px phone (the tabs then
-  lose their gaps and side room and keep 44 px targets, #1424); only large text scrolls the tabs sideways. There is one "+" for each thing (founder
+  the title) and the other four are one tap more. The five tabs are one segmented control of equal options beside Close; where they do not fit beside it at equal widths (a 320 px phone),
+  Close moves to the line below and the tabs take the full width (**Segmented controls**, #1561). There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
   Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
   The Messages page and the Spaces tab's Messages are one list, in the Spaces list's card and rows, with **+ New message** under the card
@@ -714,6 +728,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     (`env(safe-area-inset-*)`), and the side padding is 12 around the title row and 18 before the
     first word of the tabs, as the page's own padding.
   - There are no chip rows.
+  - **Tasks › Board shows one status at a time** (see Tasks and the task panel): the status row, then the chosen status's column at full width,
+    with no sideways scroll.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
   - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
@@ -726,7 +742,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     (founder direction 2026-11-08), and Edit and Delete on your own messages.
   - **Swipe right** on a message opens Reply in thread.
   - **No swipe-left actions on messages.** Messages have no done or snooze state.
-  - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
+  - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail) and on the Tasks Board, where a sideways swipe moves to the
+    next or previous status (the status row's tap is its visible alternative, [#1560](https://github.com/ColdPhase/flux/issues/1560)). Every
     swipe action has a visible button or menu alternative, because a gesture is never the only
     way to an action: the phone's expanded Inbox card shows Not now and Done as its quiet buttons, as the computer's open item
     does, and the swipe is a shortcut to them (round 15 daily P2-3). On the computer, hover actions are unchanged.
@@ -1934,6 +1951,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Owner, the Board's card, the List row (the same "No owner" inside its line), the conversation's card and the task panel's Owner row and menu
   all say it; the control's label stays "Owner", and nothing says "Assign" or "Nobody yet". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
   whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
+- **On the phone (up to 640 px) the Board shows one status at a time** (founder direction, Hubert, 2026-11-20, [#1560](https://github.com/ColdPhase/flux/issues/1560), C-66;
+  it replaces #868's four columns run on sideways). Under the control row is the **status row**: the four statuses as one segmented control of equal
+  options, each with its glyph and its count, "To do ○ 3 · Doing ◐ 1 · Blocked ■ 0 · Done ● 5" (the word above, the glyph and the count under it, so four
+  fit a 320 px phone), always in view: it stays at the top while the column scrolls (on a phone on its side, up to 480 px high, it scrolls away with the column). The chosen status's column fills the width below it; a tap on
+  another status, or a swipe sideways on the column, moves to it, and the row follows. It opens on To do. The Board never scrolls sideways, at page
+  level or inside, down to 320 px, and the counts need no scrolling to be seen. The status row is the column's header, so the column has no second one.
+  A card changes state as it does on a phone today, in its panel (Status): cards have no ⋯ (above). Computer and tablet keep the four columns, with
+  the sideways scroll inside the board only where the docked panel narrows it (from 641 px).
+- **One empty state for both views.** A space with no tasks shows the List's "No tasks yet" block on the Board too (on every device), instead of an
+  empty line in each column. A column that is empty inside a board that has tasks keeps its short line, "Nothing here yet."
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
   for the far beds", "Waiting for Jonas" or "Waiting for #7", with the reason after " · " when one was written too ("Waiting for
   Basia · the new seals"). A blocked task is said in these same words everywhere (persona round 28): the card, the panel, the List,

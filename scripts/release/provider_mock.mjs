@@ -8,6 +8,8 @@
 // A release before v0.2.1 ran its agent in the worker, which asks for one JSON answer. From v0.2.1 every agent on an API key runs in
 // pi in the agent runtime (#1441), which asks for a stream (`stream: true`, Server-Sent Events, `transport: sse` in its settings) through
 // the worker's model gateway: the mock answers each in the form it asks for, with the same words.
+// From v0.2.1 a model is an agent only when it calls a tool (RT-1 rule 2, #1441): adding the key sends one request whose only tool is
+// `ping`, which the mock calls, in either form. Every other request gets the words, so an agent's run ends after one answer.
 import http from 'node:http';
 
 const requests = [];
@@ -34,6 +36,20 @@ http.createServer((request, response) => {
     if (request.method === 'POST' && path === '/v1/chat/completions') {
       const model = body?.model ?? 'upgrade-check-model';
       const usage = { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 };
+      const tools = Array.isArray(body?.tools) ? body.tools : [];
+      const ping = tools.length === 1 && tools[0]?.function?.name === 'ping';
+      const call = { id: 'call_upgrade_check', type: 'function', function: { name: 'ping', arguments: '{}' } };
+      if (ping && body?.stream === true) {
+        const chunk = (delta, finish, counted) => `data: ${JSON.stringify({
+          id: 'chatcmpl-upgrade-check', object: 'chat.completion.chunk', created: 0, model,
+          choices: counted ? [] : [{ index: 0, delta, finish_reason: finish }], ...(counted ? { usage: counted } : {}),
+        })}\n\n`;
+        response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+        return response.end([chunk({ role: 'assistant', content: null, tool_calls: [{ index: 0, ...call }] }, null), chunk({}, 'tool_calls'), chunk({}, null, usage),
+          'data: [DONE]\n\n'].join(''));
+      }
+      if (ping) return send(response, 200, { id: 'chatcmpl-upgrade-check', object: 'chat.completion', model,
+        choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls: [call] } }], usage });
       if (body?.stream === true) {
         // Chat Completions chunks: the role, the words, the finish, then the usage the gateway charges (an empty `choices`), then [DONE].
         const chunk = (delta, finish, counted) => `data: ${JSON.stringify({

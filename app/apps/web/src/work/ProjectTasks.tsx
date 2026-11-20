@@ -78,12 +78,10 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   // In reading order, as drawn: [Board | List] [Mine] [Search tasks] … [+ Task].
   return (
     <div className="tb-bar">
-      <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
+      <div className="seg tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
         {(['board', 'list'] as const).map((value) => (
-          <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
-            tabIndex={mode === value ? 0 : -1} onClick={() => onMode(value)}>
-            <span className="tb-mode__l">{value === 'board' ? 'Board' : 'List'}</span>
-          </button>
+          <button key={value} type="button" role="radio" className="seg__b" data-mode={value} aria-checked={mode === value}
+            tabIndex={mode === value ? 0 : -1} onClick={() => onMode(value)}>{value === 'board' ? 'Board' : 'List'}</button>
         ))}
       </div>
       <Button variant="outline" size="sm" icon="person" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}>Mine</Button>
@@ -147,7 +145,7 @@ export function ProjectTasks() {
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
   const { status: viewStatus, mine, cursor: viewCursor, mode: viewMode } = view;
-  // Every device has the same control row and both views (#868): the phone's board scrolls its four columns sideways.
+  // Every device has the same control row and both views (#868); the phone's board shows one status at a time (#1560).
   const phone = useMediaQuery(MEDIA.phone);
   const status = viewStatus;
   const cursor = viewCursor;
@@ -266,6 +264,8 @@ export function ProjectTasks() {
   const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} open={shownWork === item.id} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
+  // One empty state for both views (#1560): a space with no tasks says so in the same block on the Board and in the List.
+  const emptySpace = <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div>;
 
   // A task that changes state moves to another group, a new one grows in, a finished list collapses its rows (#593 AC-4).
   useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', needle, phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
@@ -273,7 +273,9 @@ export function ProjectTasks() {
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} phone={phone} />
       <div className="pane-scroll" ref={scroller} data-own-place="">
-      {!listing ? (
+      {!listing && nothing ? (
+        <div className="pane-in ws-tasks" data-work-observed-at={data?.summary.observedAt}>{emptySpace}</div>
+      ) : !listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable
             revision={boardRevision}
@@ -291,7 +293,7 @@ export function ProjectTasks() {
           <WorkPagination noun="tasks" page={data} caption={needle && data ? `${work.length} ${work.length === 1 ? 'match' : 'matches'}` : undefined} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} stepsWhenPaged />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
-        {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
+        {nothing ? emptySpace : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <Button variant="link" size="sm" onClick={refresh}>refresh from the start</Button>.</p> : null}
         {searchedPage ? <p className="tb-note" role="note"><Icon name="search" size={14} /><span>The search looks through the tasks on this page. Use Previous and Next to look through the others.</span></p> : null}
         {needle && loaded.length && !work.length ? <p className="ws-none" role="status">No task{mine ? ' of yours' : ''} matches “{boardSearch.trim()}”.{' '}

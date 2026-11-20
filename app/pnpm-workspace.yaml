@@ -12,7 +12,7 @@ ignoredOptionalDependencies:
   - '@napi-rs/canvas'
 
 patchedDependencies:
-  '@better-auth/oauth-provider@1.7.19': patches/oauth-provider-1.7.19-flux-refresh.patch
+  '@better-auth/oauth-provider@1.7.26': patches/oauth-provider-1.7.26-flux-refresh.patch
   drizzle-orm@0.45.4: patches/drizzle-orm-0.45.4-flux-pool-release.patch
 
 # One stable public codec generation across server, binding and browser.
@@ -20,4 +20,4 @@ overrides:
   yjs: 13.6.33
   # The one patched OAuth provider (patchedDependencies above) that @better-auth/mcp and @better-auth/cimd share. Move this,
   # the patch file and its key together when the better-auth packages move.
-  '@better-auth/oauth-provider': 1.7.19
+  '@better-auth/oauth-provider': 1.7.26

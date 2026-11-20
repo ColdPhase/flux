@@ -3,12 +3,12 @@ ARG TARGETARCH
 # The one tag of the pinned Codex (#1133): its binaries, its code-mode host and its model catalog are all fetched by it, each checked against
 # its own sha256, so a bump of this tag cannot keep an old catalog: the catalog's digest then fails until it is updated with the others.
 ARG CODEX_TAG=rust-v0.160.1
-# Every Node stage uses one base, pinned by digest alone: node:24.22.2-alpine3.24 (Alpine 3.24.4), the node:24-alpine index read
-# 2026-11-10 (#1179). Dependabot cannot follow a pin without a tag; bump it by hand in every `FROM node@sha256:` line here and in
+# Every Node stage uses one base, pinned by digest alone: node:24.22.3-alpine3.24 (Alpine 3.24.4, the Node security release of 2026-11-11), the node:24-alpine index read
+# 2026-11-20 (#1179). Dependabot cannot follow a pin without a tag; bump it by hand in every `FROM node@sha256:` line here and in
 # live-editing-calibration.Dockerfile (docs/agents/ci-and-releases.md#security-scanning). Time-zone data (#1338): Node's own is 2026e and
-# PostgreSQL's 2026f (Cuba keeps -04 until 2027-11-07). Re-checked 2026-11-20: node:24-alpine is 24.22.3 (sha256:116b800c…, 2026-11-10), still
-# 2026e (`node -p process.versions.tz`), and nodejs.org lists no newer 24.x. When a Node 24 has 2026f or later, bump the pin below.
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS runtime-hardening-build
+# PostgreSQL's 2026f (Cuba keeps -04 until 2027-11-07). Re-checked 2026-11-20: 24.22.3 is still 2026e (`node -p process.versions.tz`), and
+# nodejs.org lists no newer 24.x. When a Node 24 has 2026f or later, bump the pin below.
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS runtime-hardening-build
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
@@ -20,7 +20,7 @@ RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/sandbox.c -o /native/f
 # pi (#1441, RT-1): the engine of every API-key agent in the runtime. MIT (earendil-works/pi); its dependencies are MIT, Apache-2.0, BSD,
 # ISC, BlueOak-1.0.0, 0BSD and Unlicense (checked 2026-11-13). Pinned by apps/runtime/pi/package-lock.json, whose sha512 integrity of every
 # package `npm ci` checks; no install script runs, and nothing is ever installed at run time (pi's own updates and packages are off).
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS pi
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS pi
 WORKDIR /opt/flux-runtime/pi
 COPY apps/runtime/pi/package.json apps/runtime/pi/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
@@ -31,7 +31,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
 # The toolchain shared by the build and the production dependencies: pnpm, the compiler node-pty needs, and the
 # lockfile with its patches. Each stage below downloads its own locked dependencies in a layer that source edits
 # do not invalidate.
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS toolchain
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS toolchain
 WORKDIR /app
 RUN corepack enable && corepack install -g pnpm@12.6.0
 # node-pty (the agent runtime's sign-in console, F-022 T4 #279) has no Linux prebuild, so it compiles
@@ -118,7 +118,7 @@ CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
 # bundled dependencies, which an image scan reports for code that never runs: npm's tar, undici, ip-address and
 # brace-expansion, #1179) and Node's C headers go. A RUN rm over the base would leave the files in its layer; `scratch`
 # and one COPY make the removal real.
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS node-slim-files
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node-slim-files
 RUN rm -rf /usr/local/lib/node_modules /usr/local/include/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
 FROM scratch AS node-slim
@@ -177,10 +177,10 @@ USER node
 
 # The pinned official Codex CLI (Apache-2.0), checked against the SHA-256 digests GitHub lists for the
 # rust-v0.160.1 release assets (retrieved 2026-10-05). Codex stays off until T6 records its hosts.
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS codex-amd64
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS codex-amd64
 ARG CODEX_TAG
 ADD --checksum=sha256:9226581be592d18f7e7f740a352fdb63aa61e45e39f7eb9b09d3888c84bba33f https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-x86_64-unknown-linux-musl.tar.gz /codex.tar.gz
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS codex-arm64
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS codex-arm64
 ARG CODEX_TAG
 ADD --checksum=sha256:f54dc5852042445bf41da3aa31156f3cb02f52c5a1a04074de73dc5598f7e1f7 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-aarch64-unknown-linux-musl.tar.gz /codex.tar.gz
 FROM codex-${TARGETARCH} AS codex
@@ -191,10 +191,10 @@ RUN mkdir /tmp/codex && tar -xzf /codex.tar.gz -C /tmp/codex && set -- /tmp/code
 # Code is never in an image: the check downloads the pinned, signature-checked release at run time with the
 # same installer the runtime uses (gpg is only here for that; musl because the release is the musl build). No vendor account or sign-in is involved.
 # Codex 0.160.1 runs MCP tool calls through a separate code-mode host binary (a release asset of the same tag).
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS codex-host-amd64
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS codex-host-amd64
 ARG CODEX_TAG
 ADD --checksum=sha256:8a69207d97545ac753b6585974e1e67a4c51ae5deacf06517db512bb25e0e3c2 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz /host.tar.gz
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS codex-host-arm64
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS codex-host-arm64
 ARG CODEX_TAG
 ADD --checksum=sha256:e5e027e6689efda2e3570aa600179f0ebb18632803350e152ed6c9b97dcf9741 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz /host.tar.gz
 FROM codex-host-${TARGETARCH} AS codex-host
@@ -223,7 +223,7 @@ COPY --from=codex-catalog /codex-models.json /opt/flux-runtime/codex/models.json
 # (app/tests/cli-runtime). The supervisor, its templates and the binaries are the ones above. Never deployed.
 # The wrapper is a static program, not a script (#1437): the CLI's sandbox domain then holds what production holds, the wrapper file and the
 # real CLI's own file with its loader, and no /bin/sh or directory.
-FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS cli-mock-wrapper-build
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS cli-mock-wrapper-build
 RUN apk add --no-cache gcc musl-dev
 COPY tests/cli-runtime/wrap.c /native/wrap.c
 RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/wrap.c -o /native/wrap

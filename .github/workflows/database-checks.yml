@@ -1,0 +1,40 @@
+name: Database checks
+
+# #1552 (C-68): a pull request that changes the database's migrations, its schema or the migrator proves, before it merges, that
+#   - every released database (app/tests/app/fixtures/released-databases/<tag>.sql.gz, seeded through each release's API) upgrades to
+#     this head with a schema equal to a fresh install, object by object, and keeps its rows and their values
+#     (app/tests/app/released-databases.test.ts);
+#   - nothing in the schema is unused by the application, or it is listed with its reason (app/tests/app/schema-in-use.test.ts).
+# Only those two files run, on the Compose test stack of scripts/check_application.sh. The release's own upgrade of every earlier
+# release, from its published images, is final-release.yml's `upgrade` job (scripts/check_upgrade_matrix.sh).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/packages/db/**'
+      - 'app/tooling/migrate.ts'
+      - 'app/tests/app/released-databases.test.ts'
+      - 'app/tests/app/schema-in-use.test.ts'
+      - 'app/tests/app/fixtures/released-databases/**'
+      - 'docker/database/**'
+      - '.github/workflows/database-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database:
+    name: Upgraded database equals a fresh one
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Released databases upgraded to this head, and the schema in use
+        run: ./scripts/check_application.sh tests/app/released-databases.test.ts tests/app/schema-in-use.test.ts
