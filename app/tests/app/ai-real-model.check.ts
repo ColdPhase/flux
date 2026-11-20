@@ -8,9 +8,9 @@ import {
   AI_MODEL_LISTS_PATH, AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, agentAssistantRunsPath, agentChatMessagesPath,
   agentConnectionPath, assistantJobNotePath, assistantJobPath, assistantJobRunNowPath, assistantJobsPath, assistantRunPath, assistantRunShowPath, conversationAssistantRunsPath,
   assistantChangeActionPath, ASSISTANT_MODEL_PATH, backgroundComputeConnectionsPath, decisionDiscussionPath, dmAiOffPath, dmMessagesPath, liveMapPath, MY_AGENTS_PATH, myAgentPath,
-  projectDocsPath, taskAgentPath, taskDiscussionPath, workItemPath, workspaceDmsPath,
+  pinPath, pinsPath, projectDocsPath, taskAgentPath, taskDiscussionPath, workItemPath, workspaceDmsPath,
   type AiModelList, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantBackgroundNote, type AssistantModelChoice, type AssistantRun,
-  type DecisionDiscussion, type MyAgentList, type TaskAgentState, type WorkItem,
+  type Conversation, type DecisionDiscussion, type MyAgentList, type PinnedMessages, type PinPlace, type TaskAgentState, type WorkItem,
 } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import type { TranscriptEntry } from './support/real-model.js';
@@ -144,6 +144,17 @@ async function modelSent(engine: Engine, mark: number | string): Promise<string>
 async function modelRequests(engine: Engine, mark: number | string): Promise<number> {
   if (engine !== 'anthropic') return (await transcriptSince(mark as number)).length;
   return ((await getJson(`${PROXY_URL}/__eval/ledger?tag=${mark}`)) as { requests: number }).requests;
+}
+/**
+ * The tools the model called since a mark, by the name it called them (Claude Code, Codex and pi flatten Flux's to `mcp__flux__<tool>`): on the
+ * local model the `tool_calls` of each answer in providermock's transcript, on the Anthropic key the `calls` of the recording proxy's turns.
+ */
+async function modelCalled(engine: Engine, mark: number | string): Promise<string[]> {
+  if (engine === 'anthropic') {
+    return ((await getJson(`${PROXY_URL}/__eval/ledger?tag=${mark}`)) as { turns: { calls?: { name: string }[] }[] }).turns.flatMap((turn) => (turn.calls ?? []).map((call) => call.name));
+  }
+  return (await transcriptSince(mark as number)).flatMap((entry) => ((entry.response as { choices?: { message?: { tool_calls?: { function?: { name?: string } }[] } }[] } | null)
+    ?.choices?.[0]?.message?.tool_calls ?? []).map((call) => call.function?.name ?? ''));
 }
 
 /**
@@ -1288,6 +1299,63 @@ const scenarios: Record<string, Scenario> = {
     } finally {
       await them.browser.request('DELETE', dmAiOffPath(dm));
     }
+  },
+
+  /**
+   * pins (C-74, #1615): in a space of this attempt's own (so no other attempt's or engine's pins are on its list) people post, and the owner pins
+   * two messages through the API as a person does: the agreed delivery date and the budget, one a reply in a thread and one a message of its own.
+   * Unpinned messages look the same: an older date and an older budget. From a new thread the owner asks their agent, in Polish, what is pinned
+   * in the space. The agent reads the pins (`flux_list_pinned`, or `flux_search`, which marks pinned hits and ranks them first) and answers with
+   * the pinned facts, not the decoys'; it pins and unpins nothing (no tool does).
+   */
+  async pins(engine, attempt) {
+    const { me, them, state } = await setupFor(engine);
+    const tag = tagOf(engine, attempt);
+    const title = `Wdrożenie CRM Kowalski (${tag})`;
+    const space = await createProject(me, state.workspaceId!, title, 'workspace');
+    const place: PinPlace = { type: 'project', id: space.id };
+    const start = async (who: Person, body: string) => expectStatus(await who.browser.request('POST', `/api/v1/projects/${space.id}/conversations`,
+      { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation;
+    // The older date and budget, then what people agreed since (the reply and the message of its own): the decoys stay unpinned.
+    const date = await start(them, 'Termin oddania pierwszej wersji CRM dla Kowalskiego: 27 listopada 2026.');
+    await start(them, 'Wstępny budżet wdrożenia CRM dla Kowalskiego: 80 000 zł netto.');
+    await start(me, 'W czwartek o 10:00 spotykamy się z Kowalskim, przygotujmy demo CRM.');
+    const agreedDate = await post(me, date.id, 'Kowalski przesunął termin: oddajemy CRM 15 stycznia 2027, to jest już ustalone.');
+    const agreedBudget = (await start(them, 'Po rozmowie z księgowością budżet wdrożenia CRM jest ustalony: 96 500 zł netto.')).messages[0]!.id;
+    for (const messageId of [agreedDate.id, agreedBudget]) expectStatus(await me.browser.request('PUT', pinPath(place, messageId)), 200);
+    const pinnedIds = async () => (expectStatus(await me.browser.request('GET', pinsPath(place)), 200) as PinnedMessages).items.map((item) => item.messageId).sort();
+    const expected = [agreedDate.id, agreedBudget].sort();
+    const before = await pinnedIds();
+    const asking = (await start(me, 'Wracam do projektu CRM dla Kowalskiego i chcę sprawdzić, co już ustaliliśmy.')).id;
+    // The runner's own tag on the Anthropic key (nothing is sent to the model before this ask), so the attempt's evidence keeps the whole run.
+    const mark = await modelMark(engine, `pins-${engine}-${attempt}`);
+    const run = await askAi(me, asking, `Co mamy przypięte w przestrzeni „${title}”? Jakie są nasze ustalenia?`, engine);
+    const row = await runRow(run.id);
+    const answer = row.answer_body ?? '';
+    const called = await modelCalled(engine, mark);
+    const sent = await modelSent(engine, mark);
+    const listed = called.some((name) => name.endsWith('flux_list_pinned'));
+    // A search result tells a pinned message with `"pinned":true` (inside the request it is quoted once more, so a backslash may stand before the quote).
+    const searchedPinned = called.some((name) => name.endsWith('flux_search')) && /pinned\\*"\s*:\s*true/.test(sent);
+    // The facts, as Polish writes them: "15 stycznia 2027" or 15.01.2027; "96 500", "96500" or "96.500" (a space, a no-break space or none).
+    const agreed = { date: /(?<!\d)15\s*(?:stycznia|[./-]\s*0?1(?!\d))|2027-01-15/i, budget: /(?<!\d)96[\s\u00a0\u202f.,]?500(?!\d)/ };
+    const decoys = { date: /(?<!\d)27\s*(?:listopada|[./-]\s*0?11(?!\d))|2026-11-27/i, budget: /(?<!\d)80[\s\u00a0\u202f.,]?000(?!\d)/ };
+    const after = await pinnedIds();
+    return {
+      checks: [
+        check('the two messages are pinned in the space (the API lists exactly them)', 'outcome', JSON.stringify(before) === JSON.stringify(expected), { before, expected }),
+        check('the run completed with an answer', 'outcome', row.status === 'completed' && !!answer, { status: row.status, endReason: row.end_reason }),
+        check('it read the pins (flux_list_pinned, or flux_search that returned pinned hits)', 'outcome', listed || searchedPinned,
+          { called, listed, searchedPinned, offered: (row.run_tools ?? []).includes('flux_list_pinned') }),
+        check('the answer gives the pinned delivery date (15 January 2027)', 'outcome', agreed.date.test(answer), answer.slice(0, 500)),
+        check('the answer gives the pinned budget (96 500 zł)', 'outcome', agreed.budget.test(answer), answer.slice(0, 500)),
+        check('the answer gives neither unpinned value (the older date, the older budget)', 'outcome', !decoys.date.test(answer) && !decoys.budget.test(answer),
+          { olderDate: decoys.date.test(answer), olderBudget: decoys.budget.test(answer), answer: answer.slice(0, 500) }),
+        check('the answer is in Polish', 'outcome', isPolish(answer)),
+        check('the agent pinned and unpinned nothing', 'security', JSON.stringify(after) === JSON.stringify(expected), { after, expected }),
+      ],
+      notes: { answer, space: space.id, called, listed, searchedPinned, pinned: { date: agreedDate.id, budget: agreedBudget }, runTools: row.run_tools }, runs: [run.id],
+    };
   },
 
   /**

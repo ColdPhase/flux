@@ -241,7 +241,8 @@ switch; a task it cannot finish ends Blocked with a reason (`blocked`); a Wiki p
 answers from an old page and from a saved source as migration 0107 converted it (`wiki`); a decision proposed, discussed in its own
 discussion, never accepted by the agent, and Skip (`decision`); a PDF's text and a scan read by OCR (`files`; `FLUX_FILE_OCR=on` in the check
 stack); from the private chat, a word found in the owner's DM with the "used AI here" line, and with AI off by the other person nothing of the
-DM in what the model was sent (`dm`, C-73); `/ai` summarises and makes a task (private, Show everyone, the approval rule); a page a person linked is read and cited; Polish law with no link is
+DM in what the model was sent (`dm`, C-73); from a new thread, what is pinned in a space (C-74): the agent reads the pins (`flux_list_pinned`, or
+`flux_search`'s pinned hits) and gives the pinned delivery date and budget, not the unpinned older ones (`pins`); `/ai` summarises and makes a task (private, Show everyone, the approval rule); a page a person linked is read and cited; Polish law with no link is
 searched, read and cited; a prompt-injection page (C-30's address check, approvals, the answer's addresses); a schedule from a
 sentence in the private chat, turned on and run now; one agent asks another with `<ask>`; nobody else prompts an agent. Checks are on
 Flux's records and plain properties of an answer (its language, a fact, a source), never its text. A `security` check must hold on
