@@ -85,13 +85,13 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     return { projects };
   }));
 
-  server.registerTool('flux_list_materials', { title: 'List project sources',
-    description: 'A page of material and wiki IDs, titles and versions. No private drafts.',
+  server.registerTool('flux_list_materials', { title: 'List Wiki pages by id',
+    description: 'A page of the space\'s Wiki pages (every saved source is one): IDs, titles and versions, as citations name them. No private drafts.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, async ({ tx, principal }) =>
     ({ projectId, ...await conversationStore(tx).listSourceMaterials(principal, projectId, capped(call, query)) })));
 
-  server.registerTool('flux_read_material', { title: 'Read a project material',
-    description: 'Read source text in 20,000-character pages; continue with nextOffset and the same version.',
+  server.registerTool('flux_read_material', { title: 'Read a Wiki page by id',
+    description: 'Read a Wiki page\'s text by its id (url is the link of a page that was a saved source) in 20,000-character pages; continue with nextOffset and the same version.',
     inputSchema: z.object({ projectId: z.uuid(), materialId: z.uuid(), ...chunk }), annotations },
   ({ projectId, materialId, offset, version }, call) => result(call, projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'doc', materialId);

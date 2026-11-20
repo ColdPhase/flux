@@ -98,7 +98,7 @@ source versions it covered), so continue from there and compare those versions w
 conversation, map). Read the current plan and the accepted decisions completely, paging with nextOffset and the exact \
 version. Follow other sources only as far as the outcome you are working on needs them, using flux_search (any words, ranked, across \
 every space you may read; search before you assume something was not decided, in each language the project uses; flux_read_around reads the \
-messages around a hit, flux_read_file the text of a file it found; flux_summarize gives what was said in one place since a date) and the list and read tools of each kind: flux_list_materials and flux_read_material, flux_list_docs and flux_get_doc (the wiki), \
+messages around a hit, flux_read_file the text of a file it found; flux_summarize gives what was said in one place since a date) and the list and read tools of each kind: flux_list_docs and flux_get_doc (the wiki; flux_list_materials and flux_read_material read the same pages by id, as citations name them), \
 flux_list_work and flux_get_work, flux_list_decisions and flux_get_decision, \
 flux_list_conversations and flux_get_conversation (at most 50 messages per page; older ones with nextBeforeSequence), and \
 flux_list_maps and flux_get_map (thoughts and links in pages, continued from the returned updatedAt checkpoint). Record \

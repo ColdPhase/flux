@@ -1933,7 +1933,7 @@
     },
     {
       "name": "flux_list_materials",
-      "title": "List project sources",
+      "title": "List Wiki pages by id",
       "operation": null,
       "classes": [],
       "annotations": {
@@ -2311,7 +2311,7 @@
     },
     {
       "name": "flux_read_material",
-      "title": "Read a project material",
+      "title": "Read a Wiki page by id",
       "operation": null,
       "classes": [],
       "annotations": {

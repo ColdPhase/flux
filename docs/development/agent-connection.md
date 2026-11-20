@@ -187,14 +187,14 @@ unverified until the operator deployment is exercised.
 50 by the connection limit), with no count of inaccessible projects. Each carries
 the project's optional goal (`{ title, reachedAt }` or `null`, #520); agents read
 it and no tool changes it ([project goals](../product/project-goals.md)). Next call
-`flux_list_materials` with a selected `projectId` to discover current material and
-doc IDs, titles and versions. The picker returns at most 100 rows per page
+`flux_list_materials` with a selected `projectId` to discover the space's Wiki page
+IDs, titles and versions (every saved source is a Wiki page since #1508, C-71). The picker returns at most 100 rows per page
 (`limit` 1–100, default 50; `offset` 0–10000), ordered by latest update, and
 never includes bodies or private draft provenance. Its count covers only that
 selected, currently readable project; a missing selection or lost grant yields
 an error without a title, ID or count from the inaccessible project. Then
 `flux_read_material` returns
-one selected project's currently readable material and its exact revision. A
+one selected project's currently readable Wiki page by id and its exact revision. A
 private draft is never pulled in through a material's provenance.
 
 `flux_create_proposal` accepts a project material ID, expected current revision,

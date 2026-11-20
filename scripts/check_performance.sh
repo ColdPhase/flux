@@ -98,8 +98,8 @@ while [ "$stable" -lt 3 ]; do
 done
 psql -c "SELECT 'messages', count(*) FROM project_messages UNION ALL SELECT 'conversations', count(*) FROM project_conversations
   UNION ALL SELECT 'tasks', count(*) FROM project_work_items UNION ALL SELECT 'thoughts', count(*) FROM sketch_thoughts
-  UNION ALL SELECT 'docs', count(*) FROM project_materials WHERE kind = 'doc'
-  UNION ALL SELECT 'doc versions', count(*) FROM project_material_versions v JOIN project_materials m ON m.id = v.material_id WHERE m.kind = 'doc'
+  UNION ALL SELECT 'docs', count(*) FROM project_materials
+  UNION ALL SELECT 'doc versions', count(*) FROM project_material_versions
   UNION ALL SELECT 'notifications ' || u.name, count(*) FROM notifications n JOIN auth_users u ON u.id = n.user_id GROUP BY u.name
   UNION ALL SELECT 'events', count(*) FROM events UNION ALL SELECT 'event audience rows', count(*) FROM event_audience
   UNION ALL SELECT 'search documents', count(*) FROM search_documents" | tee "$out/volume.txt"
