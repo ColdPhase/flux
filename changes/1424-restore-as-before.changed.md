@@ -1,1 +1,0 @@
-- Restoring a removed person brings them back as they were: the role they had (an Admin returns as Admin, and only an owner gives back the owner role), each space they were in that still exists with their role there, their direct messages and what they had put off for later or marked done in the Inbox ([#1424](https://github.com/ColdPhase/flux/issues/1424) decision F).
