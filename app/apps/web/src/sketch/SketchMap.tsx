@@ -956,6 +956,7 @@ export function SketchMap(props: SketchMapProps) {
     if (d.kind === 'link') {
       const end = d.wire;
       setWire(null);
+      setHover(null);
       if (!end || !arrange) return;
       if (end.over) props.onConnect(d.id!, end.over);
       else if (!hitsDot(event, d.id!)) props.onAddAt(d.id!, end.x, bounded(end.y - Math.round(DEFAULT_THOUGHT_SIZE.height / 2)));
@@ -1032,7 +1033,12 @@ export function SketchMap(props: SketchMapProps) {
       doubleClick: (id) => { if (canWrite && !connectFrom) props.onEdit(id); },
       openTask: (id) => props.onOpenTask(id), pointerEnter: (event, id) => { if (event.pointerType === 'mouse') setHover(id); },
       // Moving between a thought and its own dots keeps it hovered, so its dots stay in place under the pointer.
-      pointerLeave: (event, id) => { if (!ownPart(event.relatedTarget, id)) setHover((current) => current === id ? null : current); },
+      // A connection being drawn from this thought's dot keeps it hovered until the release: WebKit reports the pointer leaving the thought
+      // while the dot holds the capture, and the dot it would unmount carries the rest of the drag (a drop on empty space then did nothing).
+      pointerLeave: (event, id) => {
+        if (drag.current?.kind === 'link' && drag.current.id === id) return;
+        if (!ownPart(event.relatedTarget, id)) setHover((current) => current === id ? null : current);
+      },
       dotPointerDown: (event, id) => onDotPointerDown(event, id),
       dotClick: (id) => { if (!suppressClick.current) props.onConnectFrom(id); },
       // The status after Enter on a dot says "Esc cancels": the dot keeps the focus then, so it hears Escape as a thought does.
