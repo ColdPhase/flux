@@ -8,7 +8,12 @@ ARG CODEX_TAG=rust-v0.160.1
 # live-editing-calibration.Dockerfile (docs/agents/ci-and-releases.md#security-scanning). Time-zone data (#1338): Node's own is 2026e and
 # PostgreSQL's 2026f (Cuba keeps -04 until 2027-11-07). Re-checked 2026-11-20: 24.22.3 is still 2026e (`node -p process.versions.tz`), and
 # nodejs.org lists no newer 24.x. When a Node 24 has 2026f or later, bump the pin below.
-FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS runtime-hardening-build
+# Flux's own native code, each built from its one C file in /native, never beneath a directory of the build context: on a host with
+# SELinux (Fedora, RHEL), `COPY . .` carries the checkout's labels into the image (a checkout in a home directory: user_home_t), a file
+# made in such a directory takes that label, and a container may read and map it but not mprotect it: musl's loader then cannot make the
+# addon's relocations read-only ("RELRO protection failed") and the addon does not load. BuildKit's cache ignores labels, so one build from
+# such a checkout also hands that label to every later build of the same code, from any checkout.
+FROM node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS native
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
@@ -16,6 +21,12 @@ RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /n
 COPY apps/runtime/native/sandbox.c /native/sandbox.c
 # Static (#1437): the CLI's domain may execute only its own program and this one, so this one needs no loader.
 RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/sandbox.c -o /native/flux-sandbox
+# The kernel half of the sandbox that reads the text of files for search (C-63, #1382): the worker's child process loads it first, and a
+# worker without it reads no file. The build stage puts it in the workspace (the tests load it there) and the application image copies it.
+# Its seccomp and Landlock definitions come from the kernel's headers.
+RUN apk add --no-cache linux-headers
+COPY apps/worker/native/sandbox.c /native/worker/sandbox.c
+RUN cc -std=gnu11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/worker/sandbox.c -o /native/worker/sandbox.node
 
 # pi (#1441, RT-1): the engine of every API-key agent in the runtime. MIT (earendil-works/pi); its dependencies are MIT, Apache-2.0, BSD,
 # ISC, BlueOak-1.0.0, 0BSD and Unlicense (checked 2026-11-13). Pinned by apps/runtime/pi/package-lock.json, whose sha512 integrity of every
@@ -47,9 +58,8 @@ FROM toolchain AS build
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile
-# The kernel half of the sandbox that reads the text of files for search (C-63, #1382): the worker's child process loads it first. This stage has the
-# compiler; the application image copies the addon, and a worker without it reads no file.
-RUN cc -std=gnu11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node apps/worker/native/sandbox.c -o apps/worker/native/sandbox.node
+# The file reader's sandbox, built in `native` (never here, beneath the build context: see there). COPY keeps its label.
+COPY --from=native /native/worker/sandbox.node apps/worker/native/sandbox.node
 RUN pnpm build
 
 # The type check and the lint run here, not in `build` (#1471): `test` is built on this stage, so the application check
@@ -84,10 +94,11 @@ COPY . .
 RUN pnpm install --prod --offline --frozen-lockfile --filter '!@flux/web' --filter '!@flux/sdk' --filter '!@flux/example-external-agent'
 # The slot image needs node-pty's JavaScript, its licence and the addon built above, not its 60 MB of
 # Windows and macOS prebuilds and sources: the link becomes a directory with exactly those files, and
-# the store copy is dropped, so the application image does not carry it either.
-RUN set -eu; d=apps/runtime/node_modules/node-pty; t=$(readlink -f "$d"); rm "$d"; mkdir -p "$d/build/Release"; \
-  cp "$t/package.json" "$t/LICENSE" "$d/"; cp -R "$t/lib" "$d/"; cp "$t/build/Release/pty.node" "$d/build/Release/"; \
-  find "$d/lib" \( -name '*.test.js' -o -name '*.map' \) -delete; rm -rf "$t"; \
+# the store copy is dropped, so the application image does not carry it either. The directory is made in /node-pty and moved
+# into place whole: a file made beneath apps/ would take the build context's SELinux label, and the addon would not load (see `native`).
+RUN set -eu; d=apps/runtime/node_modules/node-pty; t=$(readlink -f "$d"); n=/node-pty; mkdir -p "$n/build/Release"; \
+  cp "$t/package.json" "$t/LICENSE" "$n/"; cp -R "$t/lib" "$n/"; cp "$t/build/Release/pty.node" "$n/build/Release/"; \
+  find "$n/lib" \( -name '*.test.js' -o -name '*.map' \) -delete; rm -rf "$t"; rm "$d"; mv "$n" "$d"; \
   node -e "require('/app/$d')"
 # Nothing the server loads: better-auth's optional peers (drizzle-kit and its esbuild for its CLI, React's DOM renderer for
 # its email templates; Flux uses neither), type declarations, source maps and Markdown. Licence files stay.
@@ -137,8 +148,8 @@ COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime
 COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protocol/dist
 COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
 COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
-COPY --from=runtime-hardening-build /native/protect.node ./apps/runtime/native/protect.node
-COPY --from=runtime-hardening-build /native/flux-sandbox ./sandbox/flux-sandbox
+COPY --from=native /native/protect.node ./apps/runtime/native/protect.node
+COPY --from=native /native/flux-sandbox ./sandbox/flux-sandbox
 COPY --from=pi /opt/flux-runtime/pi ./pi
 COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
