@@ -87,7 +87,7 @@ export function aiEndpointPolicyFromEnv(env: NodeJS.ProcessEnv): AiEndpointPolic
  * (scripts/check_ai_real_model.sh) run the production composition, with the owner's real key saved through Connect AI, and point the
  * Anthropic adapter at a recording proxy in the same Compose project that passes every request on to the real API unchanged
  * (app/tests/app/support/eval-proxy.ts): the worker's model gateway and the API's `flux_web_search` alike, so the proxy's record and cap
- * see every request the key pays for. Accepted only with `FLUX_TEST_FAILURE_INJECTION=true` and as
+ * see every request of a run (not the key's model listing and tool check). Accepted only with `FLUX_TEST_FAILURE_INJECTION=true` and as
  * a plain `http://host:port` origin; the operator's FLUX_AI_PRIVATE_TARGETS must name its host for the endpoint policy to reach it.
  */
 export function anthropicProxyOf(env: NodeJS.ProcessEnv): string | null {

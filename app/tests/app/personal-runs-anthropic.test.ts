@@ -9,6 +9,7 @@ import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/ag
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
 import { anthropicProxyOf } from '../../packages/agent-runtime/src/index.js';
 import { personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
+import { keyWebSearcher } from '../../apps/server/src/agent-connection/web-search.js';
 import { createDatabase } from '@flux/db';
 import { FAKE_PRICE } from './support/personal-runs.js';
 
@@ -226,6 +227,11 @@ describe('personal-run composition: production is off until the operator switche
     assert.throws(() => anthropicProxyOf({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099' }), /test only/);
     assert.throws(() => anthropicProxyOf({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'https://evil.example/x', FLUX_TEST_FAILURE_INJECTION: 'true' }), /http origin/);
     assert.throws(() => personalRunWorkerComposition({ FLUX_PERSONAL_RUNS: 'on', FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099' }, db), /test only/);
+    // The API's key web search reads the same hook: without it the production searcher is built as before, and it refuses it outside tests.
+    const masterKey = Buffer.alloc(32, 7);
+    assert.ok(keyWebSearcher({}, db, masterKey, true));
+    assert.throws(() => keyWebSearcher({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099' }, db, masterKey, true), /test only/);
+    assert.ok(keyWebSearcher({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099', FLUX_TEST_FAILURE_INJECTION: 'true' }, db, masterKey, true));
   });
 });
 

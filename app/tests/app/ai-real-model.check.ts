@@ -1233,11 +1233,12 @@ const scenarios: Record<string, Scenario> = {
       check('on: the DM shows "used AI here" once for the run, by the owner', 'outcome', lines.length === 1 && lines[0]!.author_id === myId, lines),
       check('on: the answer is in Polish', 'outcome', isPolish(foundRow.answer_body ?? '')),
     ];
+    // Every request the model is sent from the switch on is inspected (the mark comes first).
+    const mark = await modelMark(engine, `dm-${engine}-${attempt}-ai-off`);
     expectStatus(await them.browser.request('PUT', dmAiOffPath(dm)), 200);
     try {
       expectStatus(await them.browser.request('POST', dmMessagesPath(dm), { body: { body: `Kod do sejfu w biurze Kowalskiego: ${safe}. Nikomu go nie podawaj.`,
         clientMessageId: randomUUID() } }), 201);
-      const mark = await modelMark(engine, `dm-${engine}-${attempt}-ai-off`);
       const off = await askChat(me, myAgentId, `${first} przysłał mi w wiadomości prywatnej kod do sejfu w biurze Kowalskiego. Znajdź go.`);
       const offRow = await runRow(off.id);
       const sent = await modelSent(engine, mark);

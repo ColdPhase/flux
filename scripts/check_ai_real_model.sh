@@ -11,9 +11,9 @@
 # recorded. Production personal runs (FLUX_PERSONAL_RUNS=on, `pi` in FLUX_AGENT_RUNTIME), the production runtime image's pi.
 #
 # The fourth engine, `anthropic` (opt-in: FLUX_AI_ENGINES=anthropic): Ewa saves a REAL Anthropic API key in Connect AI and her agent runs in
-# pi through Flux's model gateway to the real API. Every request the key pays for (pi's, and the API's flux_web_search) goes through the
+# pi through Flux's model gateway to the real API. Every request of a run (pi's, and the API's flux_web_search) goes through the
 # evaluation's recording proxy (support/eval-proxy.ts, docker/compose.ai-real-model-anthropic.test.yaml), which keeps each request body under
-# the evidence directory and stops at the run's money cap. The key: FLUX_AI_ANTHROPIC_KEY_FILE (default ~/.config/flux-eval/anthropic.key,
+# the evidence directory and stops at the run's money cap (the key's model listing and one-request tool check go straight to Anthropic). The key: FLUX_AI_ANTHROPIC_KEY_FILE (default ~/.config/flux-eval/anthropic.key,
 # mode 600), piped into the one runner command that saves it (standard input: never an argument or an environment variable), sealed by Flux
 # like any saved key; never printed, logged or written, and an evidence file that holds it is removed. FLUX_AI_ANTHROPIC_MODEL
 # (claude-haiku-5-5), FLUX_AI_ANTHROPIC_MAX_USD (this run's cap, default 5), FLUX_AI_ANTHROPIC_LEDGER (each run's spend, default

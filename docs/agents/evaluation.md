@@ -217,10 +217,11 @@ hands them to the same local model unchanged and only records them. The run uses
 
 The fourth engine, **anthropic**, is opt-in (`FLUX_AI_ENGINES=anthropic`; founder direction, Hubert, 2026-11-20: the same check on an
 Anthropic key through pi): Ewa and Filip save a REAL Anthropic API key in Connect AI and their agents run in pi through the model gateway to
-the real API. Every request the key pays for (pi's, and the API's `flux_web_search`) goes through the evaluation's recording proxy
+the real API. Every request of a run (pi's, and the API's `flux_web_search`) goes through the evaluation's recording proxy
 (`support/eval-proxy.ts`, `docker/compose.ai-real-model-anthropic.test.yaml`), which keeps each request body (never a header) as the
 provider's own record of what the model was sent and stops at the run's cap (`FLUX_AI_ANTHROPIC_MAX_USD`, default 5; the spend of each run
-goes to `FLUX_AI_ANTHROPIC_LEDGER`). The key is read only from `FLUX_AI_ANTHROPIC_KEY_FILE` (default `~/.config/flux-eval/anthropic.key`,
+goes to `FLUX_AI_ANTHROPIC_LEDGER`); only the key's model listing and its one-request tool check, when it is saved and an agent is put on
+its model, go straight to Anthropic, outside the record and the cap. The key is read only from `FLUX_AI_ANTHROPIC_KEY_FILE` (default `~/.config/flux-eval/anthropic.key`,
 mode 600) and piped into the one runner step that saves it, on its standard input: never an argument or an environment variable; an
 evidence file that holds it is removed. The model is `FLUX_AI_ANTHROPIC_MODEL` (default `claude-haiku-5-5`). On this engine `search` uses
 the provider's real search and checks what Flux recorded and listed, `vision` shows a real vision model a red disc, and `picture` (whose
