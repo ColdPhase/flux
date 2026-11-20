@@ -335,7 +335,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
   is waiting for something (AG-6, [C-52](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The agent
   sets it Blocked itself, with a blocker that says what it waits for, before it replies; its brief tells it so and never to mark the task
-  Done or change its owner ([#1612](https://github.com/ColdPhase/flux/issues/1612)). This is the whole
+  Done or change its owner ([#1612](https://github.com/ColdPhase/flux/issues/1612)). It names no person to wait for: that tells the person,
+  so the change waits for its owner's OK and the task is not Blocked when the run ends. This is the whole
   review step: the owner checks the task; a separate reviewer is optional, for example a subtask
   for a Reviewer agent ([coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.

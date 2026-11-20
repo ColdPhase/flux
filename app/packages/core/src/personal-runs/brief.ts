@@ -172,10 +172,12 @@ const cite = (input: BriefInput): string[] => (input.place.kind !== 'dm' && inpu
 
 /**
  * How an agent's task ends Blocked (AG-5, AG-6, C-52): the agent sets it Blocked in its run, since Flux marks a task Done (or hands it back) when
- * a run ends with it in any other state. Without this line a model that cannot go on reports so and gets its task marked Done (#1612).
+ * a run ends with it in any other state. Without this line a model that cannot go on reports so and gets its task marked Done (#1612). A person
+ * to wait for is told, so that change waits for the owner's OK (#1089) and the run ends with the task not Blocked: the blocker's words say who.
  */
 export const BLOCKED_LINE = 'If the task cannot go on until something outside your reach happens (a person, a decision or another task), set it Blocked with '
-  + 'flux_update_task, with a blocker that says what it waits for, before you reply: it then stays Blocked with you instead of being marked Done.';
+  + 'flux_update_task, with a blocker that says what it waits for, before you reply: it then stays Blocked with you instead of being marked Done. '
+  + 'Leave waitingFor empty: naming a person tells them, so that change waits for your owner\'s OK and the task is not Blocked when you reply.';
 
 /** How to write the answer: language, length, formatting, links, citations, general knowledge and "not in the conversation". */
 function answerRules(input: Placed): string[] {
