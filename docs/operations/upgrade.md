@@ -165,6 +165,17 @@ fail on the ports its own proxy holds. Set `FLUX_TRUSTED_PROXIES` to that proxy'
 ([how](reverse-proxy.md#your-own-proxy-instead)), as the installation guide already asked, before you upgrade; or stop your own
 proxy and let Flux's take over. The new `FLUX_CALLS` is `off` unless you set it ([calls](calls.md)).
 
+## v0.2.2: the migrations
+
+From v0.2.1 (schema 95) to v0.2.2 (schema 110) nine migrations run, `0100` to `0110` (`0096`–`0099`, `0102` and `0108` were never used).
+Nothing to do by hand. What they move: saved sources become Wiki pages with their versions, events and search rows (`0107`); the files
+already in direct messages get their name as a search row (`0109`); PDFs read without text (`0103`) and the readable files of direct
+messages (`0109`) are queued for the worker, which reads them in the background one at a time; with embeddings on, the rows of spaces
+whose AI is off are queued for embedding (`0110`). An encrypted space's files are never queued and its rows keep their sealed text.
+Measured on Flux's database image (2026-11-20) with the v0.2.1 test installation grown to 200,000 space messages, 50,000 space files,
+5,000 direct conversations with 200,000 messages and 20,000 files, 10,000 saved sources, 1 million events and 500,000 notifications:
+the nine took 15 s together, of which `0107` 8 s, `0109` 3.5 s and `0110` 3 s; each of the others under 0.3 s.
+
 ## From v0.1: install v0.2 fresh
 
 v0.1 had no users, so v0.2 converts no data and keeps no compatibility with it (founder direction, 2026-11-09, #1176). A

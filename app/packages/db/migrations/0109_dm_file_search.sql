@@ -32,8 +32,9 @@ CREATE TRIGGER search_index_dm_file AFTER UPDATE OF published_at ON public.proje
 
 -- The direct message files that are already there (v0.2.1's) and have no name row: the name rows now, the text by the worker as it gets to them.
 -- One statement, the row `search_put` writes for a file of a plain workspace (not sealed: no placeholder): the BM25 index writes a segment for
--- each statement (0093), so a `search_put` per file would add one segment per file to it within this transaction, about 100 kB each on disk
--- (measured on Flux's image, 2026-11-20: 2,000 files grew the index by 207 MB, which stayed after the merge).
+-- each statement (0093), so a `search_put` per file would add one segment per file within this transaction, 100 to 190 kB each on disk
+-- (measured on Flux's image, 2026-11-20: 20,000 files grew the index from 56 MB to 3.7 GB, which stayed after the merge, and took 27 s; as one
+-- statement, 3.5 s and no growth).
 INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, parent_id, version, status, title, body,
     author_kind, author_id, at, sealed)
 SELECT 'file:' || f.id || ':0', 'file', f.workspace_id, 'dm:' || f.dm_id, NULL, f.id::text, f.dm_id, 0, NULL, f.name, '', 'human', f.uploader_id,
