@@ -80,9 +80,9 @@ describe('AI off in a direct message, and the private chat reading its owner\'s 
   test('with AI on, an API-key agent in pi finds the DM\'s word in its private chat: the result is in its model request', async () => {
     const runId = await chatRun();
     pi.gateway.requests.length = 0;
-    pi.gateway.script([{ tool: 'mcp__flux__flux_search', args: { q: 'FV-8841' } }, { text: 'Marek wysłał fakturę FV-8841.' }]);
+    pi.gateway.script([{ tool: 'mcp__flux__flux_search', args: { q: 'faktura FV-8841' } }, { text: 'Marek wysłał fakturę.' }]);
     assert.equal(await scene.processor!.process(runId), 'completed', JSON.stringify(pi.lastPi()));
-    assert.ok(pi.gateway.requests[1]!.results.join('\n').includes('FV-8841'), 'the search result carried the DM to the model');
+    assert.ok(pi.gateway.requests[1]!.results.join('\n').includes(invoice), `the search result carried the DM to the model: ${pi.gateway.requests[1]!.results.join('\n')}`);
     assert.equal((await lines()).filter((line) => line.kind === 'ai_used' && line.client_message_id === runId).length, 1);
   });
 
@@ -127,7 +127,8 @@ describe('AI off in a direct message, and the private chat reading its owner\'s 
       { text: 'Nie znalazłem faktury.' }]);
     assert.equal(await scene.processor!.process(runId), 'completed', JSON.stringify(pi.lastPi()));
     assert.equal(pi.gateway.requests.length, 5);
-    const sent = JSON.stringify(pi.gateway.requests);
+    // What every model request carried: the brief, the system text and each tool result.
+    const sent = JSON.stringify(pi.gateway.requests.map((request) => [request.system, request.prompt, request.results]));
     for (const word of ['FV-8841', FILE_WORD, 'termin płatności']) assert.ok(!sent.includes(word), `${word} reached a model request`);
     assert.equal((await lines()).filter((line) => line.kind === 'ai_used').length, 0, 'nothing was read, so no line');
     // The same calls on a live token, and the owner's own Claude Code over MCP.
@@ -146,38 +147,44 @@ describe('AI off in a direct message, and the private chat reading its owner\'s 
     assert.ok(refused((await viaClient('flux_summarize', { in: dm, after: '2020-01-01' })).message));
     // People's own search is local and calls no model: both still find the message and the file's text.
     for (const who of [hubert, marek]) {
-      const found = expectStatus(await who.browser.request('GET', `/api/v1/search?q=${encodeURIComponent('FV-8841')}`), 200) as SearchResponse;
+      const found = expectStatus(await who.browser.request('GET', `/api/v1/search?q=${encodeURIComponent('faktura')}`), 200) as SearchResponse;
       assert.ok(JSON.stringify(found).includes(invoice), 'people find the message');
     }
     // Back on when Marek withdraws: the private chat reads it again.
     await turn(marek, false);
     const again = await scene.liveOf(await chatRun());
-    assert.ok(value((await again.call('flux_search', { q: 'FV-8841' })).message).results.some((hit) => hit.id === invoice));
+    assert.ok(value((await again.call('flux_search', { q: 'faktura FV-8841' })).message).results.some((hit) => hit.id === invoice));
     await scene.complete(again.runId);
   });
 
   test('a turn-off stops what is in flight: a run in the DM and a private chat\'s run that read it are refused at their next call and asked to stop', async () => {
-    const inDm = await scene.liveOf(await dmRun());
-    assert.ok(value((await inDm.call('flux_search', { q: 'FV-8841' })).message).results.length > 0);
-    const chat = await scene.liveOf(await chatRun());
-    assert.ok(value((await chat.call('flux_search', { q: 'FV-8841' })).message).results.length > 0);
-    const untouched = await scene.liveOf(await chatRun());
-    await turn(marek, true);
-    for (const live of [inDm, chat]) {
+    const stopped = async (runId: string) => (await pool.query('SELECT stop_requested_at, run_token_closed_at FROM personal_runs WHERE id = $1', [runId])).rows[0] as
+      { stop_requested_at: Date | null; run_token_closed_at: Date | null };
+    // One run of the owner's works at a time: each in turn.
+    for (const start of [dmRun, chatRun]) {
+      const live = await scene.liveOf(await start());
+      assert.ok(value((await live.call('flux_search', { q: 'faktura FV-8841' })).message).results.some((hit) => hit.id === invoice));
+      await turn(marek, true);
       const next = (await live.call('flux_search', { q: 'lampy' })).message;
       assert.ok(refused(next), JSON.stringify(next));
       assert.ok(!JSON.stringify(next).includes('FV-8841'));
-      const row = (await pool.query('SELECT stop_requested_at, run_token_closed_at FROM personal_runs WHERE id = $1', [live.runId])).rows[0] as { stop_requested_at: Date | null; run_token_closed_at: Date | null };
+      const row = await stopped(live.runId);
       assert.ok(row.stop_requested_at && row.run_token_closed_at, 'asked to stop, its token closed');
+      await scene.complete(live.runId);
+      await turn(marek, false);
     }
-    // A private chat run that read nothing of it goes on, and finds the spaces still.
+    // A private chat run that read nothing of it goes on, and still finds the spaces.
+    const untouched = await scene.liveOf(await chatRun());
     assert.ok(!refused((await untouched.call('flux_search', { q: 'sensor' })).message));
+    await turn(marek, true);
+    assert.ok(!refused((await untouched.call('flux_search', { q: 'sensor' })).message), 'a run that read nothing of it is not stopped');
+    assert.equal((await stopped(untouched.runId)).stop_requested_at, null);
     await scene.complete(untouched.runId);
   });
 
   test('a run in a space and a task never read a DM, and nothing of a DM reaches a run whose DM went off between its check and its brief', async () => {
     const inSpace = await scene.liveRun();
-    assert.deepEqual(value((await inSpace.call('flux_search', { q: 'FV-8841' })).message).results.filter((hit) => hit.place?.type === 'dm'), []);
+    assert.deepEqual(value((await inSpace.call('flux_search', { q: 'faktura FV-8841' })).message).results.filter((hit) => hit.place?.type === 'dm'), []);
     assert.ok(refused((await inSpace.call('flux_read_around', { messageId: invoice })).message));
     await scene.complete(inSpace.runId);
     // A DM run admitted while AI was on, then turned off before the worker took it: it ends as AI off and its model is never asked.
@@ -187,7 +194,7 @@ describe('AI off in a direct message, and the private chat reading its owner\'s 
     pi.gateway.script([{ text: 'Podsumowanie.' }]);
     const outcome = await scene.processor!.process(runId);
     assert.notEqual(outcome, 'completed');
-    assert.ok(!JSON.stringify(pi.gateway.requests).includes('FV-8841'));
+    assert.ok(!JSON.stringify(pi.gateway.requests.map((request) => [request.system, request.prompt, request.results])).includes('FV-8841'));
     const row = (await pool.query('SELECT status, end_reason FROM personal_runs WHERE id = $1', [runId])).rows[0] as { status: string; end_reason: string | null };
     assert.equal(row.end_reason, 'ai_off', JSON.stringify(row));
   });

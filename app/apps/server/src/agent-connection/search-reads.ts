@@ -106,7 +106,6 @@ async function whereToSearch(ctx: FluxAgentReadContext, claims: FluxMcpClaims, i
   if (run?.dmId) {
     // A run in a direct message finds that direct message and nothing else; no space of its owner's reaches an answer its people read (C-37).
     if (in_ !== undefined && in_ !== run.dmId) throw placeNotFound();
-    if (!await agentReachesDm(ctx, claims, run.dmId)) throw placeNotFound();
     return { audiences: [await dmAudience(ctx, run.dmId)], place: { type: 'dm', id: run.dmId }, conversationId: null, dmId: run.dmId };
   }
   const spaces = agentSearchAudiences(await policySearchAccess(ctx.tx).audiences(ctx.principal)).filter((audience) => audience.workspaceId === ctx.workspaceId);

@@ -12,7 +12,7 @@
 --    vectors: the switch's trigger goes, and while embeddings are on the rows of spaces whose AI is off are queued (the worker embeds the queue
 --    in its usual batches).
 --
--- v0.2.1 data: the table is new and empty, so no conversation is off after the upgrade; the kind check only widens; the vector change
+-- v0.2.1 data: the table is new and empty, so no conversation is off after the upgrade; the kind and body checks only widen; the vector change
 -- writes nothing on an installation that never turned embeddings on (no `search_vector_state` row).
 
 CREATE TABLE public.dm_ai_off (
@@ -24,8 +24,11 @@ CREATE TABLE public.dm_ai_off (
     CONSTRAINT dm_ai_off_participant_fkey FOREIGN KEY (dm_id, user_id) REFERENCES public.dm_participants(dm_id, user_id) ON DELETE CASCADE
 );
 
-ALTER TABLE public.dm_messages DROP CONSTRAINT dm_messages_kind_check;
-ALTER TABLE public.dm_messages ADD CONSTRAINT dm_messages_kind_check CHECK (kind = ANY (ARRAY['text', 'ai_used', 'ai_off', 'ai_on']));
+-- A change's line names who still keeps AI off in its body, which is empty once AI is on again.
+ALTER TABLE public.dm_messages DROP CONSTRAINT dm_messages_kind_check, DROP CONSTRAINT dm_messages_body_check;
+ALTER TABLE public.dm_messages ADD CONSTRAINT dm_messages_kind_check CHECK (kind = ANY (ARRAY['text', 'ai_used', 'ai_off', 'ai_on'])),
+  ADD CONSTRAINT dm_messages_body_check CHECK (
+    public.flux_is_sealed(body) OR (length(btrim(body)) <= 100000 AND (length(btrim(body)) >= 1 OR attachment_count > 0 OR kind IN ('ai_off', 'ai_on'))));
 
 CREATE OR REPLACE FUNCTION public.search_vector_eligible(p_kind text, p_sealed boolean, p_title text, p_body text, p_project uuid) RETURNS boolean
     LANGUAGE sql STABLE
