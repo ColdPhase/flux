@@ -3,7 +3,7 @@ export { openAiCompatiblePersonalCompute, type OpenAiCompatiblePersonalComputeOp
 export { openAiResponsesPersonalCompute, type OpenAiResponsesPersonalComputeOptions } from './responses.js';
 export { providerPersonalCompute, wireOf, type ProviderRegistryOptions } from './registry.js';
 export { chatBaseUrl, chatCompletion, chatFailureOf, MalformedResponseError, ProviderHttpError } from './chat-completions.js';
-export { aiEndpointPolicyFromEnv, checkEndpoint, classifyAddress, EndpointRefusedError, guardedLookup, literalRefusal, parsePrivateTargets,
+export { aiEndpointPolicyFromEnv, anthropicProxyOf, checkEndpoint, classifyAddress, EndpointRefusedError, guardedLookup, literalRefusal, parsePrivateTargets,
   PRIVATE_TARGETS_ENV, PUBLIC_ONLY, systemResolver, type AiEndpointPolicy, type Resolver } from './endpoint-policy.js';
 export { DEFAULT_TRANSPORT_LIMITS, endpointRefusal, guardedFetch, ResponseTooLargeError, type GuardedFetch, type TransportLimits } from './guarded-fetch.js';
 export { endpointPolicyPort, KEY_LISTED_PROVIDERS, keyListingOptions, listKeyModels, listProviderModels, listsWithKey, MODEL_LIST_MAX_BYTES, OPENROUTER_LIST_MAX_BYTES, type ModelListOptions } from './model-list.js';

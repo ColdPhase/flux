@@ -25,6 +25,7 @@ OVERLAY_BASES = {
     "compose.encryption.test.yaml": "compose.source.yaml",
     "compose.ai-real-model.test.yaml": "compose.source.yaml",
     "compose.ai-eval.test.yaml": "compose.source.yaml",
+    "compose.ai-real-model-anthropic.test.yaml": "compose.source.yaml",
 }
 
 

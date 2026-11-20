@@ -215,10 +215,33 @@ hands them to the same local model unchanged and only records them. The run uses
 `pi` in `FLUX_AGENT_RUNTIME`). Such an endpoint has no web search and is not known to see pictures (CA-6, AG-8): on pi, `search` and
 `vision` check that the agent says so instead of inventing results or sources, and `picture` (found by a search) is not run.
 
-The scenarios run on each engine, Claude Code as Ada, Codex as Bogdan and pi as Celina, on a seeded space with Polish threads
-(`app/tests/app/ai-real-model.check.ts`): thoughts and links added to a space map that people have open, with Ask me first off (at
-once, Undo) and on (each waits, Approve) (#1555); `/ai` summarises and makes a task (private, Show everyone, the approval rule); a task given
-to the agent ends Done or handed back by its Ask me first switch; a page a person linked is read and cited; Polish law with no link is
+The fourth engine, **anthropic**, is opt-in (`FLUX_AI_ENGINES=anthropic`; founder direction, Hubert, 2026-11-20: the same check on an
+Anthropic key through pi): Ewa and Filip save a REAL Anthropic API key in Connect AI and their agents run in pi through the model gateway to
+the real API. Every request of a run (pi's, and the API's `flux_web_search`) goes through the evaluation's recording proxy
+(`support/eval-proxy.ts`, `docker/compose.ai-real-model-anthropic.test.yaml`), which keeps each request body (never a header) as the
+provider's own record of what the model was sent and stops at the run's cap (`FLUX_AI_ANTHROPIC_MAX_USD`, default 5; the spend of each run
+goes to `FLUX_AI_ANTHROPIC_LEDGER`); only the key's model listing and its one-request tool check, when it is saved and an agent is put on
+its model, go straight to Anthropic, outside the record and the cap. The key is read only from `FLUX_AI_ANTHROPIC_KEY_FILE` (default `~/.config/flux-eval/anthropic.key`,
+mode 600) and piped into the one runner step that saves it, on its standard input: never an argument or an environment variable; an
+evidence file that holds it is removed. The model is `FLUX_AI_ANTHROPIC_MODEL` (default `claude-haiku-5-5`). On this engine `search` uses
+the provider's real search and checks what Flux recorded and listed, `vision` shows a real vision model a red disc, and `picture` (whose
+checks are on the closed world's pages) is not run. With only this engine no local model is used. `FLUX_AI_DRY_RUN=1` runs the same stack
+and steps with a made-up key, the proxy pointed at providermock's Anthropic mock and the key's listing and tool check at its `/lists`: nothing
+reaches Anthropic, and it passes when every scenario runs to its end (the mock calls no tool, so outcomes are not a model's).
+
+The scenarios (`FLUX_AI_SCENARIOS` picks them) run on each engine, Claude Code as Ada, Codex as Bogdan, pi as Celina and the Anthropic key
+as Ewa, on a seeded space with Polish threads (`app/tests/app/ai-real-model.check.ts`), with Ask me first off and on wherever it applies
+(founder direction, Hubert, 2026-11-20: "mocny test … sprawdzenie wszystkiego"): thoughts and links added to a space map that people have
+open, with Ask me first off (at once, Undo) and on (each waits, Approve) (#1555); on a map people have open, a thought renamed (Undo puts it
+back), one moved, the map renamed (the map setting an agent's tools change), a thought removed (it waits for Delete in both modes) and a task
+made from a thought, and with Ask me first on nothing changes before Approve (`mapedit`); a task made from a conversation with its title, owner
+and due day (Undo; one for the other person waits and Approve makes it theirs), and a due day moved on request while who the task is for stays
+(AG-8: no agent tool changes it) (`tasks`); a task given to the agent goes Doing to Done with a report, or is handed back, by its Ask me first
+switch; a task it cannot finish ends Blocked with a reason (`blocked`); a Wiki page started and its next version saved (Undo, Approve), and
+answers from an old page and from a saved source as migration 0107 converted it (`wiki`); a decision proposed, discussed in its own
+discussion, never accepted by the agent, and Skip (`decision`); a PDF's text and a scan read by OCR (`files`; `FLUX_FILE_OCR=on` in the check
+stack); from the private chat, a word found in the owner's DM with the "used AI here" line, and with AI off by the other person nothing of the
+DM in what the model was sent (`dm`, C-73); `/ai` summarises and makes a task (private, Show everyone, the approval rule); a page a person linked is read and cited; Polish law with no link is
 searched, read and cited; a prompt-injection page (C-30's address check, approvals, the answer's addresses); a schedule from a
 sentence in the private chat, turned on and run now; one agent asks another with `<ask>`; nobody else prompts an agent. Checks are on
 Flux's records and plain properties of an answer (its language, a fact, a source), never its text. A `security` check must hold on

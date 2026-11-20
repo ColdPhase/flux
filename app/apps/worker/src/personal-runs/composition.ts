@@ -1,4 +1,4 @@
-import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute, type AiEndpointPolicy, type PersonalKeyResolver } from '@flux/agent-runtime';
+import { aiEndpointPolicyFromEnv, anthropicProxyOf, parsePrivateTargets, providerPersonalCompute, type AiEndpointPolicy, type PersonalKeyResolver } from '@flux/agent-runtime';
 import type { AiProviderKind } from '@flux/contracts';
 import {
   TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, unavailablePersonalCompute,
@@ -50,20 +50,6 @@ export function webSearchSwitch(env: NodeJS.ProcessEnv): boolean {
   const value = env.FLUX_WEB_READS || 'on';
   if (value !== 'on' && value !== 'off') throw new Error('FLUX_WEB_READS must be on or off');
   return value === 'on';
-}
-
-/**
- * TEST ONLY (#1295): the answer-accuracy evaluation (scripts/check_ai_eval.sh) runs the production composition, with the owner's real
- * key saved through Connect AI, and points the Anthropic adapter at a recording proxy in the same Compose project that passes every
- * request on to the real API unchanged (app/tests/app/support/eval-proxy.ts). Accepted only with `FLUX_TEST_FAILURE_INJECTION=true` and as
- * a plain `http://host:port` origin; the operator's FLUX_AI_PRIVATE_TARGETS must name its host for the endpoint policy to reach it.
- */
-export function anthropicProxyOf(env: NodeJS.ProcessEnv): string | null {
-  const url = env.FLUX_TEST_ANTHROPIC_PROXY_URL ?? '';
-  if (!url) return null;
-  if (env.FLUX_TEST_FAILURE_INJECTION !== 'true') throw new Error('FLUX_TEST_ANTHROPIC_PROXY_URL is test only and needs FLUX_TEST_FAILURE_INJECTION=true');
-  if (!/^http:\/\/[a-z0-9.-]+(:\d+)?$/.test(url)) throw new Error('FLUX_TEST_ANTHROPIC_PROXY_URL must be the http origin of the evaluation proxy');
-  return url;
 }
 
 /** The agent runtime switched off (FLUX_AGENT_RUNTIME empty): no runtime run can start. */

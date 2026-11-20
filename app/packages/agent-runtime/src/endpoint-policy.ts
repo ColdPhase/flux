@@ -82,6 +82,22 @@ export function aiEndpointPolicyFromEnv(env: NodeJS.ProcessEnv): AiEndpointPolic
   return parsePrivateTargets(env[PRIVATE_TARGETS_ENV]);
 }
 
+/**
+ * TEST ONLY (#1295): the answer-accuracy evaluation (scripts/check_ai_eval.sh) and the real-model check on an Anthropic key
+ * (scripts/check_ai_real_model.sh) run the production composition, with the owner's real key saved through Connect AI, and point the
+ * Anthropic adapter at a recording proxy in the same Compose project that passes every request on to the real API unchanged
+ * (app/tests/app/support/eval-proxy.ts): the worker's model gateway and the API's `flux_web_search` alike, so the proxy's record and cap
+ * see every request of a run (not the key's model listing and tool check). Accepted only with `FLUX_TEST_FAILURE_INJECTION=true` and as
+ * a plain `http://host:port` origin; the operator's FLUX_AI_PRIVATE_TARGETS must name its host for the endpoint policy to reach it.
+ */
+export function anthropicProxyOf(env: NodeJS.ProcessEnv): string | null {
+  const url = env.FLUX_TEST_ANTHROPIC_PROXY_URL ?? '';
+  if (!url) return null;
+  if (env.FLUX_TEST_FAILURE_INJECTION !== 'true') throw new Error('FLUX_TEST_ANTHROPIC_PROXY_URL is test only and needs FLUX_TEST_FAILURE_INJECTION=true');
+  if (!/^http:\/\/[a-z0-9.-]+(:\d+)?$/.test(url)) throw new Error('FLUX_TEST_ANTHROPIC_PROXY_URL must be the http origin of the evaluation proxy');
+  return url;
+}
+
 /** An IPv4-mapped IPv6 address is judged by its IPv4 address. */
 function normalize(address: string, family: 4 | 6): { address: string; type: 'ipv4' | 'ipv6' } {
   if (family === 6) {

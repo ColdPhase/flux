@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute } from '@flux/agent-runtime';
+import { aiEndpointPolicyFromEnv, anthropicProxyOf, parsePrivateTargets, providerPersonalCompute } from '@flux/agent-runtime';
 import { z } from 'zod';
 import {
   connectionOnModel, DomainError, searchWithKey, TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, WEB_SEARCH_TOOL, type KeySearchMeter,
@@ -35,8 +35,10 @@ export function keyWebSearcher(env: NodeJS.ProcessEnv, db: Database, masterKey: 
     policy: parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', mock[1]].join(',')), baseUrls: { anthropic: mock[0] }, webSearch: true }),
   connections: testFixturePersonalConnections };
   if (!masterKey) return null;
-  return { compute: providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy: aiEndpointPolicyFromEnv(env), webSearch: true }),
-    connections: personalConnectionLookup(db) };
+  // TEST ONLY: the recording proxy of a check on a real Anthropic key, the worker's Anthropic upstream too (`anthropicProxyOf`).
+  const proxy = anthropicProxyOf(env);
+  return { compute: providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy: aiEndpointPolicyFromEnv(env), webSearch: true,
+    ...(proxy ? { baseUrls: { anthropic: proxy } } : {}) }), connections: personalConnectionLookup(db) };
 }
 
 /** The hold and the charge of one search on the run's own row, under the run's lock; the run must still be working. */

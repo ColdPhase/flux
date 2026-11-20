@@ -71,7 +71,7 @@ the wiring between services or enables test-only code.
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
 | `FLUX_SANDBOX_BROKER` | The socket of the run's broker the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
 | `FLUX_SANDBOX_DIR` | The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
-| `FLUX_TEST_ANTHROPIC_PROXY_URL` | Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker sends real API-key runs through the answer-accuracy evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`). |
+| `FLUX_TEST_ANTHROPIC_PROXY_URL` | Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker's API-key runs and the API's `flux_web_search` send their Anthropic requests through the evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`, `scripts/check_ai_real_model.sh`). |
 | `FLUX_TEST_ANTHROPIC_URL` | Test deployments only. |
 | `FLUX_TEST_COSIGN_KEY` | TEST ONLY: a public key file that `./flux upgrade` verifies a release's `SHA256SUMS` signature with instead of the release workflow's identity (`scripts/release/smoke_launcher.sh`). |
 | `FLUX_TEST_CSP_EVAL` | Test deployments only: `false` makes the enforced Content-Security-Policy the one that ships (no `eval`, which Playwright's `waitForFunction` needs). |
