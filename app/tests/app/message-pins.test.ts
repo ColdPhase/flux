@@ -179,7 +179,7 @@ describe('pinned messages (C-74, #1615)', () => {
     assert.equal((await pin(ada, place, runId, 'answer')).status, 404, 'no answer yet');
     assert.equal((await pin(ada, place, runId)).status, 404, 'a run is named with its part');
     expectStatus(await pin(ada, place, runId, 'prompt'), 200);
-    await scene.complete(runId);
+    await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), committed_at = now(), answer_body = 'Done', cost_state = 'released', charged_micros = 0 WHERE id = $1`, [runId]);
     const both = expectStatus(await pin(ada, place, runId, 'answer'), 200) as PinnedMessages;
     assert.deepEqual(both.items.map((item) => [item.part, item.author.kind, item.body]), [['answer', 'agent', 'Done'], ['prompt', 'human', 'Remember the shed code']]);
     assert.equal(await events('person.pins_changed.v1', ada.id), 2);
