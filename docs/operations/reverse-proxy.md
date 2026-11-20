@@ -8,7 +8,7 @@ Do not strip paths, authorization or cookies, or replace Host with the upstream 
 The proxy is built in: [an `https` origin is all](#built-in-https). A proxy of
 your own is the same single setting with its address added ([your own proxy](#your-own-proxy-instead)).
 For your own proxy, the Caddy example below is the most complete; [nginx](#nginx) and [Traefik](#traefik) follow, and any proxy that passes WebSocket upgrades
-and request bodies of at least 5 MiB works the same way.
+and request bodies as large as the largest file and video you allow works the same way.
 
 ## Built-in HTTPS
 
@@ -349,7 +349,7 @@ public DNS were not exercised.
 Any proxy works when it serves the whole origin from one host name, passes WebSocket upgrades on any
 path (`/api/v1/stream`, `/api/v1/typing`, `/api/v1/agent-runtime/console`, and `/media/*` with
 live media), does not buffer or time
-out long-lived connections sooner than a few minutes, accepts request bodies of at least the largest video you allow (5 MiB for everything else), passes `Range` requests and `206 Partial Content` answers through (a video seeks with them), and
+out long-lived connections sooner than a few minutes, accepts request bodies of at least the largest file and video you allow (`FLUX_FILE_MAX_MIB`, `FLUX_VIDEO_MAX_MIB`), passes `Range` requests and `206 Partial Content` answers through (a video seeks with them), and
 does not rewrite paths, `Host`, cookies or `Authorization`. A CDN or second proxy in front changes
 which address Flux sees: trust only the hop that connects to Flux, and make sure that hop replaces
 any client-supplied `X-Forwarded-For`.

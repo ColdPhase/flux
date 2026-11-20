@@ -1162,7 +1162,7 @@ These functional rules from UI116-4 remain required:
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
-  - **The limits line** ("Only you see these files until you send · 5 MB each, videos 200 MB · 10 files / 20 MB per message") is not under
+  - **The limits line** ("Only you see these files until you send · 25 MB each, videos 200 MB · 10 files / 100 MB per message", the operator's numbers) is not under
     the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
     says **"Ready to send"**, and the paperclip's tip "Attach files · only you see them until you send" (personas-33: "Ready, private"
     and "private until sent" were read as "this file stays private"; the words say what happens). It shows below the files only when a file or the draft was refused, or when the draft is
@@ -1173,7 +1173,8 @@ These functional rules from UI116-4 remain required:
   - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
     icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
     limit it says "A video can be at most 200 MB." (the operator's number); in an encrypted space a
-    video is an ordinary file ("A file can be at most 5 MB.") and downloads.
+    video is an ordinary file ("A file in an encrypted space is at most 5 MB.") and downloads. Any other file over the operator's
+    cap says "Files can be up to 25 MB on this server." (the operator's number; #1549), and a picture "A picture can be at most 5 MB."
 
 | | |
 | --- | --- |
