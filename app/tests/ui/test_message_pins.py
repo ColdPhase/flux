@@ -1,6 +1,7 @@
 """Pinned messages (C-74, #1615): Pin / Unpin in the message's ⋯ menu after Copy text (key P), the quiet "Pinned by" line above the bubble,
 the header's pin button with its count, "Pinned · N" in the one panel, a click that brings the message into view (in its thread for a reply),
-Unpin in the panel, the phone's long-press sheet, its ⋯ row "Pinned N" after Search and its sheet, and ⌘K's "Pinned" mark first in Messages.
+Unpin in the panel, the phone's long-press sheet, its ⋯ row "Pinned N" after Search and its sheet, ⌘K's "Pinned" mark first in Messages, a
+direct message's Pin, header button and panel, and the header's slot: nothing moves on a computer, and a tablet's narrow header has ⋯ "Pinned".
 Runs with the other tests/ui modules through scripts/check_ui.sh. Ada and Jonas share a space."""
 
 from __future__ import annotations
@@ -24,6 +25,9 @@ PEOPLE = {
 LOGIN = f"{WORD} login: admin panel at 10.0.4.2, the shed key is in the blue box under the bench."
 ROTA = "Watering rota: Mon/Thu Maja, Tue/Fri Jonas, weekends whoever is closest."
 OTHER = f"The second {WORD} works from the shed roof."
+DM_CODE = "The gate code changed to 4471, the old one stops working on Monday."
+DM_EARLY = "Morning! Are you at the garden today?"
+TABLET = {"width": 820, "height": 1180}
 
 
 class MessagePins(unittest.TestCase):
@@ -67,6 +71,13 @@ class MessagePins(unittest.TestCase):
             sent = post(jonas, f"/api/v1/projects/{cls.ids['space']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
             assert sent.status == 201, sent.text()
             cls.ids[body] = sent.json()["messages"][0]["id"]
+        dm = post(ada, f"/api/v1/workspaces/{cls.ids['workspace']}/dms", {"participantIds": [cls.ids["jonas"]]})
+        assert dm.status in (200, 201), dm.text()
+        cls.ids["dm"] = dm.json()["id"]
+        for body in (DM_EARLY, DM_CODE):
+            said = post(jonas, f"/api/v1/dms/{cls.ids['dm']}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
+            assert said.status == 201, said.text()
+            cls.ids[body] = said.json()["id"]
         ada.close()
         jonas.close()
 
@@ -75,9 +86,9 @@ class MessagePins(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str, *, phone: bool = False, dark: bool = False) -> Page:
+    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None) -> Page:
         options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who]}
-        options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True) if phone else options.update(viewport=DESKTOP, device_scale_factor=1)
+        options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True) if phone else options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         context: BrowserContext = self.browser.new_context(service_workers="block", **options)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -102,6 +113,7 @@ class MessagePins(unittest.TestCase):
     def clear(self) -> None:
         for message in (self.ids[LOGIN], self.ids[OTHER], self.ids["reply"]):
             self.api("ada", "DELETE", f"/api/v1/projects/{self.ids['space']}/pins/{message}")
+        self.api("ada", "DELETE", f"/api/v1/dms/{self.ids['dm']}/pins/{self.ids[DM_CODE]}")
 
     def setUp(self) -> None:
         self.clear()
@@ -214,6 +226,85 @@ class MessagePins(unittest.TestCase):
             panel.locator(".pins__open").first.tap()
             expect(panel.get_by_role("heading", name="Pinned · 1")).to_have_count(0)
             expect(self.message(page, LOGIN)).to_be_in_viewport()
+
+    def test_04_a_direct_message_pins_from_the_menu_and_its_header_opens_the_list_at_the_message(self) -> None:
+        ada = self.page("ada")
+        ada.goto(f"/dm/{self.ids['dm']}")
+        row = ada.locator(f"#message-{self.ids[DM_CODE]}")
+        expect(row).to_be_visible()
+        header = ada.locator("header.top")
+        expect(header.locator(".top__pins-slot")).to_have_count(1)
+        expect(header.locator(".top__pins")).to_have_count(0)  # an empty slot: nothing moves
+        row.locator(".dm-msg__body").hover()
+        row.get_by_role("group", name="Actions on this message").get_by_role("button", name="More actions").click()
+        menu = ada.get_by_role("menu", name="Message actions")
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Copy text", "Pin"])
+        menu.get_by_role("menuitem", name="Pin", exact=True).click()
+        expect(row.locator(".pin-line")).to_have_text("Pinned by Ada Kowalska (you)")
+        button = header.get_by_role("button", name="Pinned messages, 1")
+        expect(button).to_be_visible()
+        # Jonas sees it at once in the same conversation.
+        jonas = self.page("jonas")
+        jonas.goto(f"/dm/{self.ids['dm']}")
+        expect(jonas.locator(f"#message-{self.ids[DM_CODE]}").locator(".pin-line")).to_have_text("Pinned by Ada Kowalska")
+        expect(jonas.locator("header.top").get_by_role("button", name="Pinned messages, 1")).to_be_visible()
+        button.click()
+        expect(button).to_have_attribute("aria-expanded", "true")
+        panel = ada.locator("#details")
+        expect(panel.get_by_role("heading", name="Pinned · 1")).to_be_visible()
+        expect(panel.locator(".pins__row")).to_have_count(1)
+        expect(panel.locator(".pins__row").first).to_contain_text(DM_CODE)
+        expect(panel.locator(".pins__meta").first).to_contain_text("Jonas Berg · ")
+        expect(panel.locator(".pins__meta").first).to_contain_text("pinned by Ada Kowalska (you)")
+        expect(panel).to_contain_text("Everyone in this conversation sees these. The newest pin is first.")
+        shot(ada, "pins-desktop-1440-dm-panel-light")
+        panel.locator(".pins__open").first.click()
+        expect(ada).to_have_url(f"{ORIGIN}/dm/{self.ids['dm']}#message-{self.ids[DM_CODE]}")
+        expect(ada.locator(f"#message-{self.ids[DM_CODE]}")).to_be_in_viewport()
+        # A second press closes the panel; Unpin from the menu empties the slot again.
+        button.click()
+        expect(panel.get_by_role("heading", name="Pinned · 1")).to_be_visible()
+        button.click()
+        expect(ada.get_by_role("heading", name="Pinned · 1")).to_have_count(0)
+        row.locator(".dm-msg__body").hover()
+        row.get_by_role("group", name="Actions on this message").get_by_role("button", name="More actions").click()
+        ada.get_by_role("menu", name="Message actions").get_by_role("menuitem", name="Unpin", exact=True).click()
+        expect(header.locator(".top__pins")).to_have_count(0)
+        expect(row.locator(".pin-line")).to_have_count(0)
+
+    def test_05_the_header_slot_never_moves_and_a_narrow_header_moves_the_button_into_more(self) -> None:
+        # Computer: the faces and everything after the slot stay where they were with and without a pin; More's Pinned row stays hidden.
+        page = self.page("ada")
+        header = page.locator("header.top")
+        expect(header.locator(".top__pins-slot")).to_have_count(1)
+
+        def boxes() -> list:
+            return page.evaluate("""() => [...document.querySelectorAll('header.top .top__right > *')]
+                .filter((el) => !el.classList.contains('top__pins-slot') && getComputedStyle(el).display !== 'none')
+                .map((el) => { const box = el.getBoundingClientRect(); return [el.className, Math.round(box.left), Math.round(box.width)]; })""")
+        before = boxes()
+        self.api("ada", "PUT", f"/api/v1/projects/{self.ids['space']}/pins/{self.ids[LOGIN]}")
+        expect(header.get_by_role("button", name="Pinned messages, 1")).to_be_visible(timeout=15000)
+        self.assertEqual(boxes(), before, "a pin moves nothing in the header")
+        header.get_by_role("button", name="More", exact=True).click()
+        more = page.get_by_role("menu", name="More")
+        expect(more.get_by_role("menuitem", name="Pinned")).to_have_count(0)
+        page.keyboard.press("Escape")
+        # Tablet in portrait: the header is under 48.75 rem, so the button goes with the faces into More, as its Pinned row with the count.
+        tablet = self.page("ada", viewport=TABLET)
+        header = tablet.locator("header.top")
+        expect(header.get_by_role("navigation", name="Space views")).to_be_visible()
+        expect(header.locator(".top__pins-slot")).to_be_hidden()
+        header.get_by_role("button", name="More", exact=True).click()
+        more = tablet.get_by_role("menu", name="More")
+        row = more.get_by_role("menuitem", name="Pinned")
+        expect(row).to_be_visible()
+        expect(row.locator(".top__more-count")).to_have_text("1")
+        labels = [text.strip().split("\n")[0] for text in more.get_by_role("menuitem").all_inner_texts()]
+        self.assertEqual(labels[:2], ["People", "Pinned"], labels)
+        shot(tablet, "pins-tablet-820-more-light")
+        row.click()
+        expect(tablet.locator("#details").get_by_role("heading", name="Pinned · 1")).to_be_visible()
 
 
 if __name__ == "__main__":

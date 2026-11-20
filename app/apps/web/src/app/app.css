@@ -402,10 +402,10 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 .top__faces-slot { display: inline-flex; flex: none; justify-content: flex-end; }
 /* The header's pin button with the count (C-74): in its own fixed slot before the faces, empty with no pins so nothing moves. */
 .top__pins-slot { display: inline-flex; flex: none; justify-content: flex-end; min-width: 3.25rem; }
-.top__pins { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: 10px; color: var(--t1); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
-.top__pins:hover, .top__pins[aria-expanded="true"] { background: var(--hov); }
-.top__pins:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-@media (pointer: coarse) { .top__pins { min-height: 44px; } }
+/* A quiet Button like Call beside it, its count in tabular figures; open, it keeps the hover fill. */
+.top__pins.ui-btn { padding: 0 10px; font-variant-numeric: tabular-nums; }
+.top__pins[aria-expanded="true"] { background: var(--hov); color: var(--t1); }
+@media (pointer: coarse) { .top__pins.ui-btn { min-height: 44px; } }
 .top__more-count { margin-left: auto; color: var(--t3); font-variant-numeric: tabular-nums; }
 .top__audience.top__faces { max-width: none; min-height: 32px; margin: 0; padding: 0 6px; gap: 0; border-radius: var(--r-pill); }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; }

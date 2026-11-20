@@ -203,6 +203,13 @@ describe('pinned messages (C-74, #1615)', () => {
     assert.deepEqual((await list(jonas, place)).items.map((item) => item.body), [words], 'the list shows the words, opened as the stream opens them');
     const row = (await pool.query('SELECT to_jsonb(p) AS row FROM message_pins p WHERE project_message_id = $1', [root.messages[0]!.id])).rows[0].row as Record<string, unknown>;
     assert.ok(!JSON.stringify(row).includes(words), 'the pin holds ids, the pinner and the time only');
+    // No agent reaches it: Ada's private chat neither lists the vault's pins nor finds the pinned message.
+    const chat = await scene.liveOf((await scene.runs.invoke(human(ada), { kind: 'chat', agentId: scene.agentId }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is pinned in the vault?' })).run.id);
+    const listed = (await chat.call('flux_list_pinned', { in: vault.id })).message;
+    assert.ok(refused(listed) && !JSON.stringify(listed).includes(words), JSON.stringify(listed));
+    const searched = (await chat.call('flux_search', { q: words })).message;
+    assert.ok(!refused(searched) && !JSON.stringify(searched).includes(words), JSON.stringify(searched));
+    await scene.complete(chat.runId);
     expectStatus(await lock(ada.browser, sealed.workspace.id), 200);
     assert.equal((await ada.browser.request('GET', pinsPath(place))).status, 423);
   });

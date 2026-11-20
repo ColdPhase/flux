@@ -4,7 +4,7 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { clock, day } from '../app/timeFormat';
 import { youLabel } from '../docs/format';
-import { Icon, useMediaQuery, MEDIA } from '../ui';
+import { Button, Icon, useMediaQuery, MEDIA } from '../ui';
 import { AuthorFace } from '../ui/AuthorFace';
 import { plainWords } from '../work/messageWords';
 import { usePins } from './pins';
@@ -71,8 +71,8 @@ export function PinnedPanel() {
                     <span className="pins__meta">{youLabel(item.author.name, mine)} · {when(item.createdAt)}{item.threadRootId ? ' · in a thread' : ''} · pinned by {by}</span>
                   </span>
                 </button>
-                {pins.canPin ? <button type="button" className="ui-btn ui-btn--quiet pins__unpin" onClick={() => pins.toggle(item.messageId, item.part)}
-                  aria-label={`Unpin ${youLabel(item.author.name, mine)}’s message`}>Unpin</button> : null}
+                {pins.canPin ? <Button variant="quiet" className="pins__unpin" onClick={() => pins.toggle(item.messageId, item.part)}
+                  aria-label={`Unpin ${youLabel(item.author.name, mine)}’s message`}>Unpin</Button> : null}
               </li>
             );
           })}

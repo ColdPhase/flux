@@ -28,7 +28,8 @@ const PinsContext = createContext<Pins>(NONE);
 /** The list of the conversation the shell shows, for everything inside it. */
 export const usePins = () => useContext(PinsContext);
 
-const DROPS_A_PIN = new Set(['project.message_removed.v1', 'dm.message_removed.v1']);
+// A delete takes its pin and an edit changes the words the list shows: both read the list again.
+const CHANGES_A_PIN = new Set(['project.message_removed.v1', 'dm.message_removed.v1', 'project.message_edited.v1', 'dm.message_edited.v1']);
 
 /** The list of `place`, read now and again on its stream events; the shell gives it to everything inside it with {@link PinsScope}. */
 export function usePinList(place: PinPlace | null, identity: string, canPin: boolean): Pins {
@@ -47,7 +48,7 @@ export function usePinList(place: PinPlace | null, identity: string, canPin: boo
   useStreamEvents(identity, (event) => {
     if (!place) return;
     const mine = place.type === 'agent' ? event.kind === PINS_CHANGED_EVENTS.agent
-      : event.objectId === place.id && (event.kind === PINS_CHANGED_EVENTS[place.type] || DROPS_A_PIN.has(event.kind));
+      : event.objectId === place.id && (event.kind === PINS_CHANGED_EVENTS[place.type] || CHANGES_A_PIN.has(event.kind));
     if (mine) read();
   }, read);
   const items = list?.key === key ? list.items : null;

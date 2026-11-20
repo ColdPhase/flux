@@ -4,7 +4,7 @@ import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNaviga
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { useLockedPeople, useLockedPlace } from '../encryption/state';
-import { Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { Button, Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { NoLongerIn, useNotAvailableShown } from './NotAvailable';
@@ -1147,8 +1147,8 @@ function AppLayoutContent() {
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
             {/* The pinned messages (C-74): a fixed slot before the faces, empty while nothing is pinned, so nothing moves. */}
-            {pinPlace ? <span className="top__pins-slot">{pinCount ? <button type="button" className="top__pins" aria-label={`Pinned messages, ${pinCount}`} data-tip="Pinned messages"
-              aria-expanded={pinsOpen} onClick={() => (pinsOpen ? closePanel() : openPins())}><Icon name="pin" size={16} />{pinCount}</button> : null}</span> : null}
+            {pinPlace ? <span className="top__pins-slot">{pinCount ? <Button variant="quiet" icon="pin" className="top__pins" aria-label={`Pinned messages, ${pinCount}`} data-tip="Pinned messages"
+              aria-expanded={pinsOpen} onClick={() => (pinsOpen ? closePanel() : openPins())}>{pinCount}</Button> : null}</span> : null}
             {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} projectId={projectId} onOpen={openAudience} />
               : lockedHere && lockedPeople ? <HeaderFaces people={lockedPeople} meId={me.user.id} audience={audienceLine(lockedPeople, me.user.id)} onOpen={() => shell.openDetails({ kind: 'people', workspaceId: lockedSpace.id })} /> : null}
             {activeProject ? <LiveEntry /> : null}
