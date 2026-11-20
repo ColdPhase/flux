@@ -11,6 +11,11 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
  * Panels that have their own entry (a task, a decision, a thread, an agent) do not use it; computers keep their keys (Esc closes).
  */
 const MARK = 'fluxLayer';
+/**
+ * The key of the page entry under an entry the router replaced while it was one a closed layer left behind (a space's view chosen after a sheet
+ * closed by a choice): the replaced entry is still one place with the page under it, so Back from it steps over that page as it would have.
+ */
+const UNDER = 'fluxUnder';
 const PHONE = '(hover: none), (max-width: 680px)';
 
 interface Layer { id: number; close: () => void }
@@ -20,27 +25,47 @@ let nextId = 1;
 let lastKey = 'default';
 /** The index of the history entry the person was last on, to tell Back from Forward when stepping over. */
 let lastIndex = 0;
+/** The `UNDER` of the entry the person is on: Back to that key is Back to the same place. */
+let lastUnder: string | undefined;
 
 type EntryState = Record<string, unknown>;
 const entryState = (): EntryState => (window.history.state ?? {}) as EntryState;
 const indexOf = (state: EntryState) => (typeof state.idx === 'number' ? state.idx : 0);
 const markOf = (state: EntryState) => (typeof state[MARK] === 'number' ? state[MARK] : undefined);
+const keyOf = (state: EntryState) => (state.key as string | undefined) ?? 'default';
+const underOf = (state: EntryState) => (typeof state[UNDER] === 'string' ? state[UNDER] : undefined);
+/** The person is now on this entry. */
+function arrive(state: EntryState) {
+  lastIndex = indexOf(state);
+  lastKey = keyOf(state);
+  lastUnder = underOf(state);
+}
 
 function onPop(event: PopStateEvent) {
   const state = entryState();
   const index = indexOf(state);
   const mark = markOf(state);
-  const key = (state.key as string | undefined) ?? 'default';
-  // The same place: the entry the person was on and the one they land on share the router's key. The entry they were on is read from the history
-  // itself, never from the router, which may not have caught up with a navigation that has only just begun.
-  const same = key === lastKey;
+  const key = keyOf(state);
+  // The same place: the entry the person was on and the one they land on share the router's key (or the one they were on was replaced over this
+  // one, `UNDER`). The entry they were on is read from the history itself, never from the router, which may not have caught up with a navigation
+  // that has only just begun.
+  const same = key === lastKey || key === lastUnder;
   const from = lastIndex;
   lastIndex = index;
   if (layers.length) {
     lastKey = key;
+    lastUnder = underOf(state);
     // Back to the page under the layers, or to the entry of a lower layer: the layers above close, and the router never sees it.
     const closing = layers.filter((layer) => mark === undefined || layer.id > mark);
-    if (!closing.length) return;
+    if (!closing.length) {
+      // Back from the entry a closed layer left over a layer still open (a date chosen in a sheet over the Create window): the open layer is what
+      // sits on top, so this Back goes on to the entry under it and closes it; it is never a Back that does nothing.
+      if (same && index < from) {
+        event.stopImmediatePropagation();
+        window.history.go(-1);
+      }
+      return;
+    }
     layers.splice(layers.length - closing.length, closing.length);
     if (same) event.stopImmediatePropagation();
     for (const layer of closing.reverse()) layer.close();
@@ -56,6 +81,7 @@ function onPop(event: PopStateEvent) {
     return;
   }
   lastKey = key;
+  lastUnder = underOf(state);
 }
 
 if (typeof window !== 'undefined') {
@@ -64,13 +90,20 @@ if (typeof window !== 'undefined') {
   for (const method of ['pushState', 'replaceState'] as const) {
     const original = window.history[method].bind(window.history);
     window.history[method] = (data: unknown, unused: string, url?: string | URL | null) => {
-      original(data, unused, url);
-      lastIndex = indexOf(entryState());
-      lastKey = (entryState().key as string | undefined) ?? 'default';
+      let next = data;
+      if (method === 'replaceState' && data && typeof data === 'object' && markOf(data as EntryState) === undefined && underOf(data as EntryState) === undefined) {
+        // The router replaces the entry the person is on (a space's view chosen, an address cleaned). When that entry is one a closed layer left
+        // behind, the page's own entry is still under it and is the same place: the new entry says so, and keeps saying so through later replaces.
+        const was = entryState();
+        const wasMark = markOf(was);
+        const under = wasMark !== undefined && !layers.some((open) => open.id === wasMark) ? keyOf(was) : underOf(was);
+        if (under !== undefined) next = { ...(data as EntryState), [UNDER]: under };
+      }
+      original(next, unused, url);
+      arrive(entryState());
     };
   }
-  lastIndex = indexOf(entryState());
-  lastKey = (entryState().key as string | undefined) ?? 'default';
+  arrive(entryState());
 }
 
 function push(layer: Layer) {

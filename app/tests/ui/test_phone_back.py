@@ -207,6 +207,45 @@ class PhoneBack(unittest.TestCase):
         page.go_back()
         expect(page).to_have_url(re.compile(r"/tasks$"))
 
+    def test_07d_a_view_chosen_after_a_sheet_closed_with_a_choice_still_leaves_the_space_on_back(self) -> None:
+        # Review of #1597: the entry a closed sheet leaves behind, replaced by the view the person chooses next, is still the space: Back leaves it
+        # and never walks back to the view the sheet was opened on.
+        page = self.page()
+        self.into_the_space(page)
+        sheet = self.open_message_sheet(page)
+        page.keyboard.press("Escape")
+        expect(sheet).to_have_count(0)
+        views = page.get_by_role("tablist", name="Space views")
+        views.get_by_role("tab", name=re.compile("^Tasks")).click()
+        expect(page).to_have_url(re.compile(r"/tasks"))
+        views.get_by_role("tab", name=re.compile("^Map")).click()
+        expect(page).to_have_url(re.compile(r"/map"))
+        page.go_back()
+        expect(page).to_have_url(re.compile(r"/projects$"))
+
+    def test_07e_back_after_a_choice_in_a_sheet_over_the_create_window_closes_the_window(self) -> None:
+        # Review of #1597: a day chosen in the Due sheet over the Create window closes the sheet; the next Back closes the window (no Back that does
+        # nothing), and the one after leaves the page.
+        page = self.page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.get_by_role("navigation").get_by_role("link", name="Spaces").first.click()
+        expect(page).to_have_url(re.compile(r"/projects$"))
+        page.goto(f"/projects/{self.world['ids']['project']}/tasks")
+        expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+        page.get_by_role("button", name="Create", exact=True).click()
+        window_ = page.get_by_role("dialog", name="New task")
+        expect(window_).to_be_visible()
+        window_.get_by_role("button", name="Due, add a date").click()
+        page.get_by_role("button", name="Tomorrow", exact=True).click()
+        expect(window_.get_by_role("button", name=re.compile(r"^Due \d"))).to_be_visible()
+        expect(page.get_by_role("dialog")).to_have_count(1)
+        page.go_back()
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        expect(page).to_have_url(re.compile(r"/tasks$"))
+        page.go_back()
+        expect(page).to_have_url(re.compile(r"/projects$"))
+
     def test_08_on_a_computer_the_browsers_back_leaves_the_space_too(self) -> None:
         page = self.page(computer=True)
         page.goto("/")

@@ -86,7 +86,10 @@ the place; the tabs of one space are one place.
 2. **Closing a layer another way never costs a second Back.** A layer closed by its control, a choice or Esc leaves its entry, and the next
    layer takes it over instead of adding one; a Back or a Forward that lands on such an entry (it has the mark and nothing is open), or on the page's own entry from the
    one that was left (the same router key), is stepped over in the direction it came from. A navigation made while a layer is open (Search's result, Create's new task) is an
-   ordinary entry above the left-over one: Back returns to the page the layer was opened from.
+   ordinary entry above the left-over one: Back returns to the page the layer was opened from. When the router replaces a left-over entry
+   (a space's view chosen after a sheet was closed with a choice), the new entry names the page's entry under it (`fluxUnder`) and Back steps
+   over that one too, so the views stay one place. A Back from a left-over entry onto a layer that is still open (a day chosen in the Due
+   sheet over the Create window) goes on and closes that layer: no Back does nothing.
 3. **Panels keep their own entry.** A task or a decision (`?open=`), a thread and an agent's chat are routes of their own: their Back is the
    one of rules 2 and 6 above, and their overlay does not take a layer (`SidePanel backLayer`, set by the shell). What opens over such a
    panel (a Status, Owner or Due sheet, a menu) takes a layer of its own, so Back closes that and leaves the panel.
