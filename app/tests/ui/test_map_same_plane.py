@@ -315,6 +315,27 @@ class MapSamePlane(unittest.TestCase):
                 page.wait_for_timeout(500)
                 self.assertNotEqual(self.scroll(page), scroll)
 
+    def test_06b_a_remembered_place_with_no_thought_left_opens_framed_not_empty(self):
+        """The thoughts were moved or deleted since the map was left on this device: it opens framed by Fit, never on an empty screen."""
+        for label, viewport, touch in (('computer', COMPUTER, False), ('phone', PHONE, True)):
+            with self.subTest(device=label):
+                page = self.page(viewport, touch=touch)
+                project, sketch, ids = self.make()
+                self.open(page, project, sketch)
+                page.locator('.sk-canvas').evaluate('el => { el.scrollLeft += 40; }')
+                page.wait_for_timeout(600)
+                # The place left here is now empty plane, beyond every thought but inside the plane's margin.
+                stale = page.evaluate("""(sketch) => { const key = Object.keys(localStorage).find((k) => k.startsWith('flux.map.view.v1:') && k.endsWith(':' + sketch));
+                  if (key) localStorage.setItem(key, JSON.stringify({ zoom: 1, x: 2000, y: 1300, selection: [] })); return !!key; }""", sketch)
+                self.assertTrue(stale, 'the view was remembered under this person and map')
+                page.reload()
+                expect(page.locator('.sk-node')).to_have_count(len(ROWS))
+                page.wait_for_timeout(700)
+                shown = page.evaluate("""() => { const c = document.querySelector('.sk-canvas').getBoundingClientRect();
+                  return [...document.querySelectorAll('.sk-node')].filter((n) => { const b = n.getBoundingClientRect();
+                    return b.right > c.left && b.left < c.right && b.bottom > c.top && b.top < c.bottom; }).length; }""")
+                self.assertGreater(shown, 0, 'at least one thought is in view')
+
     def test_07_a_link_to_a_thought_centres_it(self):
         for label, viewport, touch in (('computer', COMPUTER, False), ('phone', PHONE, True)):
             with self.subTest(device=label):

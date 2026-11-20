@@ -638,6 +638,16 @@ export function SketchMap(props: SketchMapProps) {
   if (remembered.current === undefined) remembered.current = readMapView(meId, sketch.id);
   const current = useRef<MapView | null>(null);
   const viewReady = useRef(false);
+  // A remembered place where no thought stands any more (they were moved or deleted since, here or by someone else) would open on an
+  // empty screen: the map is framed by Fit instead, as the first time.
+  const showsThought = (view: MapView) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    const style = getComputedStyle(canvas);
+    const z = clamp(view.zoom, ZOOMS[0]!, ZOOMS[ZOOMS.length - 1]!);
+    const w = canvas.clientWidth / z, h = (canvas.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0)) / z;
+    return [...geometry.current.rects.values()].some((r) => r.x < view.x + w && r.x + r.w > view.x && r.y < view.y + h && r.y + r.h > view.y);
+  };
   const fitted = useRef(false);
   const hasThoughts = sketch.thoughts.length > 0;
   useEffect(() => {
@@ -655,7 +665,7 @@ export function SketchMap(props: SketchMapProps) {
       const centreY = top + (canvas.clientHeight - top - (parseFloat(style.paddingBottom) || 0)) / 2;
       setZoom(z);
       camera.current = { left: Math.max(0, (arrival.x + arrival.w / 2 - o.x) * z - canvas.clientWidth / 2), top: Math.max(0, (arrival.y + arrival.h / 2 - o.y) * z - centreY) };
-    } else if (view) {
+    } else if (view && showsThought(view)) {
       // The same zoom and the same place on the plane; the browser clamps what the plane no longer reaches.
       const z = clamp(view.zoom, ZOOMS[0]!, ZOOMS[ZOOMS.length - 1]!);
       setZoom(z);
