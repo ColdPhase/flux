@@ -39,6 +39,9 @@ export function workRepository(tx: DbExecutor): WorkRepository {
     async listAssignedVisible(principal, workspaceId, owner, page) {
       return rows.listAssigned(workspaceId, owner, await visibleFilter(principal, workspaceId, 'project', tx), page);
     },
+    async listGivenVisible(principal, workspaceId, creator, page) {
+      return rows.listGiven(workspaceId, creator, await visibleFilter(principal, workspaceId, 'project', tx), page);
+    },
     /** The task detail's rule for an agent's owner (#339 AC-2), in the bounded groups the helper accepts (#488 activity). */
     async agentOwners(projectId, workspaceId, agentIds) {
       const owners = new Map<string, AgentProjectOwner>();

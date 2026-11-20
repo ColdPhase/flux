@@ -107,7 +107,7 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
         {back ? <button type="button" className="ui-panel__back" onClick={back.onClick}><Icon name="chevron-left" size={14} /><span>{back.label}</span></button> : null}
         {back ? <span className="ui-panel__sep" aria-hidden="true">/</span> : null}
         {chip
-          ? <h2 className="ui-panel__chip" id={titleId}><span className="ui-vh">{title}: </span><span className="ui-panel__kind"><span className="ui-panel__glyph" id={PANEL_GLYPH_ID} />{chip}</span></h2>
+          ? <h2 className="ui-panel__chip" id={titleId}><span className="ui-vh">{title}: </span><span className="ui-panel__kind"><span className="ui-panel__glyph" id={PANEL_GLYPH_ID} /><span className="ui-panel__word">{chip}</span></span></h2>
           : <h2 className="ui-panel__title" id={titleId}>{title}</h2>}
         {chip ? <span className="ui-panel__meta" id={PANEL_META_ID} /> : null}
         <span className="ui-panel__fill" />

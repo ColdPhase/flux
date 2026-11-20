@@ -48,6 +48,8 @@ export interface NeedsYouDecision {
   canAccept: boolean;
   /** It would replace this current rule when accepted. */
   supersedes: string | null;
+  /** How many messages its discussion holds (a discussed decision says so on its card); 0 or absent when nobody wrote there. */
+  replies?: number;
 }
 
 export interface NeedsYouBlocked {
@@ -123,6 +125,11 @@ export interface NeedsYouItem {
    * flag, which the generator sets from the answer it found, never from the words.
    */
   answer?: boolean;
+  /**
+   * Set with `answer`: what the person asked, their own message in that conversation just before the answer, as plain words (at most 240
+   * characters). Absent where the words are not read here (an encrypted space) or when nothing of theirs came before it.
+   */
+  asked?: string | null;
   /**
    * Set on a question or a mention written in a decision's one discussion (#1424, persona round 8): the decision it is about, so its line
    * reads "Question · Jonas · about “Stand closes at 15:00”".

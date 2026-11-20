@@ -257,7 +257,8 @@
 .proj-index__dmlist .set-row.is-unread .set-row__t { color: var(--t1); font-weight: 600; }
 .proj-index__one { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 .proj-index__time { flex: none; width: 4.5em; text-align: right; white-space: nowrap; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
-.proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--t2); font-size: var(--fs-md); }
+/* A space's row has the ⋯ over the place of its time while the pointer is on it (a touch screen keeps both: the row reserves room for the ⋯, above). */
+@media (hover: hover) { .proj-index__row:has(> .proj-index__more):is(:hover, :focus-within, :has([aria-expanded="true"])) .proj-index__time { visibility: hidden; } }
 /* The way back from one workspace's people to the list (#763 PE-1). */
 .sset-back { display: inline-flex; align-items: center; gap: 2px; min-height: 32px; margin-bottom: 8px; font-size: var(--fs-sm); }
 @media (pointer: coarse), (hover: none) { .sset-back { min-height: 44px; } }

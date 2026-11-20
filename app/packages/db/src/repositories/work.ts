@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { ObjectRef } from '@flux/contracts';
 import * as schema from '../schema.js';
@@ -364,6 +364,18 @@ export function workRows(db: DbExecutor) {
         owner.kind === 'human'
           ? or(eq(w.ownerUserId, owner.id), sql`${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${owner.id})`)
           : eq(w.ownerAgentId, owner.id),
+        isNull(w.creationRevertedAt), notInArray(w.status, ['done']),
+        sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
+      )!;
+      return paged(db, w, where, window, toWorkRecord);
+    },
+
+    /** Unfinished work `creator` made for another person (#1519): created by them, owned by a person who is not them, in projects matching `visibleProjects`. */
+    async listGiven(workspaceId: string, creator: Actor, visibleProjects: SQL, window: Window) {
+      await sealOf(db, workspaceId, { write: false });
+      const where = and(
+        eq(w.workspaceId, workspaceId), eq(w.createdByKind, creator.kind), eq(w.createdById, creator.id),
+        isNotNull(w.ownerUserId), ne(w.ownerUserId, creator.id),
         isNull(w.creationRevertedAt), notInArray(w.status, ['done']),
         sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
       )!;

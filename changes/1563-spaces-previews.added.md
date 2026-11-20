@@ -1,0 +1,1 @@
+- Each space in the Spaces list shows its newest message and when it was sent, as a conversation in Messages does ("Maja: I moved the calibration notes…", "You: …", "Maja: Sent a file") ([#1563](https://github.com/ColdPhase/flux/issues/1563)).

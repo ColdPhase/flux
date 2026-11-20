@@ -1,6 +1,7 @@
 import { AGENT_SUMMARY_LIMITS } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import { agentSearchTime } from './agent.js';
+import { zonedMoment } from '../zoned-time.js';
 
 // `flux_summarize` (F-042, AG-12, #1292): what was said in one place in a range of time, as a compact digest that the calling agent
 // summarises itself, in its own run, so that its owner pays and nothing is stored. Core states what a range, a page and a cursor are and
@@ -82,16 +83,17 @@ const cut = (text: string, chars: number) => {
 };
 
 /**
- * The digest of these messages, oldest first, as many as fit one answer: a heading for each day (UTC), one for each thread of a space's
- * main conversation where the thread changes, and a line for each message, "10:02 Ada Nowak: words". A message that is longer than
+ * The digest of these messages, oldest first, as many as fit one answer: a heading for each day, one for each thread of a space's
+ * main conversation where the thread changes, and a line for each message, "10:02 Ada Nowak: words". Days and clock are those of `timeZone`
+ * (the caller's owner's own zone, so the model never converts; UTC when none is given). A message that is longer than
  * `messageChars` is cut and says how much is left and which tool reads it whole. At least one message is always given.
  */
-export function digestPage(messages: readonly DigestMessage[], limits: { pageChars: number; messageChars: number; pageMessages: number } = AGENT_SUMMARY_LIMITS): DigestPage {
+export function digestPage(messages: readonly DigestMessage[], limits: { pageChars: number; messageChars: number; pageMessages: number } = AGENT_SUMMARY_LIMITS, timeZone = 'UTC'): DigestPage {
   const lines: string[] = [];
   let chars = 0; let count = 0; let day = ''; let thread: string | undefined; let last: DigestMessage | null = null;
   for (const message of messages) {
     const block: string[] = [];
-    const date = message.at.toISOString().slice(0, 10);
+    const { date, clock } = zonedMoment(message.at, timeZone);
     if (date !== day) block.push(`## ${date}`);
     if (message.thread && message.thread.id !== thread) block.push(`# thread ${message.thread.opening ? `“${cut(oneLine(message.thread.opening), 80).text}”` : '(its opening message was deleted)'}`);
     const body = cut(oneLine(message.text), limits.messageChars);
@@ -99,7 +101,7 @@ export function digestPage(messages: readonly DigestMessage[], limits: { pageCha
     body.more += message.length === undefined ? 0 : Math.max(0, message.length - [...message.text].length);
     const text = [...(message.contribution ? [`[${message.contribution.replace(/_/g, ' ')}]`] : []), body.text, ...(message.files ? [`[${message.files === 1 ? '1 file' : `${message.files} files`}]`] : []),
       ...(body.more ? [`… (+${body.more} characters; flux_read_around with messageId ${message.id} reads it whole)`] : [])].filter(Boolean).join(' ');
-    block.push(`${message.at.toISOString().slice(11, 16)} ${oneLine(message.author) || 'Unknown'}: ${text}`);
+    block.push(`${clock} ${oneLine(message.author) || 'Unknown'}: ${text}`);
     const size = block.reduce((sum, line) => sum + line.length + 1, 0);
     if (count > 0 && (chars + size > limits.pageChars || count >= limits.pageMessages)) break;
     lines.push(...block);
@@ -109,11 +111,12 @@ export function digestPage(messages: readonly DigestMessage[], limits: { pageCha
 }
 
 /** What the answer says about where it stopped and how to go on, in words a model follows. */
-export function summaryNote(page: DigestPage, remaining: number, range: SummaryRange): string {
+export function summaryNote(page: DigestPage, remaining: number, range: SummaryRange, timeZone = 'UTC'): string {
+  const at = (instant: Date) => timeZone === 'UTC' ? instant.toISOString() : zonedMoment(instant, timeZone).stamp;
   if (!page.count) return 'No messages in this range. Say so; do not guess what was said.';
   // The guidance on the summary itself is here, where it costs tokens only when the tool is used, and not in the tool's definition, which travels with every request.
-  if (!remaining) return `These are all the messages from ${range.since.toISOString()}${range.until ? ` until ${range.until.toISOString()}` : ' on'}. Summarise them now, in the language of the request: decisions, open questions, who does what, dates and numbers.`;
-  return `Stopped early: this answer ends at ${page.last!.at.toISOString()} and ${remaining} later message${remaining === 1 ? ' is' : 's are'} not in it. `
+  if (!remaining) return `These are all the messages from ${at(range.since)}${range.until ? ` until ${at(range.until)}` : ' on'}. Summarise them now, in the language of the request: decisions, open questions, who does what, dates and numbers.`;
+  return `Stopped early: this answer ends at ${at(page.last!.at)} and ${remaining} later message${remaining === 1 ? ' is' : 's are'} not in it. `
     + 'To go on, call this tool again with the same arguments and next. Summarise what you have read so far in your own words and add what the rest says; '
     + 'if you do not read on, say that the summary stops at that time.';
 }

@@ -8,6 +8,8 @@ some without), a thread with a task made from a reply, and a second space with a
 - Opened at a message (a Search result or a message link), Tab moves through the stream and every focused control is in view, at
   1440 x 900 and on an 820 x 1180 tablet: the reader's own move wins over the place the stream keeps (task cards growing as their rows
   arrive put the old place back over the focused control, 8 of 30 stops off screen in the audit).
+- A stylesheet that loads later (a route's code arriving) never moves the stream to the linked message or takes the focus to it: WebKit
+  scrolls to the address's #message- fragment again then when a stylesheet was still loading as the document finished parsing (#1530).
 - In a thread, a task made from a reply is the conversation's task card under that reply (state glyph, number, whole title, owner, state
   word), never a chip in the bubble with its title cut.
 - With no panel at 1440 a long title keeps its room: the owner's name gives way before the title wraps.
@@ -172,6 +174,66 @@ class StreamFocusAndCards(unittest.TestCase):
                         hidden.append(where)
                 self.assertGreaterEqual(len(stops), 25, "Tab moved through the stream")
                 self.assertEqual(hidden, [], f"{viewport['width']} x {viewport['height']}: every focused control is in view")
+
+    def test_01b_a_stylesheet_that_loads_later_never_moves_the_stream_to_the_linked_message(self) -> None:
+        """#1530: the address keeps the message's fragment (`#message-…`). WebKit scrolled to it again after a later stylesheet load when a
+        stylesheet was still loading as the document finished parsing: the message went to the top of the stream, took the focus, and was
+        kept there after every layout (Tab's reveal snapped back a frame later). Here every stylesheet comes late, so one is always still
+        loading then, and one more loads after the reader has moved on with Tab."""
+        target = self.ids["messages"][13]
+        for viewport in (DESKTOP, TABLET):
+            with self.subTest(viewport=viewport):
+                page = self.page(viewport=viewport)
+                page.route("**/assets/*.css", lambda route: (page.wait_for_timeout(400), route.continue_()))
+                page.goto(f"/projects/{self.ids['project']}/messages/{target}")
+                expect(page.locator(f"#message-{target}")).to_be_in_viewport()
+                # The address the link led to names the message: the fragment WebKit scrolls to.
+                expect(page).to_have_url(re.compile(f"#message-{target}$"))
+                feed = page.locator(".project-convo__feed.is-stream")
+                expect(feed).to_have_attribute("data-references-phase", "ready")
+                page.wait_for_timeout(1500)
+                for _ in range(3):
+                    page.keyboard.press("Tab")
+                    page.wait_for_timeout(200)
+                before = page.evaluate(FOCUSED)
+                assert before is not None
+                self.assertNotEqual(before["name"], page.locator(f"#message-{target}").get_attribute("aria-label"), "Tab left the message")
+                css = page.evaluate("[...document.querySelectorAll('link[rel=stylesheet]')].map((link) => link.href).find((href) => href.includes('/assets/'))")
+                loaded = page.evaluate("""(href) => new Promise((done) => { const link = document.createElement('link'); link.rel = 'stylesheet';
+                  link.href = href; link.onload = () => done(true); link.onerror = () => done(false); document.head.append(link); })""", f"{css}?late=1")
+                self.assertTrue(loaded, "the late stylesheet loaded")
+                page.wait_for_timeout(600)
+                after = page.evaluate(FOCUSED)
+                assert after is not None
+                self.assertEqual(after["name"], before["name"], "the focus stays on the control the reader reached")
+                self.assertLessEqual(abs(after["scrollTop"] - before["scrollTop"]), 1, f"the stream stays where it was: {before} -> {after}")
+                self.assertTrue(before["viewTop"] - 1 <= after["top"] and after["bottom"] <= after["viewBottom"] + 1, f"the focused control is in view: {after}")
+
+    def test_01c_back_to_the_links_address_never_moves_the_stream_to_the_linked_message(self) -> None:
+        """#1530: WebKit also scrolls to the fragment on a Back or Forward to an address that has one, unless the history's scroll restoration
+        is manual: Esc from a task opened from a card (a Back to `…#message-…`) put the linked message at the top of the stream again, over
+        the place the reader had moved on to (test_arrival_focus test_02, ~214 px). The stream keeps its own places (#592)."""
+        target = self.ids["messages"][13]
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}/messages/{target}")
+        expect(page).to_have_url(re.compile(f"#message-{target}$"))
+        expect(page.locator(".project-convo__feed.is-stream")).to_have_attribute("data-references-phase", "ready")
+        page.wait_for_timeout(1000)
+        for _ in range(12):
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(100)
+        page.wait_for_timeout(400)
+        before = page.evaluate(FOCUSED)
+        assert before is not None
+        # A step of the history this page made and leaves again: the Back lands on the link's address, as Esc's Back does.
+        page.evaluate("history.pushState(history.state, '', location.pathname + location.search + '#elsewhere')")
+        page.go_back()
+        expect(page).to_have_url(re.compile(f"#message-{target}$"))
+        page.wait_for_timeout(600)
+        after = page.evaluate(FOCUSED)
+        assert after is not None
+        self.assertLessEqual(abs(after["scrollTop"] - before["scrollTop"]), 1, f"the stream stays where the reader was: {before} -> {after}")
+        self.assertEqual(after["name"], before["name"], "the focus stays where the reader was")
 
     # ---------------------------------------------------------------- the task card in a thread
 

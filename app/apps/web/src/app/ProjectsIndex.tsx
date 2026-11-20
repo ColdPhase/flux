@@ -1,7 +1,9 @@
 import { useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
-import { Button, Icon, MEDIA, useMediaQuery } from '../ui';
+import { previewLine, useSpacePreviews } from './spacePreviews';
+import { lastSaid } from './timeFormat';
+import { Button, EmptyState, Icon, MEDIA, useMediaQuery } from '../ui';
 import { useKeyboardMove, useReorder } from '../ui/reorder';
 import { MoreMenu, type MoreItem } from './HeaderParts';
 import { useNeedsYouSpaces } from '../notifications/dot';
@@ -26,7 +28,10 @@ export function ProjectsIndex() {
   const { me, directMessages, agents, lockedWorkspaces, removedFrom, workspace } = useShellData();
   const projects = useOrderedProjects();
   const { openCreate } = useShellActions();
-  const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
+  const ids = useMemo(() => projects.map((project) => project.id), [projects]);
+  const news = useProjectNews(ids);
+  // Each space's newest message and its time, as a conversation's row has them (round 15 look-2 P3-11).
+  const previews = useSpacePreviews(ids);
   // A muted space has the small muted mark after its name and a quiet count where the others are bold (#1249).
   const { muted } = usePlaceMutes();
   // The dot is for what needs the person, whatever is unread (#1250).
@@ -59,16 +64,20 @@ export function ProjectsIndex() {
               // Unread is bold; a muted space is never bold, its unread is the quiet count (#1249, #1250).
               const unread = fresh > 0 && !quiet;
               const label = spaceRowLabel(project.name, { encrypted, quiet, fresh, needsYou: needing.has(project.id), call: calls.has(project.id) });
+              const preview = previews.get(project.id);
+              const said = preview ? previewLine(preview, me.user.id) : '';
               const items = at < moves.fixed ? [] : moveItems(project.id, at);
               return (
               <li key={project.id} className="proj-index__row" data-space-id={project.id} data-everyone={at < moves.fixed ? '' : undefined}>
-                <Link to={`/projects/${project.id}`} className={`set-row${unread ? ' is-unread' : ''}`} aria-label={label} data-encrypted={encrypted ? '' : undefined} draggable={false}>
+                <Link to={`/projects/${project.id}`} className={`set-row${unread ? ' is-unread' : ''}`} aria-label={said ? `${label ?? project.name}. ${said}` : label} data-encrypted={encrypted ? '' : undefined} draggable={false}>
                   {/* The same tile as the sidebar and Home (#763 NV-6; its icon, F-040); a sparkle would read as AI. */}
                   <span className="set-row__ic proj-index__tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} size={32} /></span>
                   <span className="set-row__b">
                     <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{calls.has(project.id) ? <Icon name="call" size={12} className="proj-index__live" data-call-mark="" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
+                    {said ? <span className="set-row__s proj-index__one">{said}</span> : null}
                   </span>
                   {fresh && quiet ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : needing.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
+                  {preview ? <time className="proj-index__time" dateTime={preview.at}>{lastSaid(preview.at)}</time> : null}
                   {/* No chevron: a row of this list ends in its dot and its ⋯, as a Messages row below ends in its time; a dot, a chevron and a
                       ⋯ in a row were three ends (round 14, look-b P20). */}
                 </Link>
@@ -90,17 +99,18 @@ export function ProjectsIndex() {
             ))}
           </ul>
         ) : (
-          removedFrom ? (
-            <div className="proj-index__empty">
-              <p>You’re no longer in {removedFrom}. Ask an owner or admin of the company for an invite link to come back.</p>
-            </div>
-          ) : (
-            <div className="proj-index__empty">
-              {/* A guest does not start spaces (#1424): their line says only how one reaches them. */}
-              <p>{startsSpaces(workspace) ? 'No spaces yet. Create one, or it appears here when someone adds you to theirs.' : 'No spaces yet. A space appears here when someone adds you to it.'}</p>
-              {startsSpaces(workspace) ? <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button> : null}
-            </div>
-          )
+          // The one empty state, centred like every other (README "One look for one element"), not a paragraph of its own.
+          <div className="view-empty proj-index__empty">
+            {removedFrom ? (
+              <EmptyState icon="grid" title={`You’re no longer in ${removedFrom}`}><p>Ask an owner or admin of the company for an invite link to come back.</p></EmptyState>
+            ) : (
+              /* A guest does not start spaces (#1424): their line says only how one reaches them. */
+              <EmptyState icon="grid" title="No spaces yet"
+                action={startsSpaces(workspace) ? <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button> : undefined}>
+                <p>{startsSpaces(workspace) ? 'Create one, or it appears here when someone adds you to theirs.' : 'A space appears here when someone adds you to it.'}</p>
+              </EmptyState>
+            )}
+          </div>
         )}
         <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). A guest with no conversation and no agent has no

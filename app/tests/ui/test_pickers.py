@@ -96,7 +96,13 @@ class DateAndTimePickers(unittest.TestCase):
         """What a failed wait should say: where the page is, who it is signed in as, what it shows and what it did lately."""
         lines = [f"page url: {page.url}"]
         try:
-            lines.append("cookies: " + ", ".join(f"{c['name']}@{c['domain']}{c['path']} expires={c.get('expires')}" for c in page.context.cookies()))
+            cookies = page.context.cookies()
+            lines.append("cookies: " + ", ".join(f"{c['name']}@{c['domain']}{c['path']} expires={c.get('expires')}" for c in cookies))
+            # #1313: the page's own context lost every cookie while the test's context kept its session. The browser did that, not the server: a
+            # WebKit context whose network process is restarted (it crashed or was killed) comes back with an empty cookie jar, and from then on
+            # the page's reads and every stream upgrade go without a session (the API logs "Refused stream upgrade" with no Cookie header).
+            if not any(c["name"].endswith("session_token") for c in cookies) and any(c["name"].endswith("session_token") for c in self.ada.cookies()):
+                lines.append("the page's context has no session cookie while the test's context has one: the browser dropped the page's cookies (#1313)")
         except Exception as error:  # noqa: BLE001
             lines.append(f"cookies: {str(error)[:120]}")
         try:

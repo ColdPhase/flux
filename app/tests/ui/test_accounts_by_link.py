@@ -247,7 +247,8 @@ class AccountsByLink(unittest.TestCase):
         expect(page.get_by_text("Ask an owner or admin of the company for an invite link to come back.")).to_be_visible()
         expect(page.get_by_text("You’re not in a company here yet")).to_have_count(0)
         page.goto("/projects")
-        expect(page.get_by_text(f"You’re no longer in {company['name']}.")).to_be_visible()
+        # The one empty state (v0.2.2, #1563), centred like every other: its heading and its line, not a paragraph of its own.
+        expect(page.get_by_role("heading", level=2, name=f"You’re no longer in {company['name']}")).to_be_visible()
         expect(page.get_by_role("button", name="Create a space")).to_have_count(0)
         # personas-37 P3-4: the Inbox (still in the rail) said "Nothing needs you right now". Every page of the company they can reach says
         # what Home says, the Inbox, My tasks and My map alike, also when the address is typed.

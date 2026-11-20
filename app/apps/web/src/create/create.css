@@ -60,6 +60,8 @@ textarea:is(.create__title, .create__name) { display: block; resize: none; overf
 .create__chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .create__chip:hover { background: var(--hov); }
 .create__chip--add { color: var(--t2); }
+/* The Due chip's own date field, in the chip's place while it is open (#1519): the field's frame is the chip's height. */
+.create__date { display: inline-flex; min-width: 0; max-width: 100%; }
 .create__chip--quiet { background: none; box-shadow: none; padding: 0 4px; color: var(--t2); font-weight: 400; }
 .create__chip--link { cursor: default; padding-right: 6px; }
 .create__chip--link button { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-pill); color: var(--t3); }

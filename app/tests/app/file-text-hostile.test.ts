@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { crc32, deflateSync } from 'node:zlib';
 import { FILE_TEXT_LIMITS } from '@flux/core';
 import { createFileTextSandbox, type ExtractResult } from '../../apps/worker/src/file-text/sandbox.js';
 import { docxBytes, pdfBytes, pdfCycle, pdfDeepArray, pdfNested, pdfOfPictures, zipBytes } from './support/file-text.js';
@@ -73,6 +74,40 @@ describe('hostile files cannot hurt the worker', () => {
     // A text-only page that is empty has no picture at all.
     const empty = await sandbox.extract(pdfBytes(['']), 'pdf');
     assert.equal(empty.ok ? 'read' : (empty.pictures ?? []).length, 0);
+  });
+
+  test('C-70: OCR in its own child reads a picture\'s words, keeps nothing of a landscape or of bytes that are no picture, and holds its bounds', async () => {
+    const ocr = createFileTextSandbox({ ocr: true });
+    assert.equal(ocr.ocr, true, 'Tesseract and its data are installed');
+    const fixture = (name: string) => readFileSync(join(here, 'fixtures', 'ocr', name));
+    const read = await ocr.recognise(fixture('faktura.jpg'));
+    assert.ok(read.ok && /kalibratorów/.test(read.text) && /Zażółć gęślą jaźń/.test(read.text), JSON.stringify(read));
+    assert.deepEqual(await ocr.recognise(fixture('landscape.jpg')), { ok: false, reason: 'empty' });
+    const broken = await ocr.recognise(Buffer.from('%PDF-1.4 not a picture at all'));
+    assert.equal(broken.ok, false);
+    assert.ok(!broken.ok && ['unreadable', 'crashed'].includes(broken.reason), JSON.stringify(broken));
+    assert.equal(createFileTextSandbox().ocr, false, 'off unless the worker turns it on');
+  });
+
+  test('C-70 caps: a picture far past OCR\'s pixel bound, and one whose header lies about its size, end within OCR\'s bounds with nothing kept', async () => {
+    const ocr = createFileTextSandbox({ ocr: true });
+    // A plain white RGB PNG: a few hundred kilobytes that decode to width × height × 3 bytes (40 Mpx: 120 MB), the most C-59 lets anyone send.
+    const u32 = (value: number) => { const out = Buffer.alloc(4); out.writeUInt32BE(value >>> 0); return out; };
+    const chunk = (type: string, data: Buffer) => Buffer.concat([u32(data.length), Buffer.from(type, 'latin1'), data, u32(crc32(Buffer.concat([Buffer.from(type, 'latin1'), data])))]);
+    const white = (width: number, height: number, declared = { width, height }) => {
+      const row = Buffer.alloc(1 + width * 3, 0xff);
+      row[0] = 0;
+      const rows = Buffer.concat(Array.from({ length: height }, () => row));
+      return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        chunk('IHDR', Buffer.concat([u32(declared.width), u32(declared.height), Buffer.from([8, 2, 0, 0, 0])])), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
+    };
+    for (const [label, bytes] of [['40 Mpx', white(8000, 5000)], ['a header of 8000×8000 over 4×4 pixels', white(4, 4, { width: 8000, height: 8000 })]] as const) {
+      const started = Date.now();
+      const result = await ocr.recognise(bytes);
+      assert.equal(result.ok, false, `${label}: ${JSON.stringify(result)}`);
+      assert.ok(!result.ok && ['empty', 'memory', 'timeout', 'unreadable', 'crashed'].includes(result.reason), `${label}: ${JSON.stringify(result)}`);
+      assert.ok(Date.now() - started < FILE_TEXT_LIMITS.ocr.timeoutMs + 5_000, `${label} took ${Date.now() - started} ms`);
+    }
   });
 
   test('zip bombs: a deflate stream that expands to a thousand times its size, whether the entry tells the truth about it or not', async () => {

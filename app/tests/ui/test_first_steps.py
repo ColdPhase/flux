@@ -130,9 +130,14 @@ class FirstStepsJourney(unittest.TestCase):
         page.goto("/")
         expect(card.locator(".home__row-t")).to_have_count(1)
 
+        # The window opens over Home (#1567): the address stays Home's, Cancel leaves her on Home with the card as it was.
         card.get_by_role("link", name=re.compile("^Connect AI")).click()
-        expect(page).to_have_url(re.compile(r"/settings/agents\?connect=1$"))
         expect(page.get_by_role("dialog", name="Connect your AI")).to_be_visible()
+        self.assertEqual(page.url, f"{ORIGIN}/")
+        page.get_by_role("dialog", name="Connect your AI").get_by_role("button", name="Cancel").click()
+        expect(page.get_by_role("dialog", name="Connect your AI")).to_have_count(0)
+        self.assertEqual(page.url, f"{ORIGIN}/")
+        expect(card.locator(".home__row-t")).to_have_count(1)
 
     def test_01b_a_person_who_joined_with_her_link_is_a_row_that_opens_a_direct_message(self) -> None:
         """#1438 / #1424: "Nia joined · Say hello" stands where "Invite people" was, opens a direct message with Nia, and leaves once it is open."""

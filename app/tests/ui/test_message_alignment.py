@@ -262,7 +262,7 @@ class MessageAlignment(unittest.TestCase):
                 expect(root.get_by_role("button", name=re.compile(r"^2 replies"))).to_be_focused()
                 if who == "ada" and not phone and not dark:
                     card.click()
-                    expect(page).to_have_url(re.compile(f"/materials/{self.source['materialId']}/versions/1$"))
+                    expect(page).to_have_url(re.compile(f"/docs/sources/{self.source['materialId']}/versions/1$"))
                 page.context.close()
 
     def test_01b_quoted_messages_are_semantic_blocks_without_markers(self):

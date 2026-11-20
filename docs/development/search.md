@@ -186,7 +186,14 @@ decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads t
   on the long side, `png.ts`); the worker keeps them in `file_page_pictures` (they go with the file by the foreign key) and sets
   `project_files.no_text`. `flux_read_file` of such a file gives a caller that sees pictures the pages as image input, three a call
   (`offset` counts the pages given), and tells a run whose model does not that it cannot read it; the file's row and preview say
-  "no text". Still no OCR: such a file is found by its name.
+  "no text".
+- **OCR** ([C-70](../product/decisions.md), #1575, migration 0104), only with `FLUX_FILE_OCR=on`. The child also answers each scan page grey
+  at up to 2,480 px; the worker hands each page, and each picture sent to a space or a chat (PNG, JPEG, WebP, GIF), to a child of its own that
+  runs Tesseract (`ocr.ts`) and answers the text when its mean confidence is at least 60 and it has three words of three letters. That text is
+  stored as the file's parts exactly like a text layer (a scan's parts carry their page), so search, the embeddings and `flux_read_file` use
+  it with nothing of their own; `flux_read_file` puts a scan's pages under `[Page N]` and says it was read by OCR. `ocr_state` records the
+  read; with the switch on an empty queue takes the next 50 files OCR has yet to read (`queueOcr`, index `project_files_ocr_pending_idx`), and
+  a picture sent wakes the worker (the trigger's NOTIFY) without a job of its own.
 - **Web.** A file hit is the Files group's row (the file's icon, its name and the snippet) and opens its message with the preview open at
   the matched page (`?file=<id>&page=<n>`); a photo opens in the photo viewer, a video in its player (`useFileLink`).
 - **Agents and a file without text.** `flux_read_file` on a photo or a video answers with no text and the note that a picture or a

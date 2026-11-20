@@ -1,5 +1,5 @@
 import { cleanText } from './clean.js';
-import { encodePng, greyIfGrey, scaleDown, toPixels, type DecodedPicture } from './png.js';
+import { encodePng, greyIfGrey, scaleDown, toGrey, toPixels, type DecodedPicture } from './png.js';
 import type { Extracted, PagePicture } from './text.js';
 
 /**
@@ -9,7 +9,11 @@ import type { Extracted, PagePicture } from './text.js';
  * reading stops when `chars` characters are found; the parent kills this process at its time and memory limits.
  */
 export interface PdfLimits { pages: number; chars: number; pictures?: PictureLimits }
-export interface PictureLimits { pages: number; side: number; pixels: number; pictureBytes: number; totalBytes: number; untilMs: number }
+export interface PictureLimits { pages: number; side: number; pixels: number; pictureBytes: number; totalBytes: number; untilMs: number;
+  /** With OCR on (C-70): each page is also given grey, at most this many px on its long side, for OCR alone (never stored). */
+  ocrSide?: number;
+  /** The most one such page's PNG may be (C-70). */
+  ocrPageBytes?: number }
 
 interface TextItem { str?: string; hasEOL?: boolean }
 interface PdfPage {
@@ -79,6 +83,7 @@ async function pagePictures(pdfjs: PdfJs, bytes: Uint8Array, limits: PictureLimi
     const document = await task.promise;
     const painted = new Set([pdfjs.OPS.paintImageXObject, pdfjs.OPS.paintImageXObjectRepeat, pdfjs.OPS.paintInlineImageXObject]);
     let total = 0;
+    let ocrTotal = 0;
     for (let number = 1; number <= Math.min(document.numPages, limits.pages); number++) {
       // The pages made so far are kept rather than lost to the parent's time bound (`performance.now()` counts from this process's start).
       if (performance.now() > limits.untilMs) break;
@@ -99,7 +104,11 @@ async function pagePictures(pdfjs: PdfJs, bytes: Uint8Array, limits: PictureLimi
           if (png.length <= limits.pictureBytes && total + png.length <= limits.totalBytes) {
             total += png.length;
             const scaled = { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
-            pictures.push({ page: number, ...scaled, png: png.toString('base64') });
+            // The page OCR reads: bounded like a stored picture, a page over it is simply not read by OCR.
+            const grey = limits.ocrSide ? encodePng(scaleDown(toGrey(pixels), limits.ocrSide)) : null;
+            const ocr = grey && grey.length <= (limits.ocrPageBytes ?? 0) && ocrTotal + grey.length <= limits.totalBytes ? grey.toString('base64') : null;
+            if (ocr) ocrTotal += grey!.length;
+            pictures.push({ page: number, ...scaled, png: png.toString('base64'), ...(ocr ? { ocr } : {}) });
           }
         }
       } catch { /* one page that cannot be drawn does not hide the others */ }

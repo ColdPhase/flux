@@ -1,6 +1,7 @@
 import { ownerInLabel } from './names.js';
 import type { SearchTarget } from './search.js';
 import type { AgentColour } from './agents.js';
+import type { LockedWorkspaceRef } from './encryption.js';
 
 /** Project conversations and materials are visible only through current project access. */
 export const projectConversationsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversations`;
@@ -424,3 +425,26 @@ export interface UpdateMaterialCommand {
   body?: string;
   url?: string | null;
 }
+
+/**
+ * The newest message of each of the spaces asked about (`GET /api/v1/space-previews?projectIds=a,b`, at most 100), for the Spaces list's
+ * second line and time, as a direct message's row has them. Task and decision discussions are not part of a space's conversation, so they
+ * are not counted; a space with no message yet has no item, and one the caller cannot read is left out as if it did not exist.
+ */
+export const SPACE_PREVIEWS_PATH = '/api/v1/space-previews';
+export const SPACE_PREVIEWS_LIMIT = 100;
+
+export interface SpacePreview {
+  projectId: string;
+  /** When the message was sent. */
+  at: string;
+  /** Who wrote it, named as everywhere in that space (an agent by its name, a person who left "… (removed)"); null when no name is known. */
+  author: { kind: 'human' | 'agent'; id: string; name: string } | null;
+  /** The beginning of its words (at most 300 characters); empty for a message of files alone. */
+  body: string;
+  /** How many files it carries. */
+  files: number;
+}
+
+/** A locked encrypted space's spaces are left out, and the answer names it (F-030 `lockedWorkspaces`), as every cross-workspace read does. */
+export interface SpacePreviewsResponse { items: SpacePreview[]; lockedWorkspaces?: LockedWorkspaceRef[] }

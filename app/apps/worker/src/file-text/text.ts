@@ -8,7 +8,9 @@ import { cleanText } from './clean.js';
 export type Extracted = { ok: true; segments: { text: string; page?: number }[]; pages?: number }
   | { ok: false; reason: 'not-text' | 'empty' | 'encrypted' | 'unreadable' | 'too-large'; pictures?: PagePicture[] };
 /** The picture of one page of a PDF without text (C-69, #1557): a PNG, as base64 on the way out of the child. */
-export interface PagePicture { page: number; width: number; height: number; png: string }
+export interface PagePicture { page: number; width: number; height: number; png: string;
+  /** With OCR on (C-70): the page again, grey and larger, for OCR alone. */
+  ocr?: string }
 
 export function extractText(bytes: Uint8Array, maxChars: number): Extracted {
   let encoding: 'utf-8' | 'utf-16le' | 'utf-16be' = 'utf-8';

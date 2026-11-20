@@ -55,8 +55,8 @@
 .sk-canvas.is-hand, .sk-canvas.is-hand * { cursor: grab; }
 .sk-canvas.is-panning, .sk-canvas.is-panning * { cursor: grabbing; }
 .sk-canvas.is-hand { touch-action: none; }
-/* Two fingers pinch the map itself (#509 AC-3), not the page; the phone keeps S15 and page zoom. */
-@media (min-width: 641px) { .sk--map .sk-canvas:not(.is-hand) { touch-action: pan-x pan-y; } }
+/* One finger pans the map and two fingers pinch the map itself (#509 AC-3, #1553), not the page, on the phone too: the map is the computer's plane. */
+.sk--map .sk-canvas:not(.is-hand) { touch-action: pan-x pan-y; }
 .sk-canvas:focus-visible { outline-offset: -2px; }
 .sk-zoomed { position: relative; min-width: 100%; min-height: 100%; }
 .sk-plane { position: absolute; left: 0; top: 0; min-width: 100%; min-height: 100%; transform-origin: 0 0; }
@@ -81,12 +81,12 @@
 /* Thought reading follows Prostota's body/meta tokens, including larger phone text. Stored
    widths and positions stay unchanged; measured heights keep links attached after wrapping. */
 .sk-node { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; gap: 1px; padding: 12px 16px;
-  border-radius: var(--r-lg); background: var(--el); text-align: left; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: grab;
+  border-radius: var(--r-lg); background: var(--el); text-align: left; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab;
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line);
   /* A card moves only when the person drags it (and then it follows the pointer): it never slides on first layout or on a live update (#863). */
   transition: box-shadow var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
 @media (hover: hover) { .sk-node:hover { box-shadow: 0 1px 2px rgba(16, 17, 20, .06), inset 0 0 0 1px var(--t3); } }
-.sk-node[aria-pressed="true"] { touch-action: none; box-shadow: 0 0 0 3px var(--sub), inset 0 0 0 1.5px var(--t1); }
+.sk-node[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--sub), inset 0 0 0 1.5px var(--t1); }
 .sk-node.is-dragging { z-index: 3; cursor: grabbing; transition: none; box-shadow: var(--sh-pop), inset 0 0 0 1.5px var(--t1);
   /* Moved thoughts follow the pointer on their own layers, not by repainting the plane each frame. */
   will-change: transform; }
@@ -101,8 +101,11 @@
 .sk-k { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .sk-k svg { flex: none; }
 .sk-t { font-size: var(--fs-base); font-weight: 600; color: var(--t1); line-height: var(--lh); overflow-wrap: anywhere; white-space: pre-line; }
-.sk-p { display: flex; min-width: 0; margin-top: 3px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
-.sk-p__w { flex: none; white-space: pre; }
+/* A thought's provenance is one line (#1553, #1568): only the name gives way, with an ellipsis, down to its first letters, so "(you)" and the
+   time stay whole; where even that does not fit, the card's edge clips the end, and no part is ever printed over another. */
+.sk-p { display: flex; min-width: 0; max-width: 100%; margin-top: 3px; overflow: hidden; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
+.sk-p__w, .sk-p__t { flex: none; white-space: pre; }
+.sk-p__n { flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
 .sk-resize { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 50%, var(--t3) 50%, var(--t3) 60%, transparent 60%, transparent 72%, var(--t3) 72%, var(--t3) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0;
   opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
@@ -110,7 +113,7 @@
 
 /* UI116-4: a thought shows how many tasks link to it, never their titles or results. The count is its
    own button in a slot over the room kept at the bottom of the thought, so a thought stays one
-   button; the slot follows the thought through moves, drags and the phone projection. */
+   button; the slot follows the thought through moves and drags. */
 .sk { --sk-work-h: 24px; }
 .sk-node .sk-work-gap { flex: none; margin-top: auto; height: calc(var(--sk-work-h) + 12px);
   background: linear-gradient(var(--line), var(--line)) 0 7px / 100% 1px no-repeat; }
@@ -212,7 +215,7 @@
 /* 38px holds "Fit" in the loaded face too (37.6px in WebKit), so the web font arriving never widens the group and moves it (Spokój rule 7, #510). */
 .sk-zoom .sk-zoom__fit { min-width: 38px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); font-weight: 500; }
 /* Every map keeps controls outside its scroll viewport: thoughts remain clear while scrolling,
-   including at the Fit floor and in the phone's unchanged full-size two-column projection.
+   including at the Fit floor.
    Flex measures the real control height (including larger touch targets) within the same footprint. */
 .sk-canvas-wrap--controls { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px;
   height: clamp(360px, calc(100dvh - 300px), 720px); }
@@ -391,7 +394,9 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-phone > * { pointer-events: auto; }
 @media (max-width: 640px) {
   .sk--map .sk-canvas-wrap { background-color: var(--bg); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px; }
-  .sk--map .sk-canvas { position: absolute; inset: max(60px, calc(var(--sk-over-bottom, 0px) + 8px)) 0 calc(var(--sk-phone-tools-height, 150px) + 8px); height: auto; padding: 0 0 24px; }
+  /* The plane fills the pane under the floating header row and above the tools, as on the computer: it scrolls under them, and Fit frames
+     what is left between (#1553). */
+  .sk--map .sk-canvas { padding: max(60px, calc(var(--sk-over-bottom, 0px) + 8px)) 0 calc(var(--sk-phone-tools-height, 150px) + 8px); }
   /* A space's map keeps its title, the maps' switcher (#1438 point 7), as the one small pill, on the row of Map options (#1424): the
      thoughts start under both, so the pill never lies over the first one. A draft stays below that row, so changing views cannot cover its
      entry. My map has no pill, so its drafts and notices start under Map options as before. */
@@ -403,8 +408,7 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk--map .sk-head .sk-lead { flex: 0 1 auto; min-width: 0; }
   .sk-switch .wiki-switch__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sk-over .sk-draft { width: calc(100vw - 20px); }
-  /* Composition replaces the Add dock while open and reserves space below the phone
-     projection. Map options and the useful map context remain above it. */
+  /* Composition replaces the Add dock while open and reserves space below the plane. Map options and the useful map context remain above it. */
   .sk-composition { left: 10px; right: 10px; bottom: 10px; width: auto; max-height: max(96px, calc(100% - 180px)); }
   .sk-composition .sk-draft__actions > span { display: none; }
   .sk-composition .ui-btn { min-height: 44px; }

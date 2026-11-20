@@ -209,6 +209,8 @@ export interface WorkRepository extends TaskGraphReader {
    * policy's list filter (`visibleFilter`) for `principal`, applied before the page and the total.
    */
   listAssignedVisible(principal: Principal, workspaceId: string, owner: ActorRef, page: PageWindow): Promise<Paged<WorkRecord>>;
+  /** Unfinished work `creator` made for another person, in the projects of the workspace the principal can currently read (#1519). */
+  listGivenVisible(principal: Principal, workspaceId: string, creator: ActorRef, page: PageWindow): Promise<Paged<WorkRecord>>;
   findWork(id: string, options?: { lock?: boolean }): Promise<WorkRecord | null>;
   /** Several tasks in one read, by id; a missing id is absent from the map (a page of notices needs its tasks, #828). */
   findWorks(ids: readonly string[]): Promise<Map<string, WorkRecord>>;

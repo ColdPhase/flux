@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { accessPorts, needsYouRows, notificationPreferenceRows, notificationRows, openRows, returnRows, memberFilter, accessReader, schema, type Database, type DbExecutor } from '@flux/db';
 import {
   createNeedsYou,
@@ -11,6 +11,7 @@ import {
   type NeedsYouAssistant,
   type NeedsYouTasks,
 } from '@flux/core';
+import { plainMessageText } from '@flux/contracts';
 import { inboxAudience } from '../push/adapters.js';
 import { aiAllowedInProject } from '../access/ai-gate.js';
 import { workRepository, workUseCases } from '../work/adapters.js';
@@ -95,6 +96,47 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
     const rows = await openRows(db as unknown as DbExecutor, 'project_decisions', await db.select({ id: pd.id, workspaceId: pd.workspaceId, title: pd.title, conversationId: dd.conversationId })
       .from(dd).innerJoin(pd, eq(pd.id, dd.decisionId)).where(inArray(dd.conversationId, conversationIds)));
     return new Map(rows.map((row) => [row.conversationId, { decisionId: row.id, title: row.title }]));
+  },
+  // How many messages each decision's discussion holds: a discussed decision says so on its card (round 15 look-1 P3-11).
+  async discussionReplies(decisionIds) {
+    if (!decisionIds.length) return new Map();
+    const dd = schema.projectDecisionDiscussions;
+    const pm = schema.projectMessages;
+    const rows = await db.select({ decisionId: dd.decisionId, replies: sql<number>`count(${pm.id})::int` }).from(dd)
+      .innerJoin(pm, and(eq(pm.conversationId, dd.conversationId), isNull(pm.removedAt))).where(inArray(dd.decisionId, decisionIds)).groupBy(dd.decisionId);
+    return new Map(rows.filter((row) => row.replies > 0).map((row) => [row.decisionId, Number(row.replies)]));
+  },
+  // What the person asked, for an Inbox Reply: their own message in the conversation just before the answer. A space whose words are
+  // sealed has no words here (an encrypted space's notices say none either), and nothing is read for it.
+  async askedBefore(userId, answers) {
+    const found = new Map<string, string>();
+    const places = answers.flatMap(({ id, url }): { id: string; kind: 'space' | 'dm'; place: string; message: string }[] => {
+      const space = /^\/projects\/[0-9a-f-]{36}\/conversations\/([0-9a-f-]{36})#message-([0-9a-f-]{36})$/i.exec(url ?? '');
+      if (space) return [{ id, kind: 'space', place: space[1]!.toLowerCase(), message: space[2]!.toLowerCase() }];
+      const dm = /^\/dm\/([0-9a-f-]{36})#message-([0-9a-f-]{36})$/i.exec(url ?? '');
+      return dm ? [{ id, kind: 'dm', place: dm[1]!.toLowerCase(), message: dm[2]!.toLowerCase() }] : [];
+    });
+    const read = async (kind: 'space' | 'dm') => {
+      const asked = places.filter((place) => place.kind === kind);
+      if (!asked.length) return;
+      const wanted = sql.join(asked.map((place) => sql`(${place.id}::text, ${place.place}::uuid, ${place.message}::uuid)`), sql`, `);
+      const rows = kind === 'space'
+        ? await db.execute<{ nid: string; body: string }>(sql`
+            SELECT a.nid, m.body FROM (VALUES ${wanted}) AS a(nid, place, message)
+            JOIN project_messages r ON r.id = a.message AND r.conversation_id = a.place
+            JOIN workspaces w ON w.id = r.workspace_id AND NOT w.encrypted
+            JOIN LATERAL (SELECT x.body FROM project_messages x WHERE x.conversation_id = r.conversation_id AND x.author_id = ${userId}
+              AND x.sequence < r.sequence AND x.removed_at IS NULL AND x.body <> '' ORDER BY x.sequence DESC LIMIT 1) m ON true`)
+        : await db.execute<{ nid: string; body: string }>(sql`
+            SELECT a.nid, m.body FROM (VALUES ${wanted}) AS a(nid, place, message)
+            JOIN dm_messages r ON r.id = a.message AND r.dm_id = a.place
+            JOIN workspaces w ON w.id = r.workspace_id AND NOT w.encrypted
+            JOIN LATERAL (SELECT x.body FROM dm_messages x WHERE x.dm_id = r.dm_id AND x.author_id = ${userId} AND x.kind = 'text'
+              AND x.sequence < r.sequence AND x.removed_at IS NULL AND x.body <> '' ORDER BY x.sequence DESC LIMIT 1) m ON true`);
+      for (const row of rows.rows) found.set(row.nid, plainMessageText(row.body));
+    };
+    await read('space'); await read('dm');
+    return found;
   },
   // A call is on while it is available and someone is in it: its room is not empty (F-041).
   async runningCalls(sessionIds) {

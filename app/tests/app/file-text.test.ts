@@ -148,7 +148,8 @@ describe('the text inside files, found by people and agents (C-63)', () => {
       { name: `Budget ${tag}.xlsx`, bytes: Buffer.from([0x50, 0x4b, 3, 4, 0, 0, 0, 0]) },
     ]);
     // The rows are there the moment the message is sent, and nothing waits for the worker: their insides are never read.
-    assert.equal(await jobs(sent.fileIds), 0, 'no job for a photo, a video or a spreadsheet');
+    // A video and a spreadsheet get no job; a photo is read only by OCR when it is on (C-70), and this tiny one keeps nothing.
+    assert.equal(await jobs(sent.fileIds.slice(1)), 0, 'no job for a video or a spreadsheet');
     for (const fileId of sent.fileIds) assert.deepEqual((await rowsOf(fileId)).map((row) => row.version), [0], 'the name row alone');
     assert.deepEqual(files(await search(reader, 'IMG_2041')).map(titleOf), [`IMG_2041 ${tag}.jpg`], 'the photo by its name');
     assert.deepEqual(files(await search(reader, 'site walk')).map(titleOf).filter((name) => name.includes(tag)), [`Site walk ${tag}.mp4`], 'the video by its name');
@@ -212,7 +213,8 @@ describe('agents find the text inside files and read an excerpt of it (C-63)', (
     await Promise.all([ensureSpaceAiAllowed(spaceId), ensureSpaceAiAllowed(hiddenId)]);
     const agent = expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Claude Code', owner: 'self' } }), 201) as { id: string };
     token = (await agentConnection(pool, member.browser, agent.id, [spaceId])).accessToken;
-    worker = await startFileText({ db, connectionString, pauseMs: 0 });
+    // C-70: this worker reads scans and pictures by OCR, as the operator's FLUX_FILE_OCR=on does (the suites' own worker has it on too).
+    worker = await startFileText({ db, connectionString, pauseMs: 0, env: { ...process.env, FLUX_FILE_OCR: 'on' } });
   });
   after(async () => { await worker.stop(); });
 
@@ -292,6 +294,46 @@ describe('agents find the text inside files and read an excerpt of it (C-63)', (
     const removed = await lead.browser.request('DELETE', conversationMessagePath(sent.conversation.id, sent.messageId));
     assert.ok(removed.status === 200 || removed.status === 204, removed.text);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM file_page_pictures WHERE file_id = $1', [fileId])).rows[0].n, 0);
+  });
+
+  test('C-70 (#1575): OCR reads a scan and a picture in Polish; people and agents find them by a word, flux_read_file reads their text, a landscape keeps nothing', async () => {
+    // Fixtures (tests/app/fixtures/ocr, rendered with ImageMagick and DejaVu Sans, 2026-11-20): five lines of Polish with diacritics, as a PNG
+    // and a JPEG, and a 400×300 plasma fractal with no text.
+    const fixture = (name: string) => readFileSync(join(import.meta.dirname, 'fixtures', 'ocr', name));
+    const scan = pdfOfPictures([{ kind: 'jpeg', bytes: fixture('faktura.jpg'), width: 1000, height: 420, grey: true }]);
+    const sent = await send(lead, spaceId, [{ name: 'skan-faktury.pdf', bytes: scan }, { name: 'faktura.png', bytes: fixture('faktura.png') },
+      { name: 'krajobraz.jpg', bytes: fixture('landscape.jpg') }]);
+    const [pdfId, pngId, photoId] = sent.fileIds as [string, string, string];
+    const state = async (id: string) => (await pool.query('SELECT ocr_state, no_text FROM project_files WHERE id = $1', [id])).rows[0] as { ocr_state: string | null; no_text: boolean };
+    for (let waited = 0; ; waited += 200) {
+      if ((await Promise.all(sent.fileIds.map(state))).every((row) => row.ocr_state !== null) && await jobs(sent.fileIds) === 0) break;
+      assert.ok(waited < 120_000, `OCR did not read the files in time: ${JSON.stringify(await Promise.all(sent.fileIds.map(state)))}`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.deepEqual(await state(pdfId), { ocr_state: 'text', no_text: false }, 'a scan with words is no longer "no text"');
+    assert.deepEqual(await state(pngId), { ocr_state: 'text', no_text: false });
+    assert.deepEqual(await state(photoId), { ocr_state: 'none', no_text: false }, 'a landscape keeps nothing');
+    assert.deepEqual((await rowsOf(photoId)).map((row) => row.version), [0], 'its name row alone');
+    // People: search finds both by a Polish word with diacritics, the scan at its page.
+    for (const q of ['kalibratorów', 'płatności']) {
+      const found = files(await search(member, q));
+      assert.deepEqual(found.map(titleOf).sort(), ['faktura.png', 'skan-faktury.pdf'], q);
+    }
+    // An agent's own search (point 2): the scan is a file hit with its page.
+    const hits = (toolValue((await call('flux_search', { q: 'kalibratorów', kind: 'file' })).message) as unknown as { results: Hit[] }).results;
+    assert.deepEqual(hits.map((hit) => hit.title).sort(), ['faktura.png', 'skan-faktury.pdf']);
+    assert.equal(hits.find((hit) => hit.title === 'skan-faktury.pdf')!.page, 1);
+    // flux_read_file (point 1): the text, each page under [Page N], said to be OCR; no pictures when there is text.
+    const pdfRead = (await call('flux_read_file', { fileId: pdfId })).message as { result: { content: { type: string; text?: string }[] } };
+    assert.deepEqual(pdfRead.result.content.map((part) => part.type), ['text']);
+    const pdfText = JSON.parse(pdfRead.result.content[0]!.text!) as { body: string; ocr: boolean; note: string; nextOffset: number | null };
+    assert.equal(pdfText.ocr, true);
+    assert.match(pdfText.body, /^\[Page 1\]\nFaktura nr 2026\/11\/17/);
+    assert.match(pdfText.body, /Zażółć gęślą jaźń/);
+    assert.match(pdfText.note, /^Flux read this text by OCR from a scan; \[Page N\] marks its pages\. It may contain mistakes\.$/);
+    const pngText = toolValue((await call('flux_read_file', { fileId: pngId })).message) as unknown as { body: string; note: string };
+    assert.match(pngText.body, /dostawa kalibratorów czujników/);
+    assert.match(pngText.note, /^Flux read this text by OCR from the picture\./);
   });
 
   test('a space whose AI is turned off is reached by nobody: its file is not read', async () => {

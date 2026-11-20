@@ -443,7 +443,7 @@ class ScenarioJourney:
         page.reload()
         if self.phone:
             self.go_to_place(page, "Spaces")
-            expect(page.get_by_text("No spaces yet.")).to_be_visible()
+            expect(page.get_by_role("heading", name="No spaces yet")).to_be_visible()
             page.get_by_role("button", name="Create a space").tap()
         else:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()

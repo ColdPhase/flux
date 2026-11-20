@@ -9,6 +9,7 @@ import { Button, EmptyState, Icon, prefersReducedMotion, usePop, useToast, type 
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { listProjectSources } from '../materials/api';
+import { sourcePath } from '../materials/loader';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
@@ -18,7 +19,8 @@ import { useWiki } from './wiki-context';
 import { useFitInWindow } from '../ui/pickerPlace';
 import { RefLink, useFollow } from '../place/origin';
 
-const isSource = (to: string) => to.startsWith('/materials/');
+/** A saved source is a page by its own address, followed as a reference: its way back returns to the Wiki it was opened from. */
+const isSource = (to: string) => /\/docs\/sources\//.test(to);
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
 // quiet row: "Saved · just now · Jonas is here too", the faces of the people writing, Contents (≡) and ⋯. The title is the
@@ -177,7 +179,7 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   // A page deleted while the list is open leaves it at once (#1021): the event names the space, so the list is read again.
   useStreamEvents(userId, (event) => { if (open && event.kind === 'project.doc_deleted.v1' && event.objectId === project.id) read(); });
   const pages = useMemo(() => [...docs.map((doc) => ({ id: doc.id, title: doc.title, to: docUrl(project.id, doc.id) })),
-    ...sources.map((source) => ({ id: source.id, title: source.title, to: `/materials/${source.id}` }))].sort((a, b) => collator.compare(a.title, b.title)), [docs, sources, project.id]);
+    ...sources.map((source) => ({ id: source.id, title: source.title, to: sourcePath(project.id, source.id) }))].sort((a, b) => collator.compare(a.title, b.title)), [docs, sources, project.id]);
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(doc.title).includes(needle)) : pages;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
