@@ -313,6 +313,41 @@ class LauncherReleaseTest(unittest.TestCase):
         self.assertFalse((self.folder / ".flux-upgrade").exists())
         self.assertFalse([c for c in self.calls() if "pull" in c], "nothing pulled")
 
+    def test_upgrade_check_shows_the_plan_and_changes_nothing(self) -> None:
+        """#1552: `./flux upgrade --check` names the schemas, the migrations of the new release (read from its image) and what they
+        remove, and the backup's size and time; it stops nothing, takes no backup and leaves the folder as it was."""
+        self.write_env()
+        new = self.new_release()
+        migrations = self.base / "image" / "migrations"
+        migrations.mkdir(parents=True)
+        (migrations / "0095_guest_space_admin_held.sql").write_text("SELECT 1;\n")
+        (migrations / "0096_file_size_setting.sql").write_text("ALTER TABLE public.project_files DROP CONSTRAINT project_files_size_check;\n")
+        (migrations / "0097_remove_unused_schema.sql").write_text("DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence;\n")
+        with tarfile.open(self.base / "migrations.tar", "w") as archive:
+            archive.add(migrations, arcname="migrations")
+        self.stub("docker", STUB.replace("esac\nexit 0", """  *"SELECT max(version) FROM flux_schema_version"*) echo 95 ;;
+  *"pg_database_size"*) echo 209715200 ;;
+  *"du -sk /data/files"*) printf '1048576\\t/data/files\\n' ;;
+  *"--entrypoint tar "*"-C /app/packages/db -cf - migrations"*) cat "$FLUX_TEST_MIGRATIONS" ;;
+esac
+exit 0"""))
+        before = self.snapshot()
+        result = self.flux("upgrade", "--check", "--file", str(new / "flux.tar.gz"), FLUX_TEST_MIGRATIONS=str(self.base / "migrations.tar"))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        out = result.stdout
+        self.assertIn("Flux v0.2.2 (checked against its signed SHA256SUMS):", out)
+        self.assertRegex(out, r"From schema 95 to schema \d+\.")
+        self.assertIn("Migrations (2), each in its own transaction, in this order:", out)
+        self.assertIn("  0096_file_size_setting\n", out)
+        self.assertIn("  0097_remove_unused_schema\n      removes: DROP SEQUENCE IF EXISTS public.agent_thread_guard_sequence", out)
+        self.assertNotIn("0095_guest", out, "a migration the database already has is not in the plan")
+        self.assertIn("Backup first: database 200 MB and files 1024 MB before compression", out)
+        self.assertIn("Nothing was changed.", out)
+        self.assertEqual(self.snapshot(), before)
+        self.assertFalse((self.folder / ".flux-upgrade").exists())
+        calls = self.calls()
+        self.assertFalse([c for c in calls if " stop " in f" {c} " or "pg_dump" in c or "files-archive tar" in c], "nothing stopped or backed up")
+
     def test_upgrade_downloads_from_the_release_url_and_a_source_checkout_refuses_a_version(self) -> None:
         self.write_env()
         self.stub("curl", 'for a; do last=$a; done; printf "%s\\n" "$*" >> "$FLUX_TEST_LOG.curl"; exit 22\n')

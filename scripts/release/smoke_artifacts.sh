@@ -24,7 +24,8 @@
 #   3. Pull and start the candidate's compose.yaml with the SAME environment file and project (same volumes).
 #   4. Check that the data and the migrations survived: the migrate service exited 0; /api/v1/health reports a
 #      schemaVersion that did not go down; the migration ledger equals the candidate's migration files and
-#      contains every earlier row; the rows of the content tables are unchanged (count and md5 over the
+#      contains every earlier row; its schema equals a fresh install of the candidate object by object (#1552); the rows of the content
+#      tables are unchanged (count and md5 over the
 #      previous columns); the volumes were not recreated; the account signs in and every created item reads back;
 #      the instance accepts new work (smoke_data.py verify --write: messages of each kind, a task, a new agent run on the provider
 #      mock, a message in the unlocked encrypted space) and the second device's session still works.
@@ -192,6 +193,24 @@ database_check() { # project, environment file, assets directory
     WHERE a.amname = 'btree' AND c.relkind = 'i' AND i.indisvalid AND c.relpersistence = 'p' AND n.nspname NOT IN ('pg_catalog', 'pg_toast'); ROLLBACK;" | grep -E '^[0-9]+$') \
     || fail "a B-tree index does not pass amcheck on the candidate's database image"
   echo "database: $(sql "$1" "$2" "$3" "SELECT version()" | cut -d, -f1); $checked B-tree indexes pass amcheck (heap included; partitioned parents are checked through their partitions)"
+}
+# #1552 (C-68): an upgraded database equals a fresh one. The candidate's own migrator builds a fresh database beside the upgraded one, in the
+# same PostgreSQL, and app/packages/db/schema/snapshot.sql (tables, columns, constraints, indexes, functions, triggers, types, policies and
+# extensions, one line each) must print the same lines for both. The scratch database is dropped again.
+schema_compare() { # project, environment file, assets directory
+  local fresh=flux_fresh_schema
+  dc "$1" "$2" "$3" exec -T db sh -c 'psql -X -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP DATABASE IF EXISTS $1 WITH (FORCE)" -c "CREATE DATABASE $1"' sh "$fresh" </dev/null >/dev/null
+  POSTGRES_DB=$fresh dc "$1" "$2" "$3" run --rm --no-deps migrate > "$up_dir/fresh-migrate.log" 2>&1 || { tail -n 20 "$up_dir/fresh-migrate.log" >&2; fail "the candidate's migrator did not build a fresh database"; }
+  for database in "$fresh" upgraded; do
+    dc "$1" "$2" "$3" exec -T db sh -c 'psql -X -tA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$([ "$1" = upgraded ] && echo "$POSTGRES_DB" || echo "$1")"' sh "$database" \
+      < "$root/app/packages/db/schema/snapshot.sql" > "$up_dir/schema.$database" || fail "the schema of the $database database could not be read"
+  done
+  dc "$1" "$2" "$3" exec -T db sh -c 'psql -X -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP DATABASE IF EXISTS $1 WITH (FORCE)"' sh "$fresh" </dev/null >/dev/null || true
+  if ! cmp -s "$up_dir/schema.$fresh" "$up_dir/schema.upgraded"; then
+    diff "$up_dir/schema.$fresh" "$up_dir/schema.upgraded" | head -n 40 >&2 || true
+    fail "the upgraded database's schema is not a fresh install's (< fresh, > upgraded)"
+  fi
+  echo "schema: the upgraded database equals a fresh install of the candidate, $(grep -c . "$up_dir/schema.upgraded") objects"
 }
 expected_ledger() { # the candidate's migration files, as the migrator numbers them
   ls "$root/app/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -
@@ -378,6 +397,7 @@ table_snapshot "$source_project" "$up_env" "$assets" "$up_dir/columns" > "$up_di
 cmp "$up_dir/tables.before" "$up_dir/tables.after" || { diff "$up_dir/tables.before" "$up_dir/tables.after" >&2 || true; fail "content rows changed across the upgrade"; }
 [ "$(volume_stamps "$source_project")" = "$(cat "$up_dir/volumes.before")" ] || fail "a volume was recreated by the upgrade"
 database_check "$source_project" "$up_env" "$assets"
+schema_compare "$source_project" "$up_env" "$assets"
 dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --write

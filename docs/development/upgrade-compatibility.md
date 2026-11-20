@@ -29,15 +29,32 @@ list of versions that upgrade to which, is [Upgrade](../operations/upgrade.md); 
    supported and has no tests; the way back is the backup the upgrade took.
 6. **A release adds its fixtures.** After a release is published, add the database it was dumped from (below) and the row of
    [Upgrade](../operations/upgrade.md#which-versions-upgrade-to-which).
+7. **An upgraded database equals a fresh one** (C-68, [#1552](https://github.com/ColdPhase/flux/issues/1552)). After every migration of
+   this tree, a released database has exactly the schema a fresh install has: the same tables, columns (type, nullability, default),
+   constraints, indexes, functions, triggers, types and extensions (`app/packages/db/schema/snapshot.sql`). A migration that only works on
+   an empty database, or a `CREATE ... IF NOT EXISTS` that leaves an older shape where the object already existed, shows as a difference.
+8. **Nothing unused stays.** A redesign removes its old tables, columns, functions, triggers, sequences and check values, **and their
+   rows**, in the same pull request, in a migration that keeps the data that moves on (`app/tests/app/schema-in-use.test.ts` finds what the
+   code no longer names; an object kept on purpose goes into its `KEPT` list with the reason).
+9. **Data moves, not only shape.** A migration that changes what stored rows mean converts them (backfill) in SQL, and the pull request
+   says how v0.2.1 data moves. If it changes a value that `KEPT_VALUES` of `released-databases.test.ts` compares (messages, tasks,
+   decisions, files, people, agents, Wiki versions), the same pull request changes that list and says why.
+10. **Long migrations do not hold the tables.** API and worker are stopped during an upgrade, but a migration that rewrites or scans a
+    large table (a backfill, a new index on `project_messages` or `search_documents`) works in batches and sets `SET LOCAL lock_timeout`
+    (for example `'5s'`), so it fails clearly instead of waiting on a lock, and the upgrade restores the backup. Name in the pull request how
+    long it took on the largest fixture.
+11. **The chain stays whole.** No baseline is cut at a minor release: any release from v0.2.0 on upgrades (#1241), and a baseline would
+    remove the files an older release needs. A baseline is cut only in the release that drops the oldest supported release.
 
 ## The checks
 
 | Check | Where | What it proves |
 | --- | --- | --- |
 | `scripts/release/check_released_migrations.py` and `tests/test_released_migrations.py` | Repository checks (every pull request; the checkout fetches the release tags) and the first step of the matrix | Every migration file of every release from v0.2.0 on is byte-identical to the file of its tag; a new migration is numbered after the last released one. A clone without the tags fails in Actions rather than passing unchecked. |
-| `app/tests/app/released-databases.test.ts` | `./scripts/check_application.sh` | The real migrator (`node tooling/dist/migrate.js`, as the `migrate` service runs it) runs on a database dumped from each release (`app/tests/app/fixtures/released-databases/<tag>.sql.gz`), applies every later migration, ends on the exact ledger of the files, loses no row of a content table and is a no-op the second time. |
+| `app/tests/app/released-databases.test.ts` | `./scripts/check_application.sh`, and the `Database checks` workflow on every pull request that touches `app/packages/db/**`, the migrator or the fixtures | The real migrator (`node tooling/dist/migrate.js`, as the `migrate` service runs it) runs on a database dumped from each release (`app/tests/app/fixtures/released-databases/<tag>.sql.gz`), applies every later migration, ends on the exact ledger of the files, loses no row of a content table and is a no-op the second time; the upgraded schema equals a fresh install's line by line, and messages, tasks, decisions, files, people, agents and Wiki versions keep their values by id (C-68). A table and a column added after the upgrade are found (negative control). |
+| `app/tests/app/schema-in-use.test.ts` | The same | Every table, view, sequence, column and function of a fresh install is used by the application's code or kept in `KEPT` with its reason (C-68); a table and a column nothing names are found (negative control). |
 | `./scripts/check_upgrade_matrix.sh` | Release acceptance ([evaluation](../agents/evaluation.md#at-release-acceptance)) and the `upgrade` job of `final-release.yml` | Every published release from v0.2.0 on upgrades to the candidate, by release installation and by source checkout, with the data below read back and new work accepted. |
-| `scripts/release/smoke_artifacts.sh` | The `package` job of `final-release.yml` | Leg 1: a clean install of the packaged Compose files (`flux.tar.gz`'s `docker/compose.yaml` with the images of its `docker/release.env`), with its default settings and no overlay (the owner's `./flux` path is `scripts/release/smoke_launcher.sh`), with a backup and restore. Leg 2: the upgrade from the **previous** release to the candidate's own assets and image digest, with a backup and restore of both sides. Only leg 2 (and 3) sets the agents' switches, adds the provider mock and runs the candidate's agent runtime with pi. |
+| `scripts/release/smoke_artifacts.sh` | The `package` job of `final-release.yml`, and each release of the matrix | Leg 1: a clean install of the packaged Compose files (`flux.tar.gz`'s `docker/compose.yaml` with the images of its `docker/release.env`), with its default settings and no overlay (the owner's `./flux` path is `scripts/release/smoke_launcher.sh`), with a backup and restore. Leg 2: the upgrade from the **previous** release to the candidate's own assets and image digest, with a backup and restore of both sides; the upgraded database's schema must equal a fresh database that the candidate's migrator builds beside it in the same PostgreSQL (C-68). Only leg 2 (and 3) sets the agents' switches, adds the provider mock and runs the candidate's agent runtime with pi. |
 | `./scripts/check_backup.sh` | Backup and restore acceptance | `./flux upgrade` from the previous source version, the failing migration's restore instructions, and the v0.1 refusal. |
 
 ## The upgrade matrix
