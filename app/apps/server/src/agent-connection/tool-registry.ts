@@ -11,6 +11,7 @@ import { refusedCredential } from './run-credentials.js';
 import { boundRunResult } from './run-token.js';
 import { convertedOnce } from './tool-schema.js';
 import { recordToolCall, toolError } from './tool-results.js';
+import { inOwnersZone } from './owner-times.js';
 
 /**
  * The run-private view of a change tool (F-027 A3, R2): an assistant run cites no sources (the run is its authority), its project
@@ -174,6 +175,8 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
               result = await claims.dispatch.run('tool', name, run
                 ? async () => (await refusedCredential(db, claims.run!.id, input as Record<string, unknown>)) ?? handler(input as Record<string, unknown>, { claims })
                 : () => handler(input as Record<string, unknown>, { claims })) as ToolOutput;
+              // Every instant the answer names is in the owner's own zone (C-57), before a run's answer is bounded by its size.
+              result = await inOwnersZone(db, claims, result);
               if (run) result = await boundRunResult(db, claims.run!.id, result as { content?: unknown }, name) as ToolOutput;
             } catch (error) { result = toolError(error); }
             recordToolCall({ tool: name, operation: effect?.operation ?? null, runId: claims.run?.id ?? null, connectionId: claims.connectionId,

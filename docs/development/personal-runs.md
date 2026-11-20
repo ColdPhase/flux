@@ -589,7 +589,7 @@ each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what 
 `FLUX_WRITE_BRIEF_SNAPSHOTS=<dir>` on `ai-brief.test.ts`).
 
 - **System**: who the agent is and whose (names the owner gave: the agent's and their own), where it was asked (the kind of place only),
-  the time now in the owner's time zone (`personTimeZone`: their browser's zone, which the web app saves on them, `auth_users.time_zone`, C-57; the zone a schedule they ask for runs in); who reads the answer and so what it may
+  the time now in the owner's time zone (`personTimeZone`: their browser's zone, which the web app saves on them, `auth_users.time_zone`, C-57; the zone a schedule they ask for runs in), and **every time a tool returns in that zone too, with its offset** (`2026-11-19T15:34:00+01:00`; one place does it for every tool, `agent-connection/owner-times.ts`, and `flux_summarize`'s digest days and clock are the owner's own), so the model never converts from UTC (v0.2.2, #1563: it told "15:34 Warsaw time" for 14:34); who reads the answer and so what it may
   use of Flux (AG-4, C-37); how to answer (in the asker's language, short, in the message subset of Markdown that the one renderer draws (`FORMAT`, #1247; `assistant.md` AG-4), written so the asker can post it
   as their own message with Show everyone, with no "You asked…" or lead-in and only the text when asked to draft one, the cite mark of a Flux fact read with a tool
   (`[doc:ID]`, C-62), `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off

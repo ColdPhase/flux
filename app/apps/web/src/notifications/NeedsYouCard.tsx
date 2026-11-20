@@ -255,6 +255,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
               : <>{who ? <b>{who}</b> : null}{tagged || run ? <AgentTag /> : null}<span className="nyc__meta">{[meta, item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
           </p>
         )}
+        {/* An answer to your question says what you asked above its words, in the open item (round 15 look-1 P3-11). */}
+        {full && item.answer && item.asked ? <p className="nyc__based nyc__asked"><span>You asked</span> {item.asked}</p> : null}
         <Title className="nyc__title">{titleOf}</Title>
         {row && item.detail ? <p className="nyc__snippet">{item.detail}</p> : null}
         {full && run ? <ul className="nyc__waits" aria-label="What waits for you">{run.changes.map((change) => (
@@ -280,6 +282,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         {full && item.blocked?.waitingFor && !item.blocked.waitingOn ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
         {full && !touch && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
         {full && decision && item.decision?.supersedes ? <p className="nyc__based">This replaces the decision <b>{item.decision.supersedes}</b>.</p> : null}
+        {/* A decision people have discussed says how much, so Discuss is not a blank door (round 15 look-1 P3-11). */}
+        {full && decision && item.decision?.replies ? <p className="nyc__based"><span>Discussion</span> {item.decision.replies === 1 ? '1 reply' : `${item.decision.replies} replies`}</p> : null}
         {full && decision ? (
           <div className="nyc__foot">{actions}<WaitingLine item={item} /></div>
         ) : full ? actions : null}

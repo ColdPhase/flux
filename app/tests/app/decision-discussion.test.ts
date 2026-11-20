@@ -212,6 +212,18 @@ test('a question that names nobody asks the decision\'s proposer, not whoever wr
   assert.equal(plain.about, undefined);
 });
 
+test('a discussed decision in the Inbox says how many messages its discussion holds (v0.2.2, #1563)', async () => {
+  const f = await scene();
+  const itemOf = async () => (expectStatus(await f.owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.key === `decision:${f.decision.id}`);
+  assert.equal((await itemOf())?.decision?.replies, undefined, 'nobody has written yet');
+  await write(f.writer, f.decision.id, 'Does it see through the lamp shade?');
+  await write(f.proposer, f.decision.id, 'Yes, up to 4 mm.');
+  const removed = await write(f.writer, f.decision.id, 'Never mind, wrong thread.');
+  assert.equal((await itemOf())?.decision?.replies, 3);
+  expectStatus(await f.writer.browser.request('DELETE', `/api/v1/conversations/${removed.conversationId}/messages/${removed.id}`), 200);
+  assert.equal((await itemOf())?.decision?.replies, 2, 'a message its author took back is not counted');
+});
+
 test('Home asks the same person as the Inbox: the proposer, never whoever wrote first in the discussion (personas-33 P2 5)', async () => {
   const f = await scene();
   type Home = { items: { kind: string; text: string; detail: string | null; source: { messageId?: string } | null }[]; nextStep: { text: string; reason: string } | null };

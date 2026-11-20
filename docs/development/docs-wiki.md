@@ -17,7 +17,10 @@ version table.
 - A message cites a doc version exactly as it cites a material:
   `source: { materialId: <docId>, version: 3 }`. The citation keeps reading version 3 after
   later edits; `GET /api/v1/materials/:id/versions/:version` still serves it, and the web app
-  opens it in the doc reader.
+  opens it in the doc reader. A saved source (`kind = 'material'`) is a page of its space's Wiki at
+  `/projects/:id/docs/sources/:materialId[/versions/:n]`, inside the space's own header and tabs; the web
+  address `/materials/:id` (what a message, a work link or a search result carries) only goes there,
+  keeping where it was followed from (v0.2.2, #1563).
 - A database trigger rejects `UPDATE` on `project_material_versions`, so no version (of a doc or
   a material) is ever rewritten, even outside the API.
 - `GET /api/v1/projects/:id/materials` lists only `kind = 'material'`; `PATCH /api/v1/materials/:id`

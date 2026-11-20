@@ -42,6 +42,9 @@ describe('an answer is a Reply in an encrypted space as in a plain one (#1424 de
       assert.equal(item.kind, 'mention');
       assert.equal(item.answer, true, 'a Reply: the kind is the same in every space');
       assert.equal(item.from?.id, ben.id);
+      // The Reply says what Ada asked, her own message just before the answer, where its words are read (v0.2.2, #1563); an encrypted space's are not.
+      if (side === 'plain') assert.match(item.asked ?? '', /can you send a photo of the new shelf\?$/, 'what was asked is the Reply\'s second line');
+      else assert.equal(item.asked, undefined, 'an encrypted space has no words in its notices, and none here');
       const note = (expectStatus(await ada.browser.request('GET', '/api/v1/inbox'), 200) as InboxResponse).items.find((entry) => entry.id === item.key.slice(5));
       const row = (await pool.query<{ answer: boolean; title: string; body: string }>('SELECT answer, title, body FROM notifications WHERE id = $1', [item.key.slice(5)])).rows[0]!;
       assert.equal(row.answer, true, 'the generator recorded the answer on the notification');

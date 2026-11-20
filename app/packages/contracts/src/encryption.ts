@@ -174,6 +174,8 @@ export interface WorkspaceEncryptionResumeJob { workspaceId: string }
  */
 export const CROSS_WORKSPACE_READ_ROUTES: readonly string[] = [
   'GET /api/v1/search', 'GET /api/v1/inbox', 'GET /api/v1/needs-you', 'GET /api/v1/needs-you/aside', 'GET /api/v1/return',
+  // The Spaces list's newest message of each space (#1563): one locked encrypted space leaves its own row without a line, not all of them.
+  'GET /api/v1/space-previews',
 ];
 
 /**

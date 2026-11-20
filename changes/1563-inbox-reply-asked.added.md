@@ -1,0 +1,1 @@
+- An answer to your question in the Inbox ("Reply") says what you asked above the answer, and a decision people have discussed says how many replies its discussion has ([#1563](https://github.com/ColdPhase/flux/issues/1563)).

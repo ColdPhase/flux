@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, EditMessageCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
+import { SPACE_PREVIEWS_LIMIT, SPACE_PREVIEWS_PATH, type ConversationRootQuery, type ConversationWindowQuery, type CreateMaterialCommand, type EditMessageCommand, type PageQuery, type SendMessageCommand, type SpacePreviewsResponse, type UpdateMaterialCommand } from '@flux/contracts';
 import { conversationUseCases, DomainError, InvalidInputError, type FileStorage } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -37,7 +37,8 @@ const updateMaterialBody = { type: 'object', required: ['clientMutationId', 'exp
     body: { type: 'string', maxLength: 100_000 }, url: { type: ['string', 'null'], maxLength: 2048 } } } as const;
 
 export async function conversationRoutes(app: FastifyInstance, { db, sessions, storage }: Options) {
-  const store = conversationUseCases(conversationStore(db, { storage }));
+  const stored = conversationStore(db, { storage });
+  const store = conversationUseCases(stored);
   const receipts = projectReceipts(db);
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
@@ -48,6 +49,13 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
     throw error;
   });
 
+  // The Spaces list's second line and time (#1563): each readable space's newest message, in one read for the spaces asked about.
+  app.get<{ Querystring: { projectIds?: string } }>(SPACE_PREVIEWS_PATH, { schema: { querystring: { type: 'object', additionalProperties: false, properties: { projectIds: { type: 'string', maxLength: SPACE_PREVIEWS_LIMIT * 37 } } } } },
+    async (request): Promise<SpacePreviewsResponse> => {
+      const ids = (request.query.projectIds ?? '').split(',').filter(Boolean);
+      if (ids.length > SPACE_PREVIEWS_LIMIT) throw new InvalidInputError(`Ask about at most ${SPACE_PREVIEWS_LIMIT} spaces at a time`);
+      return { items: await stored.listSpacePreviews(await principal(request), ids) };
+    });
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/conversations',
     { schema: { querystring: page } }, async (request) => store.listConversations(await principal(request), request.params.projectId, request.query));
   app.post<{ Params: { projectId: string }; Body: SendMessageCommand }>('/api/v1/projects/:projectId/conversations',

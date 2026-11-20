@@ -178,7 +178,8 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const { sketch, access } = await authorized(ports, principal, 'sketch.read', sketchId);
         if ((page.offset > 0 || linkPage.offset > 0) && query.expectedUpdatedAt === undefined)
           throw new InvalidInputError('A continuation needs the map updatedAt checkpoint', 'VERSION_REQUIRED');
-        if (query.expectedUpdatedAt !== undefined && query.expectedUpdatedAt !== iso(sketch.updatedAt))
+        // The same moment however it is written: an agent is given it in its owner's zone with the offset (C-57, #1563), the web in UTC.
+        if (query.expectedUpdatedAt !== undefined && Date.parse(query.expectedUpdatedAt) !== sketch.updatedAt.getTime())
           throw new ConflictError('The map changed; read it again from the first page', 'SOURCE_VERSION_CONFLICT');
         const [thoughts, links, counts] = await Promise.all([ports.sketches.thoughts(sketch.id, page),
           ports.sketches.links(sketch.id, linkPage), ports.sketches.mapCounts(sketch.id)]);

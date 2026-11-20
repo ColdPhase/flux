@@ -88,8 +88,8 @@ class Round15Work(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, who: str | None, *, phone: bool = False, zoom: int = 1) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
+    def context(self, who: str | None, *, phone: bool = False, zoom: int = 1, scheme: str = "light") -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block", "color_scheme": scheme}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=ENGINE == "chromium", has_touch=True)
         else:
@@ -237,13 +237,18 @@ class Round15Work(unittest.TestCase):
         page.locator(".wiki-switch").click()
         pages = page.get_by_role("dialog", name=re.compile("^Pages in ")).get_by_role("list", name="Pages")
         row = pages.get_by_role("link", name=SOURCE)
-        expect(row).to_have_attribute("href", f"/materials/{self.ids['source']}")
+        expect(row).to_have_attribute("href", f"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}")
         row.click()
         expect(page.get_by_role("heading", name=SOURCE)).to_be_visible()
         expect(page.get_by_role("link", name="Community garden sensors · Wiki")).to_have_attribute("href", f"/projects/{self.ids['project']}/docs")
         # Its header names its space, as the space's other Wiki pages do (look-3 F5), and its way back returns to the Wiki it was opened
         # from, not to the conversation (round 15 confirm S2).
         expect(page.get_by_role("heading", level=1)).to_have_text("Community garden sensors")
+        # The space's own header: its four views, the Wiki the current one, and its people (v0.2.2, #1563: the page had a header "Wiki" with no tabs).
+        views = page.locator("nav[aria-label='Space views']")
+        expect(views.get_by_role("tab")).to_have_text(["Conversation", "Tasks", "Map", "Wiki"])
+        expect(views.get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}$"))
         shot(page, f"r15-source-page-{ENGINE}")
         expect(page.get_by_role("link", name="Back to the conversation")).to_have_count(0)
         page.get_by_role("link", name="Back to Wiki").click()
@@ -258,6 +263,87 @@ class Round15Work(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/{self.ids['doc']}$"))
         expect(page.get_by_text("You are reading a saved version")).to_have_count(0)
         expect(page.locator(".doc-notice--version")).to_have_count(0)
+
+    # ---------------------------------------------------------------- v0.2.2 (#1563)
+
+    def test_08_a_saved_source_by_its_id_alone_goes_to_its_place_in_its_space(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/materials/{self.ids['source']}")
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}$"))
+        expect(page.get_by_role("heading", level=1)).to_have_text("Community garden sensors")
+        expect(page.locator("nav[aria-label='Space views']").get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
+        # Opened by its address there is no earlier place: its way back is its space's conversation, as it was.
+        page.get_by_role("link", name="Back to the conversation").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+        phone = self.page("ada", phone=True)
+        phone.goto(f"/materials/{self.ids['source']}/versions/1")
+        expect(phone).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs/sources/{self.ids['source']}/versions/1$"))
+        expect(phone.locator("nav[aria-label='Space views']").get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
+        shot(phone, f"r15-source-page-phone-{ENGINE}")
+        for is_phone, scheme in ((False, "dark"), (True, "dark")):
+            dark = self.page("ada", phone=is_phone, scheme=scheme)
+            dark.goto(f"/materials/{self.ids['source']}")
+            expect(dark.get_by_role("heading", name=SOURCE)).to_be_visible()
+            shot(dark, f"v022-source-page-{'phone' if is_phone else 'computer'}-{scheme}-{ENGINE}")
+
+    def test_09_a_space_row_says_what_was_said_last_and_when_as_a_conversation_row_does(self) -> None:
+        jonas = self.page("jonas")
+        self.api(jonas, "POST", f"/api/v1/projects/{self.ids['project']}/conversations",
+                 {"body": "The supplier lowered the **probe price**, see the new list.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        setup = self.page("ada")
+        workspace_id = self.api(setup, "GET", f"/api/v1/projects/{self.ids['project']}", status=200)["workspaceId"]
+        quiet = self.api(setup, "POST", f"/api/v1/workspaces/{workspace_id}/projects", {"name": "Quiet bench", "visibility": "workspace"}, status=201)
+        for phone, scheme in ((False, "light"), (True, "light"), (False, "dark"), (True, "dark")):
+            with self.subTest(phone=phone, scheme=scheme):
+                page = self.page("ada", phone=phone, scheme=scheme)
+                page.goto("/projects")
+                row = page.locator(f"li.proj-index__row[data-space-id='{self.ids['project']}']")
+                expect(row.locator(".set-row__s")).to_have_text("Jonas: The supplier lowered the probe price, see the new list.")
+                expect(row.locator("time.proj-index__time")).to_have_count(1)
+                # The row's name for a screen reader is the space, its states, then what was said (never "undefined. …").
+                expect(row.locator("a.set-row")).to_have_attribute("aria-label", re.compile(r"^Community garden sensors[^.]*\. Jonas: The supplier lowered"))
+                box = row.locator(".set-row__s").bounding_box()
+                time = row.locator("time.proj-index__time").bounding_box()
+                self.assertIsNotNone(box)
+                self.assertIsNotNone(time)
+                self.assertLessEqual(box["x"] + box["width"], time["x"] + 1, "the words end before the time's column")
+                # A space nobody has written in has neither line nor time.
+                empty = page.locator(f"li.proj-index__row[data-space-id='{quiet['id']}']")
+                expect(empty).to_be_visible()
+                expect(empty.locator(".set-row__s")).to_have_count(0)
+                expect(empty.locator("time")).to_have_count(0)
+                shot(page, f"v022-spaces-previews-{'phone' if phone else 'computer'}-{scheme}-{ENGINE}")
+
+    def test_10_an_inbox_reply_says_what_you_asked_and_a_discussed_decision_how_many_replies_it_has(self) -> None:
+        ada = self.page("ada")
+        jonas = self.page("jonas")
+        asked = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/conversations",
+                         {"body": "@Jonas which hedge row is the overflow sensor on?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.api(jonas, "POST", f"/api/v1/conversations/{asked['id']}/messages", {"body": "The hedge, I think. It drops to one bar only when it is wet.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        item = None
+        for _ in range(40):
+            queue = self.api(ada, "GET", "/api/v1/needs-you")
+            item = next((entry for entry in queue["items"] if entry.get("answer") and entry["title"].startswith("The hedge")), None)
+            if item:
+                break
+            ada.wait_for_timeout(250)
+        self.assertIsNotNone(item, "the answer reaches Ada's Inbox")
+        self.assertIn("which hedge row is the overflow sensor on?", item["asked"])
+        for scheme in ("light", "dark"):
+            ada = self.page("ada", scheme=scheme)
+            ada.goto("/inbox")
+            ada.locator(f"li.nyc[data-key='{item['key']}']").click()
+            open_item = ada.locator("article.nyc--open")
+            expect(open_item.locator(".nyc__asked")).to_contain_text("You asked")
+            expect(open_item.locator(".nyc__asked")).to_contain_text("which hedge row is the overflow sensor on?")
+            asked_box = open_item.locator(".nyc__asked").bounding_box()
+            title_box = open_item.locator(".nyc__title").bounding_box()
+            self.assertLess(asked_box["y"], title_box["y"], "what was asked stands above its answer")
+            shot(ada, f"v022-inbox-reply-asked-{scheme}-{ENGINE}")
+            # The decision Jonas proposed, six messages deep: its open item says so.
+            ada.locator(f"li.nyc[data-key='decision:{self.ids['decision']}']").click()
+            expect(ada.locator("article.nyc--open .nyc__based").filter(has_text="Discussion")).to_have_text(re.compile(rf"Discussion\s+{len(NOTES)} replies"))
+            shot(ada, f"v022-inbox-decision-replies-{scheme}-{ENGINE}")
 
 
 if __name__ == "__main__":

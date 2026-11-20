@@ -234,6 +234,18 @@ class MessageWorkJourney(unittest.TestCase):
         expect(alert).to_contain_text("Your reply is kept");field.fill("");expect(alert).not_to_contain_text("Your reply is kept")
         page.unroute("**/work-associations?**")
         page.locator("#thread").get_by_role("button",name="Refresh linked work",exact=True).click();self.ready(page);self.assertEqual(self.chips(page),first)
+        # v0.2.2 (#1563, round 15 confirm S4): offline, the composer's own line says so and the linked-work line says nothing more (it only
+        # repeated it); once Flux answers again the work is read again by itself, with no Refresh to press.
+        page.route("**/work-associations?**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable read"}))
+        pages.get_by_role("button",name="Refresh",exact=True).click()
+        expect(alert).to_be_visible()
+        page.context.set_offline(True)
+        expect(alert).to_have_count(0)
+        expect(page.get_by_text("You’re offline",exact=False).first).to_be_visible()
+        page.unroute("**/work-associations?**")
+        page.context.set_offline(False)
+        expect(alert).to_have_count(0)
+        self.ready(page);self.assertEqual(self.chips(page),first)
 
     def test_04_cookie_account_change_retires_held_old_page_and_isolates_reply(self):
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}");self.ready(page)

@@ -123,7 +123,7 @@ function header(input: Placed): string[] {
     return `${owner} asked you with /ai in ${conversation}. <place> below names it.`;
   })();
   const now = clock(input.now, input.zone);
-  const tools = input.place.kind !== 'dm' ? ' Times the Flux tools return are in UTC.' : '';
+  const tools = input.place.kind !== 'dm' ? ' Times the Flux tools return are in that zone too, with their offset.' : '';
   return [
     `You are ${input.agentName}, the AI agent of ${owner} in Flux, where a team talks and tracks its work.`,
     where,

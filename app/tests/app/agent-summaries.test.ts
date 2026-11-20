@@ -95,6 +95,19 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     await scene.complete(live.runId);
   });
 
+  test('the digest and the times of every tool are in the owner\'s own time zone with their offset, so the model converts nothing (v0.2.2, #1563)', async () => {
+    await pool.query(`UPDATE auth_users SET time_zone = 'Europe/Warsaw' WHERE id = $1`, [scene.owner.id]);
+    try {
+      const live = await run();
+      const answer = await summarize(live, { after: '2026-11-02' });
+      // November in Warsaw is UTC+1: 10:02Z is 11:02 and 08:30Z is 09:30; the day is the owner's day, and the range names its own offset.
+      assert.deepEqual(lines(answer), ['## 2026-11-02', '11:02 Jonas Berg: I can take the barrel tasks.', '## 2026-11-03', '09:30 Ada Nowak: Great, the deadline is Friday.',
+        '## 2026-11-04', '17:45 Jonas Berg: Done: barrel tasks tidied.']);
+      assert.equal(answer.after, '2026-11-02T01:00:00.000+01:00', 'an instant a tool names is written in the owner\'s zone with its offset');
+      await scene.complete(live.runId);
+    } finally { await pool.query(`UPDATE auth_users SET time_zone = 'UTC' WHERE id = $1`, [scene.owner.id]); }
+  });
+
   test('an API-key agent in pi summarises a thread with the tool in its own run: the digest is the tool\'s result, and the tool calls no model of its own', async () => {
     const before = await rows();
     pi.gateway.script([{ tool: 'mcp__flux__flux_summarize', args: { after: '2026-11-02' } }, { text: 'Jonas took the barrel tasks and finished them; the deadline is Friday.' }]);

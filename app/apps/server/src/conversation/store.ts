@@ -1,9 +1,9 @@
-import { messageOpening, messagePreview } from '@flux/contracts';
+import { messageOpening, messagePreview, oneLinePreviewText, removedName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, gte, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
-import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, visibleFilter, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
-  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc, SentConversationMessage,
+  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc, SentConversationMessage, SpacePreview,
   AgentProjectOwner, MaterialVersion, MessageReferenceCard, Page, PageQuery,
 } from '@flux/contracts';
 import {
@@ -367,6 +367,54 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       ...(await unreadFrom(db, principal, row.projectId, row.id, !decision)) };
   }
   return {
+    /**
+     * The newest message of each space the caller can read, among the spaces' own conversations (a task's or a decision's discussion is not one,
+     * #868, #1424): of the 20 newest conversations of a space, the one whose last message is the newest. One statement however many spaces
+     * (`project_conversations_project_idx`, `project_messages_conversation_idx`); the words of an encrypted space are opened here, never in SQL.
+     */
+    async listSpacePreviews(principal: Principal, projectIds: readonly string[]): Promise<SpacePreview[]> {
+      human(principal);
+      const asked = [...new Set(projectIds.map((value) => uuid(value, 'projectId').toLowerCase()))];
+      if (!asked.length) return [];
+      // Which of them the caller can read: one read per company or encrypted space (the policy's own list condition), never one per space.
+      const p = schema.projects;
+      const located = await db.select({ id: p.id, workspaceId: p.workspaceId }).from(p).where(inArray(p.id, asked));
+      const readable: string[] = [];
+      for (const workspaceId of new Set(located.map((row) => row.workspaceId))) {
+        const ids = located.filter((row) => row.workspaceId === workspaceId).map((row) => row.id);
+        readable.push(...(await db.select({ id: p.id }).from(p).where(and(inArray(p.id, ids), await visibleFilter(principal, workspaceId, 'project', db)))).map((row) => row.id));
+      }
+      if (!readable.length) return [];
+      const wanted = sql.join(readable.map((id) => sql`(${id}::uuid)`), sql`, `);
+      const result = await db.execute<{ project_id: string; id: string; workspace_id: string; body: string; attachment_count: number; created_at: Date | string;
+        author_id: string | null; author_agent_id: string | null }>(sql`
+        SELECT p.id AS project_id, l.id, l.workspace_id, l.body, l.attachment_count, l.created_at, l.author_id, l.author_agent_id
+        FROM (VALUES ${wanted}) AS p(id)
+        JOIN LATERAL (
+          SELECT m.id, m.workspace_id, m.body, m.attachment_count, m.created_at, m.author_id, m.author_agent_id
+          FROM (SELECT c.id FROM project_conversations c
+            WHERE c.project_id = p.id
+              AND NOT EXISTS (SELECT 1 FROM project_task_discussions d WHERE d.conversation_id = c.id)
+              AND NOT EXISTS (SELECT 1 FROM project_decision_discussions x WHERE x.conversation_id = c.id)
+            ORDER BY c.created_at DESC, c.id DESC LIMIT 20) recent
+          JOIN LATERAL (SELECT m.* FROM project_messages m WHERE m.conversation_id = recent.id AND m.removed_at IS NULL ORDER BY m.sequence DESC LIMIT 1) m ON true
+          ORDER BY m.created_at DESC, m.id DESC LIMIT 1) l ON true`);
+      if (!result.rows.length) return [];
+      const seals = await sealsOf(db as unknown as DbExecutor, result.rows.map((row) => row.workspace_id), { write: false });
+      const rows = result.rows.map((row) => ({ ...row, body: openField('project_messages', 'body', [row.id], row.body, seals.get(row.workspace_id)!)! }));
+      const names = new Map<string, string>();
+      for (const workspaceId of new Set(rows.map((row) => row.workspace_id)))
+        for (const [key, name] of await authorNames(db, workspaceId, rows.filter((row) => row.workspace_id === workspaceId).map((row) => ({ authorId: row.author_id, authorAgentId: row.author_agent_id }))))
+          names.set(key, name);
+      return rows.map((row): SpacePreview => {
+        const left = row.author_id !== null ? names.get(`removed:${row.author_id}`) : undefined;
+        const author = row.author_id !== null ? { kind: 'human' as const, id: row.author_id, name: left !== undefined ? removedName(left) : names.get(`human:${row.author_id}`) ?? '' }
+          : { kind: 'agent' as const, id: row.author_agent_id!, name: names.get(`agent:${row.author_agent_id}`) ?? 'Agent' };
+        return { projectId: row.project_id, at: new Date(row.created_at).toISOString(), author: author.name ? author : null,
+          body: [...oneLinePreviewText(row.body)].slice(0, 300).join(''), files: Number(row.attachment_count) };
+      });
+    },
+
     async listConversations(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<ConversationSummary>> {
       const page = parsePage(query);
       await requireProject(principal, projectId, db);

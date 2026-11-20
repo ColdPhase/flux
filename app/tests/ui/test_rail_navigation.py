@@ -256,6 +256,12 @@ class RailNavigation(unittest.TestCase):
                 self.assertTrue(apart["apart"], f"the toast stands beside the panel, not on it: {apart}")
                 self.assertTrue(apart["inWindow"], f"the toast stays in the window: {apart}")
                 expect(toast.get_by_role("button", name="Undo")).to_be_visible()
+                # Two lines, never three (v0.2.2, #1563; round 15 look-2 P3-9): the words and × on the first, Undo and Another task on the second.
+                rows = toast.evaluate("""el => { const tops = [...el.querySelectorAll('.ui-toast__msg, .ui-toast__action, .ui-toast__close')].map((node) => node.getBoundingClientRect().top).sort((a, b) => a - b);
+                  const lines = []; for (const top of tops) if (!lines.length || top - lines[lines.length - 1] > 8) lines.push(top);
+                  const msg = el.querySelector('.ui-toast__msg').getBoundingClientRect(); return { lines: lines.length, message: msg.height, divider: getComputedStyle(el.querySelector('.ui-toast__sep')).display }; }""")
+                self.assertLessEqual(rows["lines"], 2, f"the toast beside the panel is two lines at most: {rows}")
+                self.assertLessEqual(rows["message"], 40, f"its words keep one line: {rows}")
                 shot(page, f"p3b-toast-beside-panel-200-{engine}")
 
     def test_07_at_200_percent_r_on_a_decision_keeps_accept_in_view(self):
