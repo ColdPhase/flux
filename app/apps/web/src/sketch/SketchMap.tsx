@@ -1034,7 +1034,9 @@ export function SketchMap(props: SketchMapProps) {
       // Moving between a thought and its own dots keeps it hovered, so its dots stay in place under the pointer.
       pointerLeave: (event, id) => { if (!ownPart(event.relatedTarget, id)) setHover((current) => current === id ? null : current); },
       dotPointerDown: (event, id) => onDotPointerDown(event, id),
-      dotClick: (id) => { if (!suppressClick.current) props.onConnectFrom(id); } };
+      dotClick: (id) => { if (!suppressClick.current) props.onConnectFrom(id); },
+      // The status after Enter on a dot says "Esc cancels": the dot keeps the focus then, so it hears Escape as a thought does.
+      dotKeyDown: (event) => { if (event.key === 'Escape' && props.onEscape()) { event.preventDefault(); event.stopPropagation(); } } };
   });
 
   const ghost = (x: number, y: number): Rect => ({ x, y, w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
@@ -1377,8 +1379,9 @@ interface NodeEvents {
   pointerLeave(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
   dotPointerDown(event: ReactPointerEvent<HTMLButtonElement>, id: string): void;
   dotClick(id: string): void;
+  dotKeyDown(event: KeyboardEvent<HTMLButtonElement>): void;
 }
-const IDLE_EVENTS: NodeEvents = { pointerDown() {}, resizePointerDown() {}, keyDown() {}, click() {}, doubleClick() {}, openTask() {}, pointerEnter() {}, pointerLeave() {}, dotPointerDown() {}, dotClick() {} };
+const IDLE_EVENTS: NodeEvents = { pointerDown() {}, resizePointerDown() {}, keyDown() {}, click() {}, doubleClick() {}, openTask() {}, pointerEnter() {}, pointerLeave() {}, dotPointerDown() {}, dotClick() {}, dotKeyDown() {} };
 
 /** Whether `target` is thought `id` itself or one of its connection dots. */
 function ownPart(target: EventTarget | null, id: string) {
@@ -1404,7 +1407,7 @@ const ThoughtDots = memo(function ThoughtDots({ id, text, x, y, w, h, zoom, sele
       className={`sk-dot${on ? ' is-on' : ''}`}
       style={{ transform: `translate(${x + (side === 'right' ? w : 0)}px, ${y + h / 2}px) scale(${1 / zoom}) translate(-50%, -50%)` }}
       onPointerDown={(event) => events.current.dotPointerDown(event, id)}
-      onClick={() => events.current.dotClick(id)} />
+      onClick={() => events.current.dotClick(id)} onKeyDown={(event) => events.current.dotKeyDown(event)} />
   ))}</>;
 });
 

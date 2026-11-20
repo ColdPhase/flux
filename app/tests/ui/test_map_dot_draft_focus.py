@@ -134,7 +134,10 @@ class MapDotDraftFocus(unittest.TestCase):
             page.mouse.down()
             page.mouse.move(x + 2, y + 1)
             page.mouse.up()
+            expect(page.locator('.sk-canvas.is-connecting')).to_have_count(1)
+            # The dot keeps the focus after its click (the status says "Esc cancels"): Escape there ends the connection.
             page.keyboard.press('Escape')
+            expect(page.locator('.sk-canvas.is-connecting')).to_have_count(0)
             self.press_dot(page, B, hold_ms=60)
             seen = self.typed_at_once(page)
             if seen is not True:
