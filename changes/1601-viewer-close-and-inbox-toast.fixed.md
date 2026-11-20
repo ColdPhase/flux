@@ -1,1 +1,0 @@
-- The file viewer's Close is a quiet icon button instead of a filled grey circle, and the Inbox's "Marked done" toast keeps one line under the open item instead of two ([#1601](https://github.com/ColdPhase/flux/pull/1601)).

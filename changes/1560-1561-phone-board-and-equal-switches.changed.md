@@ -1,2 +1,0 @@
-- On a phone, Tasks › Board shows one status at a time under a row of the four statuses with their counts; a tap or a swipe moves to the next, nothing scrolls sideways, and an empty space shows the List's "No tasks yet" block on the Board too (#1560).
-- Segmented controls (Board / List, Map / List, Model, the Create window's kinds, the live stage) have equal options, so the selected pill keeps its size; on a narrow phone the Create window's Close moves to the line below the tabs instead of squeezing them (#1561).
