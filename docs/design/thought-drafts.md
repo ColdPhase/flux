@@ -7,6 +7,8 @@ source navigation and map camera remain authoritative.
 New root/child capture opens one private draft per account/workspace/place/map.
 F-026 S15 and #349 AC-3 limit screens at or below 640 CSS px to plain additions:
 selection, keyboard Add and clipboard text/lines/images never infer a parent there.
+A drag from a thought's dot names its parent rather than inferring it, so since #1600
+(S15 amended) such a draft keeps its connection on the phone too, through Save and retry.
 A draft opened on a wider screen retains its content when narrowed. Before its
 first Save it shows a plain addition and saves without creating a connection on the phone.
 Existing graph links and saved thought positions remain unchanged. Wider screens
