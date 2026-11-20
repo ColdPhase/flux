@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -85,3 +86,28 @@ class FluxConfigurationTest(unittest.TestCase):
         self.live.mkdir()
         self.assert_refused("up")
         self.assertTrue(self.live.is_dir())
+
+    def test_a_quoted_project_in_docker_env_is_the_same_project_as_a_plain_one(self) -> None:
+        """#1541: configuration management quotes every value; Compose reads them, so the launcher must too."""
+        for written in ("flux-quoted", "'flux-quoted'", '"flux-quoted"'):
+            with self.subTest(written=written):
+                self.log.unlink(missing_ok=True)
+                self.live.write_text(f"FLUX_PROJECT={written}\nFLUX_AUTH_SECRET=test-existing-secret\n", encoding="utf-8")
+                self.live.chmod(0o600)
+                result = self.run_flux("down")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn("invalid Compose project name", result.stderr)
+                self.assertIn("-p flux-quoted ", self.log.read_text())
+
+    def test_the_env_reader_drops_one_pair_of_quotes_from_a_file_and_never_asks_the_shell(self) -> None:
+        """The reader behind the project name and the backup's key-pin secret: `FLUX_PROJECT='x'` and `FLUX_PROJECT=x` read the same."""
+        text = (ROOT / "flux").read_text(encoding="utf-8")
+        match = re.search(r"^env_file_value\(\) \{\n.*?^\}\n", text, re.S | re.M)
+        self.assertIsNotNone(match)
+        archive = self.base / "archived.env"
+        archive.write_text("A=old\nA=\'a$b c\'\nB=\"two words\"\nC=plain\nD=\'\nE=\n", encoding="utf-8")
+        script = f'ENV_FILE="{self.live}"\n{match.group(0)}' + "".join(
+            f'printf "%s|" "$(env_file_value {key} "{archive}")"\n' for key in ("A", "B", "C", "D", "E", "MISSING")
+        ) + f'printf "%s|" "$(env_file_value A "{self.base}/no-such-file")"\n'
+        result = subprocess.run(["sh", "-c", script], capture_output=True, text=True, env={**self.env, "A": "from-the-shell"})
+        self.assertEqual(result.stdout, "a$b c|two words|plain|\'||||")

@@ -112,8 +112,8 @@ class ComposeKeyringTest(unittest.TestCase):
         restore = launcher[launcher.index("cmd_restore() {"):]
         self.assertIn('restore_key_pin_secret "$RESTORE_DIR/flux.env"', restore[: restore.index("\n}\n")])
         functions = "\n".join(
-            re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("set_env_line", "restore_key_pin_secret") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
-            for name in ("warn", "archived_env_value", "set_env_line", "restore_key_pin_secret")
+            re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("env_file_value", "set_env_line", "restore_key_pin_secret") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
+            for name in ("warn", "env_file_value", "archived_env_value", "set_env_line", "restore_key_pin_secret")
         )
         with tempfile.TemporaryDirectory() as directory:
             env = Path(directory) / ".env"

@@ -193,6 +193,54 @@ class LauncherHttpsCallsTest(unittest.TestCase):
                     self.assertEqual(other.returncode, 0, f"{command}: {other.stderr}")
                     self.assertNotIn("FLUX_LIVEKIT_PUBLIC_IP", self.env_file.read_text(encoding="utf-8"))
 
+    # --- 4b. An address or name the owner sets is kept (#1542): split-horizon DNS, a proxy on another machine
+
+    def test_an_address_and_a_name_the_owner_sets_win_over_what_the_server_resolves(self) -> None:
+        # The server's DNS answers with the proxy's LAN address; browsers reach the public one that the router forwards.
+        self.stub("getent", 'printf "192.168.1.5    STREAM flux.example.org\\n"\n')
+        for written in ("203.0.113.9", "'203.0.113.9'", '"203.0.113.9"'):
+            with self.subTest(written=written):
+                self.write_env(f"FLUX_PUBLIC_ORIGIN=https://flux.example.org\nFLUX_CALLS=on\nFLUX_LIVEKIT_PUBLIC_IP=192.168.1.5\n"
+                               f"FLUX_CALLS_PUBLIC_IP={written}\nFLUX_LIVEKIT_DOMAIN=media.example.org\n")
+                result = self.up()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                values = self.env_values()
+                self.assertEqual(values["FLUX_LIVEKIT_PUBLIC_IP"], "203.0.113.9", "a stale address from an earlier up is replaced by the owner's")
+                self.assertEqual(values["FLUX_CALLS_PUBLIC_IP"], written, "the owner's own line is never rewritten")
+                self.assertEqual(values["FLUX_LIVEKIT_DOMAIN"], "media.example.org")
+                self.assertIn("Calls: on. Media server media.example.org at 203.0.113.9 (FLUX_CALLS_PUBLIC_IP in docker/.env);", result.stdout)
+                self.assertNotIn("private address", result.stdout)
+                self.assertEqual(self.logs().returncode, 0)
+                self.assertIn("domain=media.example.org", self.compose_call()[1], "the media name is the owner's, not the origin's host")
+
+    def test_an_address_the_owner_sets_needs_no_dns_and_must_be_ipv4(self) -> None:
+        for answer in ("", "127.0.1.1    STREAM flux.example.org"):
+            with self.subTest(answer=answer):
+                self.stub("getent", f'printf "%s" "{answer}"\n')
+                self.write_env("FLUX_PUBLIC_ORIGIN=https://flux.example.org\nFLUX_CALLS=on\nFLUX_CALLS_PUBLIC_IP=203.0.113.9\n")
+                self.assertEqual(self.up().returncode, 0)
+                self.assertEqual(self.env_values()["FLUX_LIVEKIT_PUBLIC_IP"], "203.0.113.9")
+        for wrong in ("flux.example.org", "2001:db8::1", "203.0.113"):
+            with self.subTest(wrong=wrong):
+                self.write_env(f"FLUX_PUBLIC_ORIGIN=https://flux.example.org\nFLUX_CALLS=on\nFLUX_CALLS_PUBLIC_IP={wrong}\n")
+                result = self.up()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"FLUX_CALLS_PUBLIC_IP is '{wrong}' in docker/.env, which is not an IPv4 address", result.stderr)
+
+    def test_without_an_address_of_the_owners_the_name_is_looked_up_again_and_the_fix_is_named(self) -> None:
+        self.stub("getent", 'printf "192.168.1.5    STREAM flux.example.org\\n"\n')
+        self.write_env("FLUX_PUBLIC_ORIGIN=https://flux.example.org\nFLUX_CALLS=on\nFLUX_LIVEKIT_PUBLIC_IP=198.51.100.7\n")
+        result = self.up()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.env_values()["FLUX_LIVEKIT_PUBLIC_IP"], "192.168.1.5", "detection is unchanged while FLUX_CALLS_PUBLIC_IP is empty")
+        self.assertIn("Calls: on. Media server flux.example.org at 192.168.1.5 (what flux.example.org resolves to);", result.stdout)
+        self.assertIn("192.168.1.5 is a private address: calls reach only devices on the same network. If browsers reach this server at another "
+                      "address, set FLUX_CALLS_PUBLIC_IP in docker/.env.", result.stdout)
+        self.stub("getent", 'printf "127.0.1.1    STREAM flux.example.org\\n"\n')
+        refused = self.up()
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("or set FLUX_CALLS_PUBLIC_IP in docker/.env to it", refused.stderr)
+
     def test_a_loopback_origin_uses_the_loopback_address(self) -> None:
         self.write_env("FLUX_PUBLIC_ORIGIN=http://localhost:8081\nFLUX_CALLS=on\n")
         self.up()

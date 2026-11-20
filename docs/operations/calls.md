@@ -23,10 +23,12 @@ remember. On that `up` it also:
 - writes `FLUX_LIVEKIT_API_KEY` and `FLUX_LIVEKIT_API_SECRET` into `docker/.env`, once, and never
   changes them afterwards;
 - uses the origin's host (`flux.example.org` for `https://flux.example.org`) as the media name for STUN
-  and TURN;
+  and TURN (a `FLUX_LIVEKIT_DOMAIN` of your own in `docker/.env` replaces it);
 - looks up the IPv4 address that name resolves to on the server and writes it as
   `FLUX_LIVEKIT_PUBLIC_IP`, the address browsers send media to. Every `./flux up` looks again and
-  updates the line when the address changed. An origin that is an IP address is used as it is;
+  updates the line when the address changed. An origin that is an IP address is used as it is. A
+  `FLUX_CALLS_PUBLIC_IP` of your own in `docker/.env` replaces the lookup
+  ([split-horizon DNS or a proxy on another machine](#split-horizon-dns-or-a-proxy-on-another-machine));
 - prints what it found and the ports to open, for example:
 
 ```text
@@ -57,11 +59,42 @@ IPv4 address:
 - **No A record** (only AAAA, or none yet): `./flux up` stops and says so. Add the record and run it again.
 - **The name resolves to a loopback address on the server** (often a line in `/etc/hosts` that maps the
   server's own name to `127.0.1.1`): `./flux up` stops and says so, because browsers cannot send media
-  there. Make the name resolve to the public address on the server too.
+  there. Make the name resolve to the public address on the server too, or set `FLUX_CALLS_PUBLIC_IP`.
 - **A private address** (10.x, 172.16–31.x, 192.168.x, 100.64–127.x): `up` goes on and says that calls
-  reach only devices on the same network. That is right for a home lab or office network.
+  reach only devices on the same network. That is right for a home lab or office network. If browsers
+  reach this server at another address, set `FLUX_CALLS_PUBLIC_IP` (next section).
 - **A CDN or another proxy in front of the name** (its address, not the server's): media cannot flow.
   Point the name at the server itself.
+
+## Split-horizon DNS, or a proxy on another machine
+
+The lookup asks the server's own resolver. That is the wrong question when the server and the browsers
+get different answers for the origin's name. A common case is Flux behind your own proxy (Traefik,
+nginx) on another machine: internal DNS answers the origin's name with the proxy's LAN address, public
+DNS answers it with the public address, and the router forwards 7881/tcp, 7882/udp and 3478/udp to the
+Flux host. Left alone, `./flux up` would advertise the proxy's LAN address, which forwards no media
+ports, and say that calls reach only devices on the same network.
+
+Set the address yourself in `docker/.env`:
+
+```dotenv
+FLUX_CALLS=on
+FLUX_CALLS_PUBLIC_IP=203.0.113.20
+```
+
+`./flux up` then keeps it: it checks only that the value is an IPv4 address, looks nothing up (the
+origin needs no A record on the server, and no `/etc/hosts` line), writes it as `FLUX_LIVEKIT_PUBLIC_IP`
+for Compose, and prints it:
+
+```text
+Calls: on. Media server flux.example.org at 203.0.113.20 (FLUX_CALLS_PUBLIC_IP in docker/.env); open 7881/tcp, 7882/udp and 3478/udp to this server.
+```
+
+Forward the media ports to the Flux host itself. The proxy carries only the HTTPS of the origin, which
+includes `/media`, never the media. `FLUX_LIVEKIT_DOMAIN` sets the media name the same way when it should
+not be the origin's host; without `FLUX_CALLS_PUBLIC_IP`, the lookup then asks for that name. Leave both
+out (or empty) and everything above applies as it is. The launcher writes `FLUX_LIVEKIT_PUBLIC_IP`
+itself on every `up`, so an address of your own goes in `FLUX_CALLS_PUBLIC_IP`, not there.
 
 ## The limit: no TURN over TLS
 

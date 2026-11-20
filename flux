@@ -110,13 +110,17 @@ compose_dev() {
     -f "$COMPOSE_MAIN" -f "$COMPOSE_DEV" --profile dev "$@"
 }
 
-# Reads KEY from the env file without executing it. A shell export of the same name wins,
-# matching Compose precedence.
+# Reads KEY from an env file (default: docker/.env) without executing it, as Compose reads it: one pair of quotes around the
+# value is dropped (#1541: a file written by configuration management quotes every value). The shell is not asked.
+env_file_value() {
+  [ -f "${2:-$ENV_FILE}" ] || return 0
+  sed -n "s/^$1=//p" "${2:-$ENV_FILE}" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+# KEY from docker/.env, where a shell export of the same name wins, matching Compose precedence.
 env_value() {
   eval "shell_value=\${$1-}"
   if [ -n "$shell_value" ]; then printf '%s' "$shell_value"; return; fi
-  [ -f "$ENV_FILE" ] || return 0
-  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+  env_file_value "$1"
 }
 env_file_has() { [ -f "$ENV_FILE" ] && grep -q "^$1=." "$ENV_FILE"; }
 embeddings_on() { [ "$(env_value FLUX_EMBEDDINGS)" = on ]; }
@@ -152,7 +156,9 @@ api_trusted_proxies() {
 # --- Calls (#1471, founder decision 4; docs/operations/calls.md). FLUX_CALLS=on layers docker/compose.live.yaml. The launcher makes the
 # LiveKit key and secret once, and takes the media name and public IPv4 address from the origin: the name is the origin's host, the
 # address is what that name resolves to (refreshed by every `up`, kept in docker/.env so that every command renders the same media
-# server). The owner only opens the media ports.
+# server). The owner only opens the media ports. An owner whose DNS answers differently on the server than to browsers (split-horizon DNS,
+# a proxy on another machine) sets FLUX_LIVEKIT_DOMAIN and FLUX_CALLS_PUBLIC_IP in docker/.env (#1542): a set value is kept, only checked,
+# and detection runs only while it is empty. The address has its own name because the launcher itself writes FLUX_LIVEKIT_PUBLIC_IP.
 calls_on() { [ "$(env_value FLUX_CALLS)" = on ]; }
 is_ipv4() {
   case "$1" in *[!0-9.]*|.*|*.|*..*|'') return 1 ;; esac
@@ -172,24 +178,32 @@ calls_private() {
   case "$1" in 10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*|169.254.*) return 0 ;; esac
   return 1
 }
-# Writes the key, the secret and the current address into docker/.env when they are missing or the address changed. CALLS_IP is the address.
+# The media name: FLUX_LIVEKIT_DOMAIN when the owner set it, else the origin's host.
+calls_domain() { v=$(env_value FLUX_LIVEKIT_DOMAIN); printf '%s' "${v:-$(origin_host)}"; }
+# Writes the key, the secret and the current address into docker/.env when they are missing or the address changed. CALLS_IP is the address:
+# FLUX_CALLS_PUBLIC_IP when the owner set it (checked, never looked up), else what the media name resolves to.
 calls_settings() {
   [ -n "$(env_value FLUX_LIVEKIT_API_KEY)" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_API_KEY "flux$(random_hex 8)"
   [ -n "$(env_value FLUX_LIVEKIT_API_SECRET)" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_API_SECRET "$(random_hex 32)"
-  calls_host=$(origin_host)
-  CALLS_IP=$(calls_resolve "$calls_host")
-  is_ipv4 "$CALLS_IP" || die "FLUX_CALLS=on: $calls_host (the host of FLUX_PUBLIC_ORIGIN) has no IPv4 address. Point its DNS A record at this server, then run ./flux up again."
-  case "$CALLS_IP" in
-    127.*) is_loopback_origin "$(public_origin)" ||
-      die "FLUX_CALLS=on: $calls_host resolves to $CALLS_IP on this server (often a line in /etc/hosts), not to its public address. Calls need the address browsers reach: make $calls_host resolve to this server's public IPv4 address here too, then run ./flux up again." ;;
-  esac
+  calls_host=$(calls_domain)
+  CALLS_IP=$(env_value FLUX_CALLS_PUBLIC_IP)
+  if [ -n "$CALLS_IP" ]; then
+    is_ipv4 "$CALLS_IP" || die "FLUX_CALLS_PUBLIC_IP is '$CALLS_IP' in ${ENV_FILE#"$FLUX_ROOT"/}, which is not an IPv4 address. Set this server's public IPv4 address there, or remove the line to take the address from DNS, then run ./flux up again."
+  else
+    CALLS_IP=$(calls_resolve "$calls_host")
+    is_ipv4 "$CALLS_IP" || die "FLUX_CALLS=on: $calls_host (FLUX_LIVEKIT_DOMAIN, or the host of FLUX_PUBLIC_ORIGIN) has no IPv4 address. Point its DNS A record at this server, or set FLUX_CALLS_PUBLIC_IP in ${ENV_FILE#"$FLUX_ROOT"/} to this server's public IPv4 address, then run ./flux up again."
+    case "$CALLS_IP" in
+      127.*) is_loopback_origin "$(public_origin)" ||
+        die "FLUX_CALLS=on: $calls_host resolves to $CALLS_IP on this server (often a line in /etc/hosts), not to its public address. Calls need the address browsers reach: make $calls_host resolve to this server's public IPv4 address here too, or set FLUX_CALLS_PUBLIC_IP in ${ENV_FILE#"$FLUX_ROOT"/} to it, then run ./flux up again." ;;
+    esac
+  fi
   [ "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" = "$CALLS_IP" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_PUBLIC_IP "$CALLS_IP"
 }
 # Every Compose command with calls on: the media name follows the origin, and the settings exist. Only the commands that start Flux (`up`,
 # `demo`, `restore`, `upgrade`) make missing ones, with the DNS check; `down`, `logs`, `clean` and the others never stop at that check
 # while no DNS record exists yet: they render the media server with placeholders for what is missing, and start nothing with them.
 calls_env() {
-  FLUX_LIVEKIT_DOMAIN=$(origin_host); export FLUX_LIVEKIT_DOMAIN
+  FLUX_LIVEKIT_DOMAIN=$(calls_domain); export FLUX_LIVEKIT_DOMAIN
   if [ -z "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" ] || [ -z "$(env_value FLUX_LIVEKIT_API_KEY)" ] || [ -z "$(env_value FLUX_LIVEKIT_API_SECRET)" ]; then
     case "${COMMAND:-}" in
       up|demo|restore|upgrade|_upgrade-apply) calls_settings ;;
@@ -221,8 +235,7 @@ default_project() {
 }
 
 resolve_project() {
-  stored=''
-  [ ! -f "$ENV_FILE" ] || stored=$(sed -n 's/^FLUX_PROJECT=//p' "$ENV_FILE" | tail -n 1)
+  stored=$(env_file_value FLUX_PROJECT)
   own=${stored:-$(default_project)}
   if [ -n "${FLUX_PROJECT:-}" ]; then
     PROJECT=$FLUX_PROJECT
@@ -520,7 +533,7 @@ runtime_probe_image() {
 }
 
 # Prints one line saying why the Docker engine cannot run the agent runtime, or nothing when it can
-# (AIM-3: Linux 6.7 or later for Landlock ABI 4, Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
+# (AIM-3: Linux 6.7 or later for Landlock ABI 4 with Landlock active, Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
 # the engine, not this machine: the runtime runs in the engine's kernel. Flux AI needs it (#1441, RT-1): a Linux host.
 runtime_host_problem() {
   info=$(docker info --format '{{json .}}' 2>/dev/null) || { say "the Docker engine did not report its settings"; return 0; }
@@ -550,6 +563,19 @@ runtime_host_problem() {
     1|2|3) ;;
     '') say "the engine's kernel has no Yama ptrace_scope of 1 or higher: run Flux on a Linux host whose kernel has Yama."; return 0 ;;
     *) say "the host has no Yama ptrace_scope of 1 or higher (kernel.yama.ptrace_scope=$scope). Fix it now: \`sudo sysctl -w kernel.yama.ptrace_scope=1\`. Keep it after a restart: \`echo 'kernel.yama.ptrace_scope = 1' | sudo tee /etc/sysctl.d/90-flux.conf\`."; return 0 ;;
+  esac
+  # Landlock has to be active, not only built in (#1543): a kernel of 6.7 or later can leave it out of its active security modules (Proxmox VE
+  # builds it but starts it only with `lsm=landlock,...`), and the runtime then refuses to start. The engine's own list is mounted read-only
+  # into one more throwaway container, which cannot see it otherwise; `label=disable` because SELinux keeps a confined container from
+  # reading securityfs. The list is cut to the characters a module name has before it is written anywhere.
+  code=0
+  lsm=$(docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --security-opt label=disable \
+    --mount type=bind,source=/sys/kernel/security/lsm,target=/flux-host-lsm,readonly --entrypoint cat "$image" /flux-host-lsm 2>/dev/null) || code=$?
+  if [ "$code" -ne 0 ]; then say "the engine does not show its active security modules (/sys/kernel/security/lsm), so Landlock, which Flux AI needs, could not be checked."; return 0; fi
+  lsm=$(printf '%s' "$lsm" | tr -cd 'a-z0-9_,')
+  case ",$lsm," in
+    *,landlock,*) ;;
+    *) say "Landlock is not active in the engine's kernel (active: ${lsm:-none}). Add landlock first to its lsm= boot parameter, keeping the others, e.g. lsm=landlock,lockdown,yama,integrity,apparmor, then reboot."; return 0 ;;
   esac
   return 0
 }
@@ -953,9 +979,15 @@ say_https_and_calls() {
     case "$(public_origin)" in https://*) say "HTTPS: your own proxy, trusted at FLUX_TRUSTED_PROXIES=$(env_value FLUX_TRUSTED_PROXIES)." ;; esac
   fi
   if calls_on; then
-    if is_ipv4 "$(origin_host)"; then calls_found=''; else calls_found=" (what $(origin_host) resolves to)"; fi
-    say "Calls: on. Media server $(origin_host) at $CALLS_IP$calls_found; open $(calls_ports) to this server."
-    calls_private "$CALLS_IP" && say "       $CALLS_IP is a private address: calls reach only devices on the same network."
+    calls_hint=''
+    if [ -n "$(env_value FLUX_CALLS_PUBLIC_IP)" ]; then calls_found=" (FLUX_CALLS_PUBLIC_IP in ${ENV_FILE#"$FLUX_ROOT"/})"
+    elif is_ipv4 "$(calls_domain)"; then calls_found=''
+    else
+      calls_found=" (what $(calls_domain) resolves to)"
+      calls_hint=" If browsers reach this server at another address, set FLUX_CALLS_PUBLIC_IP in ${ENV_FILE#"$FLUX_ROOT"/}."
+    fi
+    say "Calls: on. Media server $(calls_domain) at $CALLS_IP$calls_found; open $(calls_ports) to this server."
+    calls_private "$CALLS_IP" && say "       $CALLS_IP is a private address: calls reach only devices on the same network.$calls_hint"
   fi
   return 0
 }
@@ -1443,13 +1475,13 @@ env_from_archive() {
   say "Wrote ${ENV_FILE#"$FLUX_ROOT"/} from the backup (same secrets, so sessions and push subscriptions stay valid)."
 }
 
-archived_env_value() { sed -n "s/^$2=//p" "$1" | tail -n 1; }
+archived_env_value() { env_file_value "$2" "$1"; }
 # Takes FLUX_KEY_PIN_SECRET from a backup's flux.env into the current env file when they differ (F-030 S2c). A backup
 # from before S2c has none: the current secret stays, and no restored space is encrypted with pins anyway.
 restore_key_pin_secret() {
   archived=$(archived_env_value "$1" FLUX_KEY_PIN_SECRET)
   [ -n "$archived" ] || return 0
-  [ "$archived" = "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$ENV_FILE" | tail -n 1)" ] && return 0
+  [ "$archived" = "$(env_file_value FLUX_KEY_PIN_SECRET)" ] && return 0
   set_env_line "$ENV_FILE" FLUX_KEY_PIN_SECRET "$archived"
   warn "NOTE: FLUX_KEY_PIN_SECRET differs from the backup; the backup's value now replaces it in ${ENV_FILE#"$FLUX_ROOT"/} (encrypted spaces are pinned with it)."
 }

@@ -80,6 +80,7 @@ organization). Have you accepted them?  [y/N]
   | --- | --- | --- |
   | Linux engine | `docker info`, `OSType` | the engine is not a Linux engine |
   | Linux 6.7 or later (Landlock ABI 4; founder decision 2026-11-13, #1441) | `docker info`, `KernelVersion` (the runtime's own start check then probes Landlock itself and refuses to start without ABI 4) | Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13). |
+  | Landlock active (#1543) | one more throwaway container (same settings) with the engine's `/sys/kernel/security/lsm` mounted read-only: `landlock` must be in the list; a version of 6.7 or later is not enough | Landlock is not active in the engine's kernel (it lists its active modules) and the fix: `landlock` first in the `lsm=` boot parameter ([how](#landlock-must-be-active)); or, when the engine does not show the list, that Landlock could not be checked |
   | Memory, CPU and process limits | `docker info`: `MemoryLimit`, `CpuCfsQuota`, `PidsLimit` | the engine cannot set the limits the runtime has |
   | `internal` networks | `docker network create --internal`, removed at once | the engine cannot create an internal network |
   | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama (use a Linux host whose kernel has it), or it is 0: then the line gives the fix now (`sudo sysctl -w kernel.yama.ptrace_scope=1`) and how to keep it after a restart (`/etc/sysctl.d/90-flux.conf`) |
@@ -131,6 +132,14 @@ read-only root filesystem, `cap_drop`, `pids_limit`, and memory and CPU limits. 
 Engine 29; other engines are **unverified**. gVisor (`runtime: runsc` in an override) is optional and
 untested.
 
+### Landlock must be active
+
+A kernel of 6.7 or later can have Landlock built in (`CONFIG_SECURITY_LANDLOCK=y`) and still not run it: Landlock starts only when it is in the kernel's active security modules, `CONFIG_LSM` or the `lsm=` boot parameter. Observed on Proxmox VE 9 (kernel `7.0.14-pve`, `CONFIG_LSM="lockdown,yama,integrity,apparmor"`; `/sys/kernel/security/lsm` read `lockdown,capability,yama,apparmor,ima,evm`, also inside an LXC guest running Docker, which shares the host's kernel). The runtime's own start check then refuses, so the launcher looks first: `./flux up` reads the engine's list in a throwaway check container and keeps Flux AI off, with one line that says so and how to fix it. `./flux ai on` stops with the same line.
+
+The fix is on the machine that runs the Docker engine (for an LXC guest, the host): put `landlock` first in the kernel's `lsm=` boot parameter and keep the others of your distribution's list (`grep CONFIG_LSM= /boot/config-$(uname -r)`), for example `lsm=landlock,lockdown,yama,integrity,apparmor`. With GRUB, add it to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`, run `update-grub` and reboot; with another boot loader, edit its kernel command line. Check: `cat /sys/kernel/security/lsm` lists `landlock`; after that the runtime logs `"landlock":8` (the ABI of kernel 7.0) when it starts. Run `./flux ai on` afterwards (or set `FLUX_AGENT_RUNTIME=codex,pi` in `docker/.env`, clear `FLUX_AGENT_RUNTIME_OFF_REASON` and run `./flux up`).
+
+If the engine does not show `/sys/kernel/security/lsm` to a check container (the file is missing on the engine's host, or its security policy refuses the mount), the launcher cannot tell whether Landlock runs and keeps Flux AI off with a line that says so. If you know Landlock runs there, set `FLUX_AGENT_RUNTIME` yourself; the runtime's start check still refuses without ABI 4.
+
 ## What the runtime gets
 
 One runtime serves everyone (#860). Its settings are static (one YAML anchor in `docker/compose.source.yaml`); nothing at run
@@ -178,11 +187,11 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   execute nothing but its own program and that shell, so a shell a model names never starts; the sandbox shell hands each command
   to the run's broker (`flux-sandbox broker`, a process of the person beside the CLI under the tools' confinement), which starts the
   real shell in the scratch. **The tools need
-  Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
+  Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10, not on Proxmox VE 9: it needs a boot parameter)
   and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
   egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without
   Landlock ABI 4 the runtime does not start** (founder decision 2026-11-13, #1441: agents never run without their own shell and
-  files), so Flux AI is off: `./flux up` (by the engine's kernel version) and the runtime's start check (by the sandbox's own probe,
+  files), so Flux AI is off: `./flux up` (by the engine's kernel version and its active security modules, [Landlock must be active](#landlock-must-be-active)) and the runtime's start check (by the sandbox's own probe,
   `{"event":"runtime_refused"}`) say "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13)." Check with
   `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more).
 
