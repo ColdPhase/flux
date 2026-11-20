@@ -590,13 +590,133 @@ class TasksBoardJourney(unittest.TestCase):
         expect(rows.filter(has_text=CALIBRATE)).to_have_count(0)  # Ada's task; Kai's own stay
         expect(rows.filter(has_text=ORDER)).to_have_count(1)
         self.assertIn("show=mine", page.url)
-        # The board on the phone: its four columns run on sideways, and Mine has not moved.
+        # The board on the phone shows one status at a time (#1560), and Mine has not moved.
         bar.get_by_role("radio", name="Board", exact=True).tap()
         expect(page.locator(".tb-board")).to_be_visible()
         self.assertEqual(round(mine.bounding_box()["x"]), round(in_list["x"]), "Mine sits in the same place in both views")
         self.assertEqual(page.locator(".tb-col").count(), 4)
+        self.assertEqual(page.locator(".tb-col:visible").count(), 1, "one status at a time")
         self.no_sideways_scroll(page, PHONE["width"], "phone board")
         shot(page, "tasks-phone-390-board-dark")
+
+    # ---------------------------------------------------------------- the phone's Board: one status at a time (#1560)
+
+    def phone_projects(self) -> dict[str, str]:
+        """Two more spaces of Ada's, made once: one with long titles in every status but Blocked, one with no tasks at all."""
+        if not type(self).phone_ids:
+            page = self.page("ada")
+            ws = self.ids["workspace"]
+            busy = self.api(page, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": "Phone board", "visibility": "restricted"}, status=201)["id"]
+            empty = self.api(page, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": "Quiet space", "visibility": "restricted"}, status=201)["id"]
+            base = f"/api/v1/projects/{busy}/work"
+            long = "Order the twelve replacement gaskets for the cold frames from the supplier in Gdańsk before the frost arrives on Thursday"
+            for body in ({"title": long}, {"title": "Label the seed trays"}, {"title": "Check the greenhouse vents", "status": "in_progress"},
+                         {"title": "Collect the rainwater sensor readings from every barrel on the north side of the allotment", "status": "done"}):
+                self.api(page, "POST", base, body, status=201)
+            type(self).phone_ids = {"busy": busy, "empty": empty}
+        return type(self).phone_ids
+
+    phone_ids: dict[str, str] = {}
+
+    def no_board_scroll(self, page: Page, width: int, label: str) -> None:
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width, f"{label}: no sideways page scroll")
+        self.assertTrue(page.locator(".tb-board").evaluate("el => el.scrollWidth <= el.clientWidth + 1"), f"{label}: the board does not scroll sideways")
+        self.assertTrue(page.locator(".pane-scroll").first.evaluate("el => el.scrollWidth <= el.clientWidth + 1"), f"{label}: nothing is clipped sideways")
+
+    def swipe(self, page: Page, dx: float, dy: float = 6) -> None:
+        """A touch swipe on the visible column, as the pointer events a finger makes."""
+        page.evaluate("""([dx, dy]) => {
+          const board = document.querySelector('.tb-board'), box = board.getBoundingClientRect();
+          const x = box.left + box.width / 2 - dx / 2, y = Math.min(window.innerHeight - 120, box.top + 200);
+          const target = document.elementFromPoint(x, y) || board;
+          const event = (type, cx, cy) => new PointerEvent(type, { pointerType: 'touch', pointerId: 7, isPrimary: true, bubbles: true, cancelable: true, clientX: cx, clientY: cy });
+          target.dispatchEvent(event('pointerdown', x, y));
+          target.dispatchEvent(event('pointerup', x + dx, y + dy));
+        }""", [dx, dy])
+
+    def test_09b_the_phone_board_shows_one_status_at_a_time_without_a_sideways_scroll(self) -> None:
+        ids = self.phone_projects()
+        for width in (390, 320):
+            for dark in (False, True):
+                tag = f"{width}-{'dark' if dark else 'light'}"
+                page = self.page("ada", phone=True, dark=dark)
+                page.set_viewport_size({"width": width, "height": 844 if width == 390 else 568})
+                page.goto(f"/projects/{ids['busy']}/tasks?view=board")
+                expect(page.locator(".tb-board")).to_be_visible()
+                status = page.get_by_role("tablist", name="Task status")
+                tabs = status.get_by_role("tab")
+                expect(tabs).to_have_count(4)
+                for tab, word, count in zip(tabs.all(), ("To do", "Doing", "Blocked", "Done"), ("2", "1", "0", "1")):
+                    expect(tab.locator(".ui-tabs__label")).to_have_text(word)
+                    expect(tab.locator(".ui-tabs__count [aria-hidden]")).to_have_text(count)
+                    expect(tab.locator(".ui-glyph")).to_have_count(1)
+                # All four statuses with their counts are in view at once, inside the screen, and the first is open.
+                for tab in tabs.all():
+                    box = tab.bounding_box()
+                    self.assertGreaterEqual(box["x"], 0)
+                    self.assertLessEqual(box["x"] + box["width"], width + .5, "the status row fits the screen")
+                    self.assertGreaterEqual(box["height"], 43.9, "a 44 px target")
+                expect(tabs.nth(0)).to_have_attribute("aria-selected", "true")
+                self.assertEqual(page.locator(".tb-col:visible").count(), 1)
+                expect(self.column_of(page, "open")).to_be_visible()
+                expect(self.card(page, "Order the twelve replacement gaskets")).to_be_visible()
+                self.no_board_scroll(page, width, f"phone board {tag}")
+                for card in page.locator(".tb-card:visible").all():
+                    box = card.bounding_box()
+                    self.assertLessEqual(box["x"] + box["width"], width + .5, "a card with a long title stays inside the screen")
+                shot(page, f"1560-phone-board-todo-{tag}")
+                # A tap on a status shows its column; the row stays.
+                tabs.nth(1).tap()
+                expect(tabs.nth(1)).to_have_attribute("aria-selected", "true")
+                expect(self.column_of(page, "in_progress")).to_be_visible()
+                expect(self.column_of(page, "open")).to_be_hidden()
+                expect(self.card(page, "Check the greenhouse vents")).to_be_visible()
+                # An empty status inside a board that has tasks keeps its short line.
+                tabs.nth(2).tap()
+                expect(self.column_of(page, "blocked").locator(".tb-col__empty")).to_have_text("Nothing here yet.")
+                shot(page, f"1560-phone-board-empty-column-{tag}")
+                tabs.nth(3).tap()
+                expect(self.card(page, "Collect the rainwater sensor readings")).to_be_visible()
+                self.no_board_scroll(page, width, f"phone board Done {tag}")
+                shot(page, f"1560-phone-board-done-{tag}")
+                # A swipe sideways moves to the next status and back; a mostly vertical one does not.
+                self.swipe(page, 120)  # right: the previous status
+                expect(tabs.nth(2)).to_have_attribute("aria-selected", "true")
+                self.swipe(page, -120)  # left: the next
+                expect(tabs.nth(3)).to_have_attribute("aria-selected", "true")
+                self.swipe(page, -120)  # no status after Done
+                expect(tabs.nth(3)).to_have_attribute("aria-selected", "true")
+                self.swipe(page, -80, 200)
+                expect(tabs.nth(3)).to_have_attribute("aria-selected", "true")
+                # The keyboard moves along the row as along any tabs.
+                tabs.nth(3).focus()
+                page.keyboard.press("ArrowLeft")
+                expect(tabs.nth(2)).to_have_attribute("aria-selected", "true")
+                # A card still opens its panel, where its state changes.
+                tabs.nth(0).tap()
+                self.card(page, "Label the seed trays").locator(".tb-card__open").tap()
+                expect(page.locator("#details .wd--task")).to_be_visible()
+
+    def column_of(self, page: Page, column: str) -> Locator:
+        return page.locator(f'.tb-col[data-column="{column}"]')
+
+    def test_09c_an_empty_space_shows_one_empty_state_in_the_board_and_the_list(self) -> None:
+        ids = self.phone_projects()
+        for phone in (True, False):
+            page = self.page("ada", phone=phone)
+            blocks = {}
+            for view in ("board", "list"):
+                page.goto(f"/projects/{ids['empty']}/tasks?view={view}")
+                heading = page.get_by_role("heading", name="No tasks yet")
+                expect(heading).to_be_visible()
+                expect(page.get_by_text("A task starts when one of you makes it from a message")).to_be_visible()
+                expect(page.locator(".tb-col")).to_have_count(0)
+                expect(page.get_by_text("Nothing here yet.")).to_have_count(0)
+                expect(page.get_by_role("tablist", name="Task status")).to_have_count(0)
+                blocks[view] = page.locator(".view-empty").bounding_box()
+                shot(page, f"1560-empty-{'phone' if phone else 'computer'}-{view}")
+            for edge in ("x", "y", "width", "height"):
+                self.assertAlmostEqual(blocks["board"][edge], blocks["list"][edge], delta=1, msg=f"the empty state is the same block in both views ({edge})")
 
     # ---------------------------------------------------------------- tablet and laptop
 
@@ -635,7 +755,7 @@ class TasksBoardJourney(unittest.TestCase):
                 for selector, minimum, spec in (
                     (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__due", 4.5, {}), (".tb-card__name", 4.5, {}),
                     (".tb-card__state", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}),
-                    (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
+                    (".tb-col__h", 4.5, {}), ('.tb-mode .seg__b[aria-checked="true"]', 4.5, {}), ('.tb-mode .seg__b[aria-checked="false"]', 4.5, {}),
                     (".tb-mine", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
                     (".tb-col__head .ui-glyph--in_progress", 3, {}), (".tb-search", 3, {"property": "color"}),
                 ):

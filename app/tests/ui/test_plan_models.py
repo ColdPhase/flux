@@ -16,6 +16,7 @@ import unittest
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
 from app_select import choose, open_select, values
+from segmented import check_segmented
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "models from the program itself"
@@ -145,6 +146,23 @@ class PlanModels(unittest.TestCase):
         expect(page.get_by_text("Model changed")).to_be_visible()
         self.assertEqual(patches[-1], {"connection": connection, "model": "opus"})
         shot(page, named("plan-models-claude-1440"))
+
+    def test_02b_the_models_are_equal_options_on_the_computer_and_the_phone(self) -> None:
+        """#1561: the segments take equal shares of the track and none is narrower than its name; on a phone they lie in two equal columns."""
+        for label, phone, width in (("1440", False, 0), ("390", True, 390), ("320", True, 320)):
+            for dark in (False, True):
+                page = self.page(phone=phone, dark=dark)
+                if width == 320:
+                    page.set_viewport_size({"width": 320, "height": 568})
+                self.stub(page, account="claude_plan", label="Claude plan", company="Claude", options=[CLAUDE[0], {**CLAUDE[1], "id": "@own"}, CLAUDE[2]], patches=[])
+                page.goto(f"/settings/agents/{type(self).agent['id']}")
+                more = page.get_by_role("button", name="More settings")
+                more.tap() if phone else more.click()
+                expect(page.get_by_role("radiogroup", name="Claude plan")).to_be_visible()
+                tag = f"{label}-{'dark' if dark else 'light'}"
+                lines = check_segmented(self, page, lambda: page.get_by_role("radiogroup", name="Claude plan"), f"Model {tag}", touch=phone)
+                print("\n".join(lines))
+                shot(page, named(f"1561-model-{tag}"))
 
     def test_03_a_plan_with_more_models_than_segments_hold_is_the_apps_dropdown_in_the_clis_order(self) -> None:
         for label, phone in (("1440", False), ("390", True)):
