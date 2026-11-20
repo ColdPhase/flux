@@ -223,7 +223,7 @@ class HomeNewMessages(unittest.TestCase):
             expect(self.news(page)).to_be_visible()
             expect(self.rows(page)).to_have_count(5)
             # My tasks and My map keep their place under the waiting items; New messages follows them.
-            order = page.evaluate("""() => [...document.querySelectorAll('.home > section, .home > ul')].map((s) => s.className.split(' ')[0])""")
+            order = page.evaluate("""() => [...document.querySelectorAll('.home > section, .home > ul')].map((s) => (s.classList.contains('home__places') ? 'home__places' : s.classList[0]))""")
             self.assertLess(order.index("home__places"), order.index("home__news"))
             overflow = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
             self.assertLessEqual(overflow, 0, "no sideways scroll")
