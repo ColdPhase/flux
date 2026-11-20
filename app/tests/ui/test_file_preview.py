@@ -433,6 +433,10 @@ class FilePreview(unittest.TestCase):
                     # The frame is the page as authored: its own white page, not Flux's surface.
                     self.assertEqual(frame.evaluate("(el) => getComputedStyle(el).backgroundColor"), "rgb(255, 255, 255)")
                     self.shot(page, f"file-preview-html-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                    # Close is a quiet icon button (founder request 2026-11-20): no filled circle at rest, its 44 px target kept.
+                    close = dialog.get_by_role("button", name="Close preview")
+                    self.assertEqual(close.evaluate("(el) => getComputedStyle(el).backgroundColor"), "rgba(0, 0, 0, 0)")
+                    self.assertGreaterEqual(min(close.bounding_box()["width"], close.bounding_box()["height"]), 44)
                     if not phone:
                         with page.expect_download() as saved:
                             download.click()

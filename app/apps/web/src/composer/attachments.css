@@ -110,6 +110,9 @@ span.photo-grid__open { cursor: default; }
 .photo-viewer__who span { color: #b4b4bb; font-size: var(--fs-md); }
 .photo-viewer__round { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #1f1f22; color: #f4f4f5; cursor: pointer; }
 .photo-viewer__round:disabled { opacity: .35; cursor: default; }
+/* Close is quiet (founder request 2026-11-20): no filled circle at rest, the bar's dark fill only under the pointer or the finger. */
+.photo-viewer__close { background: none; }
+.photo-viewer__close:hover, .photo-viewer__close:active { background: #1f1f22; }
 .photo-viewer__stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
 .photo-viewer__stage img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .photo-viewer__prev, .photo-viewer__next { position: absolute; top: 50%; transform: translateY(-50%); }

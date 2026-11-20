@@ -197,7 +197,8 @@ looks ugly"). The same element looks the same on every screen, in light and dark
   - **Menus**: the header's and the sidebar's ⋯ menus (Move up and down, Mark all as read, Settings, Search, Mute, People) have the message
     menu's 14 px words and lead each row with its icon in `--t2`, as "A menu's rows lead with their icon" says.
   - **Toasts in the two-column Inbox** stand centred under the open item's column (`data-toast-home`), never across the line between the
-    columns or over the list's last card.
+    columns or over the list's last card. There they keep the one line every toast has ("Marked done | Undo Z ×"); only a toast moved
+    beside an open panel takes the two lines below (atlas v0.2.2: the Inbox's Done toast stood in two lines with × beside the words).
   - **Home's rows** cut a long title to two lines with "…", as the Inbox's rows do; the open item reads it whole. A question or a mention
     is kept whole up to 600 characters by the server (it was cut at 140, so its end could be read nowhere).
   - **The empty Inbox's** Notification settings is an outline button, never bare text beside the underlined "1 for later".
@@ -1139,7 +1140,10 @@ These functional rules from UI116-4 remain required:
   row's download button still downloads. Other files keep the whole row as the download.
   - **The frame** is the photo viewer's: always dark, full screen on every size (on the phone it is
     the full sheet), Close (×) at the top left, the file name with "type · size" under it in the
-    middle, Esc closes and focus returns to the row. The bottom bar holds Download; nothing else
+    middle, Esc closes and focus returns to the row. **Close is a quiet icon button** (founder request, Hubert 2026-11-20, his
+    phone: "nie taki ostentacyjny"): the × in the viewer's light ink with no filled circle at rest, the dark fill (`#1f1f22`, the
+    bottom bar's hover) only on hover and press, its 44 px target kept, in the photo viewer too. Previous and Next keep their
+    round fill, because they stand on the photo. The bottom bar holds Download; nothing else
     takes its place.
   - **The stage** holds the file on one page sheet: `--el` with `--t1` text, radius `--r`, the
     reading column wide (`--col`) for text and Markdown and up to 1200 px for tables, HTML and PDF.
