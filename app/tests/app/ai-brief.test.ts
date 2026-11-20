@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { briefPrivateText, buildBrief, DM_FILES_LINE, runtimeBrief, VIEW_PICTURE_LINE, type BriefInput, type MessageSource, type TaskFacts } from '@flux/core';
+import { BLOCKED_LINE, briefPrivateText, buildBrief, DM_FILES_LINE, runtimeBrief, VIEW_PICTURE_LINE, type BriefInput, type MessageSource, type TaskFacts } from '@flux/core';
 import type { MessageFile } from '@flux/contracts';
 
 // The exact text every run is given (#1064): one brief per place, which the agent runtime gets on standard input, whether it runs pi with an
@@ -183,6 +183,18 @@ describe('the brief of every run (#1064)', () => {
     }
     assert.ok(buildBrief(base).request.startsWith('<place space="Field sensors" conversation="thread"/>'));
     assert.ok(buildBrief(dm).request.startsWith('<place direct_message_with="Kai Weber"/>'));
+  });
+
+  test('a task\'s agent that cannot go on is told to set the task Blocked itself, and is never told to leave its status alone (#1612, AG-5, C-52)', () => {
+    // The drain marks a task Done (or hands it back) when its run ends in any state but Blocked: forbidding the status made an agent that could
+    // not finish end with its task Done.
+    const { system } = buildBrief(task);
+    assert.ok(system.includes(BLOCKED_LINE), 'a task run with flux_update_task is told how its task ends Blocked');
+    assert.ok(!/change the task's status/.test(system), 'nothing forbids the status a Blocked task needs');
+    assert.ok(system.includes('Do not change the task\'s owner and do not mark it Done: Flux does that when you reply.'));
+    // A run without the tool that sets it is not told to; no other place is told about a task's Blocked.
+    assert.ok(!buildBrief({ ...task, tools: READS }).system.includes(BLOCKED_LINE));
+    for (const [name, input] of Object.entries(CASES)) if (input.kind !== 'task') assert.ok(!buildBrief(input).system.includes(BLOCKED_LINE), name);
   });
 
   test('a shared answer never repeats the agent\'s instructions or memory; the chat is the owner\'s alone; the tools and ids the run needs', () => {

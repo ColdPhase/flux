@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { agentConnectionPath, assistantRunChangesActionPath, MY_AGENTS_PATH, taskDiscussionPath, type AgentChatMessage, type AssistantRunUndone, type MyAgentList,
+import { agentConnectionPath, assistantChangeActionPath, assistantRunChangesActionPath, assistantRunChangesPath, MY_AGENTS_PATH, taskDiscussionPath, type AgentChatMessage, type AssistantChange, type AssistantRunUndone, type MyAgentList,
   type TaskDiscussion } from '@flux/contracts';
 import { stopRunBy } from '@flux/core';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
@@ -136,6 +136,51 @@ describe('the report of a run on a task (#919)', () => {
         assert.equal((await scene.taskRow(task.id)).status, 'in_progress');
       } finally { await scene.setMayDo('act'); }
     }
+  });
+
+  test('a Blocked the agent set that waits for its owner\'s OK keeps the task as it is, neither Done nor handed back: Approve makes it Blocked, Skip finishes it (#1612)', async () => {
+    /** A run of the agent on its own task that sets it Blocked and then ends: the change waits, so the task is not finished by the run's end. */
+    const blockedRun = async (title: string, changes: Record<string, unknown>) => {
+      const task = await scene.task(scene.owner, title);
+      const live = await scene.liveRun();
+      await pool.query(`UPDATE personal_runs SET kind = 'task', work_id = $2, agent_id = $3 WHERE id = $1`, [live.runId, task.id, scene.agentId]);
+      await pool.query(`UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, status = 'in_progress', version = version + 1 WHERE id = $1`, [task.id, scene.agentId]);
+      const { version } = await scene.taskRow(task.id);
+      assert.match(text((await live.call('flux_update_task', { workId: task.id, expectedVersion: version, changes: { status: 'blocked', ...changes } })).message), /^Waiting for /);
+      await scene.complete(live.runId);
+      await waitFor(async () => (await pool.query(`SELECT 1 FROM agent_task_events WHERE run_id = $1 AND kind = 'finished' AND handled_at IS NOT NULL`, [live.runId])).rowCount,
+        'the run\'s end handled by the drain');
+      const held = (await pool.query('SELECT status, owner_agent_id FROM project_work_items WHERE id = $1', [task.id])).rows[0] as { status: string; owner_agent_id: string | null };
+      assert.deepEqual([held.status, held.owner_agent_id], ['in_progress', scene.agentId], 'not Done, not handed back: it waits for the owner');
+      assert.equal((await chat()).some((line) => line.runId === live.runId), false, 'no outcome is reported while it waits');
+      const [change] = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items
+        .filter((item) => item.state === 'waiting');
+      assert.ok(change, 'the Blocked waits for the owner');
+      return { task, runId: live.runId, change: change! };
+    };
+    // Ask me first on: every change waits. The blocker names the person it waits for, in its words.
+    await scene.setMayDo('ask');
+    try {
+      const approved = await blockedRun('Send Kowalski the contract signed by both', { blocker: 'Waits for Filip Lewandowski to send back the signed contract' });
+      expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(approved.change.id, 'apply'), { body: {} }), 200);
+      assert.equal((await reportOf(approved.runId)).body, `Blocked: #${approved.task.number} Send Kowalski the contract signed by both`);
+      const after = (await pool.query('SELECT status, blocker, owner_agent_id FROM project_work_items WHERE id = $1', [approved.task.id])).rows[0] as
+        { status: string; blocker: string | null; owner_agent_id: string | null };
+      assert.deepEqual([after.status, after.blocker, after.owner_agent_id], ['blocked', 'Waits for Filip Lewandowski to send back the signed contract', scene.agentId],
+        'Blocked with the agent, as a task Blocked at the run\'s end');
+      // Skip: the run ends as any other, back with its owner to check (the switch is on).
+      const skipped = await blockedRun('Archive the signed contract', { blocker: 'Waits for the signed contract' });
+      expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(skipped.change.id, 'skip'), { body: {} }), 200);
+      assert.equal((await reportOf(skipped.runId)).body, `Back to you to check: #${skipped.task.number} Archive the signed contract`);
+      const back = (await pool.query('SELECT status, owner_user_id, owner_agent_id FROM project_work_items WHERE id = $1', [skipped.task.id])).rows[0] as
+        { status: string; owner_user_id: string | null; owner_agent_id: string | null };
+      assert.deepEqual([back.status !== 'done' && back.status !== 'blocked', back.owner_user_id, back.owner_agent_id], [true, scene.owner.id, null]);
+    } finally { await scene.setMayDo('act'); }
+    // Do it and tell me, with a person named to wait for: that tells them, so it waits too (#1089); Skip then marks it Done.
+    const told = await blockedRun('File the signed contract', { blocker: 'Waits for Jonas', waitingFor: scene.peer.id });
+    expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(told.change.id, 'skip'), { body: {} }), 200);
+    assert.equal((await reportOf(told.runId)).body, `Done: #${told.task.number} File the signed contract`);
+    assert.equal((await scene.taskRow(told.task.id)).status, 'done');
   });
 
   test('the line carries the changes that stand now, only those an Undo takes back, and they stand only until they are undone', async () => {

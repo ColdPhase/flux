@@ -315,6 +315,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const ended = run.status;
     if (ended === 'completed' || ended === 'truncated') {
       if (!holds) return;
+      // The run's end is noted again when its waiting Blocked change is decided (#1612); by then a later run of the agent may hold the task,
+      // and that run's end is the one that finishes it.
+      const [latest] = await rows.runsOfWork(work.id, 1);
+      if (latest && latest.id !== run.id && latest.kind === 'task' && latest.createdAt > run.createdAt) return;
       // A report may end with a question for another person's agent (TA-3); the task then waits for the answer instead of finishing.
       const { ask } = takeAsk(run.answerBody ?? '');
       const body = reportWords(run);
@@ -329,6 +333,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         await reportTaskRun(personalRunPorts(tx, queue), run, 'blocked');
         return;
       }
+      // The agent set it Blocked, and that change waits for its owner's OK (Ask me first on, or a person named to wait for, #1089): the task
+      // stays as it is, neither Done nor handed back, until the owner decides (AG-5, #1612). The decision notes the run's end again: Approve
+      // finds it Blocked above; Skip, or an Approve that could no longer apply, finishes it below by the switch.
+      if (await assistantChangeRows(tx as unknown as DbExecutor).blockWaits(run.id, work.id)) return;
       // With Ask me first off it marks the task Done; with it on it hands it back to check, which
       // reaches its owner's Inbox as one item for the run (AG-7).
       // The agent's chat hears what became of the task, once the run's outcome is known (#919): Done, or back with the owner to check.
