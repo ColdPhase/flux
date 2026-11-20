@@ -44,7 +44,10 @@ export function configureToolLog(log: ToolLog) { toolLog = log; }
 function frames(error: unknown): string | null {
   const stack = (error as { stack?: unknown } | null)?.stack;
   if (typeof stack !== 'string') return null;
-  const lines = stack.split('\n').filter((line) => /^\s+at /.test(line)).slice(0, 30);
+  // The message's own lines come first (`Name: message`), and a line of it may itself look like a frame: they are skipped by count.
+  const message = (error as { message?: unknown }).message;
+  const head = typeof message === 'string' ? message.split('\n').length : 1;
+  const lines = stack.split('\n').slice(head).filter((line) => /^\s+at /.test(line)).slice(0, 30);
   return lines.length ? lines.map((line) => line.trim()).join('\n') : null;
 }
 const CODE = /^[A-Z][A-Z0-9_]{1,63}$/;

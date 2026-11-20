@@ -35,7 +35,7 @@ function callTool(handler: () => unknown) {
 test('a tool that throws an unexpected error: one error line with the tool, no content, and a failure with that error id', async () => {
   capture();
   const secret = 'Marketing OH: the launch budget is 40k';
-  const result = await callTool(() => { throw Object.assign(new Error(`insert failed for "${secret}"`), { code: '23514', constraint: 'sketch_thoughts_text_check' }); });
+  const result = await callTool(() => { throw Object.assign(new Error(`insert failed for "${secret}"\n    at Marketing OH (a line of the message that looks like a frame)`), { code: '23514', constraint: 'sketch_thoughts_text_check' }); });
   assert.equal(result.isError, true);
   const told = JSON.parse(result.content[0]!.text) as { code: string; error: string };
   assert.equal(told.code, 'TOOL_FAILED');
