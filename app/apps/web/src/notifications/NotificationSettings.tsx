@@ -4,7 +4,8 @@ import { MAX_EXTRA_ADDRESSES, type NotificationAddress, type NotificationLevel, 
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { InstallFlux, NotificationsButton } from '../pwa';
+import { InstallFlux } from '../pwa/InstallFlux';
+import { NotificationsButton } from '../pwa/NotificationsButton';
 import { pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
 import { noteSoundPreferences, soundsChange, soundsOn } from './sound';

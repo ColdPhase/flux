@@ -112,7 +112,7 @@ export function DeletedSourceCitation() {
   </span>;
 }
 
-export { AuthorFace } from '../ui';
+export { AuthorFace } from '../ui/AuthorFace';
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
 export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {

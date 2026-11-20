@@ -212,6 +212,7 @@ export * from './search.js';
 export * from './search-words.js';
 export * from './personal-runs.js';
 export * from './export.js';
+export * from './export-schema.js';
 
 export * from './typing.js';
 export * from './cowork.js';

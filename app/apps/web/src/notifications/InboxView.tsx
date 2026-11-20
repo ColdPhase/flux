@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { NeedsYouItem } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, MEDIA, Spinner, useMediaQuery, useRowMotion } from '../ui';
+import { Button, EmptyState, ErrorState, MEDIA, Spinner, useMediaQuery } from '../ui';
+import { useRowMotion } from '../ui/rowMotion';
 import { NotAvailable } from '../app/NotAvailable';
 import { useShellData } from '../app/data';
 import { remember, usePlaceState, useArrival } from '../place/memory';

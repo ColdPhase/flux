@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
-import { AgentIdentity, Icon, Morph, StatusGlyph, TASK_STATE_WORD } from '../ui';
+import { AgentIdentity, Icon, StatusGlyph, TASK_STATE_WORD } from '../ui';
+import { Morph } from '../ui/Morph';
 import { getWorkReferenceRows, getWorkRelations } from '../work/read-api';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { shortDate } from './format';
