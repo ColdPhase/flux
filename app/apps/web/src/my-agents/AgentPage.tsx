@@ -145,7 +145,7 @@ function PlanModelChoice({ group, chosen, agentName, onChoose }: { group: Assist
   if (!group.options.length) return <p className="agp__hint" role="note">Flux hasn’t read this plan’s models yet. It reads them when you sign in and again every few hours.</p>;
   if (offered.length <= PLAN_SEGMENTS && !current?.retired) {
     return (
-      <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${group.connection}`}>
+      <div className="seg seg--wrap" role="radiogroup" aria-labelledby={`model-${group.connection}`}>
         {offered.map((option, index) => {
           const on = chosen === option.id;
           // With none on (the CLI's own default), the first is the one the keyboard reaches.

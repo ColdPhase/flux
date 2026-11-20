@@ -18,6 +18,7 @@ import {
   WORK_STATUSES,
   workItemPath,
   workspaceAssignedWorkPath,
+  workspaceGivenWorkPath,
   type AcceptDecisionCommand,
   type CreateObjectLinkCommand,
   type CreateWorkCommand,
@@ -211,4 +212,6 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
 
   app.get<{ Params: { workspaceId: string }; Querystring: PageQuery }>(workspaceAssignedWorkPath(':workspaceId'), { schema: { querystring: page } },
     async (request) => work.listAssigned(await principal(request), request.params.workspaceId, request.query));
+  app.get<{ Params: { workspaceId: string }; Querystring: PageQuery }>(workspaceGivenWorkPath(':workspaceId'), { schema: { querystring: page } },
+    async (request) => work.listGiven(await principal(request), request.params.workspaceId, request.query));
 }

@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { FILE_LIMITS, imageTypeOf, videoContainerOf, videoNameContainer, type FileDetail, type FileLimits, type StagedFile, type ThoughtFile, type VideoContainer } from '@flux/contracts';
+import { FILE_LIMITS, imageTypeOf, megabytesText, messageBytesFor, stagedBytesFor, videoContainerOf, videoNameContainer, type FileDetail, type FileLimits, type StagedFile, type ThoughtFile, type VideoContainer } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError, RateLimitedError } from '../access/errors.js';
 import { Readable } from 'node:stream';
 import type { Principal } from '../principal.js';
 import type { ActorRef } from '../work/ports.js';
 import { id } from '../work/validation.js';
-import { fileDetailOf, readsDetail } from './detail.js';
+import { detailReader, fileDetailOf, readsDetail } from './detail.js';
 import type { CleanPicture, PictureCanonicalizer } from './picture.js';
 import { parseRange } from './range.js';
 import { FileReceiveTimeoutError, FileTooLargeError, type FilePorts, type FileRepository, type FileStorage, type FileUnitOfWork, type StoredFileRow } from './ports.js';
@@ -80,14 +80,15 @@ async function digestOnly(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: 
 function pictureRefused(reason: Extract<CleanPicture, { ok: false }>['reason']): Error {
   if (reason === 'too_many_pixels') return new PayloadTooLargeError('A picture is at most 8,000 pixels on a side and 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
   // The upload itself was within 5 MiB (that is refused before this); the picture written again is not.
-  if (reason === 'too_large') return new PayloadTooLargeError('A file is at most 5 MB, and this picture is larger once it is cleaned. Save it smaller and send it again', 'FILE_TOO_LARGE');
+  if (reason === 'too_large') return new PayloadTooLargeError('A picture is at most 5 MB, and this one is larger once it is cleaned. Save it smaller and send it again', 'FILE_TOO_LARGE');
   return new InvalidInputError('This picture cannot be read: it is damaged, or its parts do not agree on one image', 'UNREADABLE_PICTURE');
 }
 
 /**
  * Looks at the first bytes of an upload (#1343, C-59): a file that starts like a PNG, JPEG, GIF or WebP is read whole, decoded and written again
  * by the real decoder (`PictureCanonicalizer`), so what every reader's browser draws is exactly what was checked, and goes on as that picture;
- * a picture it cannot vouch for is refused. Any other file passes through unchanged, as it arrived.
+ * a picture it cannot vouch for is refused, and so is one over `FILE_LIMITS.wholeBytes` (#1549: a picture is held whole, so it keeps the
+ * 5 MiB of every picture whatever the operator's file cap). Any other file passes through unchanged, as it arrived.
  */
 async function canonicalUpload(bytes: AsyncIterable<Uint8Array>, canonicalizer: PictureCanonicalizer): Promise<AsyncIterable<Uint8Array>> {
   const iterator = bytes[Symbol.asyncIterator]();
@@ -103,8 +104,12 @@ async function canonicalUpload(bytes: AsyncIterable<Uint8Array>, canonicalizer: 
       finally { if (!finished) void iterator.return?.().catch(() => undefined); }
     })();
   }
-  try { while (!finished) await more(); }
-  catch (error) { void iterator.return?.().catch(() => undefined); throw error; }
+  try {
+    while (!finished) {
+      await more();
+      if (seen > FILE_LIMITS.wholeBytes) throw new PayloadTooLargeError(`A picture is at most ${megabytesText(FILE_LIMITS.wholeBytes)}`, 'FILE_TOO_LARGE');
+    }
+  } catch (error) { void iterator.return?.().catch(() => undefined); throw error; }
   const picture = await canonicalizer.canonical(Buffer.concat(chunks));
   if (!picture.ok) throw pictureRefused(picture.reason);
   return (async function* () { yield picture.bytes; })();
@@ -119,16 +124,16 @@ function staged(row: StoredFileRow): StagedFile {
 }
 
 /** What a stored row says about its file (#469), as the keys of `FileDetail`; a key only where there is a value. */
-export function storedDetail(row: Pick<StoredFileRow, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer'>): FileDetail {
+export function storedDetail(row: Pick<StoredFileRow, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer' | 'noText'>): FileDetail {
   return { ...(row.pageCount != null ? { pages: row.pageCount } : {}), ...(row.rowCount != null ? { rows: row.rowCount } : {}),
-    ...(row.durationMs != null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer ? { video: row.videoContainer } : {}) };
+    ...(row.durationMs != null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer ? { video: row.videoContainer } : {}),
+    ...(row.noText ? { noText: true as const } : {}) };
 }
 
-/** Passes the bytes on unchanged and keeps them (at most the file limit, which the receiver enforces) for the one reader of their detail. */
-async function* observed(bytes: AsyncIterable<Uint8Array>, keep: Uint8Array[]): AsyncGenerator<Uint8Array> {
-  let kept = 0;
+/** Passes the bytes on unchanged, and through the reader of their detail (#469), which holds at most a bounded head of them (#1549). */
+async function* observed(bytes: AsyncIterable<Uint8Array>, reader: ReturnType<typeof detailReader>): AsyncGenerator<Uint8Array> {
   for await (const chunk of bytes) {
-    if (kept <= FILE_LIMITS.fileBytes) { keep.push(chunk); kept += chunk.byteLength; }
+    reader.push(chunk);
     yield chunk;
   }
 }
@@ -190,11 +195,14 @@ async function collect(bytes: AsyncIterable<Uint8Array>, max: number): Promise<B
   return Buffer.concat(parts);
 }
 
-/** How many of one person's videos may be arriving at once (C-61): each holds a connection for up to 20 minutes. */
-const VIDEO_ARRIVALS = 3;
+/** How many of one person's large uploads (videos, files over `FILE_LIMITS.wholeBytes`) may be arriving at once (C-61): each holds a connection for up to 20 minutes. */
+const LARGE_ARRIVALS = 3;
 
-const mib = (bytes: number) => `${Math.round(bytes / (1024 * 1024) * 10) / 10} MB`;
-const tooLarge = (limit: number, video: boolean) => new PayloadTooLargeError(video ? `A video is at most ${mib(limit)}` : 'A file is at most 5 MB', 'FILE_TOO_LARGE');
+/** What an upload over its limit is told (#1549: the limit in words, as this server sets it). */
+type TooLargeKind = 'file' | 'video' | 'sealed' | 'poster';
+const tooLarge = (limit: number, kind: TooLargeKind) => new PayloadTooLargeError(kind === 'video' ? `A video is at most ${megabytesText(limit)}`
+  : kind === 'sealed' ? `A file in an encrypted space is at most ${megabytesText(limit)}` : kind === 'poster' ? 'A poster is at most 512 KiB'
+    : `Files can be up to ${megabytesText(limit)} on this server`, 'FILE_TOO_LARGE');
 
 /**
  * Locks the files a new message will carry, in ascending id order, and checks that each is the author's own,
@@ -205,9 +213,9 @@ const tooLarge = (limit: number, video: boolean) => new PayloadTooLargeError(vid
  * #1411: it runs inside the message's transaction, so it reads no byte of any file: the row's recorded size and SHA-256 (computed once,
  * from the bytes as the upload arrived) and the object's size on disk. Hashing a 200 MiB video here held a database connection per send,
  * and a few sends at once held them all. A file up to 5 MiB has had its bytes checked just before, by `verifyAttachmentBytes`; a larger
- * video's changed bytes are refused where they are read (C-61).
+ * file's changed bytes are refused where they are read (C-61, #1549).
  */
-export async function lockAttachments(files: FileRepository, storage: Pick<FileStorage, 'present'>, projectId: string,
+export async function lockAttachments(files: FileRepository, storage: Pick<FileStorage, 'present' | 'fileBytes'>, projectId: string,
   author: ActorRef, ids: readonly string[], clock: () => Date): Promise<StoredFileRow[]> {
   if (!ids.length) return [];
   if (author.kind !== 'human') throw new ForbiddenError('Agents cannot stage or attach files yet', 'AGENT_FILES_UNAVAILABLE');
@@ -224,11 +232,13 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
     if (isPublished(row)) throw new ConflictError(row.messageId !== null || row.dmMessageId != null || row.runId != null ? 'A file is already attached to another message'
       : 'A file is already the image of a map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
     if (!row.expiresAt || row.expiresAt <= now || !row.sha256 || !await storage.present(row.id, row.size, row.keyVersion != null)) throw attachmentUnavailable();
-    // A video (C-61) has its own cap and staging allowance, which already keep a message's videos within one cap.
+    // A video (C-61) has its own cap and staging allowance, which already keep a message's videos within one cap. The other files together
+    // are at most four at the operator's file cap (#1549).
     if (!row.videoContainer) total += row.size;
     ordered.push(row);
   }
-  if (total > FILE_LIMITS.messageBytes) throw new InvalidInputError('The files of one message are at most 20 MB together, not counting videos', 'ATTACHMENTS_TOO_LARGE');
+  const most = messageBytesFor(storage.fileBytes);
+  if (total > most) throw new InvalidInputError(`The files of one message are at most ${megabytesText(most)} together, not counting videos`, 'ATTACHMENTS_TOO_LARGE');
   return ordered;
 }
 
@@ -237,13 +247,13 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
  * sealed one opened by its tag too), so a file changed on disk since its upload still cannot be sent. Call it before the message's
  * transaction opens: it holds no database connection while it reads (at most 10 files of 5 MiB). It reads only the author's own ready,
  * unsent files and refuses with the same unknown-file answer as `lockAttachments`, which still makes every check of the rows inside the
- * transaction. A larger video is not read here; its size is checked on every range and its digest in the export bundle (C-61).
+ * transaction. A larger file is not read here; its size is checked on every read and its digest in the export bundle (C-61, #1549).
  */
 export async function verifyAttachmentBytes(files: Pick<FileRepository, 'findFiles'>, storage: Pick<FileStorage, 'has'>,
   author: ActorRef, ids: readonly string[]): Promise<void> {
   if (!ids.length || author.kind !== 'human') return;
   for (const row of await files.findFiles(ids)) {
-    if (!same(row.uploader, author) || row.state !== 'ready' || row.size === null || row.size > FILE_LIMITS.fileBytes || !row.sha256
+    if (!same(row.uploader, author) || row.state !== 'ready' || row.size === null || row.size > FILE_LIMITS.wholeBytes || !row.sha256
       || row.posterOf || isPublished(row)) continue;
     if (!await storage.has(row.id, row.size, row.sha256)) throw attachmentUnavailable();
   }
@@ -316,13 +326,13 @@ export interface FileUseCaseOptions {
 export async function receiveRunOwnFile(storage: FileStorage, options: Pick<FileUseCaseOptions, 'pictures'>, name: unknown, bytes: AsyncIterable<Uint8Array>) {
   const display = displayName(name);
   if (videoNameContainer(display)) throw new InvalidInputError('A video cannot be attached in this chat; attach it in a space', 'VIDEO_NOT_HERE');
-  const limits = { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
+  const limits = { maxBytes: FILE_LIMITS.wholeBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
   let received;
   try {
     const arriving = options.pictures ? await canonicalUpload(bounded(bytes, limits), options.pictures) : bytes;
     received = await storage.receive(arriving, limits);
   } catch (error) {
-    if (error instanceof FileTooLargeError) throw tooLarge(FILE_LIMITS.fileBytes, false);
+    if (error instanceof FileTooLargeError) throw new PayloadTooLargeError(`A file on an answer is at most ${megabytesText(FILE_LIMITS.wholeBytes)}`, 'FILE_TOO_LARGE');
     if (error instanceof FileReceiveTimeoutError) throw new InvalidInputError('The file did not arrive in time', 'UPLOAD_TIMEOUT');
     throw error;
   }
@@ -332,6 +342,8 @@ export async function receiveRunOwnFile(storage: FileStorage, options: Pick<File
 
 export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, clock: () => Date = () => new Date(), options: FileUseCaseOptions = {}) {
   const videoCap = options.videoBytes ?? FILE_LIMITS.videoBytes;
+  const fileCap = storage.fileBytes;
+  const stagedCap = stagedBytesFor(fileCap);
   const pictures = options.pictures;
   /** The right to put a file in this place now: to write in the space, or in the direct message the person takes part in (#1438 point 10). */
   const writeTo = async (ports: FilePorts, principal: Principal, place: Place, placeId: string, lock = false): Promise<{ workspaceId: string }> => {
@@ -343,7 +355,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
     if (!ports.access.requireDm) throw new NotFoundError('Conversation', 'DM_NOT_FOUND');
     return ports.access.requireDm(principal, 'dm.write', placeId, ...(lock ? [{ lock: true as const }] : []));
   };
-  /** The person's videos arriving now (C-61), by uploader. */
+  /** The person's large uploads arriving now (C-61, #1549), by uploader. */
   const arriving = new Map<string, number>();
   /** Best effort: frees a reservation whose bytes never became ready. */
   const release = (projectId: string, uploader: ActorRef, fileId: string) => unit.run(async (ports) => {
@@ -405,8 +417,9 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
     const name = displayName(query.name);
     const uploader = uploaderOf(principal);
     const proposed = poster ? null : videoNameContainer(name);
-    if (declaredLength !== undefined && declaredLength > (proposed ? videoCap : poster ? FILE_LIMITS.posterBytes : FILE_LIMITS.fileBytes))
-      throw tooLarge(proposed ? videoCap : FILE_LIMITS.fileBytes, !!proposed);
+    // Before any work, against the most a file of this name could be anywhere; the place's own limit is checked once it is known.
+    if (declaredLength !== undefined && declaredLength > (proposed ? Math.max(videoCap, fileCap) : poster ? FILE_LIMITS.posterBytes : fileCap))
+      throw tooLarge(proposed ? Math.max(videoCap, fileCap) : poster ? FILE_LIMITS.posterBytes : fileCap, proposed ? 'video' : poster ? 'poster' : 'file');
     if (declaredLength === 0) throw new InvalidInputError('A file needs at least one byte', 'EMPTY_FILE');
 
     const admitted = await unit.run(async (ports) => {
@@ -420,48 +433,56 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         const verification = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, ...where, uploader,
           uploadId: randomUUID(), name, reservedBytes: 0, replayOf: existing.id,
           expiresAt: new Date(now.getTime() + FILE_LIMITS.reservationMinutes * MINUTE) });
-        return { replay: existing, verification, video: existing.videoContainer ?? null, reserveBytes: 0 };
+        // The same bytes again, within the time a file of its size has; other bytes under the same upload id are a conflict (below).
+        const kind: TooLargeKind = existing.videoContainer ? 'video' : 'file';
+        return { replay: existing, verification, video: existing.videoContainer ?? null, reserveBytes: 0, kind,
+          limit: existing.videoContainer ? videoCap : fileCap, large: !!existing.videoContainer || existing.size! > FILE_LIMITS.wholeBytes };
       }
       if (existing && existing.expiresAt && existing.expiresAt > now)
         throw new ConflictError('This upload is still arriving', 'UPLOAD_IN_PROGRESS');
       // An abandoned reservation is replaced by a new row and id: its late finish cannot touch these bytes.
       if (existing) await ports.files.removeUnpublished(existing.id);
-      // A video is one only in a plain space: a sealed object is one AES-GCM message that cannot be ranged, so an encrypted space keeps it an ordinary file (C-61).
-      const video = proposed && !await ports.files.encrypted(project.workspaceId) ? proposed : null;
-      const limit = video ? videoCap : poster ? FILE_LIMITS.posterBytes : FILE_LIMITS.fileBytes;
-      if (declaredLength !== undefined && declaredLength > limit) throw tooLarge(limit, !!video);
+      // A sealed object is one AES-GCM message that cannot be ranged and is read whole (C-61): in an encrypted space a video is an ordinary
+      // file, and every file stays at `wholeBytes` (#1549). A plain place takes a video up to the video cap and any other file up to the file cap.
+      const sealed = await ports.files.encrypted(project.workspaceId);
+      const video = proposed && !sealed ? proposed : null;
+      const kind: TooLargeKind = video ? 'video' : poster ? 'poster' : sealed ? 'sealed' : 'file';
+      const limit = video ? videoCap : poster ? FILE_LIMITS.posterBytes : sealed ? FILE_LIMITS.wholeBytes : fileCap;
+      if (declaredLength !== undefined && declaredLength > limit) throw tooLarge(limit, kind);
       if (poster) {
         const target = await posterTarget(ports, projectId, uploader, poster.videoId);
         // A new poster replaces the one the video had.
         for (const old of await ports.files.postersOf(target.id)) await ports.files.removeUnpublished(old.id);
       }
-      // A video reserves what its declared length says (a message may then carry its videos up to one cap together); anything else its limit.
-      const reserveBytes = video ? Math.max(1, Math.min(declaredLength ?? limit, limit)) : limit;
+      // A video reserves what its declared length says (a message may then carry its videos up to one cap together). Any other file reserves
+      // its declared length too, but never less than `wholeBytes` (a picture written again may grow up to that, #1343) and never more than its limit.
+      const reserveBytes = video ? Math.max(1, Math.min(declaredLength ?? limit, limit)) : Math.min(limit, Math.max(declaredLength ?? limit, FILE_LIMITS.wholeBytes));
       const quota = video ? await ports.files.stagedVideoBytes(projectId, uploader, now) + reserveBytes > videoCap
-        : await ports.files.stagedBytes(projectId, uploader, now) + reserveBytes > FILE_LIMITS.stagedBytes;
+        : await ports.files.stagedBytes(projectId, uploader, now) + reserveBytes > stagedCap;
       if (quota) throw new ConflictError(`Too many files are waiting to be sent in this ${place === 'project' ? 'space' : place === 'dm' ? 'conversation' : 'chat'}. Send or remove some first.`, 'UPLOAD_QUOTA_EXCEEDED');
-      const arrival = (video ? FILE_LIMITS.videoReceiveSeconds * 1000 : 0) + FILE_LIMITS.reservationMinutes * MINUTE;
+      const large = !!video || reserveBytes > FILE_LIMITS.wholeBytes;
+      const arrival = (large ? FILE_LIMITS.largeReceiveSeconds * 1000 : 0) + FILE_LIMITS.reservationMinutes * MINUTE;
       const reserved = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, ...where, uploader, uploadId,
         name, reservedBytes: reserveBytes, expiresAt: new Date(now.getTime() + arrival), ...(video ? { videoContainer: video } : {}),
         ...(poster ? { posterOf: poster.videoId } : {}) });
-      return { reserved, video, reserveBytes };
+      return { reserved, video, reserveBytes, kind, limit, large };
     });
 
     let received;
     // What the bytes say (#469) is read from the plaintext as it arrives, so it needs nothing of the stored object.
-    const plaintext: Uint8Array[] = [];
+    const reader = readsDetail(name) ? detailReader(name) : null;
     const head: VideoHead = { chunks: [], length: 0, container: null };
     try {
-      const limits = { maxBytes: admitted.replay ? (admitted.video ? videoCap : FILE_LIMITS.fileBytes) : admitted.reserveBytes,
-        deadline: Date.now() + (admitted.video ? FILE_LIMITS.videoReceiveSeconds : FILE_LIMITS.receiveSeconds) * 1000 };
+      const limits = { maxBytes: admitted.replay ? admitted.limit : admitted.reserveBytes,
+        deadline: Date.now() + (admitted.large ? FILE_LIMITS.largeReceiveSeconds : FILE_LIMITS.receiveSeconds) * 1000 };
       // A picture is decoded and written again before anything is stored or hashed, so a retry of the same upload finds the same bytes (#1343).
       // Never a video (C-61): its first bytes must be a video container, and a video is far larger than a picture may be held whole.
       const arriving = pictures && !admitted.video ? await canonicalUpload(bounded(bytes, limits), pictures) : bytes;
       received = admitted.replay ? await digestOnly(arriving, limits)
-        : await storage.receive(admitted.video ? sniffed(arriving, head) : readsDetail(name) ? observed(arriving, plaintext) : arriving, limits, admitted.reserved!.id);
+        : await storage.receive(admitted.video ? sniffed(arriving, head) : reader ? observed(arriving, reader) : arriving, limits, admitted.reserved!.id);
     } catch (error) {
       if (admitted.reserved ?? admitted.verification) await release(projectId, uploader, (admitted.reserved ?? admitted.verification)!.id);
-      if (error instanceof FileTooLargeError) throw tooLarge(admitted.video ? videoCap : poster ? FILE_LIMITS.posterBytes : FILE_LIMITS.fileBytes, !!admitted.video);
+      if (error instanceof FileTooLargeError) throw tooLarge(admitted.limit, admitted.kind);
       if (error instanceof FileReceiveTimeoutError) throw new InvalidInputError('The file did not arrive in time', 'UPLOAD_TIMEOUT');
       if (error instanceof NotAVideoError) throw new InvalidInputError('This is not a video Flux can play: an MP4, WebM or MOV file', 'NOT_A_VIDEO');
       throw error;
@@ -491,8 +512,8 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
 
     const reservation = admitted.reserved!;
     const detail: FileDetail = admitted.video && head.container ? { ...fileDetailOf(`video.${head.container}`, Buffer.concat(head.chunks)), video: head.container }
-      : plaintext.length ? fileDetailOf(name, Buffer.concat(plaintext)) : {};
-    plaintext.length = 0; head.chunks.length = 0;
+      : reader ? reader.detail() : {};
+    head.chunks.length = 0;
     try {
       return await unit.run(async (ports) => {
         await writeTo(ports, principal, place, projectId, true);
@@ -528,23 +549,24 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
 
   return {
     /**
-     * A video may take 20 minutes to arrive, and its reservation can be as small as its declared length, so the bytes allowance alone
-     * would let one person hold any number of slow uploads open: at most {@link VIDEO_ARRIVALS} of a person's videos arrive at once
-     * (C-61), in this API process. The page sends one file at a time.
+     * A video or a file over `wholeBytes` may take 20 minutes to arrive, and its reservation can be as small as its declared length, so the
+     * bytes allowance alone would let one person hold any number of slow uploads open: at most {@link LARGE_ARRIVALS} of a person's large
+     * uploads arrive at once (C-61, #1549), in this API process. The page sends one file at a time.
      */
     async stage(principal: Principal, projectId: string, query: { uploadId?: unknown; name?: unknown }, bytes: AsyncIterable<Uint8Array>, declaredLength?: number, place: Place = 'project') {
-      if (typeof query.name !== 'string' || !videoNameContainer(query.name)) return stageBytes(principal, projectId, query, bytes, declaredLength, undefined, place);
+      const large = (typeof query.name === 'string' && !!videoNameContainer(query.name)) || declaredLength === undefined || declaredLength > FILE_LIMITS.wholeBytes;
+      if (!large) return stageBytes(principal, projectId, query, bytes, declaredLength, undefined, place);
       const uploader = uploaderOf(principal);
       const key = `${uploader.kind}:${uploader.id}`;
       const count = arriving.get(key) ?? 0;
-      if (count >= VIDEO_ARRIVALS) throw new RateLimitedError(30, `${VIDEO_ARRIVALS} of your videos are already arriving. Wait for one to finish.`, 'UPLOADS_BUSY');
+      if (count >= LARGE_ARRIVALS) throw new RateLimitedError(30, `${LARGE_ARRIVALS} of your large files are already arriving. Wait for one to finish.`, 'UPLOADS_BUSY');
       arriving.set(key, count + 1);
       try { return await stageBytes(principal, projectId, query, bytes, declaredLength, undefined, place); }
       finally { const left = (arriving.get(key) ?? 1) - 1; if (left > 0) arriving.set(key, left); else arriving.delete(key); }
     },
 
-    /** What this instance accepts: the operator's video cap is the one number that varies (C-61). */
-    limits: (): FileLimits => ({ fileBytes: FILE_LIMITS.fileBytes, videoBytes: videoCap, messageFiles: FILE_LIMITS.messageFiles, messageBytes: FILE_LIMITS.messageBytes }),
+    /** What this instance accepts: the operator's file and video caps (C-61, #1549) and the message total that follows from the first. */
+    limits: (): FileLimits => ({ fileBytes: fileCap, videoBytes: videoCap, messageFiles: FILE_LIMITS.messageFiles, messageBytes: messageBytesFor(fileCap) }),
 
     /**
      * Gives the caller's staged video its poster (C-61): the picture the browser drew is decoded and re-encoded as a small WebP (never
@@ -575,11 +597,13 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
 
     /**
      * A file's bytes, after current access: a published file to anyone who can read its project now, an
-     * unpublished one only to its uploader. Missing or corrupt bytes are unavailable, never served. At most the ordinary file limit:
-     * a video is served by `open`.
+     * unpublished one only to its uploader. Missing or corrupt bytes are unavailable, never served. At most `FILE_LIMITS.wholeBytes`:
+     * a larger file is served by `open` (#1549).
      */
     async download(principal: Principal, fileIdInput: string): Promise<{ name: string; size: number; bytes: Uint8Array }> {
       const row = await readable(principal, id(fileIdInput, 'fileId').toLowerCase());
+      // Only the HTML preview reads a file whole (C-60): a larger page is offered as a download, not rewritten in memory (#1549).
+      if (row.size > FILE_LIMITS.wholeBytes) throw new NotFoundError('Preview', 'FILE_NO_PREVIEW');
       const bytes = await storage.read(row.id);
       if (!bytes || bytes.byteLength !== row.size || createHash('sha256').update(bytes).digest('hex') !== row.sha256) throw unavailable();
       return { name: row.name, size: row.size, bytes };
@@ -588,8 +612,8 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
     /**
      * A file as a stream, whole or one byte range of it (C-61), after the same current access check as `download`, made on every call
      * (every range of a playing video included). A file of the ordinary size (up to 5 MiB, a small video too) is read whole and its SHA-256
-     * verified on every read, as every file always was (a sealed one has its tag verified), and a range is cut from those bytes. A video
-     * over that size is read from disk a chunk at a time with its size checked (its digest, computed as it arrived, is verified in the
+     * verified on every read, as every file always was (a sealed one has its tag verified), and a range is cut from those bytes. A file
+     * over that size (a video, or any file up to the operator's cap, #1549) is read from disk a chunk at a time with its size checked (its digest, computed as it arrived, is verified in the
      * export bundle; #1411), so no request holds it in memory. `head` checks and returns no body; `video` insists the file is one a browser may
      * play (else it is not found); a range past the end gives status 416.
      */
@@ -603,7 +627,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const start = partial ? range.start : 0;
       const end = partial ? range.end : row.size - 1;
       const opened = { ...base, status: partial ? 206 as const : 200 as const, start, end };
-      const large = row.size > FILE_LIMITS.fileBytes;
+      const large = row.size > FILE_LIMITS.wholeBytes;
       if (request.head) {
         if (!await storage.has(row.id, row.size, large ? undefined : row.sha256 ?? undefined)) throw unavailable();
         return { ...opened, body: null };

@@ -15,6 +15,8 @@ export interface TabItem {
   count?: number;
   /** Accessible wording for the count, e.g. "3 open tasks". */
   countLabel?: string;
+  /** A small mark shown with the count under the label (a segmented control: the phone Board's status glyphs). Decorative: the label names the tab. */
+  glyph?: ReactNode;
   /**
    * In-page tabs: the arrow keys, Home and End move focus to this tab without opening it; Enter, Space or a click opens it. For a tab that
    * leaves the panels for something of its own (the Create window's Space), which a key that only moves along the strip must not do.
@@ -31,7 +33,7 @@ interface TabsProps {
   className?: string;
   /** For in-page tabs: the id prefix of the tab panels they control. */
   panelIdPrefix?: string;
-  /** `segmented`: a pill track with a raised pill behind the current tab (F-026 §4 project header). */
+  /** `segmented`: the app's segmented control as tabs (README, Segmented controls, #1561): equal options in a pill track, one raised pill behind the current tab. */
   variant?: 'line' | 'segmented';
   /**
    * The views of a place that cannot be opened now (a locked space, F-026 §7 Spaces): the same row, every word `--t3`, no current tab, no mark and
@@ -48,6 +50,16 @@ function quietName(item: TabItem): string | undefined {
 /** The label reserves its bold width, so the current tab's heavier weight never shifts its neighbours. */
 function Label({ text }: { text: string }) {
   return <span className="ui-tabs__label" data-text={text}>{text}</span>;
+}
+
+/** The label, then the count, with the glyph before it when the tab has one. */
+function Parts({ item }: { item: TabItem }) {
+  return (
+    <>
+      <Label text={item.label} />
+      {item.glyph ? <span className="ui-tabs__meta">{item.glyph}<Count item={item} /></span> : <Count item={item} />}
+    </>
+  );
 }
 
 function Count({ item }: { item: TabItem }): ReactNode {
@@ -118,7 +130,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
     placedRef.current = true;
     indicator.style.opacity = '1';
     if (segmented) {
-      // The raised pill covers the whole current tab and slides to the next one with `transform` only; its width changes at once.
+      // The raised pill covers the whole current tab and slides to the next one with `transform` only. The options are equal, so its width never changes.
       indicator.style.transform = `translateX(${current.offsetLeft}px)`;
       indicator.style.width = `${current.offsetWidth}px`;
     } else {
@@ -200,7 +212,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
                   if (choosesInPlace(event)) place(true, event.currentTarget);
                   event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                 }}>
-                <Label text={item.label} /><Count item={item} />
+                <Parts item={item} />
               </Link>
             );
           })}
@@ -229,7 +241,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange?.(item.id)}
             >
-              <Label text={item.label} /><Count item={item} />
+              <Parts item={item} />
             </button>
           );
         })}

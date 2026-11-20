@@ -594,6 +594,9 @@ class AdaptiveMatrix(AdaptiveBase):
                 pane = page.locator(".app__pane").bounding_box()
                 self.assertGreaterEqual(box["x"], pane["x"] - 1, f"the {column} column starts inside the pane at {size}")
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
+        if width <= 640:
+            # The phone's Board shows one status at a time (#1560): the card is in Doing.
+            page.get_by_role("tab", name=re.compile("^Doing")).click()
         card = self.card(page, fx.OPEN_TASK)
         self.primary(page, card, "a task card")
         self.no_sideways_scroll(page, "Tasks")
@@ -657,37 +660,40 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.shot(page, f"adapt-{width}x{height}-tasks-beside-details")
                 self.no_problems()
 
-    def test_02b_a_narrow_map_beside_docked_details_takes_the_columns_but_keeps_the_computer_controls(self) -> None:
-        """ADAPT-1 (#151): the thoughts' layout follows the map's own width, the controls follow the device. At 1100×800 with
-        Details docked the map is under 640 px wide and shows the two columns; it keeps the computer's toolbar, zoom and Fit,
-        and gets none of the phone's Map options sheet or Thought button. At 1440×900 the same map stays the plane."""
+    def test_02b_a_narrow_map_beside_docked_details_is_the_same_plane_with_the_computer_controls(self) -> None:
+        """ADAPT-1 (#151, C-67 #1553): a map looks the same in every pane, and the controls follow the device. At 1100×800 with
+        Details docked the map is under 640 px wide; it shows the same plane, each thought where it was arranged, with the computer's
+        toolbar, zoom and Fit, and none of the phone's Map options sheet or Thought button."""
         pid = self.ids["project"]
-        for (width, height), layout in (((1100, 800), "columns"), ((1440, 900), "plane")):
-            with self.subTest(width=width, height=height):
-                page = self.page(width, height, coarse=False)
-                page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
-                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
-                canvas = page.locator(".sk-canvas")
-                expect(canvas).to_have_attribute("data-layout", "plane")
-                open_details(page)
-                expect(page.locator("#details.ui-panel--docked")).to_be_visible()
-                expect(canvas).to_have_attribute("data-layout", layout)
-                self.at_rest(page)
-                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
-                map_width = page.locator(".sk-canvas-wrap").bounding_box()["width"]
-                self.assertTrue(map_width <= 640 if layout == "columns" else map_width > 640, f"the map is {map_width} px wide at {width}×{height}")
-                # The computer's controls, whatever the layout.
-                expect(page.get_by_role("group", name="Zoom")).to_be_visible()
-                expect(page.get_by_role("button", name="Fit the map to the view", exact=True)).to_be_visible()
-                expect(page.locator(".sk-dock__row")).to_be_visible()
-                expect(page.get_by_role("button", name="Map options", exact=True)).to_have_count(0)
-                expect(page.locator(".sk-phone, .sk-fab")).to_have_count(0)
-                if layout == "columns":
-                    # The two columns fit the map's width: nothing reaches past it sideways.
-                    fits = canvas.evaluate("el => ({inner: el.querySelector('.sk-zoomed').getBoundingClientRect().width, room: el.clientWidth})")
-                    self.assertLessEqual(fits["inner"], fits["room"] + 1, f"the columns fit the narrow map at {width}×{height}: {fits}")
-                self.shot(page, f"adapt-{width}x{height}-map-beside-details")
-                self.no_problems()
+        page = self.page(1100, 800, coarse=False)
+        page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
+        expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+        canvas = page.locator(".sk-canvas")
+        expect(canvas).to_have_count(1)
+        places = lambda: page.evaluate("""() => {
+          const zoom = Number(document.querySelector('.sk-zoomed').dataset.zoom);
+          const nodes = [...document.querySelectorAll('.sk-node')].map((n) => [n.dataset.id, n.getBoundingClientRect()]);
+          const [, first] = nodes[0];
+          return Object.fromEntries(nodes.map(([id, b]) => [id, [Math.round((b.left - first.left) / zoom), Math.round((b.top - first.top) / zoom), Math.round(b.width / zoom)]]));
+        }""")
+        wide = places()
+        open_details(page)
+        expect(page.locator("#details.ui-panel--docked")).to_be_visible()
+        self.at_rest(page)
+        expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+        map_width = page.locator(".sk-canvas-wrap").bounding_box()["width"]
+        self.assertTrue(map_width <= 640, f"the map is {map_width} px wide beside Details")
+        narrow = places()
+        for id, place in wide.items():
+            self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(place, narrow[id])), f"{id} keeps its place in the narrow pane: {place} then {narrow[id]}")
+        # The computer's controls, whatever the pane's width.
+        expect(page.get_by_role("group", name="Zoom")).to_be_visible()
+        expect(page.get_by_role("button", name="Fit the map to the view", exact=True)).to_be_visible()
+        expect(page.locator(".sk-dock__row")).to_be_visible()
+        expect(page.get_by_role("button", name="Map options", exact=True)).to_have_count(0)
+        expect(page.locator(".sk-phone, .sk-fab")).to_have_count(0)
+        self.shot(page, f"adapt-1100x800-map-beside-details")
+        self.no_problems()
 
     def test_03_the_board_keeps_four_readable_columns_of_one_card_each_on_wide_screens(self) -> None:
         """#1379: the four states stay four columns of at most 420 px at every width, each card on its own row (the To do column's
@@ -936,7 +942,7 @@ class AdaptiveTransitions(AdaptiveBase):
         self.check(where["inside"], f"{what}: {where}")
 
     def test_10_the_map_camera_survives_crossing_the_phone_breakpoint(self) -> None:
-        """T151-E: the continuous resize series from #223 keeps the desktop camera, zoom and selection."""
+        """T151-E: the continuous resize series from #223 keeps the camera, zoom and selection."""
         page = self.page(1366, 900, coarse=False)
         canvas = self.open_map(page)
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%, reset to 100%")).click()
@@ -953,10 +959,7 @@ class AdaptiveTransitions(AdaptiveBase):
         for width in (1280, 1024, 981, 980, 820, 641, 640, 390, 320, 640, 820, 1024, 1366):
             self.resize(page, width, 900)
             expect(hold).to_have_attribute("aria-pressed", "true")
-            if width <= 640:
-                # The phone shows the same thoughts as two columns; the selected one stays in view.
-                self.in_canvas(page, "hold", f"the selected thought stays in view at {width} px")
-        self.assertEqual(page.evaluate(CAMERA), camera, "the desktop camera returns after the phone projection")
+        self.assertEqual(page.evaluate(CAMERA), camera, "the camera returns after the phone width: one plane at every width")
         expect(page.get_by_role("button", name="Zoom 100%, reset to 100%")).to_be_visible()
         expect(canvas).to_be_visible()
         self.assertEqual(self.thoughts(page), len(fx.THOUGHTS), "resizing saves nothing")
@@ -964,17 +967,18 @@ class AdaptiveTransitions(AdaptiveBase):
 
     def test_11_rotation_keeps_the_map_camera_in_both_orientations(self) -> None:
         """T151-E: a width/height swap and back keeps the camera, including where the browser clamps it."""
-        # A phone turned between landscape (the plane) and portrait (two columns).
+        # A phone turned between landscape and portrait: the same plane, so the same camera.
         page = self.page(844, 390, coarse=True)
         self.open_map(page)
         landscape = self.set_camera(page, 120, 60)
         self.assertEqual(landscape, {"left": 120, "top": 60})
         self.resize(page, 390, 844)
+        self.assertEqual(page.evaluate(CAMERA), landscape, "portrait keeps the camera")
         portrait = self.set_camera(page, 0, 140)
         self.resize(page, 844, 390)
-        self.assertEqual(page.evaluate(CAMERA), landscape, "landscape returns to its camera")
+        self.assertEqual(page.evaluate(CAMERA), portrait, "landscape keeps the camera the person last chose")
         self.resize(page, 390, 844)
-        self.assertEqual(page.evaluate(CAMERA), portrait, "portrait returns to its camera")
+        self.assertEqual(page.evaluate(CAMERA), portrait, "and portrait again")
         # A tablet turned with the camera at the far corner, which the taller canvas cannot reach.
         tablet = self.page(1024, 768, coarse=True)
         canvas = self.open_map(tablet)
@@ -1088,13 +1092,16 @@ class AdaptiveTransitions(AdaptiveBase):
             expect(heading, f"the task stays open in Details at {width}×{height}").to_be_visible()
 
     def test_15_a_zoomed_in_phone_map_keeps_its_sideways_place(self) -> None:
-        """T151-E: zoomed in, the phone's two columns scroll sideways; selecting, the keyboard and a zoom step keep that place."""
+        """T151-E: zoomed in, the phone's plane scrolls sideways; selecting, the keyboard and a zoom step keep that place."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
         options = open_map_options(page, touch=True)
-        for label in ("110%", "125%", "150%"):
+        for _ in range(4):
+            if options.get_by_role("button", name="Zoom 150%, reset to 100%").count():
+                break
             options.get_by_role("button", name="Zoom in").tap()
-            expect(options.get_by_role("button", name=f"Zoom {label}, reset to 100%")).to_be_visible()
+            page.wait_for_timeout(150)
+        expect(options.get_by_role("button", name="Zoom 150%, reset to 100%")).to_be_visible()
         options.get_by_role('button', name='Close map options', exact=True).tap()
         expect(options).to_have_count(0)
         right = canvas.evaluate("""(c) => {
@@ -1132,16 +1139,15 @@ class AdaptiveTransitions(AdaptiveBase):
         self.no_problems()
 
     def test_16_dragging_the_top_thought_on_a_phone_does_not_arrange_the_thought_or_move_the_view(self) -> None:
-        """T151-E, S15: the phone camera anchors on the top thought; dragging it neither arranges it nor scrolls the map."""
+        """T151-E, S15: dragging a thought with a mouse on a phone neither arranges it nor scrolls the map."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
-        self.set_camera(page, 0, 160)
         top = canvas.evaluate("""(c) => {
           const box = c.getBoundingClientRect();
           let best = null;
           for (const n of c.querySelectorAll('.sk-node')) {
             const b = n.getBoundingClientRect();
-            if (b.bottom > box.top + 1 && (!best || b.top < best.top)) best = {id: n.dataset.id, top: b.top};
+            if (b.top > box.top + 70 && b.bottom < box.bottom - 120 && b.left > box.left && b.right < box.right && (!best || b.top < best.top)) best = {id: n.dataset.id, top: b.top};
           }
           return best.id;
         }""")

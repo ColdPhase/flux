@@ -1,5 +1,5 @@
 import {
-  decisionAcceptPath, decisionUnacceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
+  decisionAcceptPath, decisionUnacceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, workspaceGivenWorkPath, taskCreationUndoPath,
   type CreateObjectLinkCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type Agent,
 } from '@flux/contracts';
@@ -13,6 +13,11 @@ import { readAssignedAcross } from './assigned.js';
 export const listAssignedWork = (workspaceIds: string[], cap: number, signal?: AbortSignal) =>
   readAssignedAcross(workspaceIds, (workspaceId, limit, offset) =>
     request<Page<WorkItem>>(`${workspaceAssignedWorkPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal }), cap, signal);
+
+/** The unfinished tasks the caller created for another person ("tasks I gave others", #1519), read across workspaces the same way. */
+export const listGivenWork = (workspaceIds: string[], cap: number, signal?: AbortSignal) =>
+  readAssignedAcross(workspaceIds, (workspaceId, limit, offset) =>
+    request<Page<WorkItem>>(`${workspaceGivenWorkPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal }), cap, signal);
 
 const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });

@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import type { Conversation, SearchResponse, SearchResult, StagedFile } from '@flux/contracts';
+import { conversationMessagePath, conversationPath, type Conversation, type SearchResponse, type SearchResult, type StagedFile } from '@flux/contracts';
 import { startFileText } from '../../apps/worker/src/file-text/index.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
 import { connectionString, db, pool } from './support/db.js';
 import { createSealed, passphrase, unlock } from './support/encryption.js';
-import { docxBytes, pdfBytes } from './support/file-text.js';
+import { docxBytes, pdfBytes, pdfOfPictures, type PicturePage } from './support/file-text.js';
 import { jpeg } from './support/pictures.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed } from './support/space-ai.js';
@@ -148,7 +148,8 @@ describe('the text inside files, found by people and agents (C-63)', () => {
       { name: `Budget ${tag}.xlsx`, bytes: Buffer.from([0x50, 0x4b, 3, 4, 0, 0, 0, 0]) },
     ]);
     // The rows are there the moment the message is sent, and nothing waits for the worker: their insides are never read.
-    assert.equal(await jobs(sent.fileIds), 0, 'no job for a photo, a video or a spreadsheet');
+    // A video and a spreadsheet get no job; a photo is read only by OCR when it is on (C-70), and this tiny one keeps nothing.
+    assert.equal(await jobs(sent.fileIds.slice(1)), 0, 'no job for a video or a spreadsheet');
     for (const fileId of sent.fileIds) assert.deepEqual((await rowsOf(fileId)).map((row) => row.version), [0], 'the name row alone');
     assert.deepEqual(files(await search(reader, 'IMG_2041')).map(titleOf), [`IMG_2041 ${tag}.jpg`], 'the photo by its name');
     assert.deepEqual(files(await search(reader, 'site walk')).map(titleOf).filter((name) => name.includes(tag)), [`Site walk ${tag}.mp4`], 'the video by its name');
@@ -212,7 +213,8 @@ describe('agents find the text inside files and read an excerpt of it (C-63)', (
     await Promise.all([ensureSpaceAiAllowed(spaceId), ensureSpaceAiAllowed(hiddenId)]);
     const agent = expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Claude Code', owner: 'self' } }), 201) as { id: string };
     token = (await agentConnection(pool, member.browser, agent.id, [spaceId])).accessToken;
-    worker = await startFileText({ db, connectionString, pauseMs: 0 });
+    // C-70: this worker reads scans and pictures by OCR, as the operator's FLUX_FILE_OCR=on does (the suites' own worker has it on too).
+    worker = await startFileText({ db, connectionString, pauseMs: 0, env: { ...process.env, FLUX_FILE_OCR: 'on' } });
   });
   after(async () => { await worker.stop(); });
 
@@ -251,6 +253,87 @@ describe('agents find the text inside files and read an excerpt of it (C-63)', (
     assert.equal(pdfText.nextOffset, null);
     // A file of a space the connection does not reach, an unknown file and a file that is not a file are one answer.
     for (const fileId of [hidden.fileIds[0]!, randomUUID()]) assert.equal(toolFailure((await call('flux_read_file', { fileId })).message).code, 'FILE_NOT_FOUND');
+  });
+
+  test('C-69 (#1557): a PDF of pictures only is marked "no text" for people and gives an agent the pictures of its pages, a few a call', async () => {
+    const pages: PicturePage[] = [{ kind: 'rgb', width: 2000, height: 1400 }, { kind: 'jpeg', bytes: jpeg(), width: 16, height: 8 },
+      { kind: 'grey', width: 800, height: 600 }, { kind: 'grey', width: 400, height: 300 }];
+    const sent = await send(lead, spaceId, [{ name: 'OH-mapa-pomyslow.pdf', bytes: pdfOfPictures(pages) }]);
+    await settled(sent.fileIds);
+    const fileId = sent.fileIds[0]!;
+    assert.deepEqual((await pool.query('SELECT no_text FROM project_files WHERE id = $1', [fileId])).rows[0], { no_text: true });
+    const kept = (await pool.query('SELECT page, width, height, png FROM file_page_pictures WHERE file_id = $1 ORDER BY page', [fileId])).rows as
+      { page: number; width: number; height: number; png: Buffer }[];
+    assert.deepEqual(kept.map((row) => [row.page, row.width, row.height]), [[1, 1568, 1098], [2, 16, 8], [3, 800, 600], [4, 400, 300]],
+      'each page\'s picture, the long side at most 1,568 px');
+    for (const row of kept) {
+      assert.ok(row.png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'a PNG');
+      assert.equal(row.png.readUInt32BE(16), row.width);
+    }
+    assert.equal(kept[0]!.png[25], 2, 'a colour page stays RGB');
+    assert.equal(kept[2]!.png[25], 0, 'a grey scan is a grey PNG');
+    // People: the message's file says it has no text.
+    const thread = expectStatus(await member.browser.request('GET', conversationPath(sent.conversation.id)), 200) as Conversation;
+    assert.equal(thread.messages[0]!.files?.[0]?.noText, true);
+
+    // An agent (a local client sees pictures): the first three pages' pictures, then the fourth.
+    const first = (await call('flux_read_file', { fileId })).message as { result: { content: { type: string; text?: string; data?: string; mimeType?: string }[]; isError?: boolean } };
+    assert.notEqual(first.result.isError, true, JSON.stringify(first).slice(0, 500));
+    const told = JSON.parse(first.result.content[0]!.text!) as { noText: boolean; nextOffset: number | null; note: string; body: string };
+    assert.equal(told.noText, true);
+    assert.equal(told.body, '');
+    assert.equal(told.nextOffset, 3);
+    assert.match(told.note, /^This PDF has no text \(a scan or a picture\)\. Pictures of pages 1, 2, 3 follow; continue with nextOffset/);
+    const images = first.result.content.slice(1);
+    assert.deepEqual(images.map((part) => [part.type, part.mimeType]), [['image', 'image/png'], ['image', 'image/png'], ['image', 'image/png']]);
+    assert.ok(Buffer.from(images[0]!.data!, 'base64').equals(kept[0]!.png), 'the stored picture, as it is');
+    const rest = (await call('flux_read_file', { fileId, offset: 3 })).message as { result: { content: { type: string; text?: string }[] } };
+    assert.equal((JSON.parse(rest.result.content[0]!.text!) as { nextOffset: number | null }).nextOffset, null);
+    assert.deepEqual(rest.result.content.slice(1).map((part) => part.type), ['image']);
+    // Deleting the message deletes the file, and its pictures with it.
+    const removed = await lead.browser.request('DELETE', conversationMessagePath(sent.conversation.id, sent.messageId));
+    assert.ok(removed.status === 200 || removed.status === 204, removed.text);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM file_page_pictures WHERE file_id = $1', [fileId])).rows[0].n, 0);
+  });
+
+  test('C-70 (#1575): OCR reads a scan and a picture in Polish; people and agents find them by a word, flux_read_file reads their text, a landscape keeps nothing', async () => {
+    // Fixtures (tests/app/fixtures/ocr, rendered with ImageMagick and DejaVu Sans, 2026-11-20): five lines of Polish with diacritics, as a PNG
+    // and a JPEG, and a 400×300 plasma fractal with no text.
+    const fixture = (name: string) => readFileSync(join(import.meta.dirname, 'fixtures', 'ocr', name));
+    const scan = pdfOfPictures([{ kind: 'jpeg', bytes: fixture('faktura.jpg'), width: 1000, height: 420, grey: true }]);
+    const sent = await send(lead, spaceId, [{ name: 'skan-faktury.pdf', bytes: scan }, { name: 'faktura.png', bytes: fixture('faktura.png') },
+      { name: 'krajobraz.jpg', bytes: fixture('landscape.jpg') }]);
+    const [pdfId, pngId, photoId] = sent.fileIds as [string, string, string];
+    const state = async (id: string) => (await pool.query('SELECT ocr_state, no_text FROM project_files WHERE id = $1', [id])).rows[0] as { ocr_state: string | null; no_text: boolean };
+    for (let waited = 0; ; waited += 200) {
+      if ((await Promise.all(sent.fileIds.map(state))).every((row) => row.ocr_state !== null) && await jobs(sent.fileIds) === 0) break;
+      assert.ok(waited < 120_000, `OCR did not read the files in time: ${JSON.stringify(await Promise.all(sent.fileIds.map(state)))}`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.deepEqual(await state(pdfId), { ocr_state: 'text', no_text: false }, 'a scan with words is no longer "no text"');
+    assert.deepEqual(await state(pngId), { ocr_state: 'text', no_text: false });
+    assert.deepEqual(await state(photoId), { ocr_state: 'none', no_text: false }, 'a landscape keeps nothing');
+    assert.deepEqual((await rowsOf(photoId)).map((row) => row.version), [0], 'its name row alone');
+    // People: search finds both by a Polish word with diacritics, the scan at its page.
+    for (const q of ['kalibratorów', 'płatności']) {
+      const found = files(await search(member, q));
+      assert.deepEqual(found.map(titleOf).sort(), ['faktura.png', 'skan-faktury.pdf'], q);
+    }
+    // An agent's own search (point 2): the scan is a file hit with its page.
+    const hits = (toolValue((await call('flux_search', { q: 'kalibratorów', kind: 'file' })).message) as unknown as { results: Hit[] }).results;
+    assert.deepEqual(hits.map((hit) => hit.title).sort(), ['faktura.png', 'skan-faktury.pdf']);
+    assert.equal(hits.find((hit) => hit.title === 'skan-faktury.pdf')!.page, 1);
+    // flux_read_file (point 1): the text, each page under [Page N], said to be OCR; no pictures when there is text.
+    const pdfRead = (await call('flux_read_file', { fileId: pdfId })).message as { result: { content: { type: string; text?: string }[] } };
+    assert.deepEqual(pdfRead.result.content.map((part) => part.type), ['text']);
+    const pdfText = JSON.parse(pdfRead.result.content[0]!.text!) as { body: string; ocr: boolean; note: string; nextOffset: number | null };
+    assert.equal(pdfText.ocr, true);
+    assert.match(pdfText.body, /^\[Page 1\]\nFaktura nr 2026\/11\/17/);
+    assert.match(pdfText.body, /Zażółć gęślą jaźń/);
+    assert.match(pdfText.note, /^Flux read this text by OCR from a scan; \[Page N\] marks its pages\. It may contain mistakes\.$/);
+    const pngText = toolValue((await call('flux_read_file', { fileId: pngId })).message) as unknown as { body: string; note: string };
+    assert.match(pngText.body, /dostawa kalibratorów czujników/);
+    assert.match(pngText.note, /^Flux read this text by OCR from the picture\./);
   });
 
   test('a space whose AI is turned off is reached by nobody: its file is not read', async () => {

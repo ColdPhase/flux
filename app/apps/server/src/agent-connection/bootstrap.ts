@@ -11,7 +11,7 @@ const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0)
 export const agentSourceCheckpointSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.enum(['doc', 'work', 'decision']), id: z.uuid(), version: z.int().min(1).max(2_147_483_647) }),
   z.strictObject({ kind: z.literal('conversation'), id: z.uuid(), sequence: z.int().min(0).max(2_147_483_647) }),
-  z.strictObject({ kind: z.literal('map'), id: z.uuid(), version: z.int().min(1).max(2_147_483_647), updatedAt: z.iso.datetime() }),
+  z.strictObject({ kind: z.literal('map'), id: z.uuid(), version: z.int().min(1).max(2_147_483_647), updatedAt: z.iso.datetime({ offset: true }) }),
 ]);
 
 /** Registered read tools use the same verified bearer/current policy boundary as canonical content readers. */

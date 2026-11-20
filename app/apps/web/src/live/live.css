@@ -205,7 +205,6 @@
 .lv-stage__title { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
 .lv-stage__title svg { color: var(--t3); }
 .lv-stage__pick { flex: 0 1 auto; min-width: 0; }
-.lv-stage__pick .seg__b { padding: 0 12px; white-space: nowrap; }
 .lv-stage__zoom { display: flex; align-items: center; gap: 2px; }
 .lv-stage__zoom .ui-btn { padding: 0 10px; }
 .lv-stage__zoom .ui-btn[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
@@ -283,7 +282,6 @@
 
 /* Screen mode in the sharing line, and one camera shown large on the camera stage (#63). */
 .lv-line__seg { flex: none; }
-.lv-line__seg .seg__b { min-height: 26px; padding: 0 11px; font-size: var(--fs-sm); }
 .lv-cam__enlarge { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: none; cursor: zoom-in; }
 .lv-cam__enlarge[aria-pressed="true"] { cursor: zoom-out; }
 .lv-cam__enlarge:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }

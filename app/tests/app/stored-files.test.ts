@@ -9,7 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { and, eq, sql } from 'drizzle-orm';
 import { fileRows, schema } from '@flux/db';
 import { createFileUseCases, NotFoundError, type FileUnitOfWork } from '@flux/core';
-import { FILE_LIMITS, type Conversation, type ConversationMessage, type ConversationRootWindow, type StagedFile, type TaskDiscussion, type WorkItem } from '@flux/contracts';
+import { FILE_LIMITS, messageBytesFor, type Conversation, type ConversationMessage, type ConversationRootWindow, type StagedFile, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { exportUseCases } from '../../apps/server/src/export/adapters.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
@@ -20,6 +20,8 @@ const filesDir = process.env.FLUX_TEST_FILES_DIR ?? '/data/files';
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const objectPath = (id: string) => join(filesDir, 'attachments', 'objects', id.slice(0, 2), id);
 const chunks = async function* (bytes: Uint8Array) { yield bytes; };
+/** The test stack's file cap (FLUX_FILE_MAX_MIB=8 in docker/compose.test.yaml, #1549): above the 5 MiB a file is read whole. */
+const FILE_CAP = 8 * 1024 * 1024;
 async function scene() {
   const owner = await person('File owner');
   const writer = await person('File writer');
@@ -92,7 +94,7 @@ test('empty, oversized, unsafe names, live upload identity and reservation quota
   assert.equal((await upload(f.writer, f.place.id, Buffer.alloc(0))).body.code, 'EMPTY_FILE');
   // A declared size over the limit is refused before any body is read (sending the body would race the early
   // 413 against the client's write and could end in a connection reset instead of the response).
-  assert.deepEqual(await rawUpload(f.writer, f.place.id, `Content-Length: ${FILE_LIMITS.fileBytes + 1}\r\n`), { status: 413, code: 'FILE_TOO_LARGE' });
+  assert.deepEqual(await rawUpload(f.writer, f.place.id, `Content-Length: ${FILE_CAP + 1}\r\n`), { status: 413, code: 'FILE_TOO_LARGE' });
   for (const name of ['../report', '.', '..', '\nreport.txt\t', 'a\\b', 'a\u202eb'])
     assert.equal((await upload(f.writer, f.place.id, Buffer.from('x'), randomUUID(), name)).status, 400);
   const pendingId = randomUUID();
@@ -100,7 +102,7 @@ test('empty, oversized, unsafe names, live upload identity and reservation quota
     const repo = fileRows(tx);
     for (let i = 0; i < 20; i++) await repo.reserve({ id: randomUUID(), workspaceId: f.ws.id, projectId: f.place.id,
       uploader: { kind: 'human', id: f.writer.id }, uploadId: i ? randomUUID() : pendingId, name: 'receiving.txt',
-      reservedBytes: FILE_LIMITS.fileBytes, expiresAt: new Date(Date.now() + 60_000) });
+      reservedBytes: FILE_LIMITS.wholeBytes, expiresAt: new Date(Date.now() + 60_000) });
   });
   assert.equal((await upload(f.writer, f.place.id, Buffer.from('x'), pendingId)).body.code, 'UPLOAD_IN_PROGRESS');
   assert.equal((await upload(f.writer, f.place.id, Buffer.from('x'))).body.code, 'UPLOAD_QUOTA_EXCEEDED');
@@ -123,7 +125,7 @@ test('DM HTTP refuses a space file as an attachment without silently sending tex
 
 test('same-UUID recovery works when ready staged files exactly fill the quota', async () => {
   const f = await scene();
-  const bytes = Buffer.alloc(FILE_LIMITS.fileBytes, 7);
+  const bytes = Buffer.alloc(FILE_LIMITS.wholeBytes, 7);
   let last: StagedFile | undefined;
   for (let i = 0; i < 20; i++) {
     const response = await upload(f.writer, f.place.id, bytes);
@@ -410,13 +412,13 @@ test('attachment count and byte bounds roll back publication; bundle exports exa
   assert.equal(data.files[0]!.messageId, started.messages[0]!.id);
   assert.equal((await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/export`)).status, 403);
   const large: string[] = [];
-  for (let i = 0; i < 5; i++) large.push((await upload(f.writer, f.place.id, Buffer.alloc(FILE_LIMITS.fileBytes, i))).body.id);
+  for (let i = 0; i < 5; i++) large.push((await upload(f.writer, f.place.id, Buffer.alloc(FILE_CAP, i))).body.id);
   assert.equal((await f.writer.browser.request('POST', path, { body: { body: '', attachmentIds: large, clientMessageId: randomUUID() } })).status, 400);
   const rows = await db.select().from(schema.projectFiles).where(and(eq(schema.projectFiles.projectId, f.place.id), sql`${schema.projectFiles.id} IN (${sql.join(large.map((id) => sql`${id}::uuid`), sql`,`)})`));
   assert.equal(rows.every((row) => row.messageId === null), true);
   const atLimit = expectStatus(await f.writer.browser.request('POST', path,
     { body: { body: '', attachmentIds: large.slice(0, 4), clientMessageId: randomUUID() } }), 201) as Conversation;
-  assert.equal(atLimit.messages[0]!.files!.reduce((sum, file) => sum + file.size, 0), FILE_LIMITS.messageBytes);
+  assert.equal(atLimit.messages[0]!.files!.reduce((sum, file) => sum + file.size, 0), messageBytesFor(FILE_CAP));
 });
 
 

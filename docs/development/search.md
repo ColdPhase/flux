@@ -181,6 +181,19 @@ decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads t
   `NOTIFY flux_file_text` and polls nothing; a job is claimed with a lease of two minutes, tried three times and given up.
 - **Agents.** `flux_search` takes `kind: "file"` and returns the file's name, a snippet with the matches in **bold**, the page, the
   message and a link; `flux_read_file` reads the text in pages of 12,000 (a run) or 20,000 characters from `offset`.
+- **A PDF without text** ([C-69](../product/decisions.md), #1557, migration 0103). When the child finds no text in a PDF it opens it once
+  more with pictures decoded and answers, beside `empty`, the PNG of the largest picture of each of its first 10 pages (at most 1,568 px
+  on the long side, `png.ts`); the worker keeps them in `file_page_pictures` (they go with the file by the foreign key) and sets
+  `project_files.no_text`. `flux_read_file` of such a file gives a caller that sees pictures the pages as image input, three a call
+  (`offset` counts the pages given), and tells a run whose model does not that it cannot read it; the file's row and preview say
+  "no text".
+- **OCR** ([C-70](../product/decisions.md), #1575, migration 0104), only with `FLUX_FILE_OCR=on`. The child also answers each scan page grey
+  at up to 2,480 px; the worker hands each page, and each picture sent to a space or a chat (PNG, JPEG, WebP, GIF), to a child of its own that
+  runs Tesseract (`ocr.ts`) and answers the text when its mean confidence is at least 60 and it has three words of three letters. That text is
+  stored as the file's parts exactly like a text layer (a scan's parts carry their page), so search, the embeddings and `flux_read_file` use
+  it with nothing of their own; `flux_read_file` puts a scan's pages under `[Page N]` and says it was read by OCR. `ocr_state` records the
+  read; with the switch on an empty queue takes the next 50 files OCR has yet to read (`queueOcr`, index `project_files_ocr_pending_idx`), and
+  a picture sent wakes the worker (the trigger's NOTIFY) without a job of its own.
 - **Web.** A file hit is the Files group's row (the file's icon, its name and the snippet) and opens its message with the preview open at
   the matched page (`?file=<id>&page=<n>`); a photo opens in the photo viewer, a video in its player (`useFileLink`).
 - **Agents and a file without text.** `flux_read_file` on a photo or a video answers with no text and the note that a picture or a

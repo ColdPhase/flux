@@ -2,7 +2,7 @@ import { randomBytes, randomUUID, createECDH } from 'node:crypto';
 import { readFile, writeFile, rename, stat, lstat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-export const NODE_IMAGE = 'node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8';
+export const NODE_IMAGE = 'node@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5';
 export function boundedInteger(value, min, max, label) {
   if (!/^\d+$/.test(String(value)) || Number(value) < min || Number(value) > max) throw new Error(`Invalid ${label}`);
   return Number(value);

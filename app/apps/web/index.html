@@ -51,6 +51,11 @@
   </script>
 </head>
 <body>
+  <script>
+    // Waits for the head's stylesheets (the parser waits for them before it runs a script), so the document finishes parsing with none
+    // still loading (#1530). WebKit otherwise scrolls to the address's fragment again after every later stylesheet load (a route's code
+    // arriving): a message link's #message-… then went to the top of the stream, took the focus and was held there after every layout.
+  </script>
   <div id="root"><div class="boot boot--moment" role="status" aria-label="Opening Flux"><div class="boot__lockup"><svg class="boot__logo" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path d="M7 0H17C21.2 0 24 2.8 24 7V17C24 21.2 21.2 24 17 24H7C2.8 24 0 21.2 0 17V7C0 2.8 2.8 0 7 0Z" class="boot__tile"/><g class="boot__face" transform="translate(12 12) scale(1.14) translate(-12 -12.4)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.3 11.2V13.8M14.7 11.2V13.8"/><path d="M7.3 8.1 10.5 7.2" stroke-width="1.55"/></g></svg><b>flux</b></div><i class="boot__bar" aria-hidden="true"><u></u></i></div><div class="boot boot--plain" role="status"><p class="boot__text">Opening Flux…</p></div></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>

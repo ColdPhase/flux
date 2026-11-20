@@ -26,9 +26,9 @@ const api = createDatabase(connectionString, 1500, { max: 10 });
 after(async () => { await api.pool.end().catch(() => undefined); });
 
 const clip = readFileSync(join(import.meta.dirname, '../ui/fixtures/video', 'clip.mp4'));
-/** A video just over the ordinary 5 MiB: the clip's container, then padding. */
+/** A video just over the 5 MiB read whole: the clip's container, then padding. */
 function video() {
-  const bytes = Buffer.alloc(FILE_LIMITS.fileBytes + 1);
+  const bytes = Buffer.alloc(FILE_LIMITS.wholeBytes + 1);
   clip.copy(bytes);
   for (let i = clip.length; i < bytes.length; i++) bytes[i] = (i * 31 + 7) & 0xff;
   return bytes;

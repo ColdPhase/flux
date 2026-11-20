@@ -21,8 +21,11 @@ import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
 import { Avatar, Button, Icon, Kreska, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast } from '../ui';
 import { Select, Option, OptionGroup } from '../ui/Select';
+import { DateField } from '../ui/DateField';
+import { dueLabel } from '../work/format';
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
+import { useCloseBelow } from './closeBeside';
 import { createWork, proposeDecision, withdrawDecision } from '../work/api';
 import { holdProposal } from '../work/heldProposals';
 import { useWorkChoices } from '../work/useDetailReads';
@@ -135,9 +138,11 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
     if (tab) { awaitField(); requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus()); }
   };
   const shared = { phone, carried, projectId, onProject: changeProject, onClose };
+  const head = useRef<HTMLDivElement>(null);
+  const closeBelow = useCloseBelow(head);
   return (
-    <div className="create__in">
-      <div className="create__head ui-panel__head">
+    <div className={closeBelow ? 'create__in create__in--close-below' : 'create__in'}>
+      <div className="create__head ui-panel__head" ref={head}>
         <div className="create__kinds" onClick={pointerOnTab}>
           <Tabs variant="segmented" className="create__tabs" label="Create" items={kinds} value={kind} panelIdPrefix={prefix}
             onChange={(id) => { if (id === 'space') onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title)); else onKind(id as Kind); }} />
@@ -246,9 +251,35 @@ function PickChip({ label, icon, shown, value, onChange, children }: { label: st
   );
 }
 
+/**
+ * The task's due day (#1519, README Create): the chip reads "Add a date" or the day, and a click opens the date field with its calendar, as the task
+ * panel's Due does; a day, Today, Tomorrow or Clear saves at once, Esc leaves it unchanged (and keeps the window open).
+ */
+function DueChip({ value, onChange, disabled }: { value: string; onChange: (day: string) => void; disabled: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const text = value ? dueLabel(value) : 'Add a date';
+  // Back from the picker, focus returns to the chip a key or a choice closed it from; a press elsewhere keeps its own.
+  const leave = (how: 'close' | 'away' = 'close') => { setEditing(false); if (how !== 'away') requestAnimationFrame(() => opener.current?.focus({ preventScroll: true })); };
+  return (
+    <div className="create__prop">
+      <span className="create__lab" aria-hidden="true">Due</span>
+      {editing ? (
+        <span className="create__date" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leave(); } }}>
+          <DateField aria-label="Due date" value={value} clearable defaultOpen onDismiss={leave} onChange={(day) => { onChange(day); leave(); }} />
+        </span>
+      ) : (
+        <button ref={opener} type="button" className="create__chip" aria-label={value ? `Due ${text}` : 'Due, add a date'} disabled={disabled} onClick={() => setEditing(true)}>
+          <Icon name="clock" size={14} /><span>{text}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface PanelProps { ids: PanelIds; phone: boolean; carried: Carried; projectId: string; onProject: (id: string) => void; onClose: () => void }
 
-interface SavedForm { title: string; outcome: string; owner: string; sources: { ref: ObjectRef; label: string }[] }
+interface SavedForm { title: string; outcome: string; owner: string; due?: string; sources: { ref: ObjectRef; label: string }[] }
 const sameRefs = (a: ObjectRef[], b: ObjectRef[]) => a.length === b.length && a.every((ref, i) => ref.type === b[i]!.type && ref.id === b[i]!.id);
 
 /**
@@ -307,6 +338,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An owner belongs to one project's people: another project starts with none, or with you where the task starts as yours.
   const owner = ownerPick.projectId === projectId ? ownerPick.value : mine;
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
+  // The day it is due, if one is set here (#1519): kept with the other fields of an unresolved command, and the same in every space.
+  const [due, setDue] = useState(saved?.due ?? '');
   // Sources belong to the project they were picked in: another project (from any tab's picker) starts with none, rather
   // than failing on submit.
   const [sourcesFor, setSourcesFor] = useState(() => ({ projectId, list: saved?.sources ?? request.sources ?? [] }));
@@ -359,6 +392,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
       // Always said, `null` for No owner: the server makes a task from your own message yours only when no owner is named (#1424 M).
       owner: owner && !(aiOff && owner.startsWith('agent:')) ? { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } : null,
+      ...(due ? { dueOn: due } : {}),
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
     };
     const payload = JSON.stringify([projectId, command]);
@@ -368,7 +402,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     let key = records.find((record) => record.payload === payload)?.key ?? crypto.randomUUID() as string;
     if (attempt.current?.payload === payload) key = attempt.current.key;
     attempt.current = { payload, key };
-    const form: SavedForm = { title: text, outcome, owner, sources };
+    const form: SavedForm = { title: text, outcome, owner, ...(due ? { due } : {}), sources };
     const next = [...records.filter((record) => record.payload !== payload), { payload, key, form }].slice(-UNRESOLVED_LIMIT);
     pending.setText(JSON.stringify(next));
     setBusy(true); setError('');
@@ -425,6 +459,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
           <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}><span className="create__opt"><Avatar name={p.name} id={p.id} size="sm" />{p.label}</span></Option>)}</OptionGroup>
           {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}><span className="create__opt"><Kreska size={20} hue={a.colour} />{a.label}</span></Option>)}</OptionGroup> : null}
         </PickChip>
+        <DueChip value={due} onChange={setDue} disabled={busy} />
         <div className="create__prop">
           <span className="create__lab" aria-hidden="true">Link</span>
           <div className="create__links">

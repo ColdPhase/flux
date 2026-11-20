@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
-import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, WORK_LIMITS, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery, useToast } from '../ui';
 import { getProject } from '../api/sketches';
 import { ApiError, NetworkError } from '../api/client';
@@ -14,6 +14,7 @@ import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
 import { audience, quote, sketchHref } from './format';
 import { freeSpot, freeSpotNear, PAD, rectOf, type Rect } from './geometry';
+import { readMapView } from './mapView';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
@@ -133,7 +134,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   const closeConnections = () => { setConnectionTarget(null); setConnectionDraft(null); };
   // A fragment shown in a live session (#62) opens with the presenter's thoughts selected.
   const liveSelect = (location.state as { liveSelect?: string[] | null } | null)?.liveSelect ?? null;
-  const [selectionState, setSelection] = useState<string[]>(() => liveSelect ?? []);
+  // A map opens with the thoughts selected that were when it was left on this device (#1553); the phone selects one at a time.
+  const [selectionState, setSelection] = useState<string[]>(() => liveSelect ?? readMapView(me.user.id, sketchId)?.selection.slice(phone ? -1 : undefined) ?? []);
   const [selectedFor, setSelectedFor] = useState(location.key);
   if (selectedFor !== location.key) {
     setSelectedFor(location.key);
@@ -340,7 +342,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     const rects = (sketch?.thoughts ?? []).map((t) => rectOf(t, heights));
     const from = parent ? rectOf(parent, heights) : null;
     return Array.from({ length: count }, () => {
-      const spot = freeSpot(rects, from, size, phone);
+      const spot = freeSpot(rects, from, size);
       rects.push({ ...spot, ...size });
       return spot;
     });
@@ -350,7 +352,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
    * Where a thought from a message, or a new one with no parent, lands (CW-12): in free space inside the part of the map in view, clear of the
    * breadcrumb, the dock, the minimap and the zoom, measured from the drawn thoughts. The first thought of an empty map takes the top left of
    * the part in view, under the breadcrumb, where Fit would frame it: the map's camera and the thought agree, so it is never drawn outside the
-   * view, under the minimap, the zoom, the dock or the toast (personas-37). On the phone's columns, the first free place, and the map shows it.
+   * view, under the minimap, the zoom, the dock or the toast (personas-37). The phone's plane is the computer's, so it is the same there, with the
+   * floating header above and the tools below it left free.
    */
   const arrivalSpot = () => {
     const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height + 60 };
@@ -358,13 +361,15 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     const nodes = [...(rootRef.current?.querySelectorAll<HTMLElement>('.sk-node[data-id]') ?? [])];
     const byId = new Map((sketch?.thoughts ?? []).map((t) => [t.id, t]));
     const drawn = nodes.flatMap((node) => { const t = byId.get(node.dataset.id!); return t ? [{ t, box: node.getBoundingClientRect() }] : []; });
-    if (!phone && canvas && drawn.length) {
+    if (canvas && drawn.length) {
       const { t, box } = drawn[0]!;
       const zoom = box.width / t.width || 1;
       const view = canvas.getBoundingClientRect();
       const plane = (px: number, py: number) => ({ x: t.x + (px - box.left) / zoom, y: t.y + (py - box.top) / zoom });
-      // The top 72 px hold the breadcrumb and view switch, the bottom 96 px the dock.
-      const topLeft = plane(view.left + 24, view.top + 72), bottomRight = plane(view.right - 24, view.bottom - 96);
+      // The top 72 px hold the breadcrumb and view switch, the bottom 96 px the dock; on the phone, what its canvas keeps clear above and below.
+      const pad = getComputedStyle(canvas);
+      const above = phone ? (parseFloat(pad.paddingTop) || 0) + 16 : 72, below = phone ? Math.max(96, parseFloat(pad.paddingBottom) || 0) : 96;
+      const topLeft = plane(view.left + 24, view.top + above), bottomRight = plane(view.right - 24, view.bottom - below);
       const bounds: Rect = { x: topLeft.x, y: topLeft.y, w: bottomRight.x - topLeft.x, h: bottomRight.y - topLeft.y };
       const rects = drawn.map(({ t: thought, box: drawnBox }) => ({ x: thought.x, y: thought.y, w: thought.width, h: Math.max(rectOf(thought, heights).h, drawnBox.height / zoom) }));
       // What floats over the canvas (the minimap and the zoom) is as much in the way as a thought: nothing lands under it.
@@ -378,14 +383,14 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     }
     const all = (sketch?.thoughts ?? []).map((t) => rectOf(t, heights));
     const zoomed = rootRef.current?.querySelector<HTMLElement>('.sk-zoomed[data-origin-x]');
-    if (!phone && canvas && zoomed && !all.length) {
+    if (canvas && zoomed && !all.length) {
       const at = zoomed.getBoundingClientRect(), view = canvas.getBoundingClientRect();
       const zoom = Number(zoomed.dataset.zoom) || 1;
       const top = parseFloat(getComputedStyle(canvas).paddingTop) || 0;
       return { x: Math.round(Number(zoomed.dataset.originX) + (view.left + PAD - at.left) / zoom), y: Math.round(Number(zoomed.dataset.originY) + (view.top + top + PAD - at.top) / zoom) };
     }
     // Nothing measurable yet: under everything on the map, at its left edge, which is always free.
-    if (!phone && all.length) return { x: Math.min(...all.map((r) => r.x)), y: Math.max(...all.map((r) => r.y + r.h)) + 48 };
+    if (all.length) return { x: Math.min(...all.map((r) => r.x)), y: Math.max(...all.map((r) => r.y + r.h)) + 48 };
     return spots(null, 1, size)[0]!;
   };
 
@@ -672,7 +677,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     say(`Shape: ${next === 'card' ? 'card' : next === 'pill' ? 'pill' : 'circle'}`, true);
   };
 
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
 
   // #948: on My map a selected thought goes to a space's map, or its address is copied (it opens My map with the thought selected).
   const toast = useToast();
@@ -690,6 +695,15 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     const failed = () => toast({ message: 'Could not copy the link', tone: 'danger' });
     if (!navigator.clipboard) { failed(); return; }
     navigator.clipboard.writeText(link).then(done, failed);
+  } : null;
+
+  // #1519: the one selected thought becomes a task from the thought itself. The Create window opens on Task with its words as the title; in a space's map the
+  // thought is also linked as the task's source. My map's thoughts are private and cannot be linked, so only their words go (the person picks the space).
+  const makeTask = sketch && canWrite && selection.length === 1 ? () => {
+    const thought = (doc.confirmedThoughts ?? sketch.thoughts).find((item) => item.id === selection[0]);
+    const title = (thought?.text ?? '').trim().split('\n', 1)[0]!.slice(0, WORK_LIMITS.title).trim();
+    if (!thought || !title) { toast({ message: 'Give the thought some words first', timeout: 3000 }); return; }
+    openCreate({ kind: 'task', title, ...(taskProjectId ? { projectId: taskProjectId, sources: [{ ref: { type: 'thought' as const, id: thought.id }, label: quote(title) }] } : {}) });
   } : null;
 
   const undo = () => {
@@ -879,7 +893,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           </div>
           <SketchMap {...shared} editControls={editControls} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onMakeTask: makeTask, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
@@ -905,7 +919,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     : 'Arrows move between thoughts; Left and Right fold and unfold a branch. Alt with Up or Down moves a thought among its neighbours in your list only.';
   const list = <SketchList {...shared} arrange={!phone} helpId={helpId} personalOutline={personalOutline} onNavigate={navigateThought}
     onReparent={reparent} onConnectFrom={connectFromDot} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-    onMove={moveTo.start} onCopyLink={canWrite ? copyLink : null} onSay={(text) => say(text)} />;
+    onMove={moveTo.start} onCopyLink={canWrite ? copyLink : null} onMakeTask={makeTask} onSay={(text) => say(text)} />;
   const connections = connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
     onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null;
 

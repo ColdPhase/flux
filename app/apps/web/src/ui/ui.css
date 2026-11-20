@@ -213,6 +213,7 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 /* The label keeps the width of its heavier form, so selecting a tab never nudges the others. */
 .ui-tabs__label { display: inline-flex; flex-direction: column; }
 .ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 500; pointer-events: none; user-select: none; }
+.ui-tabs__meta { display: inline-flex; align-items: center; gap: 4px; }
 .ui-tabs__count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 /* Inside a segmented track the count takes its tab's colour: --t3 on the track was 4:1 (#1380). */
 .ui-tabs--seg .ui-tabs__count { color: inherit; }
@@ -220,22 +221,43 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
   position: absolute; left: 0; bottom: var(--tab-below, 0px); width: 1px; height: 2px; border-radius: var(--r-pill); background: var(--inv);
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
-/* Segmented views (F-026 §4): a soft pill track; the current view is a raised pill that slides (tokens --seg, --seg-on, --seg-off; #1238). */
-.ui-tabs--seg .ui-tabs__bar { width: max-content; max-width: 100%; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--seg); box-shadow: var(--sh-seg); }
-.ui-tabs--seg .ui-tabs__tab { z-index: 1; min-height: calc(var(--ctl) - 6px); padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--seg-off); }
+/* ---------- Segmented control: ONE set of rules (F-026 §4, #1238, #1561) ----------
+   The radio-group controls (`.seg` holding `.seg__b` buttons: Map / List, Board / List, Model, the live stage and screen mode) and the Tabs'
+   segmented variant (`.ui-tabs--seg`: the Create window's kinds, the phone Board's statuses) are drawn by these rules and by no others, so the two
+   cannot drift apart. A soft pill track holds one row of options that take EQUAL SHARES of the track and are never narrower than their own label
+   (`grid-auto-columns: 1fr` over options with `min-width: max-content`; the phone's bottom bar follows the same rule). A track that hugs its options
+   (`width: max-content`, the default) is as wide as its widest label times the number of options, so the selected pill is the same size and shape
+   whichever option it is on and only moves (a Tabs control slides it); a track given a width (`width: 100%`) shares it equally, and an option whose label
+   needs more than its share takes what it needs. Nothing scrolls sideways and no text is smaller. The inset is 3 px and the options are one height
+   inside it (26 px with a mouse, 44 px on touch); --seg-pad keeps the pill a pill, never a circle. */
+.seg, .ui-tabs--seg .ui-tabs__bar {
+  --seg-h: 26px; --seg-pad: 14px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: stretch; gap: 2px; padding: 3px; width: max-content; max-width: 100%;
+  border-radius: var(--r-pill); background: var(--seg); box-shadow: var(--sh-seg);
+}
+.seg__b, .ui-tabs--seg .ui-tabs__tab {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: max-content; min-height: var(--seg-h); padding: 0 var(--seg-pad);
+  border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--seg-off); white-space: nowrap; transition: var(--tr);
+}
+.seg__b:focus-visible, .ui-tabs--seg .ui-tabs__tab:focus-visible { outline-offset: -2px; }
+/* The selected option: a raised pill with a 1 px edge. A radio group paints it on the option; a Tabs control paints one pill that slides behind the current tab. */
+.seg__b[aria-checked="true"], .ui-tabs--seg .ui-tabs__indicator { background: var(--seg-on); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
+.seg__b[aria-checked="true"], .ui-tabs--seg .ui-tabs__tab:is([aria-current="page"], [aria-selected="true"]) { color: var(--t1); }
+@media (hover: hover) { .seg__b:hover, .ui-tabs--seg .ui-tabs__tab:hover { color: var(--t1); } }
 .ui-tabs--seg .ui-tabs__tab::after { display: none; }
-.ui-tabs--seg .ui-tabs__tab[aria-current="page"], .ui-tabs--seg .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 600; }
-.ui-tabs--seg .ui-tabs__label::after { font-weight: 600; }
-.ui-tabs--seg .ui-tabs__tab, .ui-tabs--seg .ui-tabs__tab:focus-visible { outline-offset: -2px; }
 .ui-tabs--seg .ui-tabs__indicator {
-  top: 3px; bottom: 3px; height: auto; width: 0; border-radius: var(--r-pill); background: var(--seg-on); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2);
+  top: 3px; bottom: 3px; height: auto; width: 0; border-radius: var(--r-pill);
   transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
-@media (forced-colors: active) {
-  .ui-tabs--seg .ui-tabs__indicator { forced-color-adjust: none; background: Highlight; }
-  .ui-tabs--seg .ui-tabs__tab[aria-current="page"], .ui-tabs--seg .ui-tabs__tab[aria-selected="true"] { forced-color-adjust: none; color: HighlightText; }
+/* A choice whose labels may be long (a plan's Model): where one row does not fit (a phone) the options lie in two equal columns. */
+@media (max-width: 640px) {
+  .seg--wrap { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); width: 100%; border-radius: var(--r-lg); }
 }
-@media (pointer: coarse) { .ui-tabs--seg .ui-tabs__tab { min-height: 44px; } }
+@media (forced-colors: active) {
+  .seg__b[aria-checked="true"], .ui-tabs--seg .ui-tabs__indicator { forced-color-adjust: none; background: Highlight; }
+  .seg__b[aria-checked="true"], .ui-tabs--seg .ui-tabs__tab:is([aria-current="page"], [aria-selected="true"]) { forced-color-adjust: none; color: HighlightText; }
+}
+@media (pointer: coarse) { .seg, .ui-tabs--seg .ui-tabs__bar { --seg-h: 44px; --seg-pad: 18px; } }
 
 /* ---------- Bottom view bar (phone, #266 PF-1) ---------- */
 .ui-bottomnav {
@@ -366,8 +388,13 @@ input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 /* At large text (200 %) the head gives way before Close does: the chip and the meta shorten with an ellipsis, and Close stays inside the panel. */
 .ui-panel__head > .ui-panel__close { flex: none; margin-left: auto; }
 .ui-panel__chip { min-width: 0; }
-.ui-panel__kind { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.ui-panel__meta { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ui-panel__kind { min-width: 0; overflow: hidden; white-space: nowrap; }
+/* The kind is a flex box, so its word carries the ellipsis itself ("Threa" was cut with none at 360 px, #1568); the count gives way first. */
+.ui-panel__word { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The count takes only the room left over (its basis is 0, so the chip never gives a fraction of a pixel for it, which WebKit draws as "Thre…"),
+   and the kind gives way only once the count has none. */
+.ui-panel__meta { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ui-panel__meta + .ui-panel__fill { flex-grow: 0; }
 .ui-panel--docked, .ui-panel--overlay { --panel-bg: var(--el); background: var(--panel-bg); }
 /* One shell for a task, a thread and the project's details (#512, AC-1): a card with the same head height and close place. */
 .ui-panel--docked { margin: 10px 10px 10px 0; border: 0; border-radius: var(--r-panel); box-shadow: var(--sh-pop); }

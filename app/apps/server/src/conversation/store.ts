@@ -1,7 +1,7 @@
 import { messageOpening, messagePreview, oneLinePreviewText, removedName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, gte, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
-import { fileRows, messageChangeRows, openAliased, openRows, schema, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { fileRows, messageChangeRows, openAliased, openRows, schema, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, visibleFilter, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, MaterialOrDoc, SentConversationMessage, SpacePreview,
   AgentProjectOwner, MaterialVersion, MessageReferenceCard, Page, PageQuery,
@@ -353,9 +353,15 @@ export function conversationStore(db: Database, options: ConversationStoreOption
      */
     async listSpacePreviews(principal: Principal, projectIds: readonly string[]): Promise<SpacePreview[]> {
       human(principal);
+      const asked = [...new Set(projectIds.map((value) => uuid(value, 'projectId').toLowerCase()))];
+      if (!asked.length) return [];
+      // Which of them the caller can read: one read per company or encrypted space (the policy's own list condition), never one per space.
+      const p = schema.projects;
+      const located = await db.select({ id: p.id, workspaceId: p.workspaceId }).from(p).where(inArray(p.id, asked));
       const readable: string[] = [];
-      for (const id of new Set(projectIds.map((value) => uuid(value, 'projectId').toLowerCase()))) {
-        try { await requireProject(principal, id, db); readable.push(id); } catch (error) { if (!(error instanceof NotFoundError || error instanceof ForbiddenError)) throw error; }
+      for (const workspaceId of new Set(located.map((row) => row.workspaceId))) {
+        const ids = located.filter((row) => row.workspaceId === workspaceId).map((row) => row.id);
+        readable.push(...(await db.select({ id: p.id }).from(p).where(and(inArray(p.id, ids), await visibleFilter(principal, workspaceId, 'project', db)))).map((row) => row.id));
       }
       if (!readable.length) return [];
       const wanted = sql.join(readable.map((id) => sql`(${id}::uuid)`), sql`, `);

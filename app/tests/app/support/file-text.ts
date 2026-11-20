@@ -1,4 +1,4 @@
-import { crc32, deflateRawSync } from 'node:zlib';
+import { crc32, deflateRawSync, deflateSync } from 'node:zlib';
 
 // Files for the tests of reading the text of files (C-63, #1382): well-formed ones, and the hostile ones the worker must survive.
 
@@ -91,4 +91,48 @@ export function docxBytes(paragraphs: string[], extra: { table?: string[][]; tex
   const box = extra.textBox ? `<mc:AlternateContent><mc:Choice Requires="wps"><w:r><w:t>${escapeXml(extra.textBox)}</w:t></w:r></mc:Choice><mc:Fallback><w:r><w:t>${escapeXml(extra.textBox)}</w:t></w:r></mc:Fallback></mc:AlternateContent>` : '';
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><w:body>${paragraphs.map(para).join('')}${table}${box}</w:body></w:document>`;
   return zipBytes([{ name: '[Content_Types].xml', data: Buffer.from('<Types/>') }, { name: 'word/document.xml', data: Buffer.from(xml) }]);
+}
+
+/** One page of an image-only PDF (C-69): a picture of RGB or grey pixels (Flate), or a JPEG (DCT), drawn over the whole page, and no text. */
+export type PicturePage = { kind: 'rgb' | 'grey'; width: number; height: number } | { kind: 'jpeg'; bytes: Buffer; width: number; height: number; grey?: boolean };
+/**
+ * A PDF whose pages are pictures only (#1557: what macOS's "Quartz PDFContext" makes of an exported map, a scan): no font, no text. A Flate
+ * picture is a pattern of bands, so a scaled-down copy can be checked by its colours: RGB pictures have a red left half and a blue right one.
+ */
+export function pdfOfPictures(pages: PicturePage[]): Buffer {
+  const parts: Buffer[] = [];
+  const objects: Buffer[] = [];
+  const add = (body: Buffer | string) => { objects.push(typeof body === 'string' ? Buffer.from(body, 'latin1') : body); return objects.length; };
+  const stream = (dictionary: string, bytes: Buffer) => Buffer.concat([Buffer.from(`${dictionary.replace(/>>$/, `/Length ${bytes.length} >>`)}\nstream\n`, 'latin1'), bytes, Buffer.from('\nendstream', 'latin1')]);
+  const kids: number[] = [];
+  const pagesId = pages.length * 3 + 1;
+  for (const page of pages) {
+    let image: number;
+    if (page.kind === 'jpeg') image = add(stream(`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /${page.grey ? 'DeviceGray' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode >>`, page.bytes));
+    else {
+      const channels = page.kind === 'rgb' ? 3 : 1;
+      const raw = Buffer.alloc(page.width * page.height * channels);
+      for (let y = 0; y < page.height; y++) for (let x = 0; x < page.width; x++) {
+        const at = (y * page.width + x) * channels;
+        if (channels === 3) { raw[at] = x < page.width / 2 ? 220 : 20; raw[at + 1] = 30; raw[at + 2] = x < page.width / 2 ? 20 : 220; }
+        else raw[at] = y < page.height / 2 ? 0 : 255;
+      }
+      image = add(stream(`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /${page.kind === 'rgb' ? 'DeviceRGB' : 'DeviceGray'} /BitsPerComponent 8 /Filter /FlateDecode >>`, deflateSync(raw)));
+    }
+    const content = `q ${page.width} 0 0 ${page.height} 0 0 cm /Im1 Do Q`;
+    const contents = add(stream('<< >>', Buffer.from(content, 'latin1')));
+    kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /XObject << /Im1 ${image} 0 R >> >> /Contents ${contents} 0 R >>`));
+  }
+  add(`<< /Type /Pages /Count ${kids.length} /Kids [${kids.map((id) => `${id} 0 R`).join(' ')}] >>`);
+  const root = add(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+  parts.push(Buffer.from('%PDF-1.4\n', 'latin1'));
+  const offsets: number[] = [];
+  let at = parts[0]!.length;
+  objects.forEach((body, index) => {
+    const object = Buffer.concat([Buffer.from(`${index + 1} 0 obj\n`, 'latin1'), body, Buffer.from('\nendobj\n', 'latin1')]);
+    offsets.push(at); parts.push(object); at += object.length;
+  });
+  parts.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}`
+    + `trailer\n<< /Size ${objects.length + 1} /Root ${root} 0 R >>\nstartxref\n${at}\n%%EOF\n`, 'latin1'));
+  return Buffer.concat(parts);
 }

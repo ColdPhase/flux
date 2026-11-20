@@ -62,6 +62,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `GET/POST /api/v1/decisions/:id/discussion` | The decision's one discussion ([below](#a-decisions-discussion-1424)): its messages, or a message written in it. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
 | `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished work in every project the policy's `visibleFilter` lets them read. |
+| `GET /api/v1/workspaces/:workspaceId/work/given` | The unfinished work the caller created for another person ("tasks I gave others", #1519), in every project the policy's `visibleFilter` lets them read; not done, not a task for themselves, their own agent or no one. |
 
 Every POST/PATCH accepts `Idempotency-Key` (the shared runner in `app/apps/server/src/http/commands.ts`,
 also introduced by #100); a replay re-checks current project read access. Responses with a version

@@ -16,6 +16,8 @@ import { png, SVG } from './support/pictures.js';
 // an encrypted space does with one. The test stack gives the API FLUX_VIDEO_MAX_MIB=12 (docker/compose.test.yaml), read here from the API.
 
 const MiB = 1024 * 1024;
+/** The test stack's file cap (FLUX_FILE_MAX_MIB=8 in docker/compose.test.yaml, #1549): above the 5 MiB read whole, below the video cap. */
+const FILE_CAP = 8 * MiB;
 const clip = (name: string) => readFileSync(join(import.meta.dirname, '../ui/fixtures/video', name));
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 type Staged = StagedFile & { code?: string; error?: string };
@@ -103,8 +105,8 @@ function webpSize(bytes: Buffer): [number, number] {
 test('the limits say what this instance accepts, to a signed-in person only', async () => {
   const who = await person('Limits');
   const body = expectStatus(await who.browser.request('GET', FILE_LIMITS_PATH), 200) as FileLimits;
-  assert.equal(body.fileBytes, FILE_LIMITS.fileBytes);
-  assert.equal(body.messageBytes, FILE_LIMITS.messageBytes);
+  assert.equal(body.fileBytes, FILE_CAP, 'the test stack sets FLUX_FILE_MAX_MIB=8');
+  assert.equal(body.messageBytes, 4 * FILE_CAP, 'a message carries four files at the cap');
   assert.equal(body.messageFiles, FILE_LIMITS.messageFiles);
   assert.equal(body.videoBytes, 12 * MiB, 'the test stack sets FLUX_VIDEO_MAX_MIB=12');
   assert.equal((await fetch(new URL(FILE_LIMITS_PATH, who.browser.base))).status, 401);
@@ -146,11 +148,11 @@ test('a file named like a video that is not one is refused, and leaves nothing b
   const matroska = Buffer.from(clip('clip.webm'));
   matroska.write('matroska', matroska.indexOf('webm'), 'latin1');
   assert.equal((await upload(f.sender, f.place.id, matroska, 'movie.webm')).body.code, 'NOT_A_VIDEO');
-  // Other video formats are ordinary files at the ordinary limit.
+  // Other video formats are ordinary files at the file cap.
   const mkv = await upload(f.sender, f.place.id, Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(100)]), 'movie.mkv');
   assert.equal(mkv.status, 201);
   assert.equal(mkv.body.video, undefined);
-  assert.equal((await upload(f.sender, f.place.id, Buffer.alloc(FILE_LIMITS.fileBytes + 1, 1), 'movie.mkv')).body.code, 'FILE_TOO_LARGE');
+  assert.equal((await upload(f.sender, f.place.id, Buffer.alloc(FILE_CAP + 1, 1), 'movie.mkv')).body.code, 'FILE_TOO_LARGE');
   assert.equal((await get(f.sender, fileVideoPath(mkv.body.id))).status, 404, 'a file that is not a video has no video route');
 });
 
@@ -158,7 +160,7 @@ test('a video may be larger than a file, up to the operator\'s cap, and no more'
   const f = await scene();
   const most = await cap();
   assert.equal(most, 12 * MiB);
-  const big = longClip(FILE_LIMITS.fileBytes + MiB);
+  const big = longClip(FILE_CAP + MiB);
   const staged = await upload(f.sender, f.place.id, big, 'long.mp4');
   assert.equal(staged.status, 201, JSON.stringify(staged.body));
   assert.equal(staged.body.size, big.length);
@@ -167,10 +169,10 @@ test('a video may be larger than a file, up to the operator\'s cap, and no more'
   const over = await declared(f.sender, f.place.id, 'huge.mp4', most + 1);
   assert.deepEqual([over.status, over.body.code], [413, 'FILE_TOO_LARGE']);
   assert.match(over.body.error, /A video is at most 12 MB/);
-  // The same size for another file keeps the 5 MiB.
+  // The same size for another file keeps the file cap, said in the server's words (#1549).
   const file = await declared(f.sender, f.place.id, 'huge.bin', most);
   assert.deepEqual([file.status, file.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(file.body.error, /A file is at most 5 MB/);
+  assert.match(file.body.error, /Files can be up to 8 MB on this server/);
   // A video that streams past the cap with no declared length is stopped by the count, and leaves nothing.
   const streaming = await scene();
   const endless = await chunked(streaming.sender, streaming.place.id, 'endless.mp4', most + 1);
@@ -185,7 +187,7 @@ test('a video may be larger than a file, up to the operator\'s cap, and no more'
   assert.deepEqual([second.status, second.body.code], [409, 'UPLOAD_QUOTA_EXCEEDED']);
   assert.equal((await upload(other.sender, other.place.id, longClip(4 * MiB - clip('clip.mp4').length), 'three.mp4')).status, 201);
   // The ordinary files' allowance is its own: a video does not use it.
-  assert.equal((await upload(other.sender, other.place.id, Buffer.alloc(FILE_LIMITS.fileBytes, 3), 'plain.bin')).status, 201);
+  assert.equal((await upload(other.sender, other.place.id, Buffer.alloc(FILE_LIMITS.wholeBytes, 3), 'plain.bin')).status, 201);
 });
 
 /** An admitted video upload whose body never comes: it holds its connection until the socket is closed. */
@@ -316,21 +318,21 @@ test('access is checked on every request: only the sender before it is sent, the
   assert.equal((await get(f.reader, fileVideoPath(staged.id), {}, 'HEAD')).status, 404);
 });
 
-test('a video travels with a message: its own cap, its poster and the 20 MiB of the rest', async () => {
+test('a video travels with a message: its own cap, its poster and the four files at the file cap of the rest', async () => {
   const f = await scene();
   const video = (await upload(f.sender, f.place.id, longClip(7 * MiB), 'seven.mp4')).body;
-  // Twenty MiB of ordinary files go with it: the video is not counted in them.
+  // Twenty MiB of ordinary files go with it (the message takes 32 MiB of them at the test cap): the video is not counted in them.
   const files: StagedFile[] = [];
-  for (let i = 0; i < 4; i++) files.push((await upload(f.sender, f.place.id, Buffer.alloc(FILE_LIMITS.fileBytes, i + 1), `part-${i}.bin`)).body);
+  for (let i = 0; i < 4; i++) files.push((await upload(f.sender, f.place.id, Buffer.alloc(FILE_LIMITS.wholeBytes, i + 1), `part-${i}.bin`)).body);
   const started = await send(f.sender, f.place.id, [video.id, ...files.map((file) => file.id)]);
   assert.deepEqual(started.messages[0]!.files!.map((file) => file.id), [video.id, ...files.map((file) => file.id)]);
   assert.equal(started.messages[0]!.files![0]!.video, 'mp4');
   const read = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${started.id}`), 200) as Conversation;
   assert.equal(read.messages[0]!.files![0]!.video, 'mp4');
   assert.equal(read.messages[0]!.files![0]!.name, 'seven.mp4');
-  // More than 20 MiB of ordinary files is still refused, video or not.
+  // More than four files at the cap (32 MiB) of ordinary files is still refused, video or not.
   const crowd: string[] = [];
-  for (let i = 0; i < 5; i++) crowd.push((await upload(f.sender, f.place.id, Buffer.alloc(FILE_LIMITS.fileBytes, i + 9), `crowd-${i}.bin`)).body.id);
+  for (let i = 0; i < 5; i++) crowd.push((await upload(f.sender, f.place.id, Buffer.alloc(FILE_CAP, i + 9), `crowd-${i}.bin`)).body.id);
   const refused = await f.sender.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: '', attachmentIds: crowd, clientMessageId: randomUUID() } });
   assert.equal(refused.status, 400);
 });
@@ -427,10 +429,10 @@ test('in an encrypted space a video is an ordinary sealed file: 5 MiB, no poster
   // It is sent like any file: the send checks the sealed object's size on disk (its header and tag on top), reading none of it (#1411).
   expectStatus(await ada.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
     { body: { body: '', attachmentIds: [staged.body.id], clientMessageId: randomUUID() } }), 201);
-  // The ordinary limit holds, in the ordinary words.
-  const large = await upload(ada, place.id, longClip(FILE_LIMITS.fileBytes), 'large.mp4');
+  // An encrypted space keeps every file at 5 MiB (#1549), and says so.
+  const large = await upload(ada, place.id, longClip(FILE_LIMITS.wholeBytes + 1), 'large.mp4');
   assert.deepEqual([large.status, large.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(large.body.error!, /A file is at most 5 MB/);
+  assert.match(large.body.error!, /A file in an encrypted space is at most 5 MB/);
   // Its bytes are not recognised as a video, so a mislabelled one is just a file.
   assert.equal((await upload(ada, place.id, Buffer.from('not a movie'), 'plain.mp4')).status, 201);
 });

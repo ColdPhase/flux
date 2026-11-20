@@ -842,6 +842,8 @@ export const projectFiles = pgTable('project_files', {
   videoContainer: text('video_container', { enum: ['mp4', 'webm', 'mov'] }),
   /** C-61 (0071): the staged video this file is the poster of (no foreign key, like a thought's image: a poster never outlives its video's message). */
   posterOf: uuid('poster_of'),
+  /** C-69 (0103): a PDF the worker read and found no text in (a scan or a picture); its pages' pictures are `file_page_pictures`. */
+  noText: boolean('no_text').notNull().default(false),
 }, (table) => [
   unique().on(table.messageId, table.position),
   uniqueIndex('project_files_thought_idx').on(table.thoughtId).where(sql`${table.thoughtId} IS NOT NULL`),

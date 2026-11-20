@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Readable } from 'node:stream';
-import { FILE_LIMITS, FILE_LIMITS_PATH, VIDEO_MEDIA_TYPES, isVideoName, type FileLimits, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, FILE_LIMITS_PATH, VIDEO_MEDIA_TYPES, isVideoName, megabytesText, type FileLimits, type StagedFile } from '@flux/contracts';
 import { type FileStorage, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError, type PictureCanonicalizer } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -11,8 +11,9 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
   { db: Database; sessions: SessionResolver; storage: FileStorage; pictures?: PictureCanonicalizer; videoBytes?: number; poster?: (bytes: Uint8Array) => Promise<Uint8Array> }) {
   useDomainErrors(app);
   const files = fileUseCases(db, storage, { videoBytes, ...(pictures ? { pictures } : {}), ...(poster ? { poster } : {}) });
-  // The most any upload may be (a video); the use case holds each file to its own limit once it knows what the file is (C-61).
-  const largest = Math.max(FILE_LIMITS.fileBytes, videoBytes);
+  // The most any upload may be (a video or a file at the operator's caps); the use case holds each file to its own limit once it knows what
+  // the file is and where it goes (C-61, #1549).
+  const largest = Math.max(storage.fileBytes, videoBytes);
   app.addContentTypeParser('application/octet-stream', (_request, stream, done) => done(null, stream));
   app.get(FILE_LIMITS_PATH, async (request): Promise<FileLimits> => {
     await sessions.requirePrincipal(request);
@@ -33,7 +34,8 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
           if (size > largest) {
             // Over anything a video may be: said in the words of what the name says it is (the use case says the rest).
             const name = (request.query as { name?: unknown }).name;
-            throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) ? `A video is at most ${Math.round(videoBytes / (1024 * 1024) * 10) / 10} MB` : 'A file is at most 5 MB', 'FILE_TOO_LARGE');
+            throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) && videoBytes >= storage.fileBytes ? `A video is at most ${megabytesText(videoBytes)}`
+              : `Files can be up to ${megabytesText(storage.fileBytes)} on this server`, 'FILE_TOO_LARGE');
           }
         },
         onSend: async (request, reply, payload) => {

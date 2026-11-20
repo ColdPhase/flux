@@ -3,7 +3,7 @@ import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getSketch } from '../api/sketches';
 import { listProjectSketches } from '../project/data';
-import { Button, Icon } from '../ui';
+import { Button, Icon, MEDIA, useMediaQuery } from '../ui';
 import { Select, Option } from '../ui/Select';
 import { linkObjects } from './api';
 import { RefLink } from '../place/origin';
@@ -132,6 +132,7 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
   // The chooser opens where it is seen (founder direction 2026-11-17 visual review): a phone's half sheet ends above it, so it scrolls into view,
   // and again as its maps and thoughts arrive.
   const pick = useRef<HTMLDivElement>(null);
+  const touch = useMediaQuery(MEDIA.touch);
   useEffect(() => { if (open) pick.current?.scrollIntoView({ block: 'nearest' }); }, [open, maps, mapId, current]);
   if (!listed.length && !open && !status && !error) return null;
   return (
@@ -147,40 +148,40 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
       ) : null}
       {open ? (
         <div ref={pick} id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
-          <div className="wd-actions wd-pick__cancel">
+          {/* One head row: what stands first (the Map label, or why there is no list) with Cancel at its end, so Cancel never has a row to itself (#1568). */}
+          <div className="wd-pick__head">
+            {maps === null ? <p className="wd-muted" role="status">Loading maps…</p>
+              : maps === 'failed' ? <p className="wd-error" role="alert">Could not load this space’s maps.</p>
+                : !maps.items.length ? <p className="wd-muted">This space has no map yet. Add a thought on a map first.</p>
+                  : <label htmlFor={mapFieldId}>Map</label>}
             <Button variant="secondary" disabled={busy} onClick={close}>Cancel</Button>
           </div>
-          {maps === null ? <p className="wd-muted" role="status">Loading maps…</p>
-            : maps === 'failed' ? <p className="wd-error" role="alert">Could not load this space’s maps.</p>
-              : !maps.items.length ? <p className="wd-muted">This space has no map yet. Add a thought on a map first.</p>
-                : (
-                  <>
-                    <div className="wd-pick__map">
-                      <label htmlFor={mapFieldId}>Map</label>
-                      <div className="wd-pick__field">
-                        <Select id={mapFieldId} value={mapId} disabled={busy} onChange={(next) => setMapId(next)}>
-                          <Option value="">Choose a map</Option>
-                          {maps.items.map((sketch) => <Option key={sketch.id} value={sketch.id}>{sketch.title}</Option>)}
-                        </Select>
-                      </div>
-                    </div>
-                    {!mapId ? null : !current ? <p className="wd-muted" role="status">Loading thoughts…</p>
-                      : 'failed' in current ? <p className="wd-error" role="alert">Could not load this map’s thoughts.</p>
-                        : !candidates.length ? <p className="wd-muted">No other thought on this map to link.</p>
-                          : (
-                            <ul className="wd-links" aria-label="Thoughts on this map">
-                              {candidates.map((thought) => (
-                                <li key={thought.id}>
-                                  <button type="button" className="wd-link" disabled={busy} onClick={() => void link(thought)}>
-                                    <span>{thought.text}</span><Icon name="link" size={14} />
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                  </>
-                )}
-          <p className="wd-pick__keys wd-muted">Choose a thought to link it. Cancel, or Escape, closes this without a change.</p>
+          {maps !== null && maps !== 'failed' && maps.items.length ? (
+            <>
+              <div className="wd-pick__field">
+                <Select id={mapFieldId} value={mapId} disabled={busy} onChange={(next) => setMapId(next)}>
+                  <Option value="">Choose a map</Option>
+                  {maps.items.map((sketch) => <Option key={sketch.id} value={sketch.id}>{sketch.title}</Option>)}
+                </Select>
+              </div>
+              {!mapId ? null : !current ? <p className="wd-muted" role="status">Loading thoughts…</p>
+                : 'failed' in current ? <p className="wd-error" role="alert">Could not load this map’s thoughts.</p>
+                  : !candidates.length ? <p className="wd-muted">No other thought on this map to link.</p>
+                    : (
+                      <ul className="wd-links" aria-label="Thoughts on this map">
+                        {candidates.map((thought) => (
+                          <li key={thought.id}>
+                            <button type="button" className="wd-link" disabled={busy} onClick={() => void link(thought)}>
+                              <span>{thought.text}</span><Icon name="link" size={14} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+            </>
+          ) : null}
+          {/* A phone has no Escape key (#1568). */}
+          <p className="wd-pick__keys wd-muted">{touch ? 'Choose a thought to link it.' : 'Choose a thought to link it. Cancel, or Escape, closes this without a change.'}</p>
         </div>
       ) : null}
       {status ? <p className="wd-muted" role="status">{status}</p> : null}

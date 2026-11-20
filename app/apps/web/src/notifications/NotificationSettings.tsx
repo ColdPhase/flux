@@ -18,7 +18,19 @@ import { notificationsChanged } from './mutes';
 import './notifications.css';
 
 type MutedPlace = NotificationPreferences['muted'][number];
+
 type PendingMute = { place: MutedPlace; muted: boolean };
+
+/**
+ * What Change opens is brought into view (v0.2.2 phone audit, #1568): on a phone the editor opens below the fold, behind the tab bar, and the
+ * only sign of it was "Change" becoming "Done". It scrolls the least that shows it (`nearest`, which keeps the page's own bottom room clear of the
+ * tab bar), and again when its content grows (the quiet hours' times appear once they are on).
+ */
+function useRevealed<T extends HTMLElement>(open: boolean, grows?: unknown) {
+  const ref = useRef<T>(null);
+  useEffect(() => { if (open) ref.current?.scrollIntoView({ block: 'nearest' }); }, [open, grows]);
+  return ref;
+}
 
 
 function browserTimeZone() {
@@ -58,6 +70,7 @@ function AccountNotificationSettings() {
   const [staleRead, setStaleRead] = useState(false);
   const [quietOpen, setQuietOpen] = useState(false);
   const [mutedOpen, setMutedOpen] = useState(false);
+  const mutedPanel = useRevealed<HTMLDivElement>(mutedOpen);
   const hasPreferences = useRef(false);
   const toast = useToast();
   const ids = { level: useId(), where: useId(), email: useId(), quiet: useId(), muted: useId() };
@@ -238,7 +251,7 @@ function AccountNotificationSettings() {
             aria-label={mutedOpen ? 'Close muted places' : 'Change muted places'} onClick={() => setMutedOpen((open) => !open)}>{mutedOpen ? 'Done' : 'Change'}</Button>
         </div>
         {mutedOpen ? (
-          <div className="nset__panel nset__places" id={ids.muted}>
+          <div className="nset__panel nset__places" id={ids.muted} ref={mutedPanel}>
             <p className="nset__lead">A muted place is quiet for ordinary messages: no notices, push or email. What needs you still arrives: mentions, questions, tasks for you, decisions about your work, invitations and agents waiting for your OK. You can still open it.</p>
             {prefs.muted.length ? (
               <ul className="nset__muted">
@@ -294,6 +307,7 @@ function QuietHours({ prefs, open, panelId, onToggle, onChange }: { prefs: Notif
   const suggested = browserTimeZone();
   // While off, the line names the zone turning it on will use, this browser's, not the stored UTC default (#763 SG-5).
   const shownZone = !quiet.enabled && quiet.timeZone === 'UTC' ? suggested : quiet.timeZone;
+  const panel = useRevealed<HTMLDivElement>(open, quiet.enabled);
   return (
     <>
       <div className="sset-row">
@@ -305,7 +319,7 @@ function QuietHours({ prefs, open, panelId, onToggle, onChange }: { prefs: Notif
           aria-label={open ? 'Close quiet hours' : 'Change quiet hours'} onClick={onToggle}>{open ? 'Done' : 'Change'}</Button>
       </div>
       {open ? (
-        <div className="nset__panel" id={panelId}>
+        <div className="nset__panel" id={panelId} ref={panel}>
           <SwitchRow label="Use quiet hours" checked={quiet.enabled} detail={`${shortClock(quiet.start)}–${shortClock(quiet.end)} · ${zoneLabel(shownZone)}`}
             onChange={(on) => set(on && quiet.timeZone === 'UTC' && suggested !== 'UTC' ? { enabled: true, timeZone: suggested } : { enabled: on })} />
           {quiet.enabled ? (

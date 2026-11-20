@@ -173,8 +173,8 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       { path: 'README.md', content: utf8(readme(data)) },
     ];
     const attachments = data.files ?? [];
-    // A file over the ordinary limit is a video (C-61): it is hashed and written as a stream, never held whole.
-    const streamed = (file: (typeof attachments)[number]) => file.size > FILE_LIMITS.fileBytes;
+    // A file over `wholeBytes` (a video, or any file up to the operator's cap, C-61, #1549) is hashed and written as a stream, never held whole.
+    const streamed = (file: (typeof attachments)[number]) => file.size > FILE_LIMITS.wholeBytes;
     const open = async (file: (typeof attachments)[number]) => {
       const body = await storage?.stream?.(file.id, { size: file.size, start: 0, end: file.size - 1 });
       if (!body) throw new NotFoundError('File', 'FILE_UNAVAILABLE');

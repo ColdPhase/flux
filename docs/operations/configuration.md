@@ -56,6 +56,8 @@ exists. A wrong value stops the service at start with a message that names the v
 | [`FLUX_EMBEDDINGS`](#flux_embeddings) | Local embeddings (optional) | `off` |
 | [`FLUX_EMBEDDINGS_CPUS`](#flux_embeddings_cpus) | Local embeddings (optional) | `1` |
 | [`FLUX_EMBEDDINGS_MEMORY`](#flux_embeddings_memory) | Local embeddings (optional) | `6g` |
+| [`FLUX_FILE_MAX_MIB`](#flux_file_max_mib) | Files and video | `25` |
+| [`FLUX_FILE_OCR`](#flux_file_ocr) | Files and video | `off` |
 | [`FLUX_FIXTURE_TOKEN`](#flux_fixture_token) | Source checkout, launcher and checks | **required** (source); release: empty |
 | [`FLUX_GITHUB_APP_ID`](#flux_github_app_id) | GitHub App (optional) | empty |
 | [`FLUX_GITHUB_APP_SLUG`](#flux_github_app_slug) | GitHub App (optional) | empty |
@@ -332,13 +334,25 @@ Ping, session recheck and polling interval of the live WebSocket stream. Keep it
 
 ## Files and video
 
-Every file is at most 5 MiB, except a video, which has its own limit. See [requirements](requirements.md) for the disk.
+A file is at most `FLUX_FILE_MAX_MIB` and a video at most `FLUX_VIDEO_MAX_MIB`; a picture and every file of an encrypted space stay at 5 MiB. See [requirements](requirements.md) for the disk.
+
+### `FLUX_FILE_MAX_MIB`
+
+**Type** integer, 1–1024 MiB · **Default** `25` · **Used by** api (release, source)
+
+The largest file one person can send in a space, a direct message or an agent chat (#1549, C-61): a PDF, a document, a deck, an archive. A file over 5 MiB is streamed to and from the `files` volume like a video, so the API's memory does not grow with this setting, and each one counts against the volume. One message's files together (videos apart) are at most four times this. A picture stays at 5 MiB (it is cleaned whole), and so does every file of an encrypted space. The app says the limit in words ("Files can be up to 25 MB on this server"). An upload of this size must get through your reverse proxy: its body limit must be at least this (nginx: `client_max_body_size`). Other values stop the API. Example: `100`.
 
 ### `FLUX_VIDEO_MAX_MIB`
 
 **Type** integer, 1–1024 MiB · **Default** `200` · **Used by** api (release, source)
 
-The largest video one person can send (#1352, C-61). MP4, WebM and MOV files that a browser plays natively play inside Flux and seek without loading in full (the server answers HTTP range requests from disk); they are stored as sent, never converted, and each counts against the `files` volume. Every other file stays at 5 MiB, and in an encrypted space a video is an ordinary 5 MiB file that downloads. A video is a stream and an upload of this size must get through your reverse proxy: its body limit must be at least this (nginx: `client_max_body_size`). Other values stop the API. Example: `500`.
+The largest video one person can send (#1352, C-61). MP4, WebM and MOV files that a browser plays natively play inside Flux and seek without loading in full (the server answers HTTP range requests from disk); they are stored as sent, never converted, and each counts against the `files` volume. Every other file has `FLUX_FILE_MAX_MIB`, and in an encrypted space a video is an ordinary 5 MiB file that downloads. A video is a stream and an upload of this size must get through your reverse proxy: its body limit must be at least this (nginx: `client_max_body_size`). Other values stop the API. Example: `500`.
+
+### `FLUX_FILE_OCR`
+
+**Type** `on`, `off` · **Default** `off` · **Used by** worker (release, source)
+
+Off by default (C-70, #1575). `on` makes the worker read text in scans and pictures by OCR (Tesseract, Polish and English, shipped in the image): the pages of a PDF without a text layer (its first 10) and the PNG, JPEG, WebP and GIF pictures people send to a space or to their agent's chat. The text is kept only when OCR is confident and finds at least three words, and it is then the file's text everywhere: search finds it and agents read it like a PDF's own text. It runs in the same sandboxed reader as file text, one picture at a time at a low priority, about 4 s of one CPU and at most 384 MiB for a dense page. Files sent before the switch was turned on are read a batch of 50 at a time, newest first. Never in an encrypted space. Other values stop the worker. Example: `on`.
 
 ## Live media: LiveKit and TURN
 
@@ -781,6 +795,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
                          put its files in place, migrate and check health; on failure print the
                          way back. A source checkout: ./flux upgrade [--pull] builds its own code.
+  ./flux upgrade --check [VERSION | --file flux.tar.gz]
+                         The plan, changing nothing: from which schema to which, the migrations by
+                         name, what they remove, and the size and time of the backup it will take.
   ./flux runtime status | release <email> | purge [-y]
                          Agent runtime (FLUX_AGENT_RUNTIME): show who is in it, release one person's
                          place (they are signed out and told), or sign out and delete every login.

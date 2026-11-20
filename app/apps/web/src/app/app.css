@@ -354,21 +354,7 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 :root[data-pwa-update="on"] .app__side .side { padding-top: 14px; }
 :root[data-pwa-update="on"] .phead { padding-top: 6px; }
 @media (max-width: 640px) and (max-height: 480px) { :root[data-pwa-update="on"] .phead, :root[data-pwa-update="on"] .phead--large { padding-top: 4px; } }
-/* A segmented control (#1238; README tokens): a track, and the selected option a raised pill with a 1 px edge, clearly lighter than the track in
-   both themes. Every segmented control in the app (this one, the header's views, Board / List, access, Rendered / Markdown) reads the same three tokens. */
-.seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--seg); box-shadow: var(--sh-seg); }
-.seg__b {
-  flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 13px;
-  border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; color: var(--seg-off); white-space: nowrap; transition: var(--tr);
-}
-.seg__b:hover { color: var(--t1); }
-.seg__b[aria-checked="true"] { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
-.seg__b:focus-visible { outline-offset: 0; }
-/* High-contrast mode keeps the selection: the system's own selected colours. */
-@media (forced-colors: active) {
-  .seg__b[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
-}
-
+/* The segmented control (`.seg`, `.seg__b`) is drawn with the Tabs' segmented variant by one set of rules in ui/ui.css (#1561). */
 
 
 /* ---------- Header and views: one block at the top of the panel ---------- */
@@ -515,7 +501,11 @@ a.me__btn[aria-current="page"] { background: var(--el); box-shadow: var(--sh-rai
 .home-tasks__status.is-blocked { color: var(--t1); }
 .home-tasks__body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .home-tasks__title { overflow-wrap: anywhere; }
-.home-tasks__why { color: var(--t3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.home-tasks__why, .home-tasks__meta { color: var(--t3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+/* The tasks you gave others: a second section under your own, in the same rows (#1519). */
+.home-tasks__given { margin-top: 32px; }
+.home-tasks__section { margin: 0 0 12px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
+.home-tasks__section + .home-tasks__place { margin-top: 0; }
 .home-tasks__go { flex: none; display: block; height: calc(var(--fs-md) * 1.45); color: var(--t3); }
 .home-tasks__more { margin-top: 14px; color: var(--t3); font-size: var(--fs-sm); }
 .home-tasks__center { display: flex; justify-content: center; padding: 48px 0; }
@@ -634,7 +624,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */
   .side__head + .side__empty { padding-top: 12px; }
-  .seg__b { min-height: 44px; }
   .brand { min-height: 44px; }
   .composer__box { padding: 4px 4px 4px 6px; }
   .composer__box textarea { min-height: 44px; padding: 10px 4px; }

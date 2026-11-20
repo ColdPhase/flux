@@ -45,6 +45,8 @@ export interface SketchListProps {
   onMove: (() => void) | null;
   /** "Copy link" to the one selected thought, on My map and a space's map (#948, #1376). */
   onCopyLink: (() => void) | null;
+  /** "Make a task" from the one selected thought (#1519). */
+  onMakeTask: (() => void) | null;
   onSay(text: string): void;
 }
 interface ReturnPoint { sourceId: string; collapsed: string[]; selection: string[]; scrollTop: number }
@@ -265,6 +267,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
           {projectId && thought.source?.projectMessageId ? <Link to={projectMessageHref(projectId, thought.source.projectMessageId)} onClick={() => setMoreId(null)}>Open message</Link> : null}
           {on.onMove ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onMove?.(); }}>Move to a space map</button> : null}
+          {on.onMakeTask && selection.length === 1 ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onMakeTask?.(); }}>Make a task</button> : null}
           {on.onCopyLink && selection.length === 1 ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onCopyLink?.(); }}>Copy link</button> : null}
           {canWrite ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
         </div> : null}

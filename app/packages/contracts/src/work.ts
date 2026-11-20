@@ -78,6 +78,8 @@ export interface DecisionDiscussion {
 export const projectLinksPath = (projectId: string) => `/api/v1/projects/${projectId}/links`;
 /** Work owned by the caller across every project of the workspace they can currently read. */
 export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/assigned`;
+/** Unfinished work the caller created for another person, across every project of the workspace they can currently read (#1519, "tasks I gave others"). */
+export const workspaceGivenWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/given`;
 
 /** A task has four states (#868). A task that was dropped is `done` with `dropped` set and, when someone said so, a `cameOfIt` line. */
 export const WORK_STATUSES = ['open', 'in_progress', 'blocked', 'done'] as const;

@@ -60,6 +60,8 @@ textarea:is(.create__title, .create__name) { display: block; resize: none; overf
 .create__chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .create__chip:hover { background: var(--hov); }
 .create__chip--add { color: var(--t2); }
+/* The Due chip's own date field, in the chip's place while it is open (#1519): the field's frame is the chip's height. */
+.create__date { display: inline-flex; min-width: 0; max-width: 100%; }
 .create__chip--quiet { background: none; box-shadow: none; padding: 0 4px; color: var(--t2); font-weight: 400; }
 .create__chip--link { cursor: default; padding-right: 6px; }
 .create__chip--link button { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-pill); color: var(--t3); }
@@ -84,16 +86,17 @@ textarea:is(.create__title, .create__name) { display: block; resize: none; overf
 
 /* The phone's sheet rises from the bottom with one height for every tab, as the window keeps (rule 7). */
 .ui-overlay--bottom .create { inset: auto 0 0 0; height: min(600px, 92dvh); max-height: 92dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
-.ui-overlay--bottom .create .create__head { position: relative; gap: 4px; padding: 22px 8px 0 12px; touch-action: none; }
-/* Five tabs and Close fit a 390px phone, and a 320 px one with the tighter rule below; larger text scrolls the tabs sideways, and the head still
-   drags the sheet. */
-.ui-overlay--bottom .create .create__tabs .ui-tabs__bar { padding: 2px; touch-action: pan-x; }
-.ui-overlay--bottom .create .create__tabs .ui-tabs__tab { padding: 0 8px; }
+.ui-overlay--bottom .create .create__head { position: relative; gap: 0; padding: 22px 4px 0 8px; touch-action: none; }
+/* The five kinds are one segmented control of equal options (README, Segmented controls, #1561): the row takes the width beside Close and shares it
+   equally, each tab never narrower than its word. Where five words do not fit beside Close at equal widths (a 320 px phone) Close moves to the line below,
+   beside the "where" line, and the row takes the whole width (CreateWindow's `create__in--close-below`); the tabs never shrink or scroll. */
+.ui-overlay--bottom .create .create__tabs .ui-tabs__bar { --seg-pad: 3px; width: 100%; }
 .ui-overlay--bottom .create .create__head::before { content: ""; position: absolute; left: 50%; top: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--line2); }
 /* The phone's Close is the sheets' plain × (round 14: a shadowed circle beside the tabs), and the five kinds share the rest of the row. */
 .ui-overlay--bottom .create .create__x { width: 44px; height: 44px; flex: none; }
-.ui-overlay--bottom .create .create__tabs .ui-tabs__bar { width: 100%; }
-.ui-overlay--bottom .create .create__tabs .ui-tabs__tab { flex: 1 1 auto; justify-content: center; }
+/* Close below: it lies at the right end of the line under the tabs, beside "Only you see it" or the space, which leave room for it. */
+.ui-overlay--bottom .create .create__in--close-below .create__x { position: absolute; right: 4px; top: 100%; z-index: 2; }
+.ui-overlay--bottom .create .create__in--close-below .create__where { padding-right: 56px; }
 .ui-overlay--bottom .create .create__scroll { padding: 12px 20px 8px; gap: 12px; }
 .ui-overlay--bottom .create .create__where { padding: 6px 20px 0; font-size: var(--fs-base); }
 .ui-overlay--bottom .create .create__props { display: flex; flex-direction: column; align-items: stretch; gap: 0; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line); padding: 0 14px; margin-top: 6px; }
@@ -114,13 +117,7 @@ textarea:is(.create__title, .create__name) { display: block; resize: none; overf
 .create__place--plain:hover { background: none; }
 .create__place--plain .create__tile { display: none; }
 
-/* A phone under 360 px (a 320 px one): the five kinds and Close still share the one row, so "Space" is not cut at the sheet's edge and
-   Close is not squeezed to its first letter. The tabs lose their gaps and side room, and each keeps a 44 px wide target (#1424). */
-@media (max-width: 359px) {
-  .ui-overlay--bottom .create .create__head { gap: 0; padding-left: 8px; padding-right: 4px; }
-  .ui-overlay--bottom .create .create__tabs .ui-tabs__bar { gap: 0; }
-  .ui-overlay--bottom .create .create__tabs .ui-tabs__tab { justify-content: center; min-width: 44px; padding: 0 4px; }
-}
+
 
 /* Touch: every control is a 44 x 44 target. These sit after the plain and phone rules and are as specific as
    the most specific of them, so none of those restores a smaller size. */

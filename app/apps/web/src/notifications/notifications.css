@@ -32,7 +32,7 @@
 .nset__problem b { font-weight: 600; color: var(--t1); }
 
 /* A panel opened by a row's Change: inside the card, under the row, on the card's own surface. */
-.nset__panel { padding: 8px 18px 16px; }
+.nset__panel { padding: 8px 18px 16px; scroll-margin-bottom: 12px; }
 .nset__panel .sset-row { padding-inline: 0; min-height: 0; }
 .nset__times { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 6px 0 0; }
 .nset__times label, .nset__time { display: grid; gap: 4px; }

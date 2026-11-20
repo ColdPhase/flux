@@ -81,7 +81,7 @@ before(async () => {
   }
   assert.ok(notification, 'Ben has a notification of A');
   Object.assign(objects, {
-    workspaceId: A, workspace: A, projectId: project.id, conversationId: String(conversation.id), dmId: String(dm.id),
+    workspaceId: A, workspace: A, projectId: project.id, projectIds: project.id, conversationId: String(conversation.id), dmId: String(dm.id),
     rootId: String((dmMessage as { id?: string }).id ?? (dmMessage.message as { id: string }).id), messageId: String((conversation.messages as { id: string }[])[0]!.id),
     decisionId: String(decision.id), workId: String(task.id), taskId: String(task.id),
     docId: String(doc.id), materialId: String(doc.id), sketchId: String(sketch.id), thoughtId: String((one.thought as { id: string }).id),

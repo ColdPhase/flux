@@ -15,11 +15,13 @@ no-op but recognised only the top-level error message, while the Drizzle adapter
 PostgreSQL error in a `DrizzleQueryError` whose `cause` holds the code. A patch of the seed
 catch fixed it (#228), and `ensureOauthResource` inserted the row first (#316).
 
-## Today (Better Auth 1.7.19)
+## Today (Better Auth 1.7.26)
 
-Read from the installed `@better-auth/oauth-provider@1.7.18` package on 2026-11-08 (unchanged in 1.7.19, compared 2026-11-13)
-(`seedResources` and `seedResourcesOnce` in `dist/authorize-*.mjs`); this is an observation of
-the pinned version, not a documented guarantee, so a Better Auth upgrade re-runs the tests below.
+Read from the installed `@better-auth/oauth-provider@1.7.18` package on 2026-11-08 and compared with 1.7.19 on 2026-11-13, then
+with 1.7.26 on 2026-11-20 (`seedResources` and `seedResourcesOnce` in `dist/authorize-*.mjs`); this is an observation of
+the pinned version, not a documented guarantee, so a Better Auth upgrade re-runs the tests below. The one change since 1.7.19:
+`seedResourcesOnce` no longer shares one pending promise between concurrent callers; each caller runs its own seed until one
+has completed. The insert-race recovery below is the same code.
 
 - **The race is handled upstream.** After a failed insert the seed re-reads the row and, if it
   is there, treats the insert as lost to a competitor and carries on. Flux no longer patches
