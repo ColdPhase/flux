@@ -25,6 +25,7 @@ import { awaitField, stopAwaitingField } from '../ui/keys';
 import { attemptKeys, firstName, startsSpaces } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
 import { onPlacesForgotten } from '../place/memory';
+import { AI_CONNECTED_EVENT } from '../ai/connected';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -264,7 +265,8 @@ function connectOffer(offered: AgentRuntimeClient[]): string {
 const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead, spaceName: (id: string | null) => string, offer: string) => StepRow> = {
   name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
   invite_people: () => ({ key: 'invite_people', icon: 'people', title: 'Invite people', meta: 'Make a link and send it to them', to: '/settings/company?invite=1' }),
-  connect_ai: (_read, _space, offer) => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: offer, to: '/settings/agents?connect=1' }),
+  // The window opens over Home (`openConnectAi`, #1567), so Cancel is where the person tapped; `to` is where a new tab or a copied link opens: Settings › AI.
+  connect_ai: (_read, _space, offer) => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: offer, to: '/settings/agents' }),
   // Said in the space the person landed in (their link's space, else Everyone), by its name (#1424).
   first_message: (read, spaceName) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: `Say hello in ${spaceName(read.firstSpaceId)}`, to: `/projects/${read.firstSpaceId}`, state: { focusComposer: true } }),
   photo: () => ({ key: 'photo', icon: 'person', title: 'Add your photo', meta: 'So people know it’s you', to: '/settings/account' }),
@@ -295,6 +297,7 @@ function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => s
  */
 function FirstStepsCard({ phone, workspaceId, userId, onPushRow }: { phone: boolean; workspaceId: string; userId: string; onPushRow: (shown: boolean) => void }) {
   const navigate = useNavigate();
+  const { openConnectAi } = useShellActions();
   const toast = useToast();
   const keys = useRef(attemptKeys());
   const touch = useMediaQuery(MEDIA.touch);
@@ -318,6 +321,14 @@ function FirstStepsCard({ phone, workspaceId, userId, onPushRow }: { phone: bool
       if (!controller.signal.aborted && push?.state === 'prompt') setPushKey(push.publicKey);
     }, () => undefined);
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The window opens over Home, so a connection made there takes its step away at once, as coming back to Home would (#1567).
+  useEffect(() => {
+    const controller = new AbortController();
+    const again = () => { getFirstSteps(controller.signal).then(setRead, () => undefined); };
+    window.addEventListener(AI_CONNECTED_EVENT, again);
+    return () => { controller.abort(); window.removeEventListener(AI_CONNECTED_EVENT, again); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { projects } = useShellData();
@@ -362,6 +373,10 @@ function FirstStepsCard({ phone, workspaceId, userId, onPushRow }: { phone: bool
         ) : row.key.startsWith('joined:') ? (
           <HomeRow key={row.key} to="/dm" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>} title={row.title} meta={row.meta}
             onClick={(event) => { event.preventDefault(); sayHello(row.key.slice('joined:'.length)); }} />
+        ) : row.key === 'connect_ai' ? (
+          // The one Connect AI window opens over Home (#1567); its Cancel, ×, drag down and Back leave the person on Home.
+          <HomeRow key={row.key} to={row.to!} face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>} title={row.title} meta={row.meta}
+            onClick={(event) => { event.preventDefault(); openConnectAi(); }} />
         ) : (
           <HomeRow key={row.key} to={row.to!} state={row.state} face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
             title={row.title} meta={row.meta} />

@@ -207,7 +207,8 @@ export function SettingsAppearance() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        {phone ? <h2 className="sset-sec">Appearance</h2> : <PageHead title="Appearance" />}
+        {/* The same title row as Account, Company, Notifications and AI on every device (#1568). */}
+        <PageHead title="Appearance" />
         <ThemeChoices />
         {phone ? <h2 className="sset-sec">This phone</h2> : null}
         {/* Notifications and installing Flux on this device live under Notifications → This device (#763 SG-8). */}

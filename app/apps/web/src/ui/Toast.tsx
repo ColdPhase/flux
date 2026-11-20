@@ -339,10 +339,12 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
           : { inset, beside, movedAt: settled && (Math.abs(inset - current.inset) >= MOVE_PX || Math.abs((beside?.left ?? 0) - (current.beside?.left ?? 0)) >= MOVE_PX) ? now : current.movedAt });
         // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
         // where it is going, not where it was: no DOM change follows its last frame, so measure again when each such motion ends (#1106).
+        // The motion may be the surface's own or its frame's: a task's sheet rises as a frame (`Overlay bare`) that holds the modal sheet, and a
+        // toast measured a few pixels before the end stood on the sheet's top edge for good (#1568).
         for (const animation of document.getAnimations()) {
           const effect = animation.effect;
           const target = effect instanceof KeyframeEffect ? effect.target : null;
-          if (animation.playState === 'running' && target?.closest('[aria-modal="true"]') && effect!.getComputedTiming().iterations !== Infinity) animation.finished.then(measure, () => undefined);
+          if (animation.playState === 'running' && (target?.closest('[aria-modal="true"]') || target?.querySelector('[aria-modal="true"]')) && effect!.getComputedTiming().iterations !== Infinity) animation.finished.then(measure, () => undefined);
         }
       });
     };
