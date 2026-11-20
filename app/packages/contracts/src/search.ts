@@ -51,6 +51,8 @@ export function searchTargetPath(target: SearchTarget): string {
     case 'doc': return `/projects/${target.projectId}/docs/${target.docId}${target.current ? '' : `/versions/${target.version}`}`;
     // A file (C-63) opens its message with its preview open, at the page that matched for a PDF.
     case 'file': return `/projects/${target.projectId}/conversations/${target.conversationId}?file=${target.fileId}${target.page ? `&page=${target.page}` : ''}#message-${target.messageId}`;
+    // A file sent in a direct message (C-64 (3), #1590) opens its conversation at its message, with its preview open as a space's does.
+    case 'dm_file': return `/dm/${target.dmId}?file=${target.fileId}${target.page ? `&page=${target.page}` : ''}#message-${target.messageId}`;
     case 'sketch': return `/map/${target.sketchId}`;
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
@@ -91,6 +93,8 @@ export type SearchTarget =
   | { type: 'doc'; projectId: string; docId: string; version: number; current?: true }
   /** A file someone sent (C-63): its message, with its preview open at `page` (a PDF's page where the match is). */
   | { type: 'file'; projectId: string; conversationId: string; messageId: string; fileId: string; page?: number }
+  /** A file sent in a direct message (C-64 (3), #1590): its conversation, the message it was sent with and its preview, at `page` for a PDF. */
+  | { type: 'dm_file'; dmId: string; messageId: string; fileId: string; page?: number }
   | { type: 'work' | 'decision'; projectId: string; id: string }
   | { type: 'sketch'; sketchId: string }
   | { type: 'thought'; sketchId: string; thoughtId: string }

@@ -35,10 +35,10 @@ Migration `0010_direct_messages.sql` adds three tables.
 - **Files** (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 10). A direct message carries files,
   photos and videos like a space's message: `POST /api/v1/dms/:dmId/files` stages one (the same limits, names, picture decoding and video rules as
   `POST /api/v1/projects/:projectId/files`), `attachmentIds` on a send or a reply attaches up to ten, and a message may be files alone. A file is a row of
-  `project_files` that belongs to the conversation (`dm_id`, migration 0076) instead of a project, so no space's query, export or search sees it. Its
+  `project_files` that belongs to the conversation (`dm_id`, migration 0076) instead of a project, so no space's query, export or search sees it (its search rows have the conversation's own audience). Its
   bytes come from `GET /api/v1/files/:fileId` (`/video`, `/preview`) under `dm.read`, checked on every request: only the conversation's current people;
   a person who left, and anyone else in the company, get 404. A staged file is its sender's alone and goes after 7 days unsent; deleting a message
-  deletes its files (C-48). A direct message's files are not read for search (C-64 point 3; C-63 reads a space's).
+  deletes its files (C-48). A direct message's files are found by name and by the text inside them, by the conversation's people only, and read by `/ai` in that conversation (C-64 point 3, #1590; migration 0109): their search rows have the audience `dm:<id>` of the conversation's messages.
 - **Citations.** A DM message cannot cite project material yet (`422 DM_SOURCE_UNSUPPORTED`).
   Every participant would first need to be able to read the cited version.
 - **Sketches.** A DM holds no maps (#866, #947). Copying a message excerpt into a space's task is the one way out of a DM.

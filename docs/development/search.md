@@ -153,7 +153,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 ## Files (C-63)
 
-Every file of a space is found by its name, and what is inside the files people send is searched too (#1382): PDF text, DOCX,
+Every file of a space (and of a direct message, below) is found by its name, and what is inside the files people send is searched too (#1382): PDF text, DOCX,
 Markdown, plain text, CSV/TSV (never the inside of images, audio or video, and never an OCR). Migration `0072_file_text.sql` adds kind
 `file`, the column `page`, the table `file_text_jobs` and the triggers; `0088_file_names.sql` gives every file its name row (founder
 decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads the files.
@@ -179,6 +179,12 @@ decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads t
 - **Limits and the sandbox.** 5 MiB, 100 PDF pages, 200,000 characters, 20 s, 320 MiB resident, in a child process with no network, no files and
   no children ([C-63](../product/decisions.md), [threat model B4](../security/threat-model.md#b4-database-and-files)). The worker wakes on
   `NOTIFY flux_file_text` and polls nothing; a job is claimed with a lease of two minutes, tried three times and given up.
+- **Direct messages** ([C-64](../product/decisions.md) point 3, #1590, migration 0109). A file sent in a direct message gets, at publication, the same rows with the
+  audience of the conversation's messages, `dm:<id>` (`project_id` null, `parent_id` the conversation, `messageId` of a hit the DM message), so the access rule is the one
+  of `dm_message` rows and nothing new: ⌘K and the search API return it to the conversation's current people (`visibleFilter` of kind `dm`), an agent only in a
+  run in that conversation (`flux_search` there searches `dm:<id>` alone; `flux_read_file` checks the run's `dmId` and that its owner is one of the people), and the hit opens
+  `/dm/<id>?file=<id>#message-<id>`. The worker's claim, `store` and `queueOcr` accept a file of a conversation; a workspace that is encrypted gets no row and no
+  job. The migration gives v0.2.1's files of conversations their name row and queues the readable ones.
 - **Agents.** `flux_search` takes `kind: "file"` and returns the file's name, a snippet with the matches in **bold**, the page, the
   message and a link; `flux_read_file` reads the text in pages of 12,000 (a run) or 20,000 characters from `offset`.
 - **A PDF without text** ([C-69](../product/decisions.md), #1557, migration 0103). When the child finds no text in a PDF it opens it once
