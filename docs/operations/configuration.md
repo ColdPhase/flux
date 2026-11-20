@@ -628,7 +628,7 @@ Memory of `api` (measured peak 431 MB in the encryption checks). A quarter of it
 
 **Type** Compose memory size · **Default** `512m` · **Used by** worker (release, source)
 
-Memory of `worker` (measured peak 111 MB). With `FLUX_FILE_OCR=on` `./flux` raises it to `1g` when it is lower: OCR reads each picture in a child of up to 384 MiB beside the worker. Example: `1g`.
+Memory of `worker` (measured peak 111 MB). With `FLUX_FILE_OCR=on` `./flux` raises it to `1g` when it is lower, and `up` and `upgrade` say so in one line: OCR reads each picture in a child of up to 384 MiB beside the worker. Example: `1g`.
 
 ### `FLUX_KEYRING_MEMORY`
 

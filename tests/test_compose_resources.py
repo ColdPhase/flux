@@ -217,6 +217,27 @@ class OcrWorkerMemoryTest(unittest.TestCase):
             with self.subTest(memory=memory):
                 self.assertEqual(self.worker_memory("off", memory), expected)
 
+    def notice(self, ocr: str, memory: str | None) -> str:
+        functions = "\n".join(launcher_function(name) for name in ("say", "env_file_value", "env_value", "ocr_worker_memory", "say_ocr_worker_memory"))
+        env = {"PATH": "/usr/bin:/bin", "FLUX_FILE_OCR": ocr, "ENV_FILE": "/nonexistent"}
+        if memory is not None:
+            env["FLUX_WORKER_MEMORY"] = memory
+        # compose_main has already raised it in this shell before up or upgrade print the line: the line still names the operator's value.
+        script = f"set -eu\n{functions}\nocr_worker_memory\nsay_ocr_worker_memory\n"
+        return subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, check=True).stdout
+
+    def test_up_and_upgrade_say_in_one_line_when_they_raise_it(self) -> None:
+        self.assertEqual(self.notice("on", "512m"),
+                         "OCR is on: the worker gets 1g of memory instead of FLUX_WORKER_MEMORY=512m (its reader may hold 384 MiB).\n")
+        self.assertIn("FLUX_WORKER_MEMORY=512m", self.notice("on", None))
+        for ocr, memory in (("on", "2g"), ("off", "512m")):
+            with self.subTest(ocr=ocr, memory=memory):
+                self.assertEqual(self.notice(ocr, memory), "")
+        text = (ROOT / "flux").read_text(encoding="utf-8")
+        for function in ("start_main", "upgrade_apply"):
+            body = text[text.index(f"\n{function}() {{"):]
+            self.assertIn("  say_ocr_worker_memory\n", body[:body.index("\n}\n")], function)
+
     def test_every_compose_command_of_the_launcher_applies_it(self) -> None:
         self.assertIn("ocr_worker_memory\n", launcher_function("compose_main"))
         self.assertRegex((DOCKER / "compose.test.yaml").read_text(encoding="utf-8"), r'FLUX_FILE_OCR: "on"[\s\S]*?mem_limit: 1g\n    memswap_limit: 1g')

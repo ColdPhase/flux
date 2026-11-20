@@ -349,8 +349,8 @@ VARIABLES: dict[str, Var] = {
     # --- limits
     "FLUX_DB_MEMORY": Var("limits", "Compose memory size", "Memory of `db`, PostgreSQL (about 70 MiB idle; its page cache counts towards the limit and is given back under pressure).", "1g"),
     "FLUX_API_MEMORY": Var("limits", "Compose memory size", "Memory of `api` (measured peak 431 MB in the encryption checks). A quarter of it (64 to 512 MiB) bounds the search index of unlocked encrypted spaces.", "3g"),
-    "FLUX_WORKER_MEMORY": Var("limits", "Compose memory size", "Memory of `worker` (measured peak 111 MB). With `FLUX_FILE_OCR=on` `./flux` raises it to `1g` when it is lower: OCR reads each picture "
-        "in a child of up to 384 MiB beside the worker.", "1g"),
+    "FLUX_WORKER_MEMORY": Var("limits", "Compose memory size", "Memory of `worker` (measured peak 111 MB). With `FLUX_FILE_OCR=on` `./flux` raises it to `1g` when it is lower, and `up` and `upgrade` say so "
+        "in one line: OCR reads each picture in a child of up to 384 MiB beside the worker.", "1g"),
     "FLUX_KEYRING_MEMORY": Var("limits", "Compose memory size", "Memory of `keyring` (measured peak 42 MB).", "256m"),
     # --- github
     "FLUX_GITHUB_CLIENT_ID": Var("github", "string", "The App's OAuth client id."),
