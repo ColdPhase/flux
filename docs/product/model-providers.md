@@ -346,7 +346,8 @@ Kept from PROV-4:
     with up to five Search Suggestions or Links; its text may be stored up to two years for limited
     uses (a user's own chat history among them). Flux shows neither Google's Search Suggestions nor
     its HTML, lists the result addresses under the answer for everyone who sees it, and keeps them with
-    the run: whether that fits these terms is the key owner's to judge (an open question, C-72).
+    the run: whether that fits these terms is the key owner's responsibility (founder decision, Hubert,
+    2026-11-20, C-72), and Connect AI and the key's card say so with a link to Google's terms.
   - *OpenRouter* (openrouter.ai/docs/guides/features/plugins/web-search, …/server-tools, …/usage-accounting).
     Observed: the `web` plugin (`plugins: [{"id": "web", "engine", "max_results"}]`, default five
     results; `:online` on a model id is the same plugin on every request) searches once per request and

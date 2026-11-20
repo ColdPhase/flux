@@ -2491,6 +2491,12 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     Connect without them puts "Enter this model's price to use it with a daily budget…" above the form and saves nothing, and the
     server refuses such a key from any client with the same words, so Settings never shows a key that "can't be used" (#1424).
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
+  - **A Gemini key says whose terms its web search follows** (founder decision, Hubert, 2026-11-20, C-72, #1585): an agent on a Gemini
+    key searches with Google Search grounding, and whether that use fits Google's Gemini API terms is the key owner's responsibility.
+    Once Google Gemini is chosen, one more help line under the key's line, and on that key's card in Settings › AI › Your API keys one
+    help line under its details, say "Web search uses Google Search grounding; Google's Gemini API terms apply to your key.", where
+    "Google's Gemini API terms" is a plain inline link to Google's terms page that opens in a new tab. Same help style, no icon, no
+    box; no other provider has the line.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
   price line worded as in Connect AI, "Opus 5.5 · $4 / $20", and one line under the control that
