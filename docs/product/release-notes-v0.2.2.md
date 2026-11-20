@@ -197,6 +197,9 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
   company you left, shows none of its tasks at once.
 - **A task another tab makes reaches the Board** even when the shell's re-read answers before its loading is drawn (seen in WebKit: task 15
   of 25 stayed off the Board) ([#1583](https://github.com/ColdPhase/flux/pull/1583)).
+- **The List follows the Board's order.** Tasks › List groups are To do, Doing, Blocked, Done, as the Board's columns. A task's "↓ N new" has its
+  own band under the discussion and no longer lies on its words, a change line's "· Undo" no longer stands alone on the phone, and a panel
+  over the Board at 200 % no longer cuts the Board's left edge ([#1581](https://github.com/ColdPhase/flux/issues/1581)).
 - The phone's Board and the equal segmented controls are under [Phone and tablet](#phone-and-tablet).
 
 ## Files, PDFs and OCR
