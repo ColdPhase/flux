@@ -1,1 +1,0 @@
-- A local llama.cpp model is chosen by the id it names: a server started without `--alias` names its model by the file it loaded (`/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`), a model's id may now begin with `/`, and a list that was read but holds no usable model says so instead of "could not be read" ([#1593](https://github.com/ColdPhase/flux/issues/1593)).

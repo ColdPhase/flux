@@ -1,1 +1,0 @@
-- On a phone, Back (the arrow or the gesture) closes what sits on top first: a message's actions sheet, the Create sheet, a menu, a picker, a panel, the photo viewer or a file's preview; only the next Back leaves the place. Before, Back with the actions sheet open left the conversation ([#1545](https://github.com/ColdPhase/flux/issues/1545)).

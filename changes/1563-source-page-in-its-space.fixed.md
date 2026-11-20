@@ -1,1 +1,0 @@
-- A saved source (a Wiki page by its own address) opens inside its space: the space's own header with its name, Conversation, Tasks, Map and Wiki (the Wiki current) and its people, instead of a header "Wiki" with no tabs, and its Back returns to where you came from, such as the Wiki's page list ([#1563](https://github.com/ColdPhase/flux/issues/1563)).

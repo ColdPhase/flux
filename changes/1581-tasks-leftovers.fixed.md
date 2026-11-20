@@ -1,1 +1,0 @@
-- Tasks › List groups follow the Board (To do, Doing, Blocked, Done), a task's "↓ N new" has its own band under the discussion and no longer lies on the words, a change line's "· Undo" no longer stands alone on the phone, and a panel over the board at 200 % no longer cuts the board's left edge ([#1581](https://github.com/ColdPhase/flux/issues/1581)).

@@ -1,1 +1,0 @@
-- A new thought made from a connection dot always takes typing; the dashed frame sometimes appeared and took none until the dot was clicked again ([#1554](https://github.com/ColdPhase/flux/issues/1554)).

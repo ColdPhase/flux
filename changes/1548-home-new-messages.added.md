@@ -1,1 +1,0 @@
-- Home lists the conversations with something new: a "New messages" part under Waiting for you (on the phone under My tasks and My map) shows the spaces and direct messages with something unread, newest first, muted ones left out, five and then "Show all", live as you read. The Inbox is unchanged ([#1548](https://github.com/ColdPhase/flux/issues/1548)).

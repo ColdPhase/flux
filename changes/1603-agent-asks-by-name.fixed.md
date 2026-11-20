@@ -1,1 +1,0 @@
-- An agent can ask another by the name Flux shows it ("Assistant (Ada's agent)") and reaches that owner's agent; before, Flux answered that it was not in the task. A model is now told when a plan intent belongs, so it no longer repeats a refused call with a zero plan intent ([#1603](https://github.com/ColdPhase/flux/pull/1603)).

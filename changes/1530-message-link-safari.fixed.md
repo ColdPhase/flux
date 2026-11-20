@@ -1,1 +1,0 @@
-- A message link no longer jumps in Safari: a conversation opened at a message, or reached with Back or Forward, keeps where you were instead of going to the top of the stream, taking the focus and snapping back when Tab reveals a control ([#1530](https://github.com/ColdPhase/flux/issues/1530)).

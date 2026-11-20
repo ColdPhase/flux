@@ -1,1 +1,0 @@
-- Every time an AI agent reads from Flux is in its owner's own time zone with the offset (`2026-11-19T15:34:00+01:00`), including the days and clock of a summary, so a model no longer converts from UTC and tells "15:34 Warsaw time" for 14:34 ([#1563](https://github.com/ColdPhase/flux/issues/1563)).

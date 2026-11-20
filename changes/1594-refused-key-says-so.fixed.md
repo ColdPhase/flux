@@ -1,2 +1,0 @@
-- A key the endpoint refuses says so ("This key was refused by the endpoint. Check it and try again.") in Connect AI and when an agent is put on another model, with the key kept in its field; before, a refused key read "This model can't use tools" ([#1594](https://github.com/ColdPhase/flux/issues/1594)).
-- Connect AI's API key step keeps Connect disabled until a key is typed, for every provider ([#1601](https://github.com/ColdPhase/flux/pull/1601)).

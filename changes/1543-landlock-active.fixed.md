@@ -1,1 +1,0 @@
-- `./flux up` checks that Landlock is active in the engine's kernel, not only built in (Proxmox VE 9 has the kernel and not the module), and when it is missing keeps AI off with one line that names the fix: `landlock` first in the kernel's `lsm=` boot parameter, then a reboot ([#1543](https://github.com/ColdPhase/flux/issues/1543)).

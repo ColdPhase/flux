@@ -1,1 +1,0 @@
-- Create's Task tab has a Due day, a map thought has Make a task, and My tasks shows each task's due day and a second section, Tasks you gave others ([#1519](https://github.com/ColdPhase/flux/issues/1519)).
