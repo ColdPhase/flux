@@ -22,8 +22,8 @@ import { StreamClient } from './support/stream.js';
 const connections = new FakeConnections();
 const queue = new FakeQueue();
 const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-/** The Flux tools of a run in a direct message: the one that reads a web page and the two that find and read around its messages (F-042), and the summary. */
-const DM_TOOLS = ['mcp__flux__flux_read_around', 'mcp__flux__flux_read_web', 'mcp__flux__flux_search', 'mcp__flux__flux_summarize'];
+/** The Flux tools of a run in a direct message: the one that reads a web page, the two that find and read around its messages (F-042), the summary, and the reader of its files' text (#1590). */
+const DM_TOOLS = ['mcp__flux__flux_read_around', 'mcp__flux__flux_read_file', 'mcp__flux__flux_read_web', 'mcp__flux__flux_search', 'mcp__flux__flux_summarize'];
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 
 const TOKENS = {

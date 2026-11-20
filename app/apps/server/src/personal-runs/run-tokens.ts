@@ -20,8 +20,11 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RUN_TOKEN_AUTHORIZED_PARTY = 'flux-personal-run';
-/** A run in a direct message: reading a web page, and finding, reading around and summarising the messages of that direct message (F-042, #1290, #1292). Sorted, as every run's tools are. */
-const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize'];
+/**
+ * A run in a direct message: reading a web page, and finding, reading around and summarising the messages of that direct message (F-042, #1290, #1292), and
+ * reading the text of the files sent in it (`flux_read_file`, #1590, C-64 (3); the tool answers for that direct message's files alone). Sorted, as every run's tools are.
+ */
+const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize'];
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -54,9 +57,9 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
       // The run's exact tools: reads and the changes (F-036 AG-3; under Ask me first a change waits for the owner's OK).
       // An answer to another agent's question only reads, whatever the switch (TA-3: a question is not an instruction).
-      // A private chat reads and answers and changes nothing (#842); a run in a direct message has one tool: reading a web page, since no
+      // A private chat reads and answers and changes nothing (#842); a run in a direct message has the web read, since no
       // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads. It finds older messages of that DM
-      // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290).
+      // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290), and the text of its files (#1590).
       const readOnly = run.kind === 'task_answer' || run.projectId === null;
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
       const base = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly)
