@@ -264,7 +264,12 @@ The first line puts the previous release's files back, so `./flux restore` runs 
 
 A failed migration file rolls back its own transaction; earlier new migrations of the same
 upgrade stay applied, which is why the instructions restore the backup rather than restarting
-the old version on the partly migrated database.
+the old version on the partly migrated database. **The upgrade does not restore by itself**: it
+leaves API and worker stopped and prints the commands, and you choose to run them or to retry.
+
+A migration waits at most 5 s for a table's lock. API and worker are stopped, so only another connection to the
+database can hold it, such as an open `psql` session; the migrator then names the file and says it gave up waiting for a lock.
+Close that connection, then restore or retry as printed ([troubleshooting](troubleshooting.md)).
 
 ## Tested with
 

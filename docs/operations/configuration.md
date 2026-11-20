@@ -480,7 +480,7 @@ File with 32 random bytes that seals owners' AI keys for work the worker does on
 
 **Type** list of hosts, IPs or CIDRs · **Default** empty · **Used by** api, worker (release, source)
 
-Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public HTTPS endpoints only; cloud metadata addresses are always refused. Example: `ollama,10.0.0.0/8`.
+Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public HTTPS endpoints only; cloud metadata addresses are always refused. The model server must listen where Flux's containers reach it: one bound only to the host's `127.0.0.1` is out of their reach. Example: `ollama,10.0.0.0/8`.
 
 ## Local embeddings (optional)
 
@@ -490,7 +490,7 @@ Off by default (F-042). Search ranks by BM25 alone; with the overlay `compose.em
 
 **Type** `on`, `off` · **Default** `off` · **Used by** `./flux`
 
-`on` makes `./flux` layer `docker/compose.embeddings.yaml`: a text-embeddings-inference container running bge-m3 (about 3.2 GiB idle, 3.9 GiB peak; a 2.3 GB model downloaded on its first start). The worker embeds every searchable row of a space whose AI is on, and search fuses the nearest vectors with BM25. Encrypted spaces and spaces with AI off are never embedded; nothing is embedded through a person's own AI connection. `off` removes the container at the next `./flux up` (the downloaded model stays in the `embeddings` volume until `./flux clean`), and the next worker start deletes every vector. Example: `off`.
+`on` makes `./flux` layer `docker/compose.embeddings.yaml`: a text-embeddings-inference container running bge-m3 (about 3.2 GiB idle, 3.9 GiB peak; a 2.3 GB model downloaded on its first start). The worker embeds every searchable row of a plain space and of a direct message, and search fuses the nearest vectors with BM25. The embedder runs on your own server and is an index like BM25, not an AI company, so a space or a conversation with AI off is embedded too (agents are kept out of it by the access check of each search, not by missing vectors). Encrypted spaces are never embedded; nothing is embedded through a person's own AI connection. `off` removes the container at the next `./flux up` (the downloaded model stays in the `embeddings` volume until `./flux clean`), and the next worker start deletes every vector. Example: `off`.
 
 ### `FLUX_EMBEDDINGS_MEMORY`
 

@@ -2,7 +2,7 @@
 
 Flux v0.2.2 fixes what the first real installs found, on a phone and on a server. A new message at **Everything** notifies you, Home lists
 the conversations with something new, and a receipt under a message no longer vanishes when you send another. The phone shows a Tasks Board
-with one status at a time and a map that looks like the computer's, and PDFs and other documents larger than 5 MB can be sent. Agents see
+with one status at a time and a map you arrange by finger on the computer's layout, and PDFs and other documents larger than 5 MB can be sent. Agents see
 the pages of a scanned PDF, read the text in scans and pictures when the operator turns OCR on, search the web on a Gemini or an OpenRouter
 key, and say honestly when a tool failed. The launcher works with a quoted `docker/.env`, with split-horizon DNS for calls and on a kernel
 that has Landlock built in but not active; the database no longer resets when a health check times out; the media server has memory and CPU
@@ -10,9 +10,9 @@ limits; and the keyring locks itself when its swap limit is reset under it. The 
 on `./flux upgrade --check` shows the plan of the next one.
 
 Also in this release: files in a direct message are found by the people in it and read by `/ai` there, anyone in a direct message can turn
-AI off in it, your agent can search your direct messages from its private chat, saved sources are Wiki pages, and on the phone Back closes
-what sits on top first, a space's tabs are one place, no keyboard opens of its own accord and the dark theme has dark edges.
-<!-- pending #1590 (PR #1596) #1591 #1508 #1544 #1545 #1546 #1547 (PR #1597): the "Also in this release" paragraph; delete a part of it if its change does not merge -->
+AI off in it, your agent can search your direct messages from its private chat, saved sources are Wiki pages, a local llama.cpp model is
+chosen by the id it names, and on the phone Back closes what sits on top first, a space's tabs are one place, no keyboard opens of its
+own accord, the dark theme has dark edges and the search fields are one flat pill.
 
 Documentation: <https://coldphase.github.io/flux/>. Flux is open source under the AGPL-3.0.
 
@@ -40,7 +40,9 @@ cd /srv/flux
   upgrade prints each migration as it is applied.
 - **How long it takes.** On a copy of a real v0.2.1 installation, a small one, the upgrade took about 40 s. That is a measurement of one
   small install, not a promise: the backup dumps and compresses the database and the files, so time grows with their size (`--check` from
-  v0.2.2 on estimates it at about 20 MB/s), and the PDFs that `0103` queues are read in the background after the upgrade, not during it.
+  v0.2.2 on estimates it at about 20 MB/s), and the PDFs that `0103` and the files that `0109` queue are read in the background after the
+  upgrade, not during it. The migrations themselves took 15 s on a synthetic dataset of 400,000 messages, 70,000 files and a million events
+  ([what changes for existing data](#what-changes-for-existing-data)).
 - **Every service now runs under an init process.** `./flux upgrade` recreates `db`, `api` and `worker` once on it (one clean PostgreSQL restart), the keyring as at every upgrade (so every encrypted space is locked
   until an admin of the space unlocks it) and, with calls on, `livekit`, whose new limits apply on that recreate.
 - **The database image moves to PostgreSQL 18.7** (security release of 2026-11-12), the same major as 18.6: your data directory starts on it
@@ -59,7 +61,7 @@ All are optional; an old `docker/.env` that sets none of them behaves as before.
 | `FLUX_LIVEKIT_MEMORY` | `512m` | Memory **and swap** of the media server, so a call cannot take memory from the database and the keyring ([#1558](https://github.com/ColdPhase/flux/issues/1558)). A synthetic 16-person call (4 publishing video, 12 receiving, 60 s) measured 75 to 86 MB. |
 | `FLUX_LIVEKIT_CPUS` | `1` | CPU limit of the media server (3 to 9 % of one core in that call). Docker refuses a limit above the server's cores, so one CPU also starts on a 1-core server. |
 | `FLUX_FILE_MAX_MIB` | `25` (1 to 1,024) | The largest file of a plain space, a direct message or an agent's chat; a message's files together may be four times it ([#1549](https://github.com/ColdPhase/flux/issues/1549)). A picture and every file of an encrypted space stay at 5 MiB. Before, every file but a video was at most 5 MiB. |
-| `FLUX_FILE_OCR` | `off` | `on` reads the text in scans and in pictures (PNG, JPEG, WebP and GIF; Polish and English), and that text is the file's text, so search and agents find it ([#1575](https://github.com/ColdPhase/flux/issues/1575)). The image grows by about 8.6 MB. Off, nothing changes. |
+| `FLUX_FILE_OCR` | `off` | `on` reads the text in scans and in pictures (PNG, JPEG, WebP and GIF; Polish and English), and that text is the file's text, so search and agents find it ([#1575](https://github.com/ColdPhase/flux/issues/1575)). The image grows by about 8.6 MB. **With it on, the worker gets at least 1 GiB of memory** so that the reader of up to 384 MiB fits beside it: a smaller `FLUX_WORKER_MEMORY` (the settings file's `512m`) is raised to `1g`, and `./flux up` and `./flux upgrade` say so in one line. Off, nothing changes. |
 
 Also new, nothing to set: the media server runs with no capabilities, no new privileges, a read-only root and at most 512 processes.
 
@@ -96,11 +98,12 @@ Also new, nothing to set: the media server runs with no capabilities, no new pri
 
 ### What changes for existing data
 
-v0.2.1 is at schema 95. The migrations below are every one of v0.2.2 (`0096`–`0099`, `0102` and `0108` are not used: the work planned
-for `0096`–`0099` was renumbered to `0105`–`0107`, and the numbers `0102` and `0108` were not needed). Each runs in its own transaction
-while API and worker are stopped, after the backup; none deletes a v0.2.1 row of yours (`0107` moves saved sources to Wiki pages and keeps
-every one), and `tests/app/released-databases.test.ts` runs the real migrator on a dump of the v0.2.1 database, which every pull request
-that changes the database must pass ([#1552](https://github.com/ColdPhase/flux/issues/1552)).
+v0.2.1 is at schema 95 and v0.2.2 at schema 111. The migrations below are every one of v0.2.2 (`0096`–`0099`, `0102` and `0108` are
+not used: the work planned for `0096`–`0099` was renumbered to `0105`–`0107`, and the numbers `0102` and `0108` were not needed). Each
+runs in its own transaction while API and worker are stopped, after the backup, and waits at most 5 s for a table's lock; none deletes a
+v0.2.1 row of yours (`0107` moves saved sources to Wiki pages and keeps every one), and `tests/app/released-databases.test.ts` runs the
+real migrator on a dump of the v0.2.1 database, which every pull request that changes the database must pass
+([#1552](https://github.com/ColdPhase/flux/issues/1552)).
 
 | Migration | What it does to existing rows |
 | --- | --- |
@@ -110,32 +113,42 @@ that changes the database must pass ([#1552](https://github.com/ColdPhase/flux/i
 | `0104_file_ocr` ([#1575](https://github.com/ColdPhase/flux/issues/1575)) | Adds `project_files.ocr_state` (empty for every file), a small function that names the picture file types, and an index of files OCR has yet to read; replaces the two triggers that queue a new file's text job so that a picture wakes the worker. **Nothing is read while `FLUX_FILE_OCR=off`.** Turned on, the worker reads the pictures and the PDFs without text that were sent before, 50 at a time, newest first, so a large install is not flooded; encrypted spaces' files are never read. |
 | `0105_file_size_setting` ([#1549](https://github.com/ColdPhase/flux/issues/1549)) | Replaces the two size checks of `project_files` with ones that allow up to 1 GiB for every file (the setting's top; the application holds the operator's cap). The checks only widen: every existing file (up to 5 MiB, a video up to 1 GiB, a reservation) satisfies them, so no row is converted. Adding a check reads `project_files` once under its lock. |
 | `0106_remove_unused_schema` ([#1552](https://github.com/ColdPhase/flux/issues/1552)) | Drops the sequence `agent_thread_guard_sequence` (left behind by `0040`; it holds no data), deletes search rows of the kinds `result` and `draft` (nothing has written them since `0028` and `0044`, so none should exist) and replaces the check on the search kinds. Every other row is unchanged. |
-| `0107_material_kind` ([#1508](https://github.com/ColdPhase/flux/issues/1508)) | **Moves every saved source ("material") to a Wiki page of its space, and keeps all of it:** its id, every version (title, text, link, author, time), the messages and tasks that cite a version, its search rows and its events. Its events become a page's (`project.material_created.v1` and `_updated.v1` become `project.doc_created.v1` and `_updated.v1`, with the same ids), its search rows change kind from `material` to `doc`, and the kind, the retry keys and the two rules that told a page from a material (columns `kind`, `client_mutation_id` and `request_fingerprint` of its two tables, two triggers and their functions) go. In an encrypted space the rows stay sealed as before. The old saved-source API routes are gone. <!-- pending #1508 (branch claude-hubert/1508-material-kind, no PR yet): check this row against the merged file -->
-| `0109_dm_file_search` ([#1590](https://github.com/ColdPhase/flux/issues/1590)) | Adds one trigger function and one trigger so that a file sent in a direct message gets its name as a search row when it is published, with the audience of that conversation's own messages (so only the people who can read it find it); gives the direct message files **already there** the name row they lack; and **queues the readable ones** (PDF, DOCX, Markdown, text, CSV) for the worker, which reads them in the background one at a time, as for the files of a space (a picture or a scan only when `FLUX_FILE_OCR=on`, in the bounded batches above). Nothing stored changes shape, and an encrypted workspace's files get no row and no job. <!-- pending #1590 (PR #1596) --> |
-| `0110_dm_ai_off` ([#1591](https://github.com/ColdPhase/flux/issues/1591)) | Adds the table `dm_ai_off` (empty: **no conversation has AI off after the upgrade**) and allows two more kinds of line in a conversation (`ai_off`, `ai_on`; the check only widens). Local embeddings become an index like BM25 and not AI: the rule that a space whose AI is off has no vectors (`0068`) is replaced, and **on an installation that has turned local embeddings on, the rows of spaces whose AI is off are queued** and embedded by the worker in its usual batches; on one that never did, it writes nothing. <!-- pending #1591 (branch claude-hubert/1591-dm-ai, no PR yet): check this row against the merged file --> |
+| `0107_material_kind` ([#1508](https://github.com/ColdPhase/flux/issues/1508)) | **Moves every saved source ("material") to a Wiki page of its space, and keeps all of it:** its id, every version (title, text, link, author, time), the messages and tasks that cite a version, its search rows and its events. Its events become a page's (`project.material_created.v1` and `_updated.v1` become `project.doc_created.v1` and `_updated.v1`, with the same ids), its search rows change kind from `material` to `doc`, and the kind, the retry keys and the two rules that told a page from a material (the columns `kind`, `client_mutation_id` and `request_fingerprint`, two triggers and their functions) go. In an encrypted space the rows stay sealed as before. The old saved-source API routes are gone. |
+| `0109_dm_file_search` ([#1590](https://github.com/ColdPhase/flux/issues/1590)) | Adds one trigger function and one trigger so that a file sent in a direct message gets its name as a search row when it is published, with the audience of that conversation's own messages (so only the people who can read it find it); gives the direct message files **already there** the name row they lack; and **queues the readable ones** (PDF, DOCX, Markdown, text, CSV) for the worker, which reads them in the background one at a time, as for the files of a space (a picture or a scan only when `FLUX_FILE_OCR=on`, in the bounded batches above). Nothing stored changes shape, and an encrypted workspace's files get no row and no job. |
+| `0110_dm_ai_off` ([#1591](https://github.com/ColdPhase/flux/issues/1591)) | Adds the table `dm_ai_off` (empty: **no conversation has AI off after the upgrade**) and allows two more kinds of line in a conversation (`ai_off`, `ai_on`; the check only widens). Local embeddings become an index like BM25 and not AI: the rule that a space whose AI is off has no vectors (`0068`) is replaced, and **on an installation that has turned local embeddings on, the rows of spaces whose AI is off are queued** and embedded by the worker in its usual batches; on one that never did, it writes nothing. |
+| `0111_model_id_paths` ([#1593](https://github.com/ColdPhase/flux/issues/1593)) | Widens the check on a model's id in three tables (`background_compute_connections`, `assistant_settings` and `api_key_checks`) so that an id may begin with `/`: a llama.cpp server started without `--alias` names its model by the file it loaded (`/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`). The checks only widen, every id they held still matches, and no row changes. |
+
+Measured on Flux's database image (2026-11-20), on the v0.2.1 test installation grown to 200,000 space messages, 50,000 space files, 5,000
+direct conversations with 200,000 messages and 20,000 files, 10,000 saved sources, a million events and 500,000 notifications: the nine
+migrations up to `0110` took 15 s together, of which `0107` 8 s, `0109` 3.5 s and `0110` 3 s, and each of the others under 0.3 s.
 
 Everything else of this release changes no stored data: the new Home list, Seen by and the notices are computed from what v0.2.1 stored; a
 map's remembered view is a per-device browser-storage convenience (a map with none opens framed by Fit, as the first time); "Tasks you gave
 others" and the Spaces list's newest messages are read from rows v0.2.1 already stored.
 
 **A downgrade is not supported.** Migrations are forward-only. The way back is the backup `./flux upgrade` took first, in `backups/`, with
-the release files you ran before (`flux-files-v0.2.1-<time>.tar.gz`): if the upgrade fails it stops API and worker and prints the two
-commands that restore them ([when it fails](https://coldphase.github.io/flux/operate/upgrade/#when-it-fails)).
+the release files you ran before (`flux-files-v0.2.1-<time>.tar.gz`). **If a migration fails, the upgrade does not restore by itself:** that
+file is rolled back and named, the ones before it stay applied, API and worker stay stopped, and it prints the two commands that put the old
+files back and restore the backup, or the one that retries after you fix the cause ([when it fails](https://coldphase.github.io/flux/operate/upgrade/#when-it-fails)).
+A migration that cannot get a table's lock within 5 s (another connection to the database holds it, such as an open `psql` session) fails
+that way, with a line that says so; close the connection and retry.
 
 ## Phone and tablet
 
-- **Back closes what sits on top first.** A message's actions sheet, the Create sheet, a menu, a picker or a panel closes with Back (the
-  arrow or the phone's gesture), and only the next Back leaves the place; before, Back with the actions sheet open left the conversation
-  ([#1545](https://github.com/ColdPhase/flux/issues/1545)). <!-- pending #1545 (PR #1597) -->
+- **Back closes what sits on top first.** A message's actions sheet, the Create sheet, a menu, a picker, a panel, the photo viewer or a
+  file's preview closes with Back (the arrow or the phone's gesture), and only the next Back leaves the place; before, Back with the
+  actions sheet open left the conversation ([#1545](https://github.com/ColdPhase/flux/issues/1545)).
 - **The views of a space are one place.** Switching between Conversation, Tasks, Map and Wiki replaces the history entry instead of adding
-  one, so Back leaves the space and returns to where you came from (Spaces, Home, Inbox) instead of walking back through its tabs
-  ([#1547](https://github.com/ColdPhase/flux/issues/1547)). <!-- pending #1547 (PR #1597) -->
-- **The keyboard comes only when you tap a field.** Choosing a tab of the Create sheet, opening an agent's chat and the like no longer put
-  the cursor in a field and open the on-screen keyboard on a touch screen ([#1546](https://github.com/ColdPhase/flux/issues/1546)).
-  <!-- pending #1546 (PR #1597) -->
+  one, so Back leaves the space and returns to where you came from (Spaces, Home, Inbox) instead of walking back through its tabs, on the
+  phone and the computer ([#1547](https://github.com/ColdPhase/flux/issues/1547)).
+- **The keyboard comes only when you tap a field.** Choosing a tab of the Create sheet, opening an agent's chat, the map's and the Wiki's
+  pickers and the like no longer put the cursor in a field and open the on-screen keyboard on a touch screen
+  ([#1546](https://github.com/ColdPhase/flux/issues/1546)).
 - **No white strip under the app in dark mode.** The area under the app, around the system's home indicator, is the page's dark background
   (the dark theme links a dark manifest, so the installed app's navigation bar is dark too) ([#1544](https://github.com/ColdPhase/flux/issues/1544)).
-  <!-- pending #1544 (PR #1597) -->
+- **The phone's search fields are one flat pill** ([#1609](https://github.com/ColdPhase/flux/pull/1609)): no shadow, the magnifier inside,
+  a clear × while there is text and Cancel outside as plain text, in Search (which has no title: the field is its header), the Tasks
+  toolbar, the Wiki's Find a page, the map's Find a map and the people and message finders. The computer and the tablet keep their own.
 - **Tasks › Board shows one status at a time** on a phone: a row of the four statuses with their counts under the controls, a tap or a
   swipe moves to the next, and nothing scrolls sideways; the computer and the tablet keep four columns. An empty space shows the List's
   "No tasks yet" on the Board too ([#1560](https://github.com/ColdPhase/flux/issues/1560)).
@@ -171,9 +184,12 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
 ## Map
 
 - **A map looks the same on the phone as on the computer** ([#1553](https://github.com/ColdPhase/flux/issues/1553), C-67). The phone shows
-  the computer's plane, each thought where it was arranged, instead of its own column layout. One finger pans, two pinch to zoom, a double
-  tap on empty space zooms in, a tap selects, and where a screen arranges thoughts (a tablet; the phone does not) a thought moves on touch only
-  after a 400 ms press, so a pan never moves one. The view (zoom, place, selection) is remembered for each person and map on the device, and
+  the computer's plane, each thought where it was arranged, instead of its own column layout. One finger pans, two pinch to zoom (the phone
+  has no zoom buttons), a double tap on empty space zooms in and a tap selects. **You arrange by finger**
+  ([#1600](https://github.com/ColdPhase/flux/issues/1600), [#1607](https://github.com/ColdPhase/flux/pull/1607)): a thought moves after a
+  400 ms press and a drag, so a pan never moves one; a drag from a selected thought's dot links it to another thought or, onto empty space,
+  makes a new connected thought that takes typing; a drag within 40 px of the map's edge pans the map; and a thought moved on the phone
+  stands in the same place on the computer. The view (zoom, place, selection) is remembered for each person and map on the device, and
   Fit frames a map only the first time or when you press it; a remembered view with no thought left in it opens framed. A link to a thought
   centres that thought. The thought card's "From Ada (you) · 10:48" shortens only the name, so "(you)" and the time stay whole at 360 px.
 - **A new thought from a connection dot always takes typing.** The dashed frame sometimes appeared and took no typing until the dot was
@@ -229,10 +245,14 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
 - **Files in a direct message are found by the people in it** ([#1590](https://github.com/ColdPhase/flux/issues/1590), C-64). A file follows
   its message: its name and its text (a PDF's or a document's and, with `FLUX_FILE_OCR=on`, a picture's or a scan's) are found by ⌘K and the
   search API, **only by people who can read that conversation now**: a group conversation's members, and nobody else in the company; a person
-  removed from it or from the company loses the results with it. An agent finds and reads such a file only in a run in that conversation
+  removed from it or from the company loses the results with it. An agent finds, reads and (when its model sees pictures) looks at such a file only in a run in that conversation
   (`/ai` there or in its thread), exactly as it reads the conversation's messages, with the "used AI here" line as always, and never in a
   run in a space or for a local Claude Code or Codex. Never an encrypted space's files. The files already sent in v0.2.1's direct messages
-  are read in the background after the upgrade (migration `0109`, above). <!-- pending #1590 (PR #1596) -->
+  are read in the background after the upgrade (migration `0109`, above).
+- **Two small fixes on the file screens** ([#1601](https://github.com/ColdPhase/flux/pull/1601)). The viewer's Close, in the file preview
+  and the photo viewer, is a quiet icon button (no fill at rest, 44 px) instead of a filled grey circle. A picture the server could not read
+  says "Can't be read" and every other refusal "Can't be sent", and the limits line under a draft names the pictures' 5 MB when the
+  operator's file cap is above it; before, a 14.9 MB picture said "Can't be read" beside a line that said pictures can be 5 MB.
 
 ## AI agents
 
@@ -258,9 +278,22 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
   turns web search off for every key.
 - **Your agent can search your direct messages from its private chat** ([#1591](https://github.com/ColdPhase/flux/issues/1591)). Asked there
   ("find the invoice Marek sent me"), it searches and reads your direct messages and their files (with OCR's text), and only there: never
-  in a run in a space, nor in a schedule or a task whose answer others see. Each conversation it reads from the private chat shows the line
+  in a run in a space, nor in a schedule or a task whose answer others see, and nothing in a conversation that has AI off. Each conversation it reads from the private chat shows the line
   "Hubert used AI here (Claude)" once per run to everyone in it, so the others learn that their messages reached that AI company.
-  <!-- pending #1591 -->
+- **An agent can ask another by the name Flux shows it.** An ask that names "Asystent (Dariusz's agent)", as the agent is listed, reaches
+  that owner's agent; before, Flux answered that it was not in the task. A model that filled an optional plan intent with a zero id and
+  repeated the refused call up to 30 times (seen on a local Qwen3.8-27B) is now told when a plan intent belongs, so it leaves it out of an
+  ordinary task ([#1603](https://github.com/ColdPhase/flux/pull/1603)).
+- **A local llama.cpp model is chosen by the id it names** ([#1593](https://github.com/ColdPhase/flux/issues/1593)). A server started
+  without `--alias` names its model by the file it loaded (`/models/Qwen3.8-27B-UD-Q4_K_XL.gguf`), which is the id its model list gives; an
+  id may now begin with `/` (migration `0111`), and a list that was read but holds no usable model says so instead of "could not be read".
+  **A key the endpoint refuses says so** ([#1594](https://github.com/ColdPhase/flux/issues/1594)): "This key was refused by the endpoint.
+  Check it and try again." in Connect AI and when an agent is put on another model, with the key kept in its field; before, a refused key
+  read "This model can't use tools". Connect, in the API key step, stays disabled until a key is typed, for every provider
+  ([#1601](https://github.com/ColdPhase/flux/pull/1601)). **For a local model:** Flux refuses private addresses unless the operator
+  allows them with `FLUX_AI_PRIVATE_TARGETS` (host names, addresses or ranges, e.g. `FLUX_AI_PRIVATE_TARGETS=10.0.0.0/8`;
+  [configuration](https://github.com/ColdPhase/flux/blob/main/docs/operations/configuration.md#flux_ai_private_targets)), and the model
+  server must listen where Flux's containers reach it: a server bound only to the host's `127.0.0.1` is out of their reach.
 
 ## Messages, Inbox and spaces
 
@@ -269,7 +302,7 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
 - **Saved sources are Wiki pages** ([#1508](https://github.com/ColdPhase/flux/issues/1508), C-71). Each is a page of its space's Wiki like
   any other, in the page list, searched, exported as a page and edited in place, and it keeps the link it was saved with ("Open source link"
   under its text). Your v0.2.1 sources move over on upgrade with every version, citation and search entry (migration `0107`, above); the old
-  saved-source API routes are gone. <!-- pending #1508 -->
+  saved-source API routes are gone.
 - **An Inbox Reply says what you asked** above the answer, and a discussed decision says "Discussion · N replies"
   ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
 - **Spaces rows say what was said last**: each space shows its newest message and when, as a conversation in Messages does ("Maja: Sent a
@@ -280,12 +313,11 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
   no agent of anyone reads the conversation (not from a private chat, not through search, retrieval, `flux_read_file`, summaries or a local
   Claude Code or Codex over MCP), and its files' text goes to no model. People's own search, file text and OCR included, still works. The
   header says "AI off · turned off by Marek" and a line in the conversation records each change. After the upgrade no conversation has AI
-  off (migration `0110`, above). <!-- pending #1591 -->
+  off (migration `0110`, above).
 - **A space or a conversation with AI off keeps its meaning search.** Local embeddings (`FLUX_EMBEDDINGS=on`, bge-m3 on your own server)
   are an index like the word search, not an AI company, so a place with AI off is embedded like any other and people's search there stays
   hybrid; the agents are kept out by the access check of each search, not by missing vectors. In v0.2.1 a space with AI off had none. With
   embeddings on, the worker embeds those spaces in the background after the upgrade (founder decision, 2026-11-20; C-73).
-  <!-- pending #1591 -->
 - **Small fixes**: at 200 % the "Task #12 created" notice takes two lines instead of three; offline, a conversation no longer adds "Linked
   work could not be loaded" to the composer's own offline line; the Spaces page's empty states are the one centred empty state
   ([#1563](https://github.com/ColdPhase/flux/issues/1563)).
@@ -300,12 +332,23 @@ commands that restore them ([when it fails](https://coldphase.github.io/flux/ope
   no long-running service can swap (`FLUX_LIVEKIT_MEMORY`, `FLUX_LIVEKIT_CPUS`: [above](#new-settings-and-their-defaults)).
 - **`./flux` works with quoted values** in `docker/.env` ([#1541](https://github.com/ColdPhase/flux/issues/1541)), **with split-horizon DNS**
   (`FLUX_CALLS_PUBLIC_IP`) and **on a kernel without active Landlock** (a clear line and the fix): [above](#upgrading-from-v021).
+- **A source build works on a host with SELinux** ([#1606](https://github.com/ColdPhase/flux/pull/1606)). An image built from a checkout in
+  a home directory took the checkout's SELinux labels, and the file reader's `sandbox.node` and the runtime's `node-pty` then failed to
+  load ("RELRO protection failed"): the reader failed closed and no file was read. Both are now built apart from the checkout's labels. An
+  installation from the release downloads its images and builds nothing.
 - **Upgrades are proved on real data** ([#1552](https://github.com/ColdPhase/flux/issues/1552), C-68). Every pull request that changes the
   database now proves that every released database upgrades to a schema equal to a fresh install's and keeps its data (messages, tasks,
   decisions, files, people, agents and Wiki versions), and that nothing in the schema is unused; the release does the same on its real
   upgrade, from a v0.2.1 installation seeded through its API. A sequence left behind by an earlier redesign and two unused search kinds are
   removed (`0106`). **`./flux upgrade --check`**, which shows the plan, is in the v0.2.2 launcher: it works for the upgrades after this
-  one, not from a v0.2.1 folder ([above](#upgrading-from-v021)).
+  one, not from a v0.2.1 folder ([above](#upgrading-from-v021)). Every release also proves that each feature **works on the data the
+  previous release wrote**, not only that it reads back ([#1604](https://github.com/ColdPhase/flux/pull/1604)): old messages are replied to,
+  edited and deleted, old files download byte for byte and are found by search (with OCR for old scans), old tasks move through their
+  statuses, old decisions are accepted, old Inbox items are resolved and an old schedule fires; a pull request that adds a migration runs
+  it against the newest release, and `scripts/check_backup_upgrade.sh` runs the read-only part on a copy of a real installation.
+- **The real-model AI check also runs agents on an API key** ([#1603](https://github.com/ColdPhase/flux/pull/1603)): two people save an
+  OpenAI-compatible key at an allowed private address and their agents (pi) run through Flux's model gateway on a local Qwen3.8-27B, with
+  thoughts and links added to a map someone has open.
 - **The live connection refused once in WebKit is explained** ([#1313](https://github.com/ColdPhase/flux/issues/1313), a known issue of
   v0.2.1). A WebKit browser whose network process restarts comes back with an empty cookie jar, so that page sends no session cookie at
   all, every upgrade of its stream is refused at once and the test's own calls keep working; reproduced on 2026-11-20. A real Safari keeps
@@ -356,7 +399,7 @@ installation upgrades instead ([above](#upgrading-from-v021)).
 
 ## Known issues
 
-- **Havana's time is still an hour off in two places** ([#1338](https://github.com/ColdPhase/flux/issues/1338)). Quiet hours and the day of
+- **Havana's time is still an hour off in two places** ([#1338](https://github.com/ColdPhase/flux/issues/1338), planned for v0.2.3). Quiet hours and the day of
   "last active" are an hour off for people in `America/Havana`: Node.js has time-zone data 2026e and Cuba's winter time is in 2026f.
   Re-checked 2026-11-20: `node:24-alpine` is 24.22.3 with 2026e, and nodejs.org lists no newer 24.x. PostgreSQL has 2026f. Other time
   zones are unaffected.
@@ -373,8 +416,10 @@ installation upgrades instead ([above](#upgrading-from-v021)).
   OCR (off by default) reads Polish and English printed text only; handwriting is not read.
 - **Upgrade time was measured on a small installation only.** The upgrade of a copy of a real v0.2.1 installation took about 40 s; it was not
   measured on a large database, where the backup dominates (`./flux upgrade --check` of the next upgrade prints a rough time for it).
-  The migrations of this release are short statements, except that `0103` (and `0109`) queue files that the worker then reads in the
-  background.
+  The migrations took 15 s on a synthetic dataset of 400,000 messages, 70,000 files and a million events, and `0103` and `0109` queue
+  files that the worker then reads in the background.
+- **A model on an OpenAI-compatible endpoint is treated as not seeing pictures**, whatever the model can do, so it is not shown a picture
+  or the pages of a scanned PDF (it is told a PDF with no text cannot be read).
 - **An endpoint of your own has no web search**, and its agent says so; every agent can still open a public web page. Gemini's search
   follows Google's Gemini API terms, which are the key owner's to follow, and Flux shows no Google Search Suggestions.
 - **Calls and screen sharing** need public media ports and a public IPv4 address; behind split-horizon DNS or a proxy on another machine
