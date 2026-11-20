@@ -147,8 +147,9 @@ dc() { # project, environment file, assets directory, then Compose arguments
   if agents_on "$env_file"; then files+=(-f "$provider_overlay"); fi
   if [ -n "$inject_overlay" ] && [ "$dir" = "$assets" ]; then files+=(-f "$inject_overlay"); fi
   # The candidate with agents runs its agent runtime with pi, as `./flux up` does (FLUX_AGENT_RUNTIME=pi, the `runtime` profile, the
-  # archive's compose.runtime.yaml); the previous release, which ran its agents in the worker, is not given it.
-  if agents_on "$env_file" && [ "$dir" = "$assets" ]; then
+  # archive's compose.runtime.yaml), and so does a previous release from v0.2.1 on, whose agents run only there (#1441, "Connect AI first"
+  # otherwise); a release before it, which ran its agents in the worker and has no runtime file, is not given it.
+  if agents_on "$env_file" && { [ "$dir" = "$assets" ] || [ -f "$(runtime_file "$dir")" ]; }; then
     files+=(-f "$(runtime_file "$dir")"); profiles=(--profile runtime)
     runtime_env=("FLUX_AGENT_RUNTIME=pi" "FLUX_RUNTIME_MANAGER_SECRET=$runtime_manager_secret" "FLUX_RUNTIME_SECRET_1=$runtime_slot_secret")
   fi

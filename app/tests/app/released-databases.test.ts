@@ -177,10 +177,12 @@ describe('the migrator on a database dumped from each release (#1241)', () => {
       });
     });
 
-    test(`${tag}: an agent or local app left on "Only read" is Ask me first after the upgrade, and "Only read" can no longer be stored (#1419)`, async () => {
+    test(`${tag}: an agent or local app left on "Only read" is Ask me first after the upgrade, and "Only read" can no longer be stored (#1419)`, async (t) => {
       await withReleasedDatabase(release, async (url) => {
         const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 120_000, max: 1 });
         try {
+          // A release from v0.2.1 on already holds 0073: its own CHECK refuses 'read', so it has nothing to convert.
+          if ((await readAppliedMigrationVersions(pool)).includes(73)) { t.skip(`${tag} already has migration 0073`); return; }
           // The release's own CHECK still allows 'read': one connection is left on it, one on each other value, as a v0.2 instance can hold them.
           const rows = (await pool.query('SELECT id FROM agent_connections ORDER BY id')).rows as { id: string }[];
           assert.ok(rows.length >= 2, `the dump of ${tag} holds agent connections`);
