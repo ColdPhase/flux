@@ -149,6 +149,8 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 .tb-status.ui-tabs--seg .ui-tabs__bar { --seg-pad: 4px; width: 100%; max-width: none; }
 .tb-status.ui-tabs--seg .ui-tabs__tab { flex-direction: column; gap: 1px; min-height: 48px; padding-block: 4px; }
 .tb-status .ui-tabs__meta { gap: 5px; }
+/* A phone on its side (up to 480 px high) has no room to spare for a row that stays: it scrolls away with the column, and the control row above keeps its place. */
+@media (max-height: 480px) { .ui-tabs.tb-status { position: static; } }
 .tb-board.tb-board--one { display: block; position: relative; overflow: visible; padding-top: 4px; mask-image: none; }
 .tb-board--one .tb-col[hidden] { display: none; }
 /* The status row is the column's header. */
@@ -164,7 +166,7 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 /* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc". */
 @media (max-width: 359px) {
   .tb-bar { gap: 6px; }
-  .tb-mode .seg__b { min-width: 2.75rem; padding: 0 9px; }
+  .tb-mode .seg__b { min-width: 3.5rem; padding: 0 9px; }
   .tb-bar .tb-mine { padding-inline: 9px; }
   .tb-search { gap: 4px; }
 }

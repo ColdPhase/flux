@@ -387,7 +387,7 @@ underline tabs, #1239.) A selected state never rests on a 1.1:1 difference
   and no text is smaller**: a control never shrinks its labels to fit, and it never scrolls its row. The track's inset is 3 px, and the options are
   the same height inside it on every screen: 26 px with a mouse (a 32 px track, the toolbar's height) and 44 px on touch (a 50 px track), at `--fs-sm`.
   An option has 14 px of room each side (18 px on touch), so the pill is a pill and never a circle; a space-tight place may set `--seg-pad`
-  (the Create sheet 3 px, a 320 px phone's Board | List 9 px), and no screen styles a segmented control otherwise. The controls drawn as radio groups
+  (the Create sheet 3 px, a 320 px phone's Board | List 9 px with options at least 56 px wide), and no screen styles a segmented control otherwise. The controls drawn as radio groups
   (`.seg`) and the ones drawn as tabs (`.ui-tabs--seg`) share **one set of rules** in `ui/ui.css`, so they cannot drift apart.
   `tests/ui/test_switches_visible.py` measures every segmented control on the computer (1440) and on the phone with touch (390, 320): equal widths
   (±1 px) wherever the labels fit at equal widths, no option narrower than its label, the same pill size whichever option is selected, the pill
@@ -1954,7 +1954,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **On the phone (up to 640 px) the Board shows one status at a time** (founder direction, Hubert, 2026-11-20, [#1560](https://github.com/ColdPhase/flux/issues/1560), C-66;
   it replaces #868's four columns run on sideways). Under the control row is the **status row**: the four statuses as one segmented control of equal
   options, each with its glyph and its count, "To do ○ 3 · Doing ◐ 1 · Blocked ■ 0 · Done ● 5" (the word above, the glyph and the count under it, so four
-  fit a 320 px phone), always in view: it stays at the top while the column scrolls. The chosen status's column fills the width below it; a tap on
+  fit a 320 px phone), always in view: it stays at the top while the column scrolls (on a phone on its side, up to 480 px high, it scrolls away with the column). The chosen status's column fills the width below it; a tap on
   another status, or a swipe sideways on the column, moves to it, and the row follows. It opens on To do. The Board never scrolls sideways, at page
   level or inside, down to 320 px, and the counts need no scrolling to be seen. The status row is the column's header, so the column has no second one.
   A card changes state as it does on a phone today, in its panel (Status): cards have no ⋯ (above). Computer and tablet keep the four columns, with
