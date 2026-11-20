@@ -37,6 +37,12 @@ try {
         applied = after;
       } catch (error) {
         await client.query('ROLLBACK');
+        // C-68 (4): a migration waits a few seconds at most for a table's lock (`SET LOCAL lock_timeout`, 55P03 when it gives up). API and
+        // worker are stopped while it runs, so another connection holds the lock: the operator is told which file and what to close.
+        const lock = (error as { code?: unknown }).code === '55P03';
+        console.error(`Migration ${file.name} failed and was rolled back; the migrations before it stay applied.${lock
+          ? ' It gave up waiting for a lock that another connection to the database holds (an open psql session, for example): close that connection and retry.'
+          : ''}`);
         throw error;
       }
       console.log(`Applied migration ${file.name}`);
