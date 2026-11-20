@@ -129,8 +129,10 @@ interface Drag {
   sx: number;
   sy: number;
   moved: boolean;
-  /** Selection-only pointer clicks own no live lease. */
+  /** Selection-only pointer clicks own no live lease, and neither does a connection drawn from a dot (it moves no thought). */
   started: boolean;
+  /** Refused or ended while the pointer is still down: the rest of the press does nothing, and its release is no click. */
+  ended?: boolean;
   scrollLeft?: number;
   scrollTop?: number;
   base: Thought[];
@@ -292,7 +294,7 @@ export function SketchMap(props: SketchMapProps) {
   }, []);
   useEffect(() => {
     if (!props.liveEnabled || props.ownGesture || !drag.current?.started || drag.current.kind === 'pan') return;
-    props.onGestureCancel(); drag.current = null; setOffset(null); setSize(null);
+    props.onGestureCancel(); drag.current.started = false; drag.current.ended = true; setOffset(null); setSize(null);
   }, [props.liveEnabled, props.ownGesture, props.onGestureCancel]);
 
   // Measure rendered heights so links attach to the real edges of each thought.
@@ -891,16 +893,18 @@ export function SketchMap(props: SketchMapProps) {
     }
     if (tap.current?.pointerId === event.pointerId && Math.hypot(event.clientX - tap.current.x, event.clientY - tap.current.y) > PRESS_SLOP) tap.current = null;
     const d = drag.current;
-    if (!d || d.pointerId !== event.pointerId) return;
+    if (!d || d.pointerId !== event.pointerId || d.ended) return;
     const dx = (event.clientX - d.sx) / zoom;
     const dy = (event.clientY - d.sy) / zoom;
     if (!d.moved && Math.hypot(event.clientX - d.sx, event.clientY - d.sy) < 4) return;
     if (!d.moved) {
       // Keep the same trusted-input threshold as local movement. A Shift-click
       // changes selection without allocating a lease or racing a late cancellation
-      // against the next selected group's actual drag.
-      if (d.kind !== 'pan') {
-        if (!props.onGestureStart(d.ids)) { drag.current = null; return; }
+      // against the next selected group's actual drag. Only a drag that moves or resizes thoughts takes the lease: a connection drawn
+      // from a dot moves none, and its lease was never finished, so the next drag of that thought was refused (#1588).
+      if (d.kind === 'move' || d.kind === 'resize') {
+        // A refused start keeps the press until its release, which then is no click (on a dot that click started connect mode).
+        if (!props.onGestureStart(d.ids)) { d.ended = true; return; }
         d.started = true;
       }
       d.moved = true;
@@ -950,9 +954,10 @@ export function SketchMap(props: SketchMapProps) {
       if (!d.moved) props.onClear();
       return;
     }
-    if (!d.moved) return;
+    if (!d.moved && !d.ended) return;
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
+    if (d.ended) { setOffset(null); setSize(null); return; }
     // The release saves what the last movement computed (the drag's own record), not the state of the last render.
     const { offset, size } = d;
     if (d.kind === 'link') {

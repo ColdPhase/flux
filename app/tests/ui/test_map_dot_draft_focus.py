@@ -165,6 +165,32 @@ class MapDotDraftFocus(unittest.TestCase):
             self.cancel(page)
         self.assertEqual(misses, [], 'the new thought took what was typed although the press ended by moving the focus to the map')
 
+    def test_05_a_connection_drawn_from_a_dot_holds_no_movement_lease(self):
+        """#1588: a drag from a dot moves no thought, so it asks for no live movement lease. It used to take one and never give it back:
+        the next drag of that thought was refused ("Another collaborator is moving a selected thought") and its release became a click
+        on the dot, which started connect mode instead of making a new thought."""
+        page = self.scene()
+        leases = []
+        page.on('request', lambda request: leases.append(request.url) if request.method == 'POST' and request.url.endswith('/live/gestures') else None)
+        for index in range(6):
+            self.press_dot(page, B, hold_ms=(0, 60)[index % 2], steps=(1, 8)[index % 2])
+            seen = self.typed_at_once(page)
+            self.assertIs(seen, True, f'drop {index} made a new thought that took typing: {seen}')
+            self.cancel(page)
+        self.assertEqual(leases, [], 'no movement lease for a connection drawn from a dot')
+        # The thought the connections came from moves at once: nothing holds it.
+        node = page.locator('.sk-node', has_text=B)
+        before = node.bounding_box()
+        node.hover()
+        page.mouse.down()
+        page.mouse.move(before['x'] + before['width'] / 2 + 60, before['y'] + before['height'] / 2 + 80, steps=8)
+        page.mouse.up()
+        expect(page.locator('.sk-canvas.is-connecting')).to_have_count(0)
+        page.wait_for_function("([id, top]) => document.querySelector(`.sk-node[data-id=\"${id}\"]`).getBoundingClientRect().top > top + 40",
+                               arg=[node.get_attribute('data-id'), before['y']])
+        expect(page.get_by_text('Another collaborator is moving', exact=False)).to_have_count(0)
+        self.assertEqual(len(leases), 1, 'the move took one lease')
+
 
 if __name__ == '__main__':
     unittest.main()
