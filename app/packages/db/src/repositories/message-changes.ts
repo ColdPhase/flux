@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openRows, sealFor } from '../sealing.js';
+import { forgetPin } from './message-pins.js';
 
 /**
  * What a person's Edit and Delete of their own message do to the rows (#1006). Persistence only: the use cases decide who may, with the
@@ -10,7 +11,7 @@ import { openRows, sealFor } from '../sealing.js';
  *
  * An edit overwrites the words and stamps `edited_at`; the earlier words are not kept. A delete replaces the words with a fixed marker and
  * stamps `removed_at`; the row keeps its id, place and sequence so replies, threads and links still make sense, and everything that carried
- * the words leaves with them: the message's own citations, its files, the notices that quoted it and (the migration's trigger) its search
+ * the words leaves with them: the message's own citations, its pin (C-74), its files, the notices that quoted it and (the migration's trigger) its search
  * row. Both seal what they write, so an encrypted workspace's rows stay envelopes (the marker too) and a locked one refuses (423).
  *
  * "Ada · via Assistant" names the agent that wrote the words, so a message whose words are no longer those ends the mark: an edit and a
@@ -76,6 +77,8 @@ export function messageChangeRows(db: DbExecutor) {
     /** Takes the message back to its marker and everything that carried its words with it. Returns the new `removed_at`. */
     async removeProject(message: Pick<LockedProjectMessage, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'sequence'>): Promise<Date> {
       await db.delete(r).where(eq(r.projectMessageId, message.id));
+      // A deleted message leaves its conversation's pinned list (C-74).
+      await forgetPin(db, { kind: 'project', id: message.id });
       const files = await db.delete(f).where(eq(f.messageId, message.id)).returning({ id: f.id });
       if (files.length) await db.insert(schema.fileGarbage).values(files.map(({ id }) => ({ id }))).onConflictDoNothing();
       const sealed = await sealFor(db, 'project_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
@@ -103,6 +106,7 @@ export function messageChangeRows(db: DbExecutor) {
 
     async removeDm(message: { id: string; workspaceId: string; dmId: string; authorId: string }): Promise<Date> {
       await db.delete(r).where(eq(r.dmMessageId, message.id));
+      await forgetPin(db, { kind: 'dm', id: message.id });
       // Its files leave with it, as a space message's do (C-48): the rows now, the bytes by the cleanup of `file_garbage`.
       const files = await db.delete(f).where(eq(f.dmMessageId, message.id)).returning({ id: f.id });
       if (files.length) await db.insert(schema.fileGarbage).values(files.map(({ id }) => ({ id }))).onConflictDoNothing();

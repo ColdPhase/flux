@@ -268,7 +268,7 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     // Inside a run in the direct message.
     const started = await scene.runs.invoke(human(scene.owner), { kind: 'dm', dmId, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Catch me up' });
     const inDm = await scene.liveOf(started.run.id);
-    assert.deepEqual(inDm.tools.slice().sort(), ['flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image'], 'a run in a direct message is minted the tool');
+    assert.deepEqual(inDm.tools.slice().sort(), ['flux_list_pinned', 'flux_read_around', 'flux_read_file', 'flux_read_web', 'flux_search', 'flux_summarize', 'flux_view_image'], 'a run in a direct message is minted the tool');
     const answer = await summarize(inDm, { after: '2026-11-06' });
     assert.deepEqual([answer.place.type, answer.place.id], ['dm', dmId]);
     assert.deepEqual(lines(answer), ['## 2026-11-06', '07:00 Ada Nowak: Can you send me the invoice?', '07:05 Jonas Berg: Sure, tonight.']);

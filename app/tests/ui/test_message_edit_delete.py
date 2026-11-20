@@ -27,10 +27,10 @@ PEOPLE = {
     "kai": ("Kai Tanaka", f"kai.ed+{STAMP}@example.test"),
     "lee": ("Lee Moreno", f"lee.ed+{STAMP}@example.test"),
 }
-OWN_MENU = ["Add to map", "Copy link", "Copy text", "Edit", "Delete"]
-OTHER_MENU = ["Add to map", "Copy link", "Copy text"]
-PHONE_OWN = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Edit", "Delete"]
-PHONE_OTHER = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"]
+OWN_MENU = ["Add to map", "Copy link", "Copy text", "Pin", "Edit", "Delete"]
+OTHER_MENU = ["Add to map", "Copy link", "Copy text", "Pin"]
+PHONE_OWN = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Pin", "Edit", "Delete"]
+PHONE_OTHER = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Pin"]
 
 
 def words(label: str) -> str:
@@ -138,7 +138,7 @@ class MessageEditDelete(unittest.TestCase):
         # One line divides Add to map, Copy link and Copy text from Edit and Delete.
         expect(menu.get_by_role("separator")).to_have_count(1)
         order = menu.evaluate("el => [...el.children].map((child) => child.getAttribute('role') === 'separator' ? '---' : child.textContent.trim())")
-        self.assertEqual(order, ["Add to map", "Copy link", "Copy text", "---", "Edit", "Delete"])
+        self.assertEqual(order, ["Add to map", "Copy link", "Copy text", "Pin", "---", "Edit", "Delete"])
         shot(page, "edit-delete-menu-desktop")
         page.keyboard.press("Escape")
         self.assertEqual(self.menu_of(page, page.locator(f"#message-{theirs['id']}")), OTHER_MENU, "someone else's message has neither")

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ProjectPerson } from '@flux/contracts';
+import type { PinPlace, ProjectPerson } from '@flux/contracts';
 import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
@@ -48,6 +48,7 @@ import { DmUnreadProvider } from '../dm/dmUnread';
 import { aiOffLine } from '../dm/names';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
+import { PinsScope, usePinList } from '../pins/pins';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
 import { isTyping, stopAwaitingField, watchConversationLinks, watchLostFocus, windowOrMenuOpen } from '../ui/keys';
 
@@ -867,6 +868,14 @@ function AppLayoutContent() {
   const spaceMute = useMuteRow('project', activeProject?.id);
   const dmMute = useMuteRow('dm', activeDm?.id);
   const placeMute = spaceMute ?? dmMute;
+  // The pinned messages of the place shown (C-74, #1615): one list for the header's count, the messages' lines, the ⋯ menus and the panel. A 1:1
+  // whose other person left takes no new messages, so its list is read only.
+  const pinPlace = useMemo<PinPlace | null>(() => activeProject ? { type: 'project', id: activeProject.id } : activeDm ? { type: 'dm', id: activeDm.id }
+    : activeAgent ? { type: 'agent', id: activeAgent.id } : null, [activeProject?.id, activeDm?.id, activeAgent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pins = usePinList(pinPlace, me.user.id, !activeDm || activeDm.kind !== 'pair' || activeDm.participantIds.length >= 2);
+  const pinCount = pins.items?.length ?? 0;
+  const openPins = () => shell.openDetails({ kind: 'pins' });
+  const pinsOpen = typeof detailsView === 'object' && detailsView.kind === 'pins' && detailsOpen;
   const matches = useMatches();
   const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
   // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
@@ -950,7 +959,7 @@ function AppLayoutContent() {
     : activeProject && projectViews ? { items: projectViews, label: 'Space views', inactive: false }
       : lockedHere ? { items: LOCKED_VIEWS, label: 'Space views', inactive: true }
       : null;
-  const heading = panelHeading(detailsView);
+  const heading = typeof detailsView === 'object' && detailsView.kind === 'pins' ? { title: `Pinned · ${pinCount}`, close: 'Close pinned messages' } : panelHeading(detailsView);
   // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
   // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
   const offersBulkRead = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects';
@@ -960,6 +969,8 @@ function AppLayoutContent() {
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row. The people go first,
     // where the name would otherwise be cut under its 220 px slot (#1375).
     ...(project?.people ? [{ label: 'People', icon: 'people' as const, run: openAudience, narrow: 'people' as const }] : []),
+    // The header's pin button moves here with the people (C-74).
+    ...(activeProject && pinCount ? [{ label: 'Pinned', icon: 'pin' as const, run: openPins, narrow: 'people' as const, count: pinCount }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', icon: 'gear' as const, run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...(placeMute ? [{ label: placeMute.label, icon: placeMute.icon, hint: placeMute.hint, run: placeMute.run }] : []),
@@ -1012,8 +1023,11 @@ function AppLayoutContent() {
   };
   // The phone's More holds the space's Search and Call (Join, while a call is live, which the header also shows from 360 px wide), its Settings
   // and Mute: a space has no panel of its own (#873, #1239, #1419).
+  // Pinned N is the second row, after Search, while something is pinned (C-74).
+  const pinnedRow: MoreItem[] = pinCount ? [{ label: 'Pinned', icon: 'pin', run: openPins, count: pinCount }] : [];
   const phoneMoreItems: MoreItem[] = projectId ? [
     { label: 'Search', icon: 'search', run: shell.openSearch },
+    ...pinnedRow,
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     { label: 'Settings', icon: 'gear', run: () => void navigate(`/projects/${projectId}/settings`) },
     ...(spaceMute ? [{ label: spaceMute.label, icon: spaceMute.icon, hint: spaceMute.hint, run: spaceMute.run }] : []),
@@ -1021,6 +1035,7 @@ function AppLayoutContent() {
   // A direct message's More holds what a space's does that applies to it: Search first, Mute and People and privacy (#1374). It has no calls (#1419).
   const phoneDmItems: MoreItem[] = activeDm ? [
     { label: 'Search', icon: 'search', run: shell.openSearch },
+    ...pinnedRow,
     ...(dmMute ? [{ label: dmMute.label, icon: dmMute.icon, hint: dmMute.hint, run: dmMute.run }] : []),
     { label: 'People and privacy', icon: 'people', run: () => shell.openDetails('place') },
   ] : [];
@@ -1076,7 +1091,7 @@ function AppLayoutContent() {
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
-        {activeAgent ? <MoreMenu items={[{ label: 'Settings', icon: 'gear', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
+        {activeAgent ? <MoreMenu items={[...pinnedRow, { label: 'Settings', icon: 'gear', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
         {!backOnly && !activeProject && !activeDm && !activeAgent && !lockedHere && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} replace /> : null}
@@ -1086,6 +1101,7 @@ function AppLayoutContent() {
 
   return (
     <ShellContext.Provider value={shell}>
+    <PinsScope value={pins}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
     <OwnWorkingAgentsProvider>
@@ -1130,6 +1146,9 @@ function AppLayoutContent() {
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
+            {/* The pinned messages (C-74): a fixed slot before the faces, empty while nothing is pinned, so nothing moves. */}
+            {pinPlace ? <span className="top__pins-slot">{pinCount ? <button type="button" className="top__pins" aria-label={`Pinned messages, ${pinCount}`} data-tip="Pinned messages"
+              aria-expanded={pinsOpen} onClick={() => (pinsOpen ? closePanel() : openPins())}><Icon name="pin" size={16} />{pinCount}</button> : null}</span> : null}
             {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} projectId={projectId} onOpen={openAudience} />
               : lockedHere && lockedPeople ? <HeaderFaces people={lockedPeople} meId={me.user.id} audience={audienceLine(lockedPeople, me.user.id)} onOpen={() => shell.openDetails({ kind: 'people', workspaceId: lockedSpace.id })} /> : null}
             {activeProject ? <LiveEntry /> : null}
@@ -1176,6 +1195,7 @@ function AppLayoutContent() {
     </div>
     </OwnWorkingAgentsProvider>
     </LiveProvider>
+    </PinsScope>
     </ShellContext.Provider>
   );
 }

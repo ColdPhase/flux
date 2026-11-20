@@ -138,4 +138,6 @@ export interface SearchPorts<C> {
   /** Absent when the deployment cannot open encrypted workspaces (nothing then to merge). */
   sealed?: SealedSearchRepository<C>;
   cursors: SearchCursors;
+  /** C-74 (#1615): which of a page's messages are pinned in their conversation. Absent, no row is marked. */
+  pins?: { pinnedAmong(messageIds: readonly string[]): Promise<Set<string>> };
 }

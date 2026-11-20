@@ -1946,6 +1946,40 @@ export const agentChatMessages = pgTable('agent_chat_messages', {
 }, (table) => [unique().on(table.agentId, table.key)]);
 
 /**
+ * 0112 (C-74, #1615): a pinned message. The conversation is one of a space, a direct message or a person's chat with their own agent, and
+ * the message one of its own (in an agent's chat a run's request or answer, or one of the agent's lines). Pinned at most once; the row goes
+ * with the conversation, the message, the run and the person who pinned it. Never the words.
+ */
+export const messagePins = pgTable('message_pins', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  dmId: uuid('dm_id').references(() => dms.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
+  projectMessageId: uuid('project_message_id').references(() => projectMessages.id, { onDelete: 'cascade' }),
+  dmMessageId: uuid('dm_message_id').references(() => dmMessages.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  runPart: text('run_part', { enum: ['prompt', 'answer'] }),
+  agentChatMessageId: uuid('agent_chat_message_id').references(() => agentChatMessages.id, { onDelete: 'cascade' }),
+  pinnedBy: text('pinned_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('message_pins_project_message_idx').on(table.projectMessageId).where(sql`${table.projectMessageId} IS NOT NULL`),
+  uniqueIndex('message_pins_dm_message_idx').on(table.dmMessageId).where(sql`${table.dmMessageId} IS NOT NULL`),
+  uniqueIndex('message_pins_run_idx').on(table.runId, table.runPart).where(sql`${table.runId} IS NOT NULL`),
+  uniqueIndex('message_pins_agent_chat_message_idx').on(table.agentChatMessageId).where(sql`${table.agentChatMessageId} IS NOT NULL`),
+  index('message_pins_project_idx').on(table.projectId, table.pinnedAt.desc()).where(sql`${table.projectId} IS NOT NULL`),
+  index('message_pins_dm_idx').on(table.dmId, table.pinnedAt.desc()).where(sql`${table.dmId} IS NOT NULL`),
+  index('message_pins_agent_idx').on(table.agentId, table.pinnedAt.desc()).where(sql`${table.agentId} IS NOT NULL`),
+  index('message_pins_pinned_by_idx').on(table.pinnedBy),
+  check('message_pins_one_place', sql`num_nonnulls(${table.projectId}, ${table.dmId}, ${table.agentId}) = 1`),
+  check('message_pins_one_message', sql`num_nonnulls(${table.projectMessageId}, ${table.dmMessageId}, ${table.runId}, ${table.agentChatMessageId}) = 1`),
+  check('message_pins_message_of_place', sql`(${table.projectId} IS NULL) = (${table.projectMessageId} IS NULL) AND (${table.dmId} IS NULL) = (${table.dmMessageId} IS NULL)
+      AND (${table.agentId} IS NULL) = (${table.runId} IS NULL AND ${table.agentChatMessageId} IS NULL)`),
+  check('message_pins_run_part', sql`(${table.runId} IS NULL) = (${table.runPart} IS NULL) AND (${table.runPart} IS NULL OR ${table.runPart} IN ('prompt', 'answer'))`),
+]);
+
+/**
  * 0066 (#1217, C-59): a picture an agent attached to its answer in its private chat: the run's own, its owner's alone, its bytes in the files
  * volume under `id`. Deleted with its run; the bytes then go to `file_garbage` (a trigger).
  */

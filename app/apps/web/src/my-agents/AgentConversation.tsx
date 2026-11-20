@@ -6,7 +6,9 @@ import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
 import { END_SLACK, NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
-import { AnswerBody, AnswerTools, WritingWords } from '../assistant/ConversationParts';
+import { AnswerBody, AnswerTools, WritingWords, answerWords } from '../assistant/ConversationParts';
+import { MessageActions, useTouchActions, type AgentChatActionOptions } from '../work/messageActions';
+import { PinnedLine } from '../pins/PinnedLine';
 import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion } from '../assistant/liveRun';
 import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
@@ -66,20 +68,28 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
   const writing = working && run.status === 'dispatching' && !!live.text.trim();
   const step = working && run.status === 'dispatching' && !run.stopRequested ? stepWords(live.step) : null;
   const prepared = run.answer ? schedules.jobs?.find((job) => job.preparedRunId === run.id) ?? null : null;
+  // The owner's request and the agent's answer are two messages of the chat, each with Copy text and Pin (C-74, #1615).
+  const asked: AgentChatActionOptions = { kind: 'agent', messageId: run.id, part: 'prompt', body: run.prompt, writable: true };
+  const answered: AgentChatActionOptions | null = run.answer ? { kind: 'agent', messageId: run.id, part: 'answer', body: answerWords(run.answer), writable: true } : null;
+  const askedTouch = useTouchActions(asked);
+  const answeredTouch = useTouchActions(answered);
   return (
     <>
-      <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="" tabIndex={-1}>
+      <li {...askedTouch.props} className={`dm-msg is-mine agc__turn ${askedTouch.props.className}`} data-run-id={run.id} data-chat-me="" tabIndex={-1}>
         {newDay ? <MessageDay as="p" label={day(run.createdAt)} /> : null}
         {/* The files its owner sent with it (#1438 point 10, C-64), as a message's: photos above, file rows in the bubble; no empty words above them. */}
-        <div className="dm-msg__row"><div className="dm-msg__main is-mine">{run.files?.length
+        <div className="dm-msg__row"><div className="dm-msg__main is-mine"><PinnedLine messageId={run.id} part="prompt" />{run.files?.length
           ? <MessageContent files={run.files} body={run.prompt ? <div className="dm-msg__body">{run.prompt}</div> : null} context={{ author: 'You', at: run.createdAt, caption: run.prompt }} />
-          : <MessageBubble><div className="dm-msg__body">{run.prompt}</div></MessageBubble>}</div></div>
+          : <MessageBubble><div className="dm-msg__body">{run.prompt}</div></MessageBubble>}
+          <MessageActions {...asked} />{askedTouch.dots}</div></div>
+        {askedTouch.node}
       </li>
-      <li className="dm-msg agc__turn" data-run-id={run.id} data-chat-agent="" aria-live="polite" tabIndex={-1}>
+      <li {...answeredTouch.props} className={`dm-msg agc__turn ${answeredTouch.props.className}`} data-run-id={run.id} data-chat-agent="" aria-live="polite" tabIndex={-1}>
         <div className="dm-msg__row">
           <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
           <div className="dm-msg__main">
             {first ? <p className="dm-msg__meta"><b>{agent.name}</b></p> : null}
+            {run.answer ? <PinnedLine messageId={run.id} part="answer" /> : null}
             {/* The pictures the agent attached to its answer (#1217), as a message's photos: above its words. */}
             {/* Pictures (#1217) and files (#1437) its agent attached: photos in the grid, other files as rows that open in the preview. */}
             {run.answer && run.pictures?.length ? <MessageFiles files={run.pictures} context={{ author: agent.name }} /> : null}
@@ -98,8 +108,10 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
               {!working ? <time className="agc__time" dateTime={run.completedAt ?? run.createdAt}>{clock(run.completedAt ?? run.createdAt)}</time> : null}
             </div>
             {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
+            {answered ? <MessageActions {...answered} /> : null}{answeredTouch.dots}
           </div>
         </div>
+        {answeredTouch.node}
       </li>
     </>
   );
@@ -111,8 +123,10 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
  */
 function ScheduleLine({ line, schedule, agent, newDay }: { line: AgentChatMessage; schedule: NonNullable<AgentChatMessage['schedule']>; agent: MyAgent; newDay: boolean }) {
   const lookups = useChatLookups();
+  const actions: AgentChatActionOptions = { kind: 'agent', messageId: line.id, body: line.body, writable: true };
+  const touch = useTouchActions(actions);
   return (
-    <li className="dm-msg agc__turn" data-line-id={line.id} data-schedule-line={schedule.failed ? 'failed' : 'result'} data-chat-agent="">
+    <li {...touch.props} className={`dm-msg agc__turn ${touch.props.className}`} data-line-id={line.id} data-schedule-line={schedule.failed ? 'failed' : 'result'} data-chat-agent="" tabIndex={-1}>
       {newDay ? <MessageDay as="p" label={day(line.createdAt)} /> : null}
       <div className="dm-msg__row">
         <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
@@ -125,9 +139,11 @@ function ScheduleLine({ line, schedule, agent, newDay }: { line: AgentChatMessag
               <span>{line.body}</span>
               {/^Sign in to /.test(line.body) ? <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/settings/agents">Sign in</Link> : null}
             </div>
-          ) : <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={{ body: line.body, sources: [] }} lookups={lookups} /></div></MessageBubble>}
+          ) : <><PinnedLine messageId={line.id} /><MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={{ body: line.body, sources: [] }} lookups={lookups} /></div></MessageBubble></>}
+          <MessageActions {...actions} />{touch.dots}
         </div>
       </div>
+      {touch.node}
     </li>
   );
 }
@@ -160,13 +176,16 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
   const total = line.changes + line.undone;
   const count = total ? ` · ${total} ${total === 1 ? 'change' : 'changes'}` : '';
   const undone = total > 0 && line.changes === 0;
+  const actions: AgentChatActionOptions = { kind: 'agent', messageId: line.id, body: line.words ?? line.body, writable: true };
+  const touch = useTouchActions(actions);
   return (
-    <li className="dm-msg agc__turn" data-line-id={line.id} data-run-id={line.runId} data-chat-agent="">
+    <li {...touch.props} className={`dm-msg agc__turn ${touch.props.className}`} data-line-id={line.id} data-run-id={line.runId} data-chat-agent="" tabIndex={-1}>
       {newDay ? <MessageDay as="p" label={day(line.createdAt)} /> : null}
       <div className="dm-msg__row">
         <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
         <div className="dm-msg__main">
           <p className="dm-msg__meta"><b>{agent.name}</b><time className="agc__time" dateTime={line.createdAt}> · {clock(line.createdAt)}</time></p>
+          <PinnedLine messageId={line.id} />
           {line.words || line.task ? (
             <MessageBubble><div className="dm-msg__body agc__answer">
               {line.words ? <div className="assistant-answer__body"><MessageText body={line.words} people={lookups.people} /></div> : null}
@@ -184,8 +203,10 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
           </div>
           {note ? <p className="agc__line-note" role="status">{note}</p> : null}
           {failed ? <p className="agc__line-note" role="alert">Could not undo. Try again.</p> : null}
+          <MessageActions {...actions} />{touch.dots}
         </div>
       </div>
+      {touch.node}
     </li>
   );
 }

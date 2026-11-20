@@ -47,12 +47,15 @@ export interface ThoughtTasksView {
   entry: import('../sketch/ThoughtTasks').ThoughtTasksEntry;
 }
 
+/** The pinned messages of the conversation the shell shows (C-74, #1615): "Pinned · N" in the one panel, the phone's sheet. */
+export interface PinsView { kind: 'pins' }
+
 /** The content of the panel when the current view owns it (a thread, an agent): the view renders it into the panel's slot. */
 export interface OwnedView { kind: 'owned' }
 export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | ObjectView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | OwnedView;
+export type DetailsView = 'place' | ObjectView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | PinsView | OwnedView;
 
 /**
  * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's

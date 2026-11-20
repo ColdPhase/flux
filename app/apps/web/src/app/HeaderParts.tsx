@@ -38,10 +38,10 @@ export function HeaderFaces({ people, meId, audience, projectId, onOpen }: { peo
 /**
  * `icon`: the row's icon, which leads it (a menu's rows lead with their icon, design §5).
  * `narrow`: offered here only when the header has no room for it (Spokój rule 3). `hint`: one small line under the label that says what the row
- * does (Mute: what still arrives, #1249). `node` is a row that keeps its own
+ * does (Mute: what still arrives, #1249). `count`: a number at the row's end (Pinned 3, C-74). `node` is a row that keeps its own
  * state (the header's Call); a click on its enabled `[data-more-row]` closes the menu.
  */
-export type MoreItem = { label: string; run: () => void; icon?: IconName; keys?: string; checked?: boolean; narrow?: boolean | 'people'; hint?: string }
+export type MoreItem = { label: string; run: () => void; icon?: IconName; keys?: string; checked?: boolean; narrow?: boolean | 'people'; hint?: string; count?: number }
   | { label: string; node: ReactNode };
 
 /** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
@@ -107,6 +107,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
               {/* A menu's rows lead with their icon, as the message menu's (round 15 look-2 P3-6). */}
               {item.icon ? <Icon name={item.icon} size={16} /> : null}
               {item.hint ? <span className="top__more-text"><span>{item.label}</span><small>{item.hint}</small></span> : <span>{item.label}</span>}
+              {item.count !== undefined ? <span className="top__more-count">{item.count}</span> : null}
               {item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}
             </button>
           ))}

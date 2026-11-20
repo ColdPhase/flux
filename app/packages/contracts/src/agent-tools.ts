@@ -36,6 +36,8 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   // #1290, F-042 (AG-12): ranked search across every space the run may read, and the messages around a hit. Both engines get both.
   read('flux_search'),
   read('flux_read_around'),
+  // #1615, C-74: the messages people pinned in one place, under the same reach as a search with `in`. No tool pins: only people do.
+  read('flux_list_pinned'),
   // #1382, C-63: the text of a file someone sent (PDF, DOCX, Markdown, text, CSV/TSV), in pages; a file is found by flux_search.
   read('flux_read_file'),
   // #1292, F-042 (AG-12): what was said in one place since a date, as a digest the agent summarises itself; nothing is stored.

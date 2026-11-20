@@ -380,6 +380,23 @@
             "minLength": 1,
             "type": "string"
           },
+          "pinned": {
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "by": {
+                "$ref": "#/definitions/actor"
+              }
+            },
+            "required": [
+              "at",
+              "by"
+            ],
+            "type": "object"
+          },
           "sequence": {
             "minimum": 1,
             "type": "integer"

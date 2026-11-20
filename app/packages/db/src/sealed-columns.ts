@@ -62,7 +62,7 @@ const refused = [
 ] as const;
 const content = [
   'workspaces', 'workspace_members', 'project_ai_policies', 'projects', 'project_grants', 'project_conversations',
-  'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'dm_reads', 'return_points', 'space_order', 'dms', 'dm_participants', 'dm_ai_off', 'dm_messages',
+  'project_messages', 'message_references', 'message_pins', 'project_message_observations', 'dm_message_observations', 'dm_reads', 'return_points', 'space_order', 'dms', 'dm_participants', 'dm_ai_off', 'dm_messages',
   'project_materials', 'project_material_versions', 'project_work_items', 'project_task_activity', 'project_task_updates', 'project_task_notices',
   'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'project_decision_discussions', 'project_decision_resumptions', 'task_creation_undo_receipts', 'native_command_receipts',
   'project_decisions', 'project_object_links', 'sketches', 'sketch_thoughts',
@@ -157,6 +157,8 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   project_conversations: { created_by: 'a user id' },
   project_messages: { author_id: 'a user id', contribution_kind: 'an enum', source_deleted: 'a flag', via: 'the name of the agent whose answer the author posted, or of the local client that posted for them, as visible as an author\'s name (an agent name is metadata)', via_colour: 'an enum (the colour of that agent)' },
   message_references: { kind: 'an enum (thought or message)' },
+  // C-74 (0112, #1615): which message is pinned, by whom and when; never its words.
+  message_pins: { pinned_by: 'a user id', run_part: 'an enum (prompt or answer)' },
   project_message_observations: { viewer_id: 'a user id' },
   dm_message_observations: { viewer_id: 'a user id' },
   dm_reads: { user_id: 'a user id' },

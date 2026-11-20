@@ -252,6 +252,27 @@ keeps the words. Migration `0029` adds `project_messages.edited_at`.
 Tests: `app/tests/app/message-edit-delete.test.ts` (API, including the attacks above, a file, and an encrypted space) and
 `app/tests/ui/test_message_edit_delete.py` (Chromium).
 
+## Pinned messages (C-74, #1615)
+
+One list per conversation, the same for everyone in it: a space (its stream, threads and discussions), a direct message and a person's chat with
+their own agent. `GET /api/v1/projects/:projectId/pins`, `/api/v1/dms/:dmId/pins` and `/api/v1/agent-chats/:agentId/pins` answer
+`PinnedMessages` (the newest 200 pins first, each with its message's words, files, author, "in a thread" as `threadRootId`, and who pinned it and
+when); `PUT` and `DELETE` on `…/pins/:messageId` (`?part=prompt|answer` for a run of an agent's chat) pin and unpin and answer the list.
+
+- **Who.** Reading needs the conversation's read access (`project.read`, a participant, the agent's owner); pinning and unpinning need write
+  access now, checked with the space's access rows (or the conversation's participant row) held, so a person removed meanwhile changes nothing.
+  A 1:1 whose other person left is read only (`403 PIN_NOT_ALLOWED`). Only a person's session pins (`403 PIN_NOT_ALLOWED` for any other
+  principal); agents read pins with `flux_list_pinned` ([agent connection](agent-connection.md)).
+- **What.** A message of that conversation that is not deleted (a direct message's `kind = 'text'`); anything else is `404 MESSAGE_NOT_FOUND`.
+  Pinning twice and unpinning what is not pinned change nothing and record nothing.
+- **Rows.** `message_pins` (migration 0112, `@flux/db` `messagePinRows`): ids and the pinner only, never words, so an encrypted space's list opens
+  its words as its stream does. The delete of a message takes its pin in the same transaction (`messageChangeRows`); removing a space, a direct
+  message, an agent or a run cascades.
+- **Events.** `project.pins_changed.v1` (object the space), `dm.pins_changed.v1` (the direct message), `person.pins_changed.v1` (the agent's owner,
+  data `agentId`), data `{ messageId }`. No notification, no line, no Inbox item.
+
+Tests: `app/tests/app/message-pins.test.ts` (API, search and `flux_list_pinned`) and `app/tests/ui/test_message_pins.py` (Chromium).
+
 ## Authorized project refresh events (#36 + #47)
 
 A committed conversation start, reply, material publication or material revision

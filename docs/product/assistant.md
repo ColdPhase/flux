@@ -608,6 +608,10 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
   message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
   is not there, one that is deleted and one the caller may not read.
+- **`flux_list_pinned`** (C-74, #1615) lists what people pinned in one space or direct message (`in`; a conversation or a task of a space
+  lists its space's), newest pin first, at most 25: each message's author, time, words, files, who pinned it and whether it is a reply in a
+  thread, under the same reach and the same AI switches as a search with `in`. `flux_search` marks a pinned message `pinned: true` and puts it
+  first among the messages it returns. No tool pins: only people do.
 - **`flux_read_file`** (#1382) returns the text of a file that a search found (or, in an agent's chat, one its owner sent there, or, in a run in a direct message, one sent in that conversation, C-64), in pages from `offset` (12,000 characters in a run, 20,000
   for a client; `nextOffset` continues; a note says when the text has not been read yet or the file has none, as a scan). The text is
   what the worker read in its sandbox (C-63), so a long file's first 200,000 characters. One answer for a file that is not there, one in

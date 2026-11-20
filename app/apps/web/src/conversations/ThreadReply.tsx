@@ -6,6 +6,7 @@ import { AgentAuthor, AuthorFace, AuthorName, ContributionMark, DeletedSourceCit
 import type { Receipt } from '../app/receipts';
 import { MessageObjects, MessageTaskCards, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
+import { PinnedLine } from '../pins/PinnedLine';
 import { useOwnMessage } from '../work/ownMessage';
 import { projectMessageEdits } from './messageChanges';
 import type { MessageWorkPreview } from '../work/message-associations';
@@ -59,6 +60,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} hue={messageHue(message)} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">{shown ? <ShownAnswerName shown={shown} asker={name} /> : <><strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <AuthorName workspaceId={project.workspaceId} authorId={message.authorId} name={name} removed={!!message.removedAuthorName} />}</strong><ViaTag via={message.via} /></>}</div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
+      <PinnedLine messageId={message.id} />
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />

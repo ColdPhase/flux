@@ -214,6 +214,8 @@ export interface AgentHit {
   at: string;
   /** A task's discussion (#1410): how many messages people and agents wrote about it, read with `flux_get_task_discussion`. */
   discussion?: { messages: number };
+  /** A message pinned in its conversation (C-74, #1615): people keep it there to find it; it stands first among the messages. */
+  pinned?: true;
 }
 
 /** One row as the model is told it: compact, with only what it can use. The author is the server's label, never the raw name. */

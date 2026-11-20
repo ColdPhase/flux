@@ -11,6 +11,7 @@ export {
   evaluateProject,
   evaluateSketch,
   evaluateDm,
+  evaluateAgent,
   dmClosedFor,
   visibleWorkspaceOf,
   isUuid,
@@ -73,6 +74,7 @@ export * from './agent-connection/proposals.js';
 export * from './returns/index.js';
 export * from './first-steps/index.js';
 export * from './sidebar/index.js';
+export * from './pins/index.js';
 export * from './needs-you/index.js';
 export * from './direct-messages/index.js';
 export { policyDmAccess } from './access/dm-access.js';

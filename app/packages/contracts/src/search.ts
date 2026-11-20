@@ -134,6 +134,11 @@ export interface SearchResult {
   target: SearchTarget;
   /** A task's number in its project and its status, so its row shows the glyph and "#12" (#514). */
   task?: { number: number; status: WorkStatus };
+  /**
+   * Present on a message that is pinned in its conversation (C-74, #1615): its row carries the "Pinned" mark and it stands first among the
+   * messages of the answer. A property of the visible row; no statistic of the index moves anything (F-042).
+   */
+  pinned?: true;
 }
 
 export interface SearchResponse {
