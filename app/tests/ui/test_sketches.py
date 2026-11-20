@@ -447,20 +447,13 @@ class SketchJourney(unittest.TestCase):
 
     def test_07a_phone_fits_the_graph_and_labels_actions(self) -> None:
         page = self.open_sketch(phone=True)
-        canvas = box(page, page.locator(".sk-canvas"))
-        # The phone shows the whole graph in two readable columns at full size: nothing is cut off
-        # at the sides and there is no sideways scrolling.
+        # The phone shows the computer's plane (C-67), framed by Fit: each thought at its own place, none over another.
         options = open_map_options(page, touch=True)
+        options.get_by_role("button", name="Fit the map to the view").tap()
         zoom = options.get_by_role("button", name=re.compile(r"^Zoom \d+%")).get_attribute("aria-label")
         options.get_by_role("button", name="Close map options", exact=True).tap()
-        self.assertIn("100%", zoom)
         nodes = page.locator(".sk-node")
         self.assertGreaterEqual(nodes.count(), 4)
-        for i in range(nodes.count()):
-            b = box(page, nodes.nth(i))
-            self.assertGreaterEqual(b["x"], canvas["x"] - 1, f"thought {i} starts inside the canvas")
-            self.assertLessEqual(b["x"] + b["width"], canvas["x"] + canvas["width"] + 1, f"thought {i} ends inside the canvas")
-        self.assertLessEqual(page.locator(".sk-canvas").evaluate("el => el.scrollWidth - el.clientWidth"), 1, "no sideways scroll")
         for i in range(nodes.count()):
             for j in range(i + 1, nodes.count()):
                 a, b = box(page, nodes.nth(i)), box(page, nodes.nth(j))
@@ -622,26 +615,22 @@ class SketchJourney(unittest.TestCase):
         if options is not None:
             options.get_by_role("button", name="Close map options", exact=True).tap()
             expect(options).to_have_count(0)
-        if viewport["width"] <= 640:
-            # The phone projection starts at the plane's top left.
-            page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
-        else:
-            # Fit has finished when the graph's top-left corner sits 24 px (at the fitted zoom) inside the
-            # padded viewport. That is not scroll 0/0 on the plane: the plane reaches past the thoughts on
-            # every side (#509) and keeps room above them for selection actions (#482).
-            page.wait_for_function(
-                """() => {
-                    const el = document.querySelector('.sk-canvas');
-                    const node = [...document.querySelectorAll('.sk-node')].find((item) => item.textContent.includes('Explore gesture sensing'));
-                    if (!el || !node) return false;
-                    const view = el.getBoundingClientRect();
-                    const at = node.getBoundingClientRect();
-                    const style = getComputedStyle(el);
-                    const zoom = at.width / 240;
-                    return Math.abs(at.left - view.left - (parseFloat(style.paddingLeft) || 0) - 24 * zoom) < 1.5
-                        && Math.abs(at.top - view.top - (parseFloat(style.paddingTop) || 0) - 24 * zoom) < 1.5;
-                }"""
-            )
+        # Fit has finished when the graph's top-left corner sits 24 px (at the fitted zoom) inside the
+        # padded viewport. That is not scroll 0/0 on the plane: the plane reaches past the thoughts on
+        # every side (#509) and keeps room above them for selection actions (#482). The phone's plane is the same.
+        page.wait_for_function(
+            """() => {
+                const el = document.querySelector('.sk-canvas');
+                const node = [...document.querySelectorAll('.sk-node')].find((item) => item.textContent.includes('Explore gesture sensing'));
+                if (!el || !node) return false;
+                const view = el.getBoundingClientRect();
+                const at = node.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                const zoom = at.width / 240;
+                return Math.abs(at.left - view.left - (parseFloat(style.paddingLeft) || 0) - 24 * zoom) < 1.5
+                    && Math.abs(at.top - view.top - (parseFloat(style.paddingTop) || 0) - 24 * zoom) < 1.5;
+            }"""
+        )
         return page
 
     def assert_no_overlap(self, a: dict, b: dict, message: str) -> None:
@@ -706,19 +695,16 @@ class SketchJourney(unittest.TestCase):
                 canvas = page.locator(".sk-canvas")
                 options = open_map_options(page, touch=True)
                 expect(options.get_by_role("group", name="Zoom", exact=True)).to_be_in_viewport(ratio=1)
-                expect(options.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", "Zoom 100%, reset to 100%")
+                expect(options.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", "Zoom 75%, reset to 100%")
                 options.get_by_role("button", name="Close map options", exact=True).tap()
                 expect(options).to_have_count(0)
                 controls = page.get_by_role("button", name="Map options", exact=True)
                 shot(page, f"sketch-fit-phone-{width}")
                 expect(controls).to_be_in_viewport(ratio=1)
-                self.assertLessEqual(canvas.evaluate("el => el.scrollWidth - el.clientWidth"), 1, "Fit retains the phone projection without sideways scrolling")
-                # The long corner thought wraps at the same full-size phone width. Its complete
-                # text and provenance remain readable even at the bottom of the scroll view,
-                # where the previous controls overlay covered both. Avoid centering it, which
-                # would hide that failure behind the blank space below the final projected row.
+                # The phone's plane is the computer's: Fit frames it at the touch floor, and the far corner thought is a pan away. Its complete
+                # text and provenance remain readable there, clear of the floating controls.
                 corner = self.thought(page, "Keep a physical off switch")
-                corner.evaluate("node => { const canvas = node.closest('.sk-canvas'); canvas.scrollTop = canvas.scrollHeight; }")
+                corner.evaluate("node => node.scrollIntoView({ block: 'center', inline: 'center' })")
                 shot(page, f"sketch-fit-phone-{width}-corner")
                 viewport_box = box(page, canvas)
                 control_box = box(page, controls)
