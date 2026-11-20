@@ -30,6 +30,7 @@ services:
     memswap_limit: ${FLUX_EMBEDDINGS_MEMORY:-6g}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    init: true
     volumes:
       - embeddings:/data
   # They start with it but never wait for its model: until it answers, search ranks by BM25 alone and the worker retries.

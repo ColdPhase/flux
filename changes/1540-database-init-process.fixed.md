@@ -1,0 +1,1 @@
+- The database no longer resets itself when a health check times out. Every Flux service now runs under an init process, so a probe that its timeout killed is reaped instead of being taken by PostgreSQL for a crashed process of its own, which reset every connection and broke the first migration on a busy server ([#1540](https://github.com/ColdPhase/flux/issues/1540)).
