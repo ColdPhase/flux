@@ -450,7 +450,9 @@ class MapConnectJourney(unittest.TestCase):
                 draft = page.get_by_role('form', name='Pasted thoughts draft' if entry == 'paste-lines' else 'New thought draft')
                 expect(draft).to_contain_text('Top level')
                 expect(draft).not_to_contain_text('Connected to')
-                expect(page.locator('.sk-wire, .sk-ghost--draft, .sk-dot')).to_have_count(0)
+                # The phone shows the computer's plane, so the dashed frame of a new thought is drawn where it will land; no connection is drawn.
+                expect(page.locator('.sk-wire, .sk-dot')).to_have_count(0)
+                expect(page.locator('.sk-ghost--draft')).to_have_count(1 if entry in ('primary', 'keyboard', 'paste-text', 'paste-image', 'wide-draft') else 0)
                 if entry in ('primary', 'keyboard', 'list-keyboard'):
                     draft.get_by_label('Thought text').fill(f'Plain addition from {entry}')
                 if entry == 'wide-draft':

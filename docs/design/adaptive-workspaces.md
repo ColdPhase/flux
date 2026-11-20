@@ -70,7 +70,8 @@ bounded interaction contract before extending scope.
   space returns, respecting a person's explicit close/pin choice. Keep focus on
   the editing field or a logical visible replacement; no hidden focus target.
 - Preserve the meaningful map center/selection when the viewport changes; do not
-  auto-fit or relayout the graph on every resize. Lists keep the same hierarchy
+  auto-fit or relayout the graph on every resize. A map is one plane on every device (C-67, #1553): a narrow pane or a phone pans
+  and zooms that plane, never a second layout of it, and a map opens where the person left it on that device. Lists keep the same hierarchy
   and selected item even if indentation or available metadata changes.
 - Opening/closing context, resizing and navigating do not submit input, change
   read/acknowledgment semantics, invoke an agent or restart media. Keep #133's

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { SKETCH_LIMITS } from '@flux/contracts';
 import { Icon, MEDIA, useMediaQuery } from '../ui';
 import type { DraftLine, ThoughtDraft } from './createdDraft';
@@ -32,6 +32,39 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
     const field = form.current?.querySelector<HTMLElement>('textarea, input');
     field?.focus({ preventScroll: true });
     if (field && field.ownerDocument.activeElement === field) focusedDraft.current = draft.id;
+  }, [draft.id, focusReady, saving]);
+  // The press that made this draft (a dot let go over empty space, the +) may still be finishing: its release, its click and the focus the browser
+  // gives the control that was pressed can land after the field took focus, which left a dashed frame that took no typing (#1554). For a moment
+  // the field takes the focus back from the map's own parts and from nothing; the next press, typing in the field, or a field the person chose ends that.
+  useEffect(() => {
+    if (!focusReady || saving) return undefined;
+    const field = form.current?.querySelector<HTMLElement>('textarea, input');
+    if (!field) return undefined;
+    let frame = 0;
+    const check = () => {
+      const active = document.activeElement;
+      if (field.isConnected && active !== field && (!active || active === document.body || !!active.closest('.sk-canvas'))) field.focus({ preventScroll: true });
+    };
+    const reclaim = () => { check(); cancelAnimationFrame(frame); frame = requestAnimationFrame(check); };
+    const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(check); };
+    const finishes = ['pointerup', 'mouseup', 'click'] as const;
+    const end = () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(frame);
+      field.removeEventListener('focusout', later);
+      for (const type of finishes) document.removeEventListener(type, reclaim, true);
+      document.removeEventListener('pointerdown', end, true);
+      document.removeEventListener('keydown', typed, true);
+    };
+    // Typing in the field is the person having it; a key that fell elsewhere gets the field back at once.
+    const typed = () => { if (document.activeElement === field) end(); else check(); };
+    const timer = window.setTimeout(end, 1000);
+    field.addEventListener('focusout', later);
+    for (const type of finishes) document.addEventListener(type, reclaim, true);
+    document.addEventListener('pointerdown', end, true);
+    document.addEventListener('keydown', typed, true);
+    later();
+    return end;
   }, [draft.id, focusReady, saving]);
   const ready = canWrite && !saving && draftReady(draft);
   const keys = (event: KeyboardEvent<HTMLElement>) => {
