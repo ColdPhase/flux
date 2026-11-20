@@ -207,7 +207,7 @@ export function ProjectTasks() {
   };
   // The board's own column reads follow this revision as well as the router's revalidation.
   const [boardRevision, setBoardRevision] = useState(0);
-  const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
+  const refreshBoard = useCallback(() => { refreshPage(); setBoardRevision((current) => current + 1); }, [refreshPage]);
   // One tap on a glyph, or the keys 1-4 on a row, change its state; the toast offers Undo (F-026 S9).
   const shownSaved = useCallback((item: WorkItem) => setSaved((now) => ({ ...now, [item.id]: item })), []);
   const storeState = useStateChange(shownSaved, refreshPage);
@@ -237,16 +237,20 @@ export function ProjectTasks() {
     openCreate({ kind: 'task', projectId: project.id });
   }, [search, setSearch, openCreate, project.id, location.state]);
 
+  // A change read again: the shell's loaders, then the board's reads once they are done. The reads also follow the router's revalidation (its
+  // state back to idle), but a revalidation whose loaders answer before its "loading" is drawn never shows that change, and the board kept
+  // the task before the event (#1583: WebKit, task 15 of 25 never reached the board). The revision is drawn either way.
+  const reread = useCallback(() => { void revalidator.revalidate().then(refreshBoard); }, [revalidator, refreshBoard]);
   useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
+    const refresh = () => { if (document.visibilityState === 'visible') reread(); };
     window.addEventListener('focus', refresh);
     // A timer only while the live stream is down (#862); while it is open, a change to this space's work reads at once (below).
     const interval = window.setInterval(() => { if (!streamLive()) refresh(); }, 15000);
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
-  }, [revalidator]);
+  }, [reread]);
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType === 'project' && event.objectId === project.id && WORK_EVENT.test(event.kind) && document.visibilityState === 'visible') revalidator.revalidate();
-  }, () => revalidator.revalidate());
+    if (event.objectType === 'project' && event.objectId === project.id && WORK_EVENT.test(event.kind) && document.visibilityState === 'visible') reread();
+  }, reread);
 
   // A stored state change shows at once; the List's own read catches up with that version.
   const loaded = (data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [])
