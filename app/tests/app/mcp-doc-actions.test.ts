@@ -10,6 +10,7 @@ type Scene = Awaited<ReturnType<typeof actionScene>>;
 const versions = async (docId: string) => (await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE material_id=$1', [docId])).rows[0].n as number;
 const docEvents = async (docId: string) => (await pool.query(
   "SELECT count(*)::int AS n FROM events WHERE kind IN ('project.doc_created.v1', 'project.doc_updated.v1') AND data->>'docId' = $1", [docId])).rows[0].n as number;
+// The space's pages; the fixture's release plan is one of them (every saved source is a page since #1508).
 const docs = async (projectId: string) => (await pool.query("SELECT count(*)::int AS n FROM project_materials WHERE project_id=$1", [projectId])).rows[0].n as number;
 const base = (f: Scene, peerRequestClass: 'execute' | 'plan', clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
   runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass, sources: [] as { materialId: string; version: number }[] });
@@ -39,7 +40,7 @@ test('standing doc grants start and edit a project doc as the agent at the read 
 
   // A lost response is retried with the same command ID: the stored outcome, no second doc, version, event or debit.
   assert.deepEqual(toolValue(await f.tool('flux_create_doc', started)), { ...created, replayed: true });
-  assert.deepEqual([await docs(f.projectId), await versions(docId), await docEvents(docId)], [1, 1, 1]);
+  assert.deepEqual([await docs(f.projectId), await versions(docId), await docEvents(docId)], [2, 1, 1]);
   assert.equal(toolFailure(await f.tool('flux_create_doc', { ...started, doc: { title: 'Other notes' } })).code, 'IDEMPOTENCY_CONFLICT');
 
   // An edit at the read version, like If-Match: the next immutable version, written by the agent.
@@ -115,7 +116,7 @@ test('doc actions never reach a private map, a guessed or other project doc, ano
   const revoked = await f.raw('flux_create_doc', { ...base(f, 'plan'), doc: { title: 'After revocation' } });
   assert.equal(revoked.status, 403);
 
-  assert.deepEqual([await versions(docA.id), await versions(docB.id), await versions(otherDoc.id), await docs(f.projectId)], [2, 1, 1, 2]);
+  assert.deepEqual([await versions(docA.id), await versions(docB.id), await versions(otherDoc.id), await docs(f.projectId)], [2, 1, 1, 3]);
   assert.equal(await mapVersion(), mapBefore, 'the private map was not touched');
   assert.equal((await getDoc(f, docB.id)).author.kind, 'human');
 });

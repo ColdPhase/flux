@@ -79,7 +79,7 @@ test('conversation and Wiki page commits reach only current project readers thro
     assert.equal(((await owner.browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: createCommand, headers: createKey })).json as Doc).id, page.id);
     assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: editCommand, headers: editKey })).status, 200);
     assert.equal((await owner.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { ...openingCommand, body: 'different' } })).status, 409);
-    assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: { ...editCommand, body: 'different' }, headers: editKey })).status, 409);
+    assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: { ...editCommand, body: 'different' }, headers: editKey })).status, 422);
     assert.equal((await owner.browser.request('PATCH', `/api/v1/docs/${page.id}`, { body: { expectedVersion: 1, body: 'stale' }, headers: { 'idempotency-key': randomUUID() } })).status, 409);
     assert.equal((await owner.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: 'bad source', clientMessageId: randomUUID(), source: { materialId: randomUUID(), version: 1 } } })).status, 404);
     const laterRows = await pool.query('SELECT count(*)::int AS count FROM events WHERE object_id = $1 AND kind = ANY($2)', [project.id, kinds]);

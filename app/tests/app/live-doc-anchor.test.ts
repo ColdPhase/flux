@@ -12,7 +12,6 @@ import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation.js';
 import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
-import { savePage } from './support/pages.js';
 
 test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused', async () => {
   const owner = await person('live-doc-owner');
@@ -33,7 +32,6 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
   const foreignDoc = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${other.id}/docs`, {
     body: { title: 'Foreign doc' },
   }), 201) as Doc;
-  const material = await savePage(owner.browser, place.id, { title: 'Ordinary material', body: 'Not a wiki doc' });
 
   const rooms = new Set<string>();
   const media: LiveMedia = {
@@ -92,22 +90,23 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
     assert.equal((hidden.json() as { code: string }).code, 'PROJECT_NOT_FOUND');
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${session.id}/join`,
       headers: { 'x-test-user': outsider.id } })).statusCode, 404);
-    const nonDoc = await start(owner.id, material.materialId);
+    // Every row of project_materials is a page since #1508; an id that names no page is refused.
+    const nonDoc = await start(owner.id, randomUUID());
     assert.equal(nonDoc.statusCode, 404);
     assert.equal((nonDoc.json() as { code: string }).code, 'LIVE_CONTEXT_NOT_FOUND');
     await assert.rejects(store.createOrGet(ownerPrincipal, place.id, { type: 'doc', id: foreignDoc.id },
       randomUUID(), media.ensureRoom), (error: unknown) => error instanceof DomainError &&
         error.code === 'LIVE_CONTEXT_NOT_FOUND');
     // The database keeps the rule on its own: a session names a page of its own space (a trigger, since a deleted page must be
-    // free to go while its ended session keeps the id as history, #941). A page of another space, a material that is no page
-    // and an id that is nothing are all refused, on a new session and on a changed `doc_id`.
+    // free to go while its ended session keeps the id as history, #941). A page of another space and an id that is nothing
+    // are both refused, on a new session and on a changed `doc_id`.
     const insertSession = (docId: string) => pool.query(`INSERT INTO live_sessions
       (id, workspace_id, project_id, doc_id, created_by, client_session_id, room_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [randomUUID(), ws.id, place.id, docId, owner.id, randomUUID(), `live_${randomUUID()}`]);
     const outsideTheSpace = (error: unknown) => (error as { code?: string }).code === '23503'
       && /page must be a page of its own space/.test((error as Error).message);
-    for (const wrong of [foreignDoc.id, material.materialId, randomUUID()]) await assert.rejects(insertSession(wrong), outsideTheSpace);
+    for (const wrong of [foreignDoc.id, randomUUID()]) await assert.rejects(insertSession(wrong), outsideTheSpace);
     await assert.rejects(pool.query('UPDATE live_sessions SET doc_id = $2 WHERE id = $1', [session.id, foreignDoc.id]), outsideTheSpace);
     assert.equal((await pool.query('SELECT doc_id FROM live_sessions WHERE id = $1', [session.id])).rows[0].doc_id, doc.id, 'a refused change changes nothing');
     await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () => removeFromSpaceCore(ownerPrincipal, place.id, { kind: 'human', id: viewer.id }, db));
