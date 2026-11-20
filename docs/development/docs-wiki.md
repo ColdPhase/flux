@@ -22,7 +22,7 @@ migration `0107` and the kind is gone (#1508, C-71).
 - A database trigger rejects `UPDATE` on `project_material_versions`, so no version is ever
   rewritten, even outside the API.
 - A page that was a saved source keeps the link it was saved with (`project_material_versions.url`,
-  sealed in an encrypted space): `DocVersion.url`, shown under the text as "Open source link".
+  sealed in an encrypted space): `DocVersion.url`, shown between the title and the text as "Open source link".
   `docRows().append` copies the previous version's link to each new version, so a save, a restore or a
   shared-text save never drops it; nothing else writes one. Every other page has `url: null`.
 - Pages change only through the doc API below; the saved-source routes (`GET`/`POST

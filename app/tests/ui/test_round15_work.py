@@ -262,7 +262,7 @@ class Round15Work(unittest.TestCase):
 
     def test_08_a_saved_source_by_its_id_alone_goes_to_its_page_and_shows_its_link(self) -> None:
         """A citation carries a page by its id alone (`/materials/:id`): it opens the page in its space's Wiki, the current version as the page
-        itself. A page that was a saved source of v0.2.1 keeps the link it was saved with under its text (#1508); no API writes one, so the
+        itself. A page that was a saved source of v0.2.1 keeps the link it was saved with above its text (#1508); no API writes one, so the
         page's read is given one here."""
         page = self.page("ada")
         page.goto(f"/materials/{self.ids['source']}")

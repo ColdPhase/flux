@@ -96,8 +96,8 @@
 /* The page itself: the reader's typography for the text being written. */
 .wiki-body { position: relative; }
 .wiki-body > .doc-prose { min-height: 240px; }
-/* A former saved source's link under its text (#1508): the link it was saved with, in the type of the page's other links. */
-.wiki-source { display: inline-block; margin-top: 16px; font-size: var(--fs-md); }
+/* A former saved source's link (#1508): the link it was saved with, between the title and the text, in the type of the page's other links. */
+.wiki-source { margin: 0 0 12px; font-size: var(--fs-md); }
 .wiki-picker { position: absolute; z-index: var(--z-menu); width: min(440px, 100%); }
 .wiki-picker .doc-picker { position: static; width: 100%; }
 .doc-empty { padding: 12px 0 24px; }

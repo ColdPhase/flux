@@ -130,8 +130,9 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
       {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
       {notices}
       {/* The cards and chips in the page are links: a click opens what they refer to. */}
+      {/* A former saved source's link (#1508), under the title and above the text: a short text leaves the editor's room below it. */}
+      {shown.url ? <p className="wiki-source"><a className="ui-link" href={shown.url} target="_blank" rel="noreferrer">Open source link</a></p> : null}
       <div className="wiki-body" onClick={onBodyClick}>{children}</div>
-      {shown.url ? <a className="ui-link wiki-source" href={shown.url} target="_blank" rel="noreferrer">Open source link</a> : null}
     </article>
   );
 }
