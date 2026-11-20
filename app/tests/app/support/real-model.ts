@@ -508,17 +508,28 @@ export async function piReal(request: http.IncomingMessage, response: http.Serve
   try { parsed = JSON.parse(raw); } catch { parsed = raw.slice(0, 2000); }
   response.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') ?? 'application/json', 'cache-control': 'no-cache' });
   const seen: Uint8Array[] = [];
-  for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
-    if (record) seen.push(chunk);
-    if (!response.destroyed) response.write(chunk);
+  try {
+    for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
+      if (record) seen.push(chunk);
+      if (!response.destroyed) response.write(chunk);
+    }
+  } catch (error) {
+    // The model server dropped the connection mid-answer: the caller's stream breaks the same way, and the exchange is recorded as an error
+    // (this runs detached, so a throw here would end the whole mock and with it the hours-long run).
+    response.destroy();
+    if (record) transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client: 'pi', kind: 'error', request: withoutPictureBytes(parsed),
+      response: { error: String(error), partial: Buffer.concat(seen).toString('utf8').slice(0, 4000) } });
+    return;
   }
   response.end();
   if (!record) return;
   const text = Buffer.concat(seen).toString('utf8');
   let answer: unknown;
-  if ((upstream.headers.get('content-type') ?? '').includes('event-stream')) {
-    answer = await readStream(new Response(text, { headers: { 'content-type': 'text/event-stream' } }), undefined);
-  } else { try { answer = JSON.parse(text); } catch { answer = { raw: text.slice(0, 4000) }; } }
+  try {
+    answer = (upstream.headers.get('content-type') ?? '').includes('event-stream')
+      ? await readStream(new Response(text, { headers: { 'content-type': 'text/event-stream' } }), undefined)
+      : JSON.parse(text);
+  } catch { answer = { raw: text.slice(0, 4000) }; }
   transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client: 'pi', kind: upstream.ok ? 'main' : 'error', request: withoutPictureBytes(parsed), response: answer });
 }
 
