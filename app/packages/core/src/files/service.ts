@@ -119,9 +119,10 @@ function staged(row: StoredFileRow): StagedFile {
 }
 
 /** What a stored row says about its file (#469), as the keys of `FileDetail`; a key only where there is a value. */
-export function storedDetail(row: Pick<StoredFileRow, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer'>): FileDetail {
+export function storedDetail(row: Pick<StoredFileRow, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer' | 'noText'>): FileDetail {
   return { ...(row.pageCount != null ? { pages: row.pageCount } : {}), ...(row.rowCount != null ? { rows: row.rowCount } : {}),
-    ...(row.durationMs != null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer ? { video: row.videoContainer } : {}) };
+    ...(row.durationMs != null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer ? { video: row.videoContainer } : {}),
+    ...(row.noText ? { noText: true as const } : {}) };
 }
 
 /** Passes the bytes on unchanged and keeps them (at most the file limit, which the receiver enforces) for the one reader of their detail. */

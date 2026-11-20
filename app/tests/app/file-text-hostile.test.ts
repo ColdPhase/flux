@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { FILE_TEXT_LIMITS } from '@flux/core';
 import { createFileTextSandbox, type ExtractResult } from '../../apps/worker/src/file-text/sandbox.js';
-import { docxBytes, pdfBytes, pdfCycle, pdfDeepArray, pdfNested, zipBytes } from './support/file-text.js';
+import { docxBytes, pdfBytes, pdfCycle, pdfDeepArray, pdfNested, pdfOfPictures, zipBytes } from './support/file-text.js';
 
 // C-63, #1382: the files people send are read in a sandboxed process, and a hostile file can neither hurt the worker nor leave the sandbox. These run the
 // real thing (the built child, PDF.js, the kernel addon), on crafted files: zip bombs, malformed and deeply nested PDFs, a CSV with a line of megabytes, and
@@ -59,6 +59,22 @@ describe('reading well-formed files', () => {
 });
 
 describe('hostile files cannot hurt the worker', () => {
+  test('C-69: a PDF of pictures answers each page\'s picture as a bounded PNG; a picture over the pixel bound and a page drawn without one give none', async () => {
+    const result = await sandbox.extract(pdfOfPictures([{ kind: 'rgb', width: 3000, height: 1000 }, { kind: 'grey', width: 5000, height: 5000 },
+      { kind: 'grey', width: 300, height: 200 }]), 'pdf');
+    assert.equal(reason(result), 'empty');
+    const pictures = result.ok ? [] : result.pictures ?? [];
+    // 5,000 × 5,000 is over the 16 million pixels PDF.js may decode: that page has no picture, and the others are still kept.
+    assert.deepEqual(pictures.map((picture) => [picture.page, picture.width, picture.height]), [[1, 1568, 523], [3, 300, 200]]);
+    for (const picture of pictures) assert.equal(picture.png.readUInt32BE(16), picture.width);
+    // A scan's grey picture is a grey PNG; a colour page stays RGB.
+    assert.equal(pictures[1]!.png[25], 0);
+    assert.equal(pictures[0]!.png[25], 2);
+    // A text-only page that is empty has no picture at all.
+    const empty = await sandbox.extract(pdfBytes(['']), 'pdf');
+    assert.equal(empty.ok ? 'read' : (empty.pictures ?? []).length, 0);
+  });
+
   test('zip bombs: a deflate stream that expands to a thousand times its size, whether the entry tells the truth about it or not', async () => {
     const bomb = Buffer.alloc(FILE_TEXT_LIMITS.xmlBytes * 3, 0x20);
     const honest = zipBytes([{ name: 'word/document.xml', data: bomb }]);

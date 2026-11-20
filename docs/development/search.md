@@ -181,6 +181,12 @@ decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads t
   `NOTIFY flux_file_text` and polls nothing; a job is claimed with a lease of two minutes, tried three times and given up.
 - **Agents.** `flux_search` takes `kind: "file"` and returns the file's name, a snippet with the matches in **bold**, the page, the
   message and a link; `flux_read_file` reads the text in pages of 12,000 (a run) or 20,000 characters from `offset`.
+- **A PDF without text** ([C-69](../product/decisions.md), #1557, migration 0103). When the child finds no text in a PDF it opens it once
+  more with pictures decoded and answers, beside `empty`, the PNG of the largest picture of each of its first 10 pages (at most 1,568 px
+  on the long side, `png.ts`); the worker keeps them in `file_page_pictures` (they go with the file by the foreign key) and sets
+  `project_files.no_text`. `flux_read_file` of such a file gives a caller that sees pictures the pages as image input, three a call
+  (`offset` counts the pages given), and tells a run whose model does not that it cannot read it; the file's row and preview say
+  "no text". Still no OCR: such a file is found by its name.
 - **Web.** A file hit is the Files group's row (the file's icon, its name and the snippet) and opens its message with the preview open at
   the matched page (`?file=<id>&page=<n>`); a photo opens in the photo viewer, a video in its player (`useFileLink`).
 - **Agents and a file without text.** `flux_read_file` on a photo or a video answers with no text and the note that a picture or a

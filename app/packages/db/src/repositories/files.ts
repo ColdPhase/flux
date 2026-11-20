@@ -194,9 +194,10 @@ export function fileRows(db: DbExecutor) {
 const MESSAGE_ID_BATCH = 10_000;
 
 /** What the bytes said at upload (#469, and a video's container, C-61); a key only where there is a value, so every earlier file's JSON is unchanged. */
-export function fileDetail(row: Pick<typeof f.$inferSelect, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer'>): FileDetail {
+export function fileDetail(row: Pick<typeof f.$inferSelect, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer' | 'noText'>): FileDetail {
   return { ...(row.pageCount !== null ? { pages: row.pageCount } : {}), ...(row.rowCount !== null ? { rows: row.rowCount } : {}),
-    ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer !== null ? { video: row.videoContainer } : {}) };
+    ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer !== null ? { video: row.videoContainer } : {}),
+    ...(row.noText ? { noText: true as const } : {}) };
 }
 
 /**
