@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { SEARCH_SOURCES } from '@flux/core';
 import { pool } from './support/db.js';
 
 // #1552 (C-68): nothing unused stays in the schema. Every table, view and sequence of the schema `public` is named by the application's code,
@@ -101,6 +102,16 @@ test('every table, column, sequence and function of the schema is used by the ap
   assert.deepEqual(unused, [], `Not used by the application. Remove them in a migration that keeps the data (docs/development/upgrade-compatibility.md), `
     + `or list them in KEPT with the reason:\n${unused.join('\n')}`);
   assert.deepEqual(stale, [], 'KEPT lists objects the schema no longer has: remove them from the list');
+});
+
+test('the search kinds the database allows are the kinds the application reads and writes (C-68 (2))', async () => {
+  // A check's values are data the word check cannot see: 0106 removed `result` and `draft`, and a later migration that copied an older list of
+  // the kinds put them back. The kinds of `SEARCH_SOURCES` (one per `SearchKind`) are the whole list.
+  const row = (await pool.query(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+    WHERE conrelid = 'public.search_documents'::regclass AND conname = 'search_documents_kind_check'`)).rows[0] as { def: string } | undefined;
+  assert.ok(row, 'search_documents has its kind check');
+  const allowed = [...row.def.matchAll(/'([a-z_]+)'::text/g)].map((match) => match[1]).sort();
+  assert.deepEqual(allowed, Object.keys(SEARCH_SOURCES).sort());
 });
 
 test('a new table that nothing uses is found (negative control, #1552)', async () => {

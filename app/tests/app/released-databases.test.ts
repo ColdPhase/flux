@@ -218,4 +218,37 @@ describe('the migrator on a database dumped from each release (#1241)', () => {
       });
     });
   }
+
+  test('a migration that waits for a lock another connection holds fails alone, says so, and a retry finishes (C-68 (4))', async () => {
+    // v0.2.1 (schema 95) stays in the chain; its first pending change of project_files is 0103.
+    await withReleasedDatabase('v0.2.1.sql.gz', async (url) => {
+      // An operator's psql left inside a transaction that read project_files: v0.2.2's first change of that table (0103) cannot take its lock.
+      const { pool: other } = createDatabase(url, undefined, { queryTimeoutMs: 60_000, max: 1 });
+      const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 60_000, max: 1 });
+      try {
+        const before = await readAppliedMigrationVersions(pool);
+        const holder = await other.connect();
+        let result: Awaited<ReturnType<typeof migrator>>;
+        try {
+          await holder.query('BEGIN');
+          await holder.query('SELECT count(*) FROM project_files');
+          result = await migrator(url);
+        } finally {
+          await holder.query('ROLLBACK').catch(() => undefined);
+          holder.release();
+        }
+        assert.notEqual(result.code, 0, `the migrator must fail while the lock is held: ${result.stdout}`);
+        assert.match(result.stderr, /Migration 0103_pdf_page_pictures\.sql failed and was rolled back; the migrations before it stay applied\. It gave up waiting for a lock that another connection to the database holds/);
+        const manifest = (await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION)).map((file) => file.version);
+        const stopped = await readAppliedMigrationVersions(pool);
+        assert.deepEqual(stopped, manifest.filter((version) => version < 103), `the files before 0103 are applied and 0103 is not (ledger ${before.at(-1)} → ${stopped.at(-1)})`);
+        const column = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'project_files' AND column_name = 'no_text'");
+        assert.equal(column.rowCount, 0, '0103 left nothing behind');
+
+        const retry = await migrator(url);
+        assert.equal(retry.code, 0, `with the lock released, the retry finishes: ${retry.stdout}${retry.stderr}`);
+        assert.deepEqual(await readAppliedMigrationVersions(pool), manifest);
+      } finally { await pool.end(); await other.end(); }
+    });
+  });
 });

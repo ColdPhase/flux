@@ -41,8 +41,12 @@ list of versions that upgrade to which, is [Upgrade](../operations/upgrade.md); 
    decisions, files, people, agents, Wiki versions), the same pull request changes that list and says why.
 10. **Long migrations do not hold the tables.** API and worker are stopped during an upgrade, but a migration that rewrites or scans a
     large table (a backfill, a new index on `project_messages` or `search_documents`) works in batches and sets `SET LOCAL lock_timeout`
-    (for example `'5s'`), so it fails clearly instead of waiting on a lock, and the upgrade restores the backup. Name in the pull request how
-    long it took on the largest fixture.
+    (for example `'5s'`), so it fails clearly instead of waiting on a lock: that file is rolled back, the migrator names it and the lock,
+    and `./flux upgrade` stops with the backup's restore and retry instructions ([when it fails](../operations/upgrade.md#when-it-fails)).
+    Name in the pull request how long it took on the largest fixture. A backfill of search rows is one `INSERT … SELECT` (or one `UPDATE`), never a `search_put` per
+    row: the BM25 index writes a segment for each statement (`mutable_segment_rows = 0`, 0093), 100 to 190 kB each, and the space stays
+    in the index after the merge (0109 on 20,000 files, 2026-11-20: a call per file grew it from 56 MB to 3.7 GB in 27 s; one statement,
+    no growth in 3.5 s).
 11. **The chain stays whole.** No baseline is cut at a minor release: any release from v0.2.0 on upgrades (#1241), and a baseline would
     remove the files an older release needs. A baseline is cut only in the release that drops the oldest supported release.
 

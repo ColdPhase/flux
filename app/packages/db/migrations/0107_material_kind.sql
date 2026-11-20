@@ -1,8 +1,11 @@
 -- A saved source (a "material") is a Wiki page, and the kind goes (#1508, C-71; founder decision on #1419 item 20, data half on #1424).
--- 0102–0106 belong to other changes of v0.2.2 (assigned by the coordinator), so a gap is expected until they land.
+-- v0.2.2's migrations are 0100 to 0110; 0096–0099, 0102 and 0108 were never used, and the migrator applies the files there are, in order.
 -- Every row stays: a material keeps its id, its versions (title, text, link, author, time), the messages and tasks that cite a version,
 -- its search rows and its events; it is now read, edited and exported as a page of its space's Wiki. A version's link (`url`, sealed in an
 -- encrypted space) stays on the version: the page shows it, and each later version keeps it (docs.ts `append`).
+
+-- It waits at most 5 s for a table's lock (C-68 (4)): API and worker are stopped during an upgrade, so a wait means another session holds it.
+SET LOCAL lock_timeout = '5s';
 
 -- The rules that told a doc from a material have nothing left to tell apart.
 DROP TRIGGER material_agent_doc_stays_doc ON public.project_materials;
@@ -21,9 +24,9 @@ UPDATE public.events SET kind = 'project.doc_updated.v1', data = (data - 'materi
 -- kind is visible metadata in an encrypted space too, and the change log tells that space's devices to read the rows again.
 UPDATE public.search_documents SET kind = 'doc' WHERE kind = 'material';
 ALTER TABLE public.search_documents DROP CONSTRAINT search_documents_kind_check;
+-- The kinds that stay are 0106's without `material` (0106 removed `result` and `draft`, which nothing writes).
 ALTER TABLE public.search_documents ADD CONSTRAINT search_documents_kind_check CHECK (kind = ANY (ARRAY['project'::text, 'message'::text,
-  'dm_message'::text, 'doc'::text, 'work'::text, 'decision'::text, 'result'::text, 'sketch'::text, 'thought'::text, 'draft'::text,
-  'person'::text, 'file'::text]));
+  'dm_message'::text, 'doc'::text, 'work'::text, 'decision'::text, 'sketch'::text, 'thought'::text, 'person'::text, 'file'::text]));
 
 CREATE OR REPLACE FUNCTION public.search_index_material_version() RETURNS trigger
     LANGUAGE plpgsql
