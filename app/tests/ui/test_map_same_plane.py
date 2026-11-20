@@ -343,6 +343,8 @@ class MapSamePlane(unittest.TestCase):
                 page = self.page({'width': width, 'height': 780}, touch=True)
                 project, sketch, ids = self.make(rows)
                 self.open(page, project, sketch, count=2)
+                page.evaluate('document.fonts.ready.then(() => true)')  # measured in the face the person sees
+                page.wait_for_timeout(300)
                 node = self.node(page, rows[0][0])
                 meta = node.locator('.sk-p')
                 text = meta.text_content()
