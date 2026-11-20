@@ -16,7 +16,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 from account import sign_out
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_map_options, own_company, show_map_as, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, double_tap_empty, map_zoom, open_map_options, own_company, show_map_as, shot, start_forwarder
 
 PASSWORD = "sketching all afternoon"
 EMAIL = f"kai.lind+{int(time.time() * 1000)}@example.test"
@@ -450,7 +450,12 @@ class SketchJourney(unittest.TestCase):
         # The phone shows the computer's plane (C-67), framed by Fit: each thought at its own place, none over another.
         options = open_map_options(page, touch=True)
         options.get_by_role("button", name="Fit the map to the view").tap()
-        zoom = options.get_by_role("button", name=re.compile(r"^Zoom \d+%")).get_attribute("aria-label")
+        # The phone zooms with two fingers or a double tap: its Map options hold Fit and no zoom buttons (S15, founder direction 2026-11-20).
+        for name in ("Zoom in", "Zoom out"):
+            expect(options.get_by_role("button", name=name, exact=True)).to_have_count(0)
+        expect(options.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_count(0)
+        page.wait_for_timeout(300)
+        zoom = map_zoom(page)
         options.get_by_role("button", name="Close map options", exact=True).tap()
         nodes = page.locator(".sk-node")
         self.assertGreaterEqual(nodes.count(), 4)
@@ -459,10 +464,10 @@ class SketchJourney(unittest.TestCase):
                 a, b = box(page, nodes.nth(i)), box(page, nodes.nth(j))
                 overlap = a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"] and a["y"] < b["y"] + b["height"] and b["y"] < a["y"] + a["height"]
                 self.assertFalse(overlap, f"thoughts {i} and {j} do not overlap")
-        # S15: the phone map is the whole screen; no toolbar row. It views and adds, and says where to connect.
+        # S15: the phone map is the whole screen; no toolbar row. It arranges by finger (#1600), so nothing sends it to a computer.
         expect(page.get_by_role("toolbar", name="Map tools")).to_have_count(0)
         expect(page.get_by_role("button", name="Thought", exact=True)).to_be_visible()
-        expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
+        expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
         options = open_map_options(page, touch=True)
         expect(options.get_by_role("radio", name="List")).to_be_visible()
         options.get_by_role("button", name="Close map options", exact=True).tap()
@@ -483,10 +488,12 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_label("Thought text")).to_be_focused()
         page.keyboard.press("Escape")
         # Fit brings the whole graph back after zooming in.
+        double_tap_empty(page)
+        self.assertGreater(map_zoom(page), zoom, "a double tap zooms in")
         options = open_map_options(page, touch=True)
-        options.get_by_role("button", name="Zoom in").tap()
-        page.get_by_role("button", name="Fit the map to the view").tap()
-        expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", zoom)
+        options.get_by_role("button", name="Fit the map to the view").tap()
+        page.wait_for_timeout(400)
+        self.assertEqual(map_zoom(page), zoom)
 
     # ---------------------------------------------------------------- many sketches
 
@@ -695,7 +702,7 @@ class SketchJourney(unittest.TestCase):
                 canvas = page.locator(".sk-canvas")
                 options = open_map_options(page, touch=True)
                 expect(options.get_by_role("group", name="Zoom", exact=True)).to_be_in_viewport(ratio=1)
-                expect(options.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", "Zoom 75%, reset to 100%")
+                self.assertEqual(map_zoom(page), 0.75, "Fit frames the phone's map at the touch floor")
                 options.get_by_role("button", name="Close map options", exact=True).tap()
                 expect(options).to_have_count(0)
                 controls = page.get_by_role("button", name="Map options", exact=True)

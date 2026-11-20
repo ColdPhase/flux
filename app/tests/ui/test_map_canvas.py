@@ -217,7 +217,7 @@ class MapCanvasJourney(unittest.TestCase):
         expect(page.locator('.sk-node').first).to_be_visible()
         expect(page.locator('.sk-hint')).to_have_count(0)
 
-    def test_06_phone_keeps_the_view_and_add_only_layout_without_a_minimap(self):
+    def test_06_phone_keeps_its_layout_without_a_minimap_and_arranges_like_the_computer(self):
         page = self.page(390, 844, is_mobile=True, has_touch=True)
         self.scene(page)
         expect(page.locator('.sk-minimap')).to_have_count(0)
@@ -226,8 +226,10 @@ class MapCanvasJourney(unittest.TestCase):
         node = page.locator('.sk-node', has_text=FIRST)
         node.tap()
         node.focus()
-        page.keyboard.press('ArrowLeft')
-        self.assertEqual(node.get_attribute('data-thought-x'), '0', 'the phone views and adds only (S15)')
+        x = int(node.get_attribute('data-thought-x'))
+        page.keyboard.press('ArrowRight')
+        expect(node).to_have_attribute('data-thought-x', str(x + 12))  # the phone arranges like the computer (S15 amended, #1600)
+        expect(page.locator('.sk-zoom__step')).to_have_count(0)  # and zooms with two fingers, not buttons
         self.assertLessEqual(page.locator('body').evaluate('el => el.scrollWidth'), 390)
         shot(page, 'map-canvas-phone-390-light')
 

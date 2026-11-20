@@ -1,8 +1,11 @@
 """#1553 (C-67): a map looks the same on every device: the phone shows the computer's plane with free pan and pinch zoom, never two
-columns; a thought is not moved by a pan; the view is remembered per map and device; a thought's provenance never overlaps itself."""
+columns; a thought is not moved by a pan; the view is remembered per map and device; a thought's provenance never overlaps itself.
+#1600 (S15 amended): the phone arranges by finger on that plane: a long press and a drag moves a thought, a drag from the selected thought's
+dot links it or starts a connected thought that takes typing, a drag at the edge pans, and the phone zooms with two fingers, not buttons."""
 from __future__ import annotations
 
 import os
+import re
 import unittest
 import uuid
 
@@ -137,16 +140,65 @@ class MapSamePlane(unittest.TestCase):
         page.wait_for_timeout(40)
         self.touch(page, 'touchEnd')
 
-    def empty_point(self, page):
-        """A point on the canvas where nothing but the plane lies (a pan or a double tap there is on empty space)."""
-        return page.evaluate('''() => {
+    def empty_point(self, page, margin=24):
+        """A point on the canvas where nothing but the plane lies (a pan or a double tap there is on empty space), `margin` from its sides."""
+        return page.evaluate('''(margin) => {
           const view = document.querySelector('.sk-canvas').getBoundingClientRect();
-          for (let y = view.bottom - 130; y > view.top + 90; y -= 24) for (let x = view.left + 24; x < view.right - 24; x += 24) {
+          for (let y = view.bottom - 130; y > view.top + 90; y -= 24) for (let x = view.left + margin; x < view.right - margin; x += 24) {
             const hit = document.elementFromPoint(x, y);
             if (hit && (hit.classList.contains('sk-plane') || hit.classList.contains('sk-zoomed'))) return [x, y];
           }
           return null;
-        }''')
+        }''', margin)
+
+    def drag(self, page, start, end, *, hold_ms=0, end_hold_ms=0, steps=10, before_release=None):
+        """One finger: down at `start`, resting `hold_ms` (a long press), moving to `end`, resting there `end_hold_ms`, then up. Chromium
+        dispatches real touch points (the browser's own gesture handling, touch-action and pointer capture); Playwright's WebKit has only a
+        tap, so there the same pointer events (pointerType "touch") are dispatched to the element under the finger, as its capture would."""
+        if os.environ.get('FLUX_UI_BROWSER', 'chromium') == 'chromium':
+            self.touch(page, 'touchStart', start)
+            page.wait_for_timeout(hold_ms or 16)
+            for step in range(1, steps + 1):
+                self.touch(page, 'touchMove', (start[0] + (end[0] - start[0]) * step / steps, start[1] + (end[1] - start[1]) * step / steps))
+                page.wait_for_timeout(24)
+            page.wait_for_timeout(end_hold_ms)
+            if before_release:
+                before_release()
+            self.touch(page, 'touchEnd')
+        else:
+            page.evaluate('''([sx, sy]) => {
+              const target = document.elementFromPoint(sx, sy);
+              window.__finger = target;
+              target.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 41, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, composed: true, button: 0, buttons: 1, clientX: sx, clientY: sy }));
+            }''', list(start))
+            page.wait_for_timeout(hold_ms or 16)
+            move = '''([type, x, y]) => window.__finger.dispatchEvent(new PointerEvent(type, { pointerId: 41, pointerType: 'touch', isPrimary: true, bubbles: true,
+              cancelable: true, composed: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y }))'''
+            for step in range(1, steps + 1):
+                page.evaluate(move, ['pointermove', start[0] + (end[0] - start[0]) * step / steps, start[1] + (end[1] - start[1]) * step / steps])
+                page.wait_for_timeout(24)
+            page.wait_for_timeout(end_hold_ms)
+            if before_release:
+                before_release()
+            page.evaluate(move, ['pointerup', end[0], end[1]])
+        page.wait_for_timeout(400)
+
+    def dot(self, page, text, side='right'):
+        return page.locator(f'.sk-dot[data-for="{self.node(page, text).get_attribute("data-id")}"][data-side="{side}"]')
+
+    def eventually(self, page, sketch, ready):
+        """The stored map once `ready(stored)` holds (saves are asynchronous), else the last read."""
+        for _ in range(40):
+            now = self.api(page.context, 'GET', f'/api/v1/sketches/{sketch}')
+            if ready(now):
+                break
+            page.wait_for_timeout(150)
+        return now
+
+    def page_still(self, page, url):
+        """The finger's drag was the map's alone: the page did not scroll and no Back or navigation happened."""
+        self.assertEqual(page.evaluate('[window.scrollX, window.scrollY, document.scrollingElement.scrollTop]'), [0, 0, 0], 'the page never scrolls under a drag')
+        self.assertEqual(page.url, url, 'and no drag navigates (no Back)')
 
     def node(self, page, text):
         return page.locator('.sk-node', has_text=text)
@@ -390,6 +442,119 @@ class MapSamePlane(unittest.TestCase):
                 self.assertFalse(by['sk-p__n']['whole'], 'and ends in an ellipsis, since the full name does not fit')
                 if width == 360:
                     shot(page, 'same-plane-meta-360-light')
+
+    def test_09_a_phone_moves_a_thought_by_finger_on_the_computers_plane(self):
+        """#1600: a long press and a drag moves a thought on a phone (390 and 360); after a reload it stands, relative to the others, exactly
+        where the computer draws it. The phone has no zoom buttons: its Map options hold Fit."""
+        for viewport in (PHONE, {'width': 360, 'height': 780}):
+            with self.subTest(width=viewport['width']):
+                project, sketch, ids = self.make()
+                page = self.page(viewport, touch=True)
+                self.open(page, project, sketch)
+                url = page.url
+                before = self.stored(page, sketch)
+                text = ROWS[3][0]
+                self.node(page, text).scroll_into_view_if_needed()
+                page.wait_for_timeout(300)
+                scroll, zoom = self.scroll(page), self.zoom(page)
+                centre = self.centre(page, text)
+                self.drag(page, centre, (centre[0] + 60, centre[1] + 70), hold_ms=650)
+                expect(self.node(page, text)).to_have_attribute('aria-pressed', 'true')
+                now = self.eventually(page, sketch, lambda s: any((t['x'], t['y']) != before[t['text']] for t in s['thoughts']))
+                now = {t['text']: (t['x'], t['y']) for t in now['thoughts']}
+                self.assertTrue(self.close(now[text], (before[text][0] + 60 / zoom, before[text][1] + 70 / zoom), 6),
+                                f'the thought followed the finger: {before[text]} then {now[text]} at zoom {zoom}')
+                self.assertEqual({k: v for k, v in now.items() if k != text}, {k: v for k, v in before.items() if k != text}, 'only that thought moved')
+                self.assertEqual(self.scroll(page), scroll, 'the plane did not pan under a held thought')
+                self.page_still(page, url)
+                page.reload()
+                expect(page.locator('.sk-node')).to_have_count(len(ROWS))
+                page.wait_for_timeout(600)
+                phone = self.layout(page)
+                computer = self.page(COMPUTER)
+                self.open(computer, project, sketch)
+                wide = self.layout(computer)
+                for each in wide:
+                    self.assertTrue(self.close(phone[each], wide[each]), f'{each!r} stands where the computer has it: {phone[each]} against {wide[each]}')
+                # Two fingers zoom the phone's map; there are no zoom buttons, and Map options keep Fit.
+                expect(page.locator('.sk-zoom__step, .sk-zoom__level')).to_have_count(0)
+                options = page.get_by_role('button', name='Map options', exact=True)
+                options.tap()
+                sheet = page.get_by_role('dialog', name='Map options', exact=True)
+                expect(sheet.get_by_role('button', name='Fit the map to the view')).to_be_visible()
+                expect(sheet.get_by_role('button', name=re.compile('^Zoom'))).to_have_count(0)
+
+    def test_10_a_dot_dragged_by_finger_links_or_starts_a_thought_that_takes_typing(self):
+        """#1600: the selected thought's dots have a 44 px target; a drag from one onto another thought links them, onto empty space starts a
+        connected draft that takes typing and saves connected (the #1554/#1588 flow), on the phone."""
+        for scheme in ('light', 'dark'):
+            with self.subTest(scheme=scheme):
+                project, sketch, ids = self.make()
+                page = self.page(PHONE, scheme, touch=True)
+                self.open(page, project, sketch)
+                url = page.url
+                source, target = ROWS[3][0], ROWS[4][0]
+                self.node(page, source).tap()
+                expect(self.node(page, source)).to_have_attribute('aria-pressed', 'true')
+                dot = self.dot(page, source)
+                expect(dot).to_be_visible()
+                box = dot.bounding_box()
+                middle = (box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                for dx, dy in ((21, 0), (0, -21), (0, 21)):
+                    hit = page.evaluate('([x, y]) => document.elementFromPoint(x, y)?.closest(".sk-dot")?.dataset.side ?? null', [middle[0] + dx, middle[1] + dy])
+                    self.assertEqual(hit, 'right', f'the dot answers a finger {dx}, {dy} px from its middle (a 44 px target)')
+                links = len(self.api(page.context, 'GET', f'/api/v1/sketches/{sketch}')['links'])
+                self.drag(page, middle, self.centre(page, target), before_release=lambda: shot(page, f'phone-dot-link-390-{scheme}'))
+                stored = self.eventually(page, sketch, lambda s: len(s['links']) == links + 1)
+                self.assertEqual(len(stored['links']), links + 1, 'a drag from the dot onto a thought links them')
+                self.assertTrue(any({l['fromId'], l['toId']} == {ids[3], ids[4]} for l in stored['links']))
+                expect(self.node(page, target)).to_have_attribute('aria-pressed', 'true')
+                expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
+                # From the target's dot onto empty plane: a connected draft that takes typing at once.
+                page.wait_for_timeout(300)
+                dot = self.dot(page, target)
+                box = dot.bounding_box()
+                middle = (box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                empty = self.empty_point(page, margin=72)
+                self.assertIsNotNone(empty, 'there is empty plane clear of the edges')
+                self.drag(page, middle, empty)
+                draft = page.get_by_role('form', name='New thought draft')
+                expect(draft).to_be_visible()
+                field = draft.get_by_label('Thought text')
+                expect(field).to_be_focused()
+                expect(draft).to_contain_text('Connected to')
+                page.keyboard.type('Ulotki w schronisku')
+                expect(field).to_have_value('Ulotki w schronisku')
+                shot(page, f'phone-dot-draft-390-{scheme}')
+                draft.get_by_role('button', name='Save thought').tap()
+                stored = self.eventually(page, sketch, lambda s: any(t['text'] == 'Ulotki w schronisku' for t in s['thoughts']))
+                made = next(t for t in stored['thoughts'] if t['text'] == 'Ulotki w schronisku')
+                self.assertTrue(any({l['fromId'], l['toId']} == {ids[4], made['id']} for l in stored['links']), 'the new thought is connected to its dot\'s thought')
+                self.page_still(page, url)
+                shot(page, f'phone-arranged-390-{scheme}')
+
+    def test_11_a_thought_held_at_the_edge_pans_the_map(self):
+        """#1600: dragging a thought to the screen's edge and resting there pans the map that way, and the thought keeps up with the plane."""
+        project, sketch, ids = self.make()
+        page = self.page(PHONE, touch=True)
+        self.open(page, project, sketch)
+        page.locator('.sk-canvas').evaluate('el => { el.scrollLeft = 0; }')
+        page.wait_for_timeout(300)
+        before = self.stored(page, sketch)
+        text = ROWS[0][0]
+        self.node(page, text).scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        scroll, zoom = self.scroll(page), self.zoom(page)
+        view = page.locator('.sk-canvas').bounding_box()
+        centre = self.centre(page, text)
+        edge = (view['x'] + view['width'] - 8, centre[1])
+        self.drag(page, centre, edge, hold_ms=650, end_hold_ms=900)
+        panned = self.scroll(page)
+        self.assertGreater(panned[0], scroll[0] + 60, f'the map panned right while the thought rested at the edge: {scroll} then {panned}')
+        now = self.eventually(page, sketch, lambda s: any((t['x'], t['y']) != before[t['text']] for t in s['thoughts']))
+        now = {t['text']: (t['x'], t['y']) for t in now['thoughts']}
+        finger = (edge[0] - centre[0]) / zoom
+        self.assertGreater(now[text][0] - before[text][0], finger + 40 / zoom, f'the thought went with the plane beyond the finger: {before[text]} then {now[text]}')
 
 
 if __name__ == '__main__':

@@ -45,6 +45,8 @@ export interface ThoughtDraft {
   /** Lifecycle is known in this visit; restoration checks canonical metadata/proof rather than trusting this flag. */
   tracked?: true;
   unknown?: true;
+  /** #1600: the parent was named by a drag from its dot, not inferred from the selection, so a phone keeps it (S15). */
+  drawn?: true;
 }
 /** A pasted row may exceed the thought limit (it is marked and blocks Save), but not without bound. */
 const LINE_CHARS = 100_000;
@@ -116,6 +118,7 @@ function persisted(key: string): ThoughtDraft | null {
         && (draft.file === undefined || validFile(draft.file))
         && (draft.attempt === undefined || validAttempt(draft.attempt, draft.id))
         && (draft.tracked === undefined || draft.tracked === true)
+        && (draft.drawn === undefined || draft.drawn === true)
         && (draft.lines === undefined || draft.file === undefined)
         && (draft.width === undefined || isSpot(draft.width)) && (draft.height === undefined || isSpot(draft.height))) {
         const restore = <T extends DraftLine | ThoughtDraft>(row: T): T => {

@@ -258,8 +258,9 @@ class ConnectionLabels(unittest.TestCase):
         expect(page.locator('.sk-labels .sk-el')).to_have_text('range')
         page.locator(f'.sk-node[data-id="{self.ids[map_connect.A]}"]').tap()
         expect(page.get_by_role('button', name='Connections', exact=True)).to_have_count(0)
-        expect(page.locator('.sk-el--edit, .sk-edge-hits, .sk-dot')).to_have_count(0)
-        expect(page.get_by_text('Connect and arrange on a computer')).to_be_visible()
+        # Naming a connection stays on the computer (S15); drawing one by finger is the phone's too (#1600), so the selected thought has its dots.
+        expect(page.locator('.sk-el--edit, .sk-edge-hits')).to_have_count(0)
+        expect(page.locator('.sk-dot')).to_have_count(2)
         self.assert_no_overflow(page)
         shot(page, f'connection-labels-phone-view-only-{UI_BROWSER}')
         show_map_as(page, 'List', touch=True)

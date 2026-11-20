@@ -38,8 +38,6 @@ export interface SketchMapProps {
   editControls?: ReactNode;
   /** What a local client changed on this map, with its change line and Undo (#868): in the dock, whose height the map reserves, so it never covers a thought. */
   changes?: ReactNode;
-  /** The phone's one-time line "Connect and arrange on a computer" (S15): shown until this is called, which remembers that it was seen; null once it was. */
-  onDismissComputerNote?: (() => void) | null;
   /** Map/List remains reachable in the phone's named Map options sheet. */
   viewModes: ReactNode;
   bar: SelectionTools;
@@ -117,6 +115,9 @@ const zoomOut = (z: number) => [...ZOOMS].reverse().find((step) => step < z - 0.
 const LONG_PRESS = 400;
 const PRESS_SLOP = 8;
 const DOUBLE_TAP = { ms: 350, px: 32 };
+/** A thought or a dot dragged this close to the map's edge pans the map that way, faster nearer the edge (#1600; every device). */
+const EDGE = 40;
+const EDGE_SPEED = 14;
 /** Where a person is looking: the scroll pixels of the plane. */
 interface Camera { left: number; top: number }
 const near = (a: { left: number; top: number }, b: { left: number; top: number }) => Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
@@ -133,8 +134,11 @@ interface Drag {
   started: boolean;
   /** Refused or ended while the pointer is still down: the rest of the press does nothing, and its release is no click. */
   ended?: boolean;
+  /** The plane's scroll when the press began: a pan's start, and what an edge pan has added since under a moved thought. */
   scrollLeft?: number;
   scrollTop?: number;
+  /** The pointer has been clear of the map's edges since the press: a thought picked up at the edge does not pan until it has left it. */
+  armed?: boolean;
   base: Thought[];
   /** Intrinsic/native minimum at pointer-down, before our own previews can change measured height. */
   resizeHeight?: number;
@@ -223,6 +227,20 @@ export function SketchMap(props: SketchMapProps) {
   // A finger resting on a thought (a press that may become a move), and the taps that may make a double tap (touch, C-67).
   const press = useRef<{ pointerId: number; id: string; sx: number; sy: number; x: number; y: number; timer: number } | null>(null);
   const clearPress = () => { if (press.current) { window.clearTimeout(press.current.timer); press.current = null; } };
+  // An edge pan in progress (#1600): where the pointer rests and how far the plane moves each frame.
+  const edge = useRef<{ x: number; y: number; vx: number; vy: number; frame: number } | null>(null);
+  const stopEdge = () => { if (edge.current) { cancelAnimationFrame(edge.current.frame); edge.current = null; } };
+  const followRef = useRef<(d: Drag, x: number, y: number) => void>(() => undefined);
+  const edgeFrame = () => {
+    const at = edge.current, d = drag.current, canvas = canvasRef.current;
+    if (!at || !d || d.ended || !canvas) { edge.current = null; return; }
+    const [left, top] = [canvas.scrollLeft, canvas.scrollTop];
+    canvas.scrollLeft += at.vx;
+    canvas.scrollTop += at.vy;
+    if (canvas.scrollLeft !== left || canvas.scrollTop !== top) followRef.current(d, at.x, at.y);
+    at.frame = requestAnimationFrame(edgeFrame);
+  };
+  useEffect(() => () => { if (edge.current) cancelAnimationFrame(edge.current.frame); }, []);
   const tap = useRef<{ pointerId: number; x: number; y: number; at: number } | null>(null);
   const lastTap = useRef<{ x: number; y: number; at: number } | null>(null);
   const latest = useRef(props);
@@ -278,8 +296,8 @@ export function SketchMap(props: SketchMapProps) {
   // and zooms that plane. `compact` (a phone window) only chooses the phone's sheet and tools.
   const [zoom, setZoom] = useState(1);
   const [, remeasure] = useState(0);
-  // S15: on a phone nothing is connected or arranged; people who can write may still add and edit text.
-  const arrange = canWrite && !compact;
+  // S15 (amended, #1600): every device arranges and connects, the phone and the tablet by finger.
+  const arrange = canWrite;
   const observer = useRef<ResizeObserver | null>(null);
   const events = useRef<NodeEvents>(IDLE_EVENTS);
   // One ref callback for every node. An inline callback is a new function on every render, so
@@ -824,8 +842,12 @@ export function SketchMap(props: SketchMapProps) {
   const start = (el: Element, point: { pointerId: number; x: number; y: number }, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base' | 'resizeHeight'>) => {
     const resizing = next.kind === 'resize' ? byId.get(next.id!) : undefined;
     const resizeHeight = resizing ? Math.max(resizing.height, heights.get(resizing.id) ?? 0) : undefined;
-    drag.current = { ...next, resizeHeight, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: point.pointerId, sx: point.x, sy: point.y, moved: false, started: false };
-    el.setPointerCapture?.(point.pointerId);
+    const canvas = canvasRef.current;
+    drag.current = { ...next, scrollLeft: next.scrollLeft ?? canvas?.scrollLeft ?? 0, scrollTop: next.scrollTop ?? canvas?.scrollTop ?? 0, resizeHeight,
+      base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: point.pointerId, sx: point.x, sy: point.y, moved: false, started: false };
+    stopEdge();
+    // A pointer the browser no longer tracks (released meanwhile, or a synthetic one) cannot be captured; the drag still follows the canvas's events.
+    try { el.setPointerCapture?.(point.pointerId); } catch { /* not capturable */ }
   };
   const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base' | 'resizeHeight'>) =>
     start(event.currentTarget as Element, { pointerId: event.pointerId, x: event.clientX, y: event.clientY }, next);
@@ -894,8 +916,6 @@ export function SketchMap(props: SketchMapProps) {
     if (tap.current?.pointerId === event.pointerId && Math.hypot(event.clientX - tap.current.x, event.clientY - tap.current.y) > PRESS_SLOP) tap.current = null;
     const d = drag.current;
     if (!d || d.pointerId !== event.pointerId || d.ended) return;
-    const dx = (event.clientX - d.sx) / zoom;
-    const dy = (event.clientY - d.sy) / zoom;
     if (!d.moved && Math.hypot(event.clientX - d.sx, event.clientY - d.sy) < 4) return;
     if (!d.moved) {
       // Keep the same trusted-input threshold as local movement. A Shift-click
@@ -915,25 +935,53 @@ export function SketchMap(props: SketchMapProps) {
       const canvas = canvasRef.current!;
       canvas.scrollLeft = d.scrollLeft! - (event.clientX - d.sx);
       canvas.scrollTop = d.scrollTop! - (event.clientY - d.sy);
-    } else if (d.kind === 'link') {
+      return;
+    }
+    follow(d, event.clientX, event.clientY);
+    edgePan(d, event.clientX, event.clientY);
+  };
+
+  /** The moved thought, the new size or the wire's end under the pointer at `x`,`y`, counting what an edge pan has scrolled since the press. */
+  const follow = (d: Drag, x: number, y: number) => {
+    const canvas = canvasRef.current!;
+    const dx = (x - d.sx + canvas.scrollLeft - (d.scrollLeft ?? 0)) / zoom;
+    const dy = (y - d.sy + canvas.scrollTop - (d.scrollTop ?? 0)) / zoom;
+    if (d.kind === 'link') {
       const box = zoomedRef.current!.getBoundingClientRect();
-      const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot, .sk-work-slot');
+      const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>('.sk-node, .sk-dot, .sk-work-slot');
       const over = hit?.dataset.id ?? hit?.dataset.for ?? null;
-      d.wire = { from: d.id!, x: bounded(Math.round((event.clientX - box.left) / zoom + origin.x)), y: bounded(Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null };
+      d.wire = { from: d.id!, x: bounded(Math.round((x - box.left) / zoom + origin.x)), y: bounded(Math.round((y - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null };
       setWire(d.wire);
     } else if (d.kind === 'move') {
       d.offset = { ids: d.ids, base: d.base, dx: Math.round(dx), dy: Math.round(dy) };
       setOffset(d.offset);
       props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: bounded(Math.round(thought.x + dx)), y: bounded(Math.round(thought.y + dy)) })));
     } else {
-      const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
-      const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
+      const t = byId.get(d.id!) ?? sketch.thoughts.find((item) => item.id === d.id);
+      const base = (props.liveEnabled ? d.base.find((item) => item.id === d.id) : sketch.thoughts.find((item) => item.id === d.id)) ?? t!;
       const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
       const height = clamp(Math.round((d.resizeHeight ?? base.height) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
       d.size = { id: d.id!, w: width, h: height };
       setSize(d.size);
       props.onGesturePreview([{ id: base.id, x: base.x, y: base.y, width, height }]);
     }
+  };
+
+  /**
+   * #1600: a thought, a size or a wire dragged near the map's edge pans the map that way, every frame while the pointer stays there (a
+   * resting finger sends no events), and the dragged thought or wire keeps up with the plane under the pointer.
+   */
+  const edgePan = (d: Drag, x: number, y: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !d.moved || d.ended) { stopEdge(); return; }
+    const box = canvas.getBoundingClientRect();
+    const speed = (inside: number) => inside >= EDGE ? 0 : Math.ceil(EDGE_SPEED * (1 - Math.max(0, inside) / EDGE));
+    const vx = speed(x - box.left) ? -speed(x - box.left) : speed(box.right - x);
+    const vy = speed(y - box.top) ? -speed(y - box.top) : speed(box.bottom - y);
+    if (!vx && !vy) { d.armed = true; stopEdge(); return; }
+    if (!d.armed) return;
+    if (edge.current) Object.assign(edge.current, { x, y, vx, vy });
+    else edge.current = { x, y, vx, vy, frame: requestAnimationFrame(edgeFrame) };
   };
 
   const onPointerUp = (event: ReactPointerEvent) => {
@@ -948,6 +996,7 @@ export function SketchMap(props: SketchMapProps) {
     const d = drag.current;
     if (!d || d.pointerId !== event.pointerId) return;
     drag.current = null;
+    stopEdge();
     lifted.current = false;
     setPanning(false);
     if (d.kind === 'pan') {
@@ -992,6 +1041,7 @@ export function SketchMap(props: SketchMapProps) {
 
   const onPointerCancel = () => {
     if (drag.current?.started) props.onGestureCancel();
+    stopEdge();
     clearPress();
     tap.current = null;
     lifted.current = false;
@@ -1035,6 +1085,7 @@ export function SketchMap(props: SketchMapProps) {
 
   // The memoized thoughts call the handlers of the latest render (#228 Gate 4).
   useLayoutEffect(() => {
+    followRef.current = follow;
     events.current = { pointerDown: onNodePointerDown, resizePointerDown: onResizePointerDown, keyDown: onNodeKeyDown,
       click: (event, id) => { if (suppressClick.current) return; props.onPick(id, event.shiftKey || event.metaKey || event.ctrlKey); },
       doubleClick: (id) => { if (canWrite && !connectFrom) props.onEdit(id); },
@@ -1109,13 +1160,16 @@ export function SketchMap(props: SketchMapProps) {
     setPhoneMenuOpen(false);
   };
   // #509 AC-3: − level + | Fit, in their own group at the bottom right of the map.
-  const zoomControls = (
+  const wireHint = wire ? <p className="sk-hint" aria-hidden="true">{wire.over ? 'Release to link' : 'Release to add a connected thought'}</p> : null;
+  const fitControl = <button type="button" className="sk-zoom__fit" aria-label="Fit the map to the view" onClick={() => fit()}>Fit</button>;
+  // The phone zooms with two fingers or a double tap, never with buttons (founder direction, Hubert, 2026-11-20, S15): its Map options keep Fit.
+  const zoomControls = compact ? <div className="sk-zoom" role="group" aria-label="Zoom">{fitControl}</div> : (
     <div className="sk-zoom" role="group" aria-label="Zoom">
       <button type="button" className="sk-zoom__step" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => zoomAt(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
       <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => zoomAt(1)}>{Math.round(zoom * 100)}%</button>
       <button type="button" className="sk-zoom__step" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
       <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="sk-zoom__fit" aria-label="Fit the map to the view" onClick={() => fit()}>Fit</button>
+      {fitControl}
     </div>
   );
 
@@ -1255,7 +1309,7 @@ export function SketchMap(props: SketchMapProps) {
       {!compact && (hasThoughts || props.bar.canUndo) ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
       <div className="sk-dock" ref={dockRef}>
         {!compact ? props.changes : null}
-        {!compact ? (wire ? <p className="sk-hint" aria-hidden="true">{wire.over ? 'Release to link' : 'Release to add a connected thought'}</p> : props.hint) : null}
+        {!compact ? wireHint ?? props.hint : null}
         {props.dock ? <DockRow>{props.dock}</DockRow> : null}
       </div>
       {compact ? <button type="button" className="sk-edit-btn sk-map-options" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'map'} onClick={(event) => {
@@ -1271,10 +1325,8 @@ export function SketchMap(props: SketchMapProps) {
       {compact && !hasComposition ? (
         <div className="sk-phone" ref={phoneToolsRef}>
           {props.changes}
-          {props.hint}
+          {wireHint ?? props.hint}
           {canWrite ? <>
-          {props.onDismissComputerNote ? <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer
-            <IconButton icon="x" size={14} label="Dismiss" className="sk-phone__note-x" onClick={props.onDismissComputerNote} /></p> : null}
           {/* One bottom row (round 14 look-b P14: Thought actions, the note and Thought stood in three floating rows): the selection's actions,
               or an edit's Save and Cancel, then Undo and Thought beside them. */}
           <div className="sk-phone__row">

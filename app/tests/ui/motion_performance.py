@@ -548,13 +548,13 @@ class MotionPerformance(unittest.TestCase):
             profile["distributions"]["mapPan"] = {"seconds": seconds, "mapPan": summary([r["ms"] for r in results], budget["mapPan"]),
                                                   "maxFrameGap": summary([r["maxGap"] for r in results], budget["scrollGap"])}
             if phone:
-                # The phone's zoom is in its Map options sheet (#341), which stays open while the map zooms behind it.
-                page.get_by_role("button", name="Map options", exact=True).tap()
-                sheet = page.get_by_role("dialog", name="Map options", exact=True)
-                sheet.get_by_role("button", name="Zoom out", exact=True).wait_for()
-                page.wait_for_timeout(500)
-                zoom = lambda name: (lambda: sheet.get_by_role("button", name=name, exact=True).tap())
-                zooms, scope = [zoom("Zoom in"), zoom("Zoom out")], ".sk-options-sheet"
+                # The phone zooms with two fingers or a double tap, never buttons (S15, #1600): double taps zoom in, Fit (in Map options) back.
+                from test_app_shell import double_tap_empty
+                def fit():
+                    page.get_by_role("button", name="Map options", exact=True).tap()
+                    page.get_by_role("dialog", name="Map options", exact=True).get_by_role("button", name="Fit the map to the view").tap()
+                    page.get_by_role("button", name="Close map options", exact=True).tap()
+                zooms, scope = [lambda: double_tap_empty(page), fit], canvas
             else:
                 zooms, scope = [self.wheel_at(page, canvas, 0, -100, ctrl=True), self.wheel_at(page, canvas, 0, 100, ctrl=True)], canvas
             results, seconds = self.moved_series(page, "zoom", scope, zooms)

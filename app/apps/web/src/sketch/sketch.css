@@ -157,7 +157,7 @@
 /* P12: the dot on a thought's edge. Drag it onto another thought to connect, or release on empty space for a
    connected draft thought. Shown on hover, focus and selection; it keeps its size at every zoom. */
 .sk-dot { position: absolute; left: 0; top: 0; z-index: 2; width: 12px; height: 12px; border-radius: 50%; padding: 0; background: var(--el);
-  box-shadow: inset 0 0 0 1.5px var(--t1); cursor: crosshair; touch-action: none; opacity: 0; transform-origin: 0 0;
+  box-shadow: inset 0 0 0 1.5px var(--t1); cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; opacity: 0; transform-origin: 0 0;
   transition: opacity var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 .sk-dot::before { content: ''; position: absolute; inset: -8px; }
 .sk-dot:hover, .sk-dot:focus-visible, .sk-dot.is-on { opacity: 1; }
@@ -168,12 +168,6 @@
 .sk-ghost { position: absolute; left: 0; top: 0; display: grid; place-items: center; border-radius: var(--r-lg); border: 1.5px dashed var(--t2);
   color: var(--t2); font-size: var(--fs-xs); pointer-events: none; z-index: 1; }
 .sk-ghost--draft { color: var(--t3); border-color: var(--t3); }
-/* S15: on a phone the map is for viewing and adding; the way to connect and arrange is said on the screen. */
-.sk-phone__note { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 14px; border-radius: var(--r-pill); background: var(--el);
-  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t2); }
-.sk-phone__note svg { flex: none; color: var(--t3); }
-/* Said once (#1424): its own quiet close, inside the pill, remembers that it was seen. */
-.sk-phone__note-x { margin: -6px -10px -6px 0; }
 /* The phone map's one floating action looks like the phone's floating "+" everywhere else (#763 2026-10-31, founder direction 2026-11-17
    visual review): the soft --own fill with --t1, --r-btn corners, no drop shadow, so a phone screen never has a dark slab at its foot. */
 .sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-btn);
@@ -392,6 +386,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* S15: one primary Thought. Secondary map and selection controls open named sheets. */
 .sk-phone { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .sk-phone > * { pointer-events: auto; }
+/* A wire's "Release to …" line never stands between the finger and a thought under it (#1600). */
+.sk-phone > .sk-hint { pointer-events: none; }
 @media (max-width: 640px) {
   .sk--map .sk-canvas-wrap { background-color: var(--bg); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px; }
   /* The plane fills the pane under the floating header row and above the tools, as on the computer: it scrolls under them, and Fit frames

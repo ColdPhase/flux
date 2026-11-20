@@ -150,15 +150,12 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // #509 AC-5: the drag hint is shown only until this person's first successful connect.
   const connectedKey = `${CONNECTED_KEY}:${me.user.id}`;
   const [linkedOnce, setLinkedOnce] = useState(() => readFlag(connectedKey));
-  // #1424: the phone's "Connect and arrange on a computer" is said once per person on a device, not on every map.
-  const computerNoteKey = `${COMPUTER_NOTE_KEY}:${me.user.id}`;
-  const [computerNoted, setComputerNoted] = useState(() => readFlag(computerNoteKey));
   const [connectState, setConnectFrom] = useState<string | null>(null);
-  // Narrowing to the phone cancels a connection that was armed on the wider screen.
+  // Narrowing to the phone keeps one selected thought (the phone selects one at a time, S15).
   const [wasPhone, setWasPhone] = useState(phone);
   if (wasPhone !== phone) {
     setWasPhone(phone);
-    if (phone) { setConnectFrom(null); setSelectSeveral(false); setSelection((current) => current.slice(-1)); }
+    if (phone) { setSelectSeveral(false); setSelection((current) => current.slice(-1)); }
   }
   const [editingState, setEditing] = useState<Editing | null>(null);
   const editSaveInFlight = useRef(false);
@@ -263,8 +260,6 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
   const connectTo = (from: string, to: string) => {
     setConnectFrom(null);
-    // S15: the phone views and adds only, whatever was armed before the screen narrowed.
-    if (phone) return;
     if (from === to) { say('Connect cancelled'); return; }
     const a = find(from);
     const b = find(to);
@@ -274,7 +269,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       return;
     }
     doc.perform([{ kind: 'link', link: { id: doc.newId(), fromId: from, toId: to, label: null } }], 'linked two thoughts');
-    setSelection([from, to]);
+    // The phone selects one thought at a time (S15): the one the finger ended on.
+    setSelection(phone ? [to] : [from, to]);
     if (!linkedOnce) { setLinkedOnce(true); writeFlag(connectedKey); }
     say(`Linked ${quote(a.text)} and ${quote(b.text)}`, true);
   };
@@ -416,14 +412,16 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key, location.pathname, routeState?.addThoughtFromMessage, sketch, projectId]);
 
+  /** S15: a phone saves a plain thought unless its parent was named by a drag from a dot (#1600). */
+  const plainOnPhone = (draft: ThoughtDraft) => phone && !draft.drawn;
   /** `at` is where a dragged dot was released (P12); the draft stays local until it is saved. */
   const add = (parentId: string | null, text = '', replace = false, at?: { x: number; y: number }) => {
     if (blocked(replace)) return;
-    // S15 applies to every entry point, including + on a focused thought and clipboard drafts.
-    if (phone) parentId = null;
+    // S15: the phone never infers a parent (Thought, + on a focused thought, the clipboard); a drag from a dot names one (#1600).
+    if (phone && !at) parentId = null;
     // A thought with no parent lands in free space the person can see, as one from a message does; beside its parent otherwise.
     const [spot] = at ? [at] : parentId === null ? [arrivalSpot()] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
-    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true });
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true, ...(at && parentId ? { drawn: true as const } : {}) });
     setConnectFrom(null);
     setEditing(null);
     // The keys are said once, in the draft itself (founder direction 2026-11-17 visual review); a phone has no keys to name.
@@ -432,11 +430,11 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
   /** The dot without a pointer: Enter or Space starts a connection from this thought; choose the other one next. */
   const connectFromDot = (id: string) => {
-    if (!canWrite || phone) return;
+    if (!canWrite) return;
     if (connectFrom === id) { setConnectFrom(null); say('Connect cancelled'); return; }
     setSelection([id]);
     setConnectFrom(id);
-    say(`Choose the thought to link to ${quote(find(id)?.text ?? '')} · Esc cancels`);
+    say(`Choose the thought to link to ${quote(find(id)?.text ?? '')} · ${coarse ? 'Tap its dot again to cancel' : 'Esc cancels'}`);
   };
 
   // #252: what is pasted becomes a private draft with the same parent rule as the Thought button; pasting into the
@@ -552,9 +550,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     setSavingDraft(true);
     // Normalize only unsent intent. An actual earlier attempt keeps its canonical parent
     // and payload; on a phone it may only be confirmed from existing server state.
-    if (phone && draft.parentId && !(draft.lines ?? [draft]).some((row) => row.unknown)) { draft = { ...draft, parentId: null }; capture.set(draft); }
+    if (phone && draft.parentId && !draft.drawn && !(draft.lines ?? [draft]).some((row) => row.unknown)) { draft = { ...draft, parentId: null }; capture.set(draft); }
     const parent = (row: DraftLine | ThoughtDraft) => {
-      const parentId = row.unknown ? null : row.attempt ? row.attempt.parentId : phone ? null : draft!.parentId;
+      const parentId = row.unknown ? null : row.attempt ? row.attempt.parentId : plainOnPhone(draft!) ? null : draft!.parentId;
       return parentId ? { id: parentId, linkId: row.attempt?.linkId ?? row.linkId } : null;
     };
     const items = draft.lines
@@ -562,7 +560,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       : [{ thought: draft.attempt?.thought ?? { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y,
         ...(draft.file ? { file: draft.file, width: draft.width, height: draft.height } : {}),
         ...(draft.sourceProjectMessageId ? { sourceProjectMessageId: draft.sourceProjectMessageId } : {}) }, parent: parent(draft), key: draft.attempt?.key ?? draft.key }];
-    const existingOnly = new Set((draft.lines ?? [draft]).filter((row) => row.unknown || (phone && row.attempt?.parentId)).map((row) => row.id));
+    const existingOnly = new Set((draft.lines ?? [draft]).filter((row) => row.unknown || (plainOnPhone(draft!) && row.attempt?.parentId)).map((row) => row.id));
     const expectedText = new Map((draft.lines ?? [draft]).flatMap((row) => row.attempt ? [[row.id, row.attempt.thought.text] as const] : []));
     const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
     const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.editKey ?? row.key]));
@@ -796,10 +794,10 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
-  const confirmPrevious = !!capture.draft && (capture.draft.lines ?? [capture.draft]).some((row) => row.unknown || (phone && row.attempt?.parentId));
+  const confirmPrevious = !!capture.draft && (capture.draft.lines ?? [capture.draft]).some((row) => row.unknown || (plainOnPhone(capture.draft!) && row.attempt?.parentId));
   const pendingParents = capture.draft ? new Set((capture.draft.lines ?? [capture.draft]).map((row) => row.unknown ? null : row.attempt ? row.attempt.parentId : capture.draft!.parentId)) : new Set<string | null>();
   const attemptParent = pendingParents.size === 1 ? [...pendingParents][0] : null;
-  const shownDraft = capture.draft ? { ...capture.draft, parentId: phone ? null : attemptParent ?? null } : null;
+  const shownDraft = capture.draft ? { ...capture.draft, parentId: plainOnPhone(capture.draft) ? null : attemptParent ?? null } : null;
   const draftForm = (focusReady = true) => shownDraft ? <DraftCapture draft={shownDraft} focusReady={focusReady} parent={shownDraft.parentId ? find(shownDraft.parentId)?.text ?? null : null}
     confirmPrevious={confirmPrevious} mixedParents={pendingParents.size > 1}
     saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text,
@@ -838,7 +836,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   );
   const hasStatus = !!doc.problem || !!status.text;
   const helpText = phone
-    ? 'Tap a thought to select it. The Thought button starts a new thought; its draft has a Paste button for copied lines, a link or an image. List shows the same thoughts in order.'
+    ? 'Tap a thought to select it. Press and hold a thought, then drag it to move it; drag the selected thought’s dot onto another thought to connect them, or onto empty space for a connected thought. Drag empty space to move around; pinch with two fingers to zoom. The Thought button starts a new thought; its draft has a Paste button for copied lines, a link or an image. List shows the same thoughts in order.'
     : coarse
       ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Pinch with two fingers to zoom; Move around makes one finger drag the map. Add links a new thought to it. Select several adds taps to the selection. The Thought button starts a new thought; its draft has a Paste button for copied lines, a link or an image. List shows the same thoughts in order.'
       : 'Drag to move, drag a thought’s dot onto another thought to connect, or release it on empty space for a connected draft thought. Drag empty space, or hold Space and drag, to move around; with the map itself focused, arrows move the view. Ctrl/⌘ + wheel or a pinch zooms around the pointer. Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · Enter on the dot connects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.';
@@ -892,7 +890,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {readonlyNote}
             {notices}
           </div>
-          <SketchMap {...shared} editControls={editControls} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
+          <SketchMap {...shared} editControls={editControls} changes={clientChanges} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onMakeTask: makeTask, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
@@ -1000,7 +998,6 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 }
 
 const CONNECTED_KEY = 'flux.map.connected.v1';
-const COMPUTER_NOTE_KEY = 'flux.map.phone-note.v1';
 function readFlag(key: string) {
   try { return localStorage.getItem(key) === '1'; } catch { return false; }
 }

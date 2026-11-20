@@ -33,7 +33,7 @@ from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, UI_BROWSER, open_details, open_details_in_app, shot, start_forwarder
+from test_app_shell import show_map_as, open_map_options, map_zoom, double_tap_empty, ORIGIN, UPSTREAM, UI_BROWSER, open_details, open_details_in_app, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 # Every starting fixture of docs/design/adaptive-workspaces.md, by context: phones, short landscape
@@ -555,7 +555,8 @@ class AdaptiveMatrix(AdaptiveBase):
         add = page.get_by_role("button", name="Thought", exact=True)
         if add.count():
             self.primary(page, add, "the phone's Thought button")
-        self.measure(page, ".sk-hint, .sk-phone__note", "The map hint")
+        if page.locator(".sk-hint").count():  # the phone has no first-run hint line (S15, #1600: it arranges like the computer)
+            self.measure(page, ".sk-hint", "The map hint")
         self.no_sideways_scroll(page, "Map")
         self.shot(page, f"adapt-{size}{tag}-map")
 
@@ -1095,15 +1096,12 @@ class AdaptiveTransitions(AdaptiveBase):
         """T151-E: zoomed in, the phone's plane scrolls sideways; selecting, the keyboard and a zoom step keep that place."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
-        options = open_map_options(page, touch=True)
-        for _ in range(4):
-            if options.get_by_role("button", name="Zoom 150%, reset to 100%").count():
+        # The phone zooms with two fingers or a double tap, never with buttons (S15, founder direction 2026-11-20): double taps on empty plane.
+        for _ in range(6):
+            if map_zoom(page) >= 1.25:
                 break
-            options.get_by_role("button", name="Zoom in").tap()
-            page.wait_for_timeout(150)
-        expect(options.get_by_role("button", name="Zoom 150%, reset to 100%")).to_be_visible()
-        options.get_by_role('button', name='Close map options', exact=True).tap()
-        expect(options).to_have_count(0)
+            double_tap_empty(page)
+        self.assertEqual(map_zoom(page), 1.25, "double taps zoom the phone's map in, step by step")
         right = canvas.evaluate("""(c) => {
           const box = c.getBoundingClientRect();
           let best = null;
@@ -1128,18 +1126,15 @@ class AdaptiveTransitions(AdaptiveBase):
         self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "a keyboard keeps the sideways place")
         self.resize(page, 390, 844)
         self.assertEqual(page.evaluate(CAMERA)["left"], camera["left"], "closing the keyboard keeps the sideways place")
-        options = open_map_options(page, touch=True)
-        options.get_by_role("button", name="Zoom out").tap()
-        expect(options.get_by_role("button", name="Zoom 125%, reset to 100%")).to_be_visible()
-        options.get_by_role('button', name='Close map options', exact=True).tap()
-        expect(options).to_have_count(0)
+        double_tap_empty(page)
+        self.assertEqual(map_zoom(page), 1.5, "one more double tap is one zoom step")
         page.wait_for_timeout(250)
         self.assertGreater(page.evaluate(CAMERA)["left"], 0, "a zoom step keeps a sideways place")
         self.assertEqual(self.thoughts(page), len(fx.THOUGHTS), "nothing is saved")
         self.no_problems()
 
-    def test_16_dragging_the_top_thought_on_a_phone_does_not_arrange_the_thought_or_move_the_view(self) -> None:
-        """T151-E, S15: dragging a thought with a mouse on a phone neither arranges it nor scrolls the map."""
+    def test_16_dragging_the_top_thought_on_a_phone_arranges_it_and_keeps_the_view(self) -> None:
+        """T151-E, S15 (amended, #1600): a phone arranges like the computer, so a mouse drag moves the thought; the view stays still."""
         page = self.page(390, 844)
         canvas = self.open_map(page)
         top = canvas.evaluate("""(c) => {
@@ -1157,7 +1152,7 @@ class AdaptiveTransitions(AdaptiveBase):
         expect(node).to_have_attribute("aria-pressed", "true")
         page.wait_for_timeout(250)
         camera, start = page.evaluate(CAMERA), node.bounding_box()
-        x, y = start["x"] + 20, start["y"] + 12
+        x, y = start["x"] + start["width"] / 2, start["y"] + 12  # clear of the selected thought's dots at its sides
         page.mouse.move(x, y)
         page.mouse.down()
         for step in range(1, 7):
@@ -1166,11 +1161,24 @@ class AdaptiveTransitions(AdaptiveBase):
             self.assertEqual(page.evaluate(CAMERA), camera, f"the view stays still {25 * step} px into the drag")
         page.mouse.up()
         page.wait_for_timeout(300)
-        # S15 (#349): the phone only views and adds; the drag arranges nothing and the view stays put.
-        self.assertEqual(node.bounding_box()["y"], start["y"], "the thought stays where it is on a phone")
+        # S15 (amended, #1600): the phone arranges on the shared plane; the view stays put.
+        self.assertGreater(node.bounding_box()["y"], start["y"] + 100, "the thought follows the drag on a phone")
         self.assertEqual(page.evaluate(CAMERA), camera, "releasing keeps the view")
-        after = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
-        self.assertEqual(after, stored, "nothing was moved on the shared map")
+        for _ in range(20):
+            after = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+            if after[top] != stored[top]:
+                break
+            page.wait_for_timeout(150)
+        self.assertGreater(after[top][1], stored[top][1] + 100, "the move is saved on the shared map")
+        self.assertEqual({k: v for k, v in after.items() if k != top}, {k: v for k, v in stored.items() if k != top}, "only that thought moved")
+        # Put it back, so the shared fixture keeps its layout for the other tests.
+        page.keyboard.press("Control+z")
+        for _ in range(20):
+            back = {t["id"]: (t["x"], t["y"]) for t in self.api(page, "GET", f"/api/v1/sketches/{self.ids['sketch']}")["thoughts"]}
+            if back[top] == stored[top]:
+                break
+            page.wait_for_timeout(150)
+        self.assertEqual(back, stored, "Undo puts it back")
         self.no_problems()
 
     def test_17_a_saved_task_opens_on_another_device_but_an_unsent_draft_stays_on_its_own(self) -> None:

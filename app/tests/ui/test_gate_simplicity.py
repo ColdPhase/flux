@@ -1,5 +1,5 @@
 """Release-gate simplicity fixes (#1424): the Map tab of a space with no map opens the empty canvas and makes the map on the first thought,
-the phone map frames its thoughts below its header and says "Connect and arrange on a computer" once, and the Tasks List's search filters.
+the phone map frames its thoughts below its header (and, since #1600, sends no one to a computer), and the Tasks List's search filters.
 (Home's single appearance is in test_home_final, the Company list's missing Delete in test_space_settings, Create's missing Status in
 test_create_window.) Computer and phone, against the API. Screenshots (gate-*.png) go to FLUX_UI_SCREENSHOTS when set."""
 from __future__ import annotations
@@ -244,7 +244,7 @@ class GateSimplicity(unittest.TestCase):
 
     # ---------------------------------------------------------------- the phone map
 
-    def test_04_the_phone_map_is_framed_below_its_header_and_says_the_computer_line_once(self):
+    def test_04_the_phone_map_is_framed_below_its_header_and_sends_no_one_to_a_computer(self):
         page = self.page(phone=True)
         page.goto(f"/projects/{self.mapped}/map")
         expect(page).to_have_url(re.compile(rf"/projects/{self.mapped}/map/{self.sketch}$"))
@@ -264,15 +264,9 @@ class GateSimplicity(unittest.TestCase):
                 apart = box["y"] >= other["y"] + other["height"] - 0.5 or box["x"] >= other["x"] + other["width"] - 0.5 \
                     or box["x"] + box["width"] <= other["x"] + 0.5 or box["y"] + box["height"] <= other["y"] + 0.5
                 self.assertTrue(apart, f"a thought lies under {name}: {box} / {other}")
-        # The line about arranging on a computer is said once, with its own close.
-        note = page.get_by_text("Connect and arrange on a computer")
-        expect(note).to_be_visible()
-        shot(page, "gate-map-phone")
-        page.get_by_role("button", name="Dismiss", exact=True).tap()
-        expect(note).to_have_count(0)
-        page.reload()
-        expect(page.locator(".sk-node")).to_have_count(len(THOUGHTS))
+        # The phone arranges like the computer (S15, #1600): no line sends anyone to a computer, on this map or another.
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
+        shot(page, "gate-map-phone")
         other = page.api("POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Second map", "scope": "project", "projectId": self.mapped}, 201)["id"]  # type: ignore[attr-defined]
         page.api("POST", f"/api/v1/sketches/{other}/thoughts", {"text": "A thought on another map", "x": 40, "y": 40}, 201)  # type: ignore[attr-defined]
         page.goto(f"/projects/{self.mapped}/map/{other}")

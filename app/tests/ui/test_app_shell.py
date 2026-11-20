@@ -210,8 +210,30 @@ def shot(page: Page, name: str) -> None:
     page.screenshot(path=str(SHOTS / f"{name}.png"))
 
 
+def map_zoom(page: Page) -> float:
+    """The map's zoom, as the plane says it (the phone has no zoom buttons, so no "Zoom N%" label)."""
+    return float(page.locator(".sk-zoomed").get_attribute("data-zoom") or "0")
+
+
+def double_tap_empty(page: Page) -> None:
+    """Two quick taps where only the plane lies, near the canvas's middle: the phone's one zoom step in (S15, #1600: no zoom buttons)."""
+    point = page.evaluate("""() => {
+      const view = document.querySelector('.sk-canvas').getBoundingClientRect();
+      for (let y = view.top + view.height / 2; y > view.top + 90; y -= 24) for (let x = view.left + 24; x < view.right - 24; x += 24) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && (hit.classList.contains('sk-plane') || hit.classList.contains('sk-zoomed'))) return [x, y];
+      }
+      return null;
+    }""")
+    assert point, "the map has empty plane in view"
+    page.touchscreen.tap(*point)
+    page.wait_for_timeout(120)
+    page.touchscreen.tap(*point)
+    page.wait_for_timeout(400)
+
+
 def open_map_options(page: Page, *, touch: bool = False):
-    """The phone's named sheet retains Map/List and Fit/zoom without stacked map controls."""
+    """The phone's named sheet retains Map/List and Fit (the phone zooms with two fingers) without stacked map controls."""
     trigger = page.get_by_role("button", name="Map options", exact=True)
     expect(trigger).to_be_visible()
     trigger.tap() if touch else trigger.click()
