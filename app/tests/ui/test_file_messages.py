@@ -1185,6 +1185,8 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(row).not_to_contain_text("Can’t be read")
         expect(refused).to_have_text("A picture can be at most 5 MB. Remove scan.png to send the rest.")
         expect(limits).to_contain_text("pictures 5 MB")
+        page.mouse.move(0, 0)  # the paperclip's tip would stand over the line
+        row.scroll_into_view_if_needed()
         self.shot(page, "composer-picture-over-5mb")
         draft.get_by_role("button", name="Remove scan.png").click()
         expect(refused).to_have_count(0)
