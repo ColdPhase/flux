@@ -504,7 +504,7 @@ lets it through from their own row although they are no longer a member, and it 
 actor is stored, never sent). Their tabs forget every kept answer, read the shell again, and an open place of one of its spaces
 lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`, through `GET .../space-shell`, #1109).
 
-**One read per screen (#1109).** `GET /api/v1/projects/:id/space-shell` (the space, its people, sketches, pages and work summary)
+**One read per screen (#1109).** `GET /api/v1/projects/:id/space-shell` (the space, its people, sketches, pages, work summary and pinned messages)
 and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices as far back as those roots, agents' questions,
 the roots' work associations and the company's people without their last-active times, #1429) call each part's own use case with the
 caller's principal, so every part keeps its own access check; neither reads a table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the

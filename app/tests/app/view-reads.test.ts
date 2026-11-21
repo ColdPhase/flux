@@ -36,7 +36,9 @@ describe('the space-shell and conversation-view reads', () => {
     await post(ada, `/api/v1/workspaces/${workspaceId}/sketches`, { title: 'Where the sensors go', scope: 'project', projectId });
   });
 
-  test('the shell is the space with its people, pages, sketches and work summary, each as its own route answers it', async () => {
+  test('the shell is the space with its people, pages, sketches, work summary and pins, each as its own route answers it', async () => {
+    // A pinned message (C-74): the header's count comes with the frame, so entering a space reads no list of its own.
+    expectStatus(await ada.browser.request('PUT', `${base()}/pins/${conversation.messages[0]!.id}`), 200);
     const response = await ben.browser.request('GET', projectSpaceShellPath(projectId));
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     const shell = expectStatus(response, 200) as SpaceShell;
@@ -47,6 +49,8 @@ describe('the space-shell and conversation-view reads', () => {
     const summary = await get<{ observedAt: string }>(ben, `${base()}/work-summary`);
     assert.deepEqual({ ...shell.workSummary, observedAt: '' }, { ...summary, observedAt: '' });
     assert.equal(shell.docs?.items[0]?.title, 'How the barrels fill');
+    assert.deepEqual(shell.pins, await get(ben, `${base()}/pins`));
+    assert.deepEqual(shell.pins?.items.map((pin) => pin.messageId), [conversation.messages[0]!.id]);
   });
 
   test('the conversation view is the stream\'s first reads: roots, notices, agents\' questions and the roots\' work', async () => {

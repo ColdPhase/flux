@@ -542,6 +542,12 @@ counts (plus one for a poll in the quiet window where the count leaves room unde
 own lists (the Inbox count, their agents' runs and assistant) and where they left off, which the founder's decision keeps as
 separate requests.
 
+**Pinned messages (C-74, v0.2.2, 2026-11-21).** Pins (#1616) first read the space's list on its own when a space opened, so
+Conversation → another space took 9 requests and a busy space 8 (`test_navigation_requests` on the v0.2.2 candidate `1c6acd8ba`).
+The list is now a part of `space-shell` (`pins`), handed to `GET /projects/:id/pins` like the other parts; the stream's
+`project.pins_changed.v1` still reads it on its own. Observed after the change (Chromium, same scene): Home → a space 7,
+Conversation → another space 8, a busy space 7, the other moves unchanged.
+
 ## First screen
 
 **Observed.** The first screen is 41 files (35 JS, 6 CSS), 1,199 KB raw and 327 KB brotli; the largest chunks are the

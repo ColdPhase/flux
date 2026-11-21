@@ -16,6 +16,7 @@ import { sketchUseCases } from '../sketches/adapters.js';
 import { scopedCreators } from '../sketches/routes.js';
 import { workUseCases } from '../work/adapters.js';
 import { nativeWorkReadUseCases } from '../work-read/adapters.js';
+import { pinUseCases } from '../pins/adapters.js';
 
 interface Options { db: Database; sessions: SessionResolver; storage: FileStorage }
 
@@ -60,6 +61,7 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
   const docs = docUseCases(db);
   const sketches = sketchUseCases(db);
   const questions = agentQuestionUseCases(agentQuestionUnitOfWork(db));
+  const pins = pinUseCases(db);
 
   app.get<{ Params: { projectId: string } }>(projectSpaceShellPath(':projectId'), async (request): Promise<SpaceShell> => {
     const session = await sessions.requirePrincipal(request);
@@ -67,7 +69,7 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
     // The space first: its refusal is the read's answer (#592), and the parts below are read only for a space the person opens.
     const project = await getProject(principal, request.params.projectId, db, accessPorts);
     const reads = nativeWorkReadUseCases(db, sessions, session, request.headers);
-    const [people, sketchPage, docPage, workSummary] = await Promise.all([
+    const [people, sketchPage, docPage, workSummary, pinned] = await Promise.all([
       // As `GET .../people` answers it: each person's last active, in the reader's time zone (#1225, #1236).
       context(request, 'people', async () => listSpacePeople(principal, project.id, db, accessPorts, { lastActive: { timeZone: await personTimeZones(db).get(principal.id) } })),
       context(request, 'sketches', async () => scopedCreators(db, project.workspaceId,
@@ -77,8 +79,10 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
         return { ...found, items: await scopedUpdaters(db, found.items) };
       }),
       context(request, 'work summary', () => reads.summary(principal, project.id)),
+      // The header's pinned count (C-74): the space's pins come with its frame, not as a read of their own when the space opens.
+      context(request, 'pins', () => pins.list(principal, { type: 'project', id: project.id })),
     ]);
-    return { project, people, sketches: sketchPage, docs: docPage, workSummary };
+    return { project, people, sketches: sketchPage, docs: docPage, workSummary, pins: pinned };
   });
 
   app.get<{ Params: { projectId: string } }>(projectConversationViewPath(':projectId'), async (request): Promise<ConversationView> => {

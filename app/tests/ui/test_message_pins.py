@@ -315,11 +315,13 @@ class MessagePins(unittest.TestCase):
         def gone(route) -> None:
             response = route.fetch()
             body = response.json()
-            for item in body["items"]:
+            # Entering the space reads its pins with its frame (`space-shell`'s `pins`, one read per screen #1109); a stream event reads `/pins`.
+            for item in (body["pins"] or {"items": []})["items"] if "pins" in body else body["items"]:
                 item["pinnedBy"] = None
             route.fulfill(response=response, json=body)
 
         page.route(f"**/api/v1/projects/{self.ids['space']}/pins", gone)
+        page.route(f"**/api/v1/projects/{self.ids['space']}/space-shell", gone)
         page.reload()
         login = self.message(page, LOGIN)
         expect(login.locator(".pin-line")).to_have_text("Pinned by a former member")

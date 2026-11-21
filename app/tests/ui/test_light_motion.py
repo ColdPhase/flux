@@ -1113,21 +1113,22 @@ class LightMotionJourney(unittest.TestCase):
         """Motion is short and calm (final design §2): a row sent to another group far down the list is not carried the whole way.
 
         The neutral visual review of PR 608 read one row translating 320 px while three others moved 57 to 114 px in the same frame:
-        the row of an in-progress task marked done, with the open ones between it and the finished group.
+        the row of an in-progress task marked done, with other tasks between it and the finished group. The List has the Board's order
+        (To do, Doing, Blocked, Done; #1581), so the tasks between Doing and Done are blocked ones.
         """
         import uuid
         ada = self.fx.contexts["ada"]
         project = api(ada, "POST", f"/api/v1/workspaces/{self.fx.workspace}/projects", {"name": "Long list for the row cap", "visibility": "restricted"}, 201)["id"]
 
-        def task(title: str, status: str | None = None) -> str:
+        def task(title: str, status: str | None = None, **more) -> str:
             made = api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": title, "clientCommandId": str(uuid.uuid4())}, 201)
             if status:
-                made = api(ada, "PATCH", f"/api/v1/work/{made['id']}", {"status": status, "expectedVersion": made["version"]})
+                made = api(ada, "PATCH", f"/api/v1/work/{made['id']}", {"status": status, "expectedVersion": made["version"], **more})
             return made["id"]
 
         finished = task("Cap list: already finished", "done")
         for index in range(4):
-            task(f"Cap list: open {index}")
+            task(f"Cap list: blocked {index}", "blocked", blocker=f"waiting on part {index}")
         moving = task("Cap list: in progress", "in_progress")
         page = self.page()
         self.open(page, f"/projects/{project}/tasks?view=list")
@@ -1512,7 +1513,8 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(page.locator("body > [data-dissolve]").count(), 0, "no picture of the old view: the view swaps at once")
         page.goto(self.fx.tasks_url())
         ready(page)
-        page.locator(".ws-task .ws-item").first.click()
+        # A task of the fixture, made from the thread below: the List's first row is whichever comes first in the Board's order (#1581).
+        page.locator(f".ws-task[data-work-id='{self.fx.tasks[0]['id']}'] .ws-item").click()
         panel = page.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
         self.assertEqual(panel.evaluate(end_state), ["1", "none", 0])

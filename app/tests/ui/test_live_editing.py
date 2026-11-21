@@ -809,9 +809,9 @@ class LiveEditingJourney(LiveFixture):
         await expect(ada.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute('data-thought-x', str(thought['x']))
 
     async def test_13_trusted_touch_drag_previews_before_release_on_a_tablet(self):
-        # A real touch sequence (native Chromium/WebKit input, pointerType "touch") on an 820 px tablet (F-026 S15 keeps phones view/add only):
-        # tap selects, a finger drag on the selected thought moves it, the peer sees the
-        # movement before the finger lifts, and the release confirms one durable position.
+        # A real touch sequence (native Chromium/WebKit input, pointerType "touch") on an 820 px tablet: tap selects, a long press and a
+        # finger drag on the selected thought moves it (S15, C-67 #1577: on touch a thought moves only after a 400 ms long press, so a pan
+        # never moves one), the peer sees the movement before the finger lifts, and the release confirms one durable position.
         await self.create_map(2)
         kai = self.pages["kai"]
         thought = self.thoughts[0]
@@ -849,6 +849,8 @@ class LiveEditingJourney(LiveFixture):
         x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
         touch = await native_touch_sender(page)
         await touch("touchStart", x, y)
+        # The finger rests past the 400 ms long press before it drags (a finger that moves first pans the map).
+        await page.wait_for_timeout(600)
         for step in range(1, 9):
             await touch("touchMove", x + 6 * step, y + 5 * step)
             await page.wait_for_timeout(16)
