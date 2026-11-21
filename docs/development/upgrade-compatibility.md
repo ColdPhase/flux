@@ -96,7 +96,11 @@ before the candidate:
   rows the release wrote, through the API and a browser pass over the main screens ([upgrade](../operations/upgrade.md#tested-with)).
 - **Source checkout.** The release's tree (`git archive <tag>`) is started with `./flux up`, seeded, replaced by the candidate's tree (as `git pull` would,
   keeping `docker/.env`, with `FLUX_AGENT_RUNTIME=pi` added, as the candidate's `./flux up` writes it), moved with `./flux upgrade -y`, read back and
-  written to, a new agent run in pi included.
+  written to, a new agent run in pi included. The owner built the release's images back then, while its exact Alpine pins existed; `./flux up`
+  always rebuilds them and Alpine keeps one revision of each package, so an exact `apk add name=version` pin of the old tree that Alpine no
+  longer serves is first moved to the version it serves now (`scripts/release/old_tree_apk_pins.py`; v0.2.1's `py3-pip=26.1.2-r0`, a pip used
+  only to install one hash-pinned wheel and removed in the same layer). Each such edit is printed as `OLD TREE EDITED` and named in the result
+  line; nothing else in the old tree changes, and a pinned package Alpine no longer has at all fails the leg.
 - Every release goes straight to the candidate: with two or more earlier releases the older ones are the skip-version case.
 - A leg that is switched off (`FLUX_MATRIX_SOURCE=0`, `FLUX_MATRIX_RELEASE_INSTALL=0`) is listed as `SKIPPED` in the result, the run says
   `NOT THE FULL MATRIX`, and it writes no list of tested releases, so the release workflow, which needs that list, fails instead of claiming an
