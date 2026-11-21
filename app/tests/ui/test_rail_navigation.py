@@ -370,6 +370,8 @@ class RailNavigation(unittest.TestCase):
                     for decision, is_long in ((long, True), (short, False)):
                         other.goto(f"/projects/{pid}?open=decision:{decision['id']}")
                         expect(other.locator("#details .wd-decide")).to_be_visible()
+                        # The answer bar can show before the discussion's lines arrive (WebKit, a slow runner): read to the end once they are there.
+                        expect(other.locator("#details .wd-discussion__list .wd-act__item")).to_have_count(14 if is_long else 1)
                         other.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
                         self.assert_discussion_room(other, f"{zoom * 100} %, direct, {'long' if is_long else 'short'}", long=is_long)
                     shot(other, f"p3b-decision-room-direct-{zoom * 100}-{engine}")
@@ -381,6 +383,7 @@ class RailNavigation(unittest.TestCase):
                 sheet = phone.new_page()
                 sheet.goto(f"/projects/{pid}?open=decision:{long['id']}")
                 expect(sheet.locator("#details .wd-decide")).to_be_visible()
+                expect(sheet.locator("#details .wd-discussion__list .wd-act__item")).to_have_count(14)
                 sheet.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
                 # A message at twice the size is about as tall as the room for two: one whole line at least, in half the room or more.
                 self.assert_discussion_room(sheet, "phone, large text", long=True, lines=1)
