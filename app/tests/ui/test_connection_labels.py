@@ -119,12 +119,13 @@ class ConnectionLabels(unittest.TestCase):
         original = self.link(page, sketch)
         expect(page.locator('.sk-el--edit')).to_have_count(0)
         path = page.locator(f'.sk-edge-hits path[data-link-id="{original["id"]}"]')
-        # A curved path's bounding-box centre can lie outside its stroke. Click a real point on it.
-        point = path.evaluate('''el => {
+        # A curved path's bounding-box centre can lie outside its stroke. Click a real point on it, once the map has put its view in place: the
+        # thoughts are drawn a moment before the canvas scrolls to them (no frame is painted between), and a point read then is off by that scroll.
+        point = path.evaluate('''el => new Promise((done) => { const t0 = performance.now(); const read = () => {
           const p = el.getPointAtLength(el.getTotalLength() * .4).matrixTransform(el.getScreenCTM());
-          const hit = document.elementFromPoint(p.x, p.y);
-          return {x:p.x, y:p.y, hitsLine:hit === el};
-        }''')
+          const hit = document.elementFromPoint(p.x, p.y) === el;
+          if (hit || performance.now() - t0 > 5000) done({x:p.x, y:p.y, hitsLine:hit}); else requestAnimationFrame(read); };
+          requestAnimationFrame(read); })''')
         self.assertTrue(point['hitsLine'], point)
         page.mouse.click(point['x'], point['y'])
         self.save(page, sketch, 'range')
