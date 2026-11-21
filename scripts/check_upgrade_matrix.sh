@@ -74,7 +74,9 @@ cleanup() {
     [ -x "$checkout/flux" ] && [ -f "$checkout/docker/.env" ] && "$checkout/flux" clean -y >/dev/null 2>&1 || true
   done
   docker ps -aq --filter "name=$run_id-" | xargs -r docker rm -fv >/dev/null 2>&1 || true
-  for project in $(docker ps -a --format '{{.Label "com.docker.compose.project"}}' | grep "^$run_id" | sort -u); do
+  # Every project of this run that still has a container, a volume or a network (a project whose containers are gone can keep the others).
+  for project in $( { docker ps -a --format '{{.Label "com.docker.compose.project"}}'; docker volume ls --format '{{.Label "com.docker.compose.project"}}'
+      docker network ls --format '{{.Label "com.docker.compose.project"}}'; } | grep "^$run_id" | sort -u); do
     docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -fv >/dev/null 2>&1 || true
     docker volume ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker volume rm -f >/dev/null 2>&1 || true
     docker network ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker network rm >/dev/null 2>&1 || true
@@ -289,8 +291,9 @@ for tag in $releases; do
         fail "a main screen does not open on the data $tag wrote (browser pass above)"
     fi
     record "$tag -> $candidate_version  source checkout        PASS  $(( $(date +%s) - started )) s${repinned:+  (apk pins of the old tree Alpine no longer serves, moved: $repinned)}"
-    ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux clean -y >/dev/null 2>&1 ) || true
+    # The provider mock goes first: while it is attached, ./flux clean cannot remove the project's network.
     docker rm -fv "$run_id-s$n-provider-mock" >/dev/null 2>&1 || true
+    ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux clean -y >/dev/null 2>&1 ) || true
     rm -rf "$checkout"
   else
     record "$tag -> $candidate_version  source checkout        SKIPPED  (FLUX_MATRIX_SOURCE=0: not tested)"
