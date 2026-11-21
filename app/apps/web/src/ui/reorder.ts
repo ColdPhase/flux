@@ -184,10 +184,15 @@ export function useReorder(list: RefObject<HTMLElement | null>, options: Reorder
       const lead = latest.current.fixed;
       const height = d.heights[d.from]!;
       const bottom = d.tops[n - 1]! + d.heights[n - 1]!;
-      const top = Math.min(Math.max(d.y - box.top - d.grab, d.tops[lead] ?? d.tops[0]!), bottom - height);
+      const first = d.tops[lead] ?? d.tops[0]!;
+      const top = Math.min(Math.max(d.y - box.top - d.grab, first), bottom - height);
       const mid = top + height / 2;
       let target = 0;
       for (let i = 0; i < n; i++) if (i !== d.from && d.tops[i]! + d.heights[i]! / 2 < mid) target++;
+      // Held against either end, the row takes that end's place. Rows differ in height (a space with its last message under its name, #1579),
+      // and a taller row held at the top would keep its middle below a shorter first row's middle, so it could never become first.
+      if (top <= first) target = lead;
+      else if (top >= bottom - height) target = n - 1;
       d.target = Math.max(lead, target);
       const order = arranged(n, d.from, d.target);
       for (const [at, index] of order.entries()) {
