@@ -547,6 +547,9 @@ class TasksFinalJourney(unittest.TestCase):
                 expect(self.row(page, LABELS).locator(".ws-task__glyph .ui-glyph--open")).to_have_count(1)
                 page.wait_for_timeout(500)
                 # A vertical scroll is not a swipe, and a tap on a revealed row closes it instead of opening Details.
+                # The toast's room scrolled the List to keep its last title (Done, last since #1595) above the toast, which took To do's
+                # first row under the sticky controls: the finger first brings the row back into view, as a person would.
+                self.row(page, LABELS).evaluate("el => el.scrollIntoView({block: 'center'})")
                 self.swipe_left(page, self.row(page, LABELS).locator(".ws-task__fg"))
                 expect(self.row(page, LABELS).get_by_role("button", name=re.compile("^Done"))).to_be_visible()
                 self.row(page, LABELS).locator(".ws-item").tap()

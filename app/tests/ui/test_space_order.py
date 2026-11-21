@@ -747,6 +747,7 @@ class SpaceOrder(unittest.TestCase):
         expect(self.phone_row(page, "Library")).to_be_visible()
         link = self.phone_row(page, "Library").locator("a")
         x, y = centre(link)
+        # Library has its last message under its name (#1579), so it is taller than Release check: held at the top it still goes first.
         _, goal = centre(self.phone_row(page, "Release check").locator("a"))
         scrolled = page.evaluate("window.scrollY")
         cdp = page.context.new_cdp_session(page)

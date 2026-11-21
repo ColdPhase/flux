@@ -379,14 +379,15 @@ class SmallMomentsJourney(unittest.TestCase):
         touch("touchEnd")
         page.wait_for_timeout(1200)
         self.assertEqual(reads, [], "a short pull reads nothing")
-        # Control: released past the threshold refreshes exactly once.
+        # Control: released past the threshold refreshes exactly once: one read of each of the page's two lists, My tasks and
+        # Tasks you gave others (#1576).
         touch("touchStart", 200)
         for y in range(210, 420, 20):
             touch("touchMove", y)
         touch("touchEnd")
         expect(page.get_by_text("Refreshing…")).to_be_visible()
         page.wait_for_timeout(1500)
-        self.assertEqual(len(reads), 1, reads)
+        self.assertEqual(sorted(url.split("?")[0].rsplit("/", 1)[-1] for url in reads), ["assigned", "given"], reads)
 
     def test_12_each_moment_moves_as_drawn_and_reduced_motion_or_the_switch_stops_it(self) -> None:
         """#1342: the empty Inbox's eyes settle into the smile once, the offline face's z drifts and it breathes (loops of an

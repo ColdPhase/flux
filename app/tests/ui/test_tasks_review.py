@@ -161,10 +161,12 @@ class TasksReviewJourney(unittest.TestCase):
         self.assertIn("cursor=", page.url, "the phone's page is in its address")
         page.reload()
         expect(page.get_by_role("navigation", name="Work pages").locator(".ws-pages__range")).to_contain_text("51–")
-        # Leaving for another tab and coming back with the browser's Back returns to the same page of the list.
+        # Leaving for another tab and coming back by the Tasks tab returns to the same page of the list (a space's views are one place,
+        # so Back leaves the space instead, #1547).
         view_tab(page, "Conversation")
         expect(page).not_to_have_url(re.compile("/tasks"))
-        page.go_back()
+        view_tab(page, "Tasks")
+        expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*cursor=)"))
         expect(page.get_by_role("navigation", name="Work pages").locator(".ws-pages__range")).to_contain_text("51–")
 
     # ---------------------------------------------------------------- 2. Undo does not outlive its session
