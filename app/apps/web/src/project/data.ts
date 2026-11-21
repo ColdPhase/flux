@@ -1,6 +1,6 @@
 import { useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
 import {
-  SPACE_SHELL_LIMITS, projectDocsPath, projectPath, projectPeoplePath, projectSpaceShellPath, projectWorkSummaryPath, workspaceSketchesPath,
+  SPACE_SHELL_LIMITS, pinsPath, projectDocsPath, projectPath, projectPeoplePath, projectSpaceShellPath, projectWorkSummaryPath, workspaceSketchesPath,
   type DocSummary, type Project, type ProjectPerson, type Sketch, type SketchPage, type SpaceShell,
 } from '@flux/contracts';
 import { KEEP_MS, request } from '../api/client';
@@ -31,8 +31,8 @@ export const createProjectSketch = (workspaceId: string, projectId: string, titl
 /**
  * The space's frame in one read (#1109). It is never a kept answer (#862, #592): the person may have lost the space in a way that sends
  * their tab no event (removed from the company, or from an encrypted space), so entering reads it. Its parts answer the next read of
- * their own addresses once (the space, its people, its first page of pages, its work summary), so the views that ask for them later
- * take them from here.
+ * their own addresses once (the space, its people, its first page of pages, its work summary, its pinned messages), so the views that
+ * ask for them later take them from here.
  */
 const getSpaceShell = (projectId: string, signal?: AbortSignal) => request<SpaceShell>(projectSpaceShellPath(projectId), {
   signal, fresh: true,
@@ -41,6 +41,7 @@ const getSpaceShell = (projectId: string, signal?: AbortSignal) => request<Space
     [projectPeoplePath(projectId)]: shell.people,
     [`${projectDocsPath(projectId)}?limit=${SPACE_SHELL_LIMITS.docs}&offset=0`]: shell.docs,
     [projectWorkSummaryPath(encodeURIComponent(projectId))]: shell.workSummary,
+    [pinsPath({ type: 'project', id: projectId })]: shell.pins,
   }),
 });
 

@@ -259,7 +259,8 @@ class MapOutlineJourney(unittest.TestCase):
         names = self.row(page, 2).locator(".sk-outline-actions button").evaluate_all("buttons => buttons.map(b => b.getAttribute('aria-label') || b.textContent.trim())")
         self.assertEqual(names, ["Edit", "Add a child thought", "More actions"])
         menu = self.more(page, 2)
-        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Copy link", "Remove"])
+        # A selected thought becomes a task from the thought itself (#1519): Make a task sits before Copy link.
+        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Make a task", "Copy link", "Remove"])
         page.keyboard.press("Escape")
         shot(page, "map-outline-tree-1440-light")
         self.api(page, "PATCH", f"/api/v1/sketches/{self.sketch_id}/links/{link['id']}", {"label": None, "expectedLabel": "problem"}, headers={"idempotency-key": f"unlabel-{STAMP}"})

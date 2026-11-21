@@ -1279,7 +1279,7 @@ export function SketchMap(props: SketchMapProps) {
             })()}
           </div>
           {thoughtNodes}
-          {props.presenceStore ? <MapCursors source={props.presenceStore} origin={origin} zoom={zoom} rects={rects} plane={{ x: origin.x, y: origin.y, w: width, h: height }} /> : null}
+          {props.presenceStore ? <MapCursors source={props.presenceStore} origin={origin} zoom={zoom} rects={rects} plane={{ x: origin.x, y: origin.y, w: width, h: height }} canvas={canvasRef} /> : null}
           {plus && last && lastThought ? (!compact ? (hasComposition ? null : (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;

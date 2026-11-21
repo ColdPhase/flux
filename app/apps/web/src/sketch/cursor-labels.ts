@@ -13,6 +13,12 @@ export interface CursorLabelInput { key: string; name: string; x: number; y: num
  */
 export interface LabelOffset { dx: number; dy: number; w: number; end: boolean; spot: string }
 
+const inside = (point: { x: number; y: number }, r: Rect) => point.x >= r.x && point.x <= r.x + r.w && point.y >= r.y && point.y <= r.y + r.h;
+/** The part of `a` inside `b` (`a` itself when they do not meet). */
+const within = (a: Rect, b: Rect): Rect => {
+  const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y), right = Math.min(a.x + a.w, b.x + b.w), bottom = Math.min(a.y + a.h, b.y + b.h);
+  return right > x && bottom > y ? { x, y, w: right - x, h: bottom - y } : a;
+};
 const overlap = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
 /**
@@ -20,15 +26,17 @@ const overlap = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w)
  * cursor, then the space just outside the thought the cursor is over, then a widening ring of spots, and keeps the first
  * one that touches no thought, no other label and no other cursor; otherwise the least overlapping one. A label keeps the
  * spot it had (`previous`) for as long as that spot is still clear, so it does not hop between corners as the cursor
- * crosses a thought's edge. Always clamped inside the plane, so a phone's edge keeps the whole name. Offsets are screen
+ * crosses a thought's edge. Always clamped inside the plane, and, for a cursor on screen, inside the part of the plane on
+ * screen (`view`): the phone shows the computer's plane (C-67), so a screen's edge keeps the whole name. Offsets are screen
  * pixels from the cursor tip.
  */
-export function placeLabels(cursors: readonly CursorLabelInput[], thoughts: readonly Rect[], zoom: number, plane: Rect, previous?: ReadonlyMap<string, string>): Map<string, LabelOffset> {
+export function placeLabels(cursors: readonly CursorLabelInput[], thoughts: readonly Rect[], zoom: number, plane: Rect, previous?: ReadonlyMap<string, string>, view?: Rect): Map<string, LabelOffset> {
   const placed = new Map<string, LabelOffset>();
   const boxes: Rect[] = [];
   const arrows = cursors.map((c): Rect => ({ x: c.x, y: c.y, w: ARROW.w / zoom, h: ARROW.h / zoom }));
   [...cursors].sort((a, b) => (a.key < b.key ? -1 : 1)).forEach((cursor) => {
     const w = labelWidth(cursor.name), h = LABEL_HEIGHT;
+    const bounds = view && inside(cursor, view) ? within(plane, view) : plane;
     const host = thoughts.find((r) => cursor.x >= r.x && cursor.x <= r.x + r.w && cursor.y >= r.y && cursor.y <= r.y + r.h);
     const candidates: [string, number, number][] = [['se', 12, 12], ['sw', -12 - w, 12], ['ne', 12, -12 - h], ['nw', -12 - w, -12 - h]];
     if (host) candidates.push(['below', 12, (host.y + host.h - cursor.y) * zoom + 4], ['above', 12, (host.y - cursor.y) * zoom - h - 4], ['below-left', -12 - w, (host.y + host.h - cursor.y) * zoom + 4]);
@@ -36,8 +44,8 @@ export function placeLabels(cursors: readonly CursorLabelInput[], thoughts: read
     // A ring of spots for crowded places (a phone's narrow plane): further out in every direction.
     for (const reach of [1, 2, 3, 4]) candidates.push([`e${reach}`, 12 + 24 * reach, 0], [`w${reach}`, -12 - w - 24 * reach, 0], [`s${reach}`, 12, 12 + 24 * reach], [`n${reach}`, 12, -12 - h - 24 * reach]);
     const score = (ox: number, oy: number) => {
-      const x = Math.min(Math.max(cursor.x + ox / zoom, plane.x), plane.x + plane.w - w / zoom);
-      const y = Math.min(Math.max(cursor.y + oy / zoom, plane.y), plane.y + plane.h - h / zoom);
+      const x = Math.min(Math.max(cursor.x + ox / zoom, bounds.x), bounds.x + bounds.w - w / zoom);
+      const y = Math.min(Math.max(cursor.y + oy / zoom, bounds.y), bounds.y + bounds.h - h / zoom);
       const box: Rect = { x, y, w: w / zoom, h: h / zoom };
       return { x, y, box, score: thoughts.reduce((sum, r) => sum + overlap(box, r), 0) + 4 * boxes.reduce((sum, b) => sum + overlap(box, b), 0) + 4 * arrows.reduce((sum, a) => sum + overlap(box, a), 0) };
     };

@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type RefObject } from 'react';
 import type { MapPeer, MapPresenceSource } from '../editing/map-presence';
 import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from '../editing/color';
 import type { Rect } from './geometry';
@@ -30,16 +30,36 @@ export function MapPeople({ source }: { source: MapPresenceSource }) {
   </p>;
 }
 
+/**
+ * The part of the plane on screen, in plane units, while there are cursors to place: the phone shows the computer's plane (C-67),
+ * so a name beside a cursor near the screen's edge turns inward instead of running off it.
+ */
+function useView(canvas: RefObject<HTMLElement | null>, origin: { x: number; y: number }, zoom: number, active: boolean): Rect | undefined {
+  const [view, setView] = useState<{ left: number; top: number; w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el || !active) return;
+    const read = () => setView({ left: el.scrollLeft, top: el.scrollTop, w: el.clientWidth, h: el.clientHeight });
+    read();
+    el.addEventListener('scroll', read, { passive: true });
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(read);
+    ro?.observe(el);
+    return () => { el.removeEventListener('scroll', read); ro?.disconnect(); };
+  }, [canvas, active]);
+  return view && active ? { x: origin.x + view.left / zoom, y: origin.y + view.top / zoom, w: view.w / zoom, h: view.h / zoom } : undefined;
+}
+
 /** Keep the original plane coordinates and constant on-screen cursor size at the current zoom. */
-export function MapCursors({ source, origin, zoom, rects, plane }: { source: MapPresenceSource; origin: { x: number; y: number }; zoom: number; rects: ReadonlyMap<string, Rect>; plane: Rect }) {
+export function MapCursors({ source, origin, zoom, rects, plane, canvas }: { source: MapPresenceSource; origin: { x: number; y: number }; zoom: number; rects: ReadonlyMap<string, Rect>; plane: Rect; canvas: RefObject<HTMLElement | null> }) {
   const peers = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const shape = shapesOf(peers);
   const drawn = [...peers.entries()].flatMap(([key, peer]) => peer.cursor ? [{ key, peer, cursor: peer.cursor }] : []);
   // A label keeps its spot while it stays clear, and the thoughts' list is rebuilt only when their rectangles change.
   const thoughts = useMemo(() => [...rects.values()], [rects]);
+  const view = useView(canvas, origin, zoom, drawn.length > 0);
   if (!drawn.length) return null;
-  // Every name stays beside its cursor, clear of thoughts, of other names and of other cursors (no DOM reads).
-  const labels = placeLabels(drawn.map(({ key, peer, cursor }) => ({ key, name: peer.actor.name, x: cursor.x, y: cursor.y })), thoughts, zoom, plane, spotsOf.get(source));
+  // Every name stays beside its cursor, clear of thoughts, of other names and of other cursors, and inside the screen.
+  const labels = placeLabels(drawn.map(({ key, peer, cursor }) => ({ key, name: peer.actor.name, x: cursor.x, y: cursor.y })), thoughts, zoom, plane, spotsOf.get(source), view);
   spotsOf.set(source, new Map([...labels].map(([key, at]) => [key, at.spot])));
   return <>{drawn.map(({ key, peer, cursor }) => {
     const at = labels.get(key)!;

@@ -2,6 +2,7 @@ import type { Page, Project, ProjectPerson, WorkspaceMember } from './access.js'
 import type { AgentQuestions } from './agent-questions.js';
 import type { ConversationRootWindow } from './conversation.js';
 import type { DocSummary } from './docs.js';
+import type { PinnedMessages } from './pins.js';
 import type { Sketch } from './sketch.js';
 import type { ObjectNotice, TaskCreationNotice } from './work.js';
 import type { ProjectWorkSummary, WorkAssociations } from './work-read.js';
@@ -33,6 +34,8 @@ export interface SpaceShell {
   docs: Page<DocSummary> | null;
   /** `GET /projects/:id/work-summary`. */
   workSummary: ProjectWorkSummary | null;
+  /** `GET /projects/:id/pins`: the space's pinned messages, which its header counts (C-74). */
+  pins: PinnedMessages | null;
 }
 
 /** `GET`: what the space's Conversation shows when it opens. */
