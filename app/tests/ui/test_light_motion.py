@@ -253,26 +253,47 @@ class LightMotionJourney(unittest.TestCase):
                 self.assertEqual(seen["closes"], 0, "no button of its own under the dialog: its close is in the field row, as the real one is")
 
     def test_04d_the_k_dialog_leaves_at_its_own_size_while_it_fades(self):
-        """On Esc the dialog used to collapse to nothing on the first frame, because its content was removed at once, and fade out as an empty box (#863 rule 3)."""
+        """On Esc the dialog used to collapse to nothing on the first frame, because its content was removed at once, and fade out as an empty box (#863 rule 3).
+
+        The exit is read on the page's own exit animation, held at a quarter, half and three quarters of its run, not by sampling animation frames:
+        the fade is 120 ms (--dur-out), and a CI WebKit runner can paint no frame in between while the page under the dialog becomes usable again.
+        """
         page = self.page()
         self.open(page, self.fx.project_url())
         dialog = self.open_jump(page)
         settled(page)
         height = dialog.bounding_box()["height"]
+        # The first animation that takes the dialog's surface to transparent is the exit: it is held where it starts, and released after it is read.
         page.evaluate("""() => {
           const el = document.querySelector('[role="dialog"][aria-label="Search"]');
-          const out = window.__exit = []; const start = performance.now();
-          const step = () => { if (!el.isConnected || performance.now() - start > 1500) return;
-            out.push({ t: performance.now() - start, h: el.getBoundingClientRect().height, o: Number(getComputedStyle(el.closest('.ui-overlay__surface') || el).opacity), input: !!el.querySelector('input') }); requestAnimationFrame(step); };
-          requestAnimationFrame(step); }""")
+          const animate = Element.prototype.animate; window.__exit = null;
+          Element.prototype.animate = function (keyframes, options) {
+            const animation = animate.call(this, keyframes, options);
+            const last = Array.isArray(keyframes) ? keyframes[keyframes.length - 1] : null;
+            if (!window.__exit && (this === el || this.contains(el)) && last && Number(last.opacity) === 0) {
+              animation.pause(); window.__exit = animation; Element.prototype.animate = animate;
+            }
+            return animation;
+          };
+        }""")
         page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
-        frames = [frame for frame in page.evaluate("window.__exit") if frame["t"] > 0]
-        self.assertGreaterEqual(len(frames), 3, f"the exit is seen: {frames}")
+        page.wait_for_function("() => !!window.__exit")
+        seen = page.evaluate("""() => {
+          const animation = window.__exit, total = animation.effect.getComputedTiming().duration;
+          const el = document.querySelector('[role="dialog"][aria-label="Search"]'), surface = el?.closest('.ui-overlay__surface') || el;
+          const frames = [0.25, 0.5, 0.75].map((at) => { animation.currentTime = total * at;
+            return { at, h: el ? el.getBoundingClientRect().height : 0, o: el ? Number(getComputedStyle(surface).opacity) : null, input: !!el?.querySelector('input') }; });
+          animation.play();
+          return { total, frames };
+        }""")
+        self.assertGreaterEqual(seen["total"], 100, f"the dialog leaves over --dur-out, not at once: {seen}")
+        frames = seen["frames"]
         for frame in frames:
             self.assertAlmostEqual(frame["h"], height, delta=1.5, msg=f"it keeps its size while it fades: {frame}")
             self.assertTrue(frame["input"], f"with its content: {frame}")
-        self.assertLess(min(frame["o"] for frame in frames), 0.9, f"and it really fades: {frames}")
+        opacities = [frame["o"] for frame in frames]
+        self.assertEqual(opacities, sorted(opacities, reverse=True), f"it fades out, never back in: {frames}")
+        self.assertLess(min(opacities), 0.9, f"and it really fades: {frames}")
         expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
 
     def test_05_rapid_open_and_close_settles_on_the_latest_state(self):
