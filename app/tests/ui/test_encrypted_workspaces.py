@@ -362,6 +362,10 @@ class EncryptedWorkspaces(Base):
                 field = page.get_by_role("textbox", name="Your unlock password")
                 button = page.get_by_role("button", name="Unlock", exact=True)
                 expect(field).to_have_attribute("type", "password")
+                if phone:
+                    # A touch screen raises no keyboard by itself (#1546, #1597: the Unlock field opens with its screen, `focusesOnOpen`): a tap focuses it.
+                    expect(field).not_to_be_focused()
+                    field.tap()
                 expect(field).to_be_focused()
                 at = (self.on_page(field), self.on_page(button))
                 shot(page, f"locked-owner-{'phone' if phone else 'computer'}")
@@ -960,10 +964,13 @@ class EncryptedWorkspaces(Base):
         phone = self.page(world, "ada", phone=True)
         phone.goto("/projects")
         spaces = phone.get_by_role("list", name="Spaces")
-        listed = spaces.get_by_role("link", name=f"{A_PROJECT}, encrypted", exact=True)
+        # A row's name is the space, its states, then what was said last (#1579): ". You: …" follows once the previews arrive.
+        listed = spaces.get_by_role("link", name=re.compile(rf"^{re.escape(A_PROJECT)}, encrypted(\. |$)"))
         expect(listed).to_be_visible()
         expect(listed.locator(".proj-index__lock")).to_be_visible()
-        expect(spaces.get_by_role("link", name=B_PROJECT, exact=True).locator(".proj-index__lock")).to_have_count(0)
+        plain_row = spaces.get_by_role("link", name=re.compile(rf"^{re.escape(B_PROJECT)}(\. |$)"))
+        expect(plain_row).to_be_visible()
+        expect(plain_row.locator(".proj-index__lock")).to_have_count(0)
         self.assertIn("encrypted", spaces.aria_snapshot())
         shot(phone, "lock-spaces-phone")
         listed.click()
