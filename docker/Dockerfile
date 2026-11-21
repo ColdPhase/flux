@@ -163,7 +163,7 @@ COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtim
 RUN apk add --no-cache bash=5.3.9-r1 python3=3.14.10-r1 py3-numpy=2.4.6-r0 py3-pandas=3.0.3-r0 py3-openpyxl=3.1.5-r1 \
     py3-matplotlib=3.10.6-r2 py3-lxml=6.1.1-r0 py3-typing-extensions=4.15.0-r1 pandoc-cli=3.10-r0 typst=0.14.2-r0 jq=1.8.2-r0 \
     ripgrep=15.1.0-r0 vips-tools=8.18.2-r0 \
-  && apk add --no-cache --virtual .flux-pip py3-pip=26.1.2-r0 \
+  && apk add --no-cache --virtual .flux-pip py3-pip=26.1.2-r1 \
   && printf 'python-docx==1.2.0 --hash=sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7\n' > /tmp/python-docx.txt \
   && pip install --no-cache-dir --no-deps --only-binary=:all: --require-hashes --break-system-packages -r /tmp/python-docx.txt \
   && apk del .flux-pip && rm -f /tmp/python-docx.txt \
