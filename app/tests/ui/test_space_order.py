@@ -747,7 +747,10 @@ class SpaceOrder(unittest.TestCase):
         expect(self.phone_row(page, "Library")).to_be_visible()
         link = self.phone_row(page, "Library").locator("a")
         x, y = centre(link)
+        # Into the upper half of Release check, past its midpoint: a real touch point lands on whole CSS pixels, and a row with its last
+        # message under the name (#1579) is 59.75 px high, so its centre is a fraction and "exactly Release check's centre" is a tie.
         _, goal = centre(self.phone_row(page, "Release check").locator("a"))
+        goal -= 12
         scrolled = page.evaluate("window.scrollY")
         cdp = page.context.new_cdp_session(page)
         try:

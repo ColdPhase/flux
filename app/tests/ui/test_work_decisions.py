@@ -312,7 +312,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         sheet.get_by_role("button", name="Thread", exact=True).tap()
         expect(message.get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
         view_tab(page, "Tasks", tap=True)
-        expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(FINDING_TASK)
+        # The phone's Board shows one status at a time, To do first, as the status row's panel (#1560, C-66).
+        expect(page.get_by_role("tablist", name="Task status").get_by_role("tab", name=re.compile("^To do"))).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_role("tabpanel", name=re.compile("^To do"))).to_contain_text(FINDING_TASK)
         shot(page, "tasks-phone-390")
         titles = [item["title"] for item in self.work(page)["work"]]
         self.assertEqual(titles.count(FINDING_TASK), 1)
@@ -400,11 +402,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(sheet.get_by_role("heading", name=mine)).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
+        # A space's views are one place (#1547): the Tasks tab, not Back, returns to the view, and it keeps Mine.
         view_tab(page, "Conversation", tap=True)
         expect(page.locator(".project-convo__message-list")).to_be_visible()
-        page.go_back()
-        expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
-        view_tab(page, "Conversation", tap=True)
         view_tab(page, "Tasks", tap=True)
         expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*show=mine)"))
         expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
