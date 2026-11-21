@@ -3,7 +3,7 @@
 // Gemini's text models and their standard and prompt-length prices; `parsePriceList` (price-list.ts) turns it into Flux's prices
 // exactly as it does the daily list.
 export const SHIPPED_PRICE_FILE: { fetchedOn: string; source: string; entries: Record<string, Record<string, unknown>> } = {
-  fetchedOn: '2026-11-13',
+  fetchedOn: '2026-11-21',
   source: 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json',
   entries: {
  "chat-latest": {
@@ -418,6 +418,12 @@ export const SHIPPED_PRICE_FILE: { fetchedOn: string; source: string; entries: R
   "mode": "chat",
   "output_cost_per_token": 7.5e-06
  },
+ "gemini/gemini-4-neon": {
+  "input_cost_per_token": 3e-06,
+  "litellm_provider": "gemini",
+  "mode": "chat",
+  "output_cost_per_token": 1.5e-05
+ },
  "gemini/gemini-exp-1114": {
   "input_cost_per_token": 0,
   "input_cost_per_token_above_128k_tokens": 0,
@@ -515,6 +521,12 @@ export const SHIPPED_PRICE_FILE: { fetchedOn: string; source: string; entries: R
   "litellm_provider": "gemini",
   "mode": "chat",
   "output_cost_per_token": 0.0
+ },
+ "gemini/genie-4": {
+  "input_cost_per_token": 1.5e-06,
+  "litellm_provider": "gemini",
+  "mode": "chat",
+  "output_cost_per_token": 9e-06
  },
  "gemini/learnlm-1.5-pro-experimental": {
   "input_cost_per_token": 0,
@@ -1040,9 +1052,11 @@ export const SHIPPED_PRICE_FILE: { fetchedOn: string; source: string; entries: R
  },
  "gpt-6-astra-law": {
   "input_cost_per_token": 1e-05,
+  "input_cost_per_token_above_272k_tokens": 2e-05,
   "litellm_provider": "openai",
   "mode": "chat",
-  "output_cost_per_token": 5e-05
+  "output_cost_per_token": 5e-05,
+  "output_cost_per_token_above_272k_tokens": 7.5e-05
  },
  "gpt-6-cyber": {
   "input_cost_per_token": 2e-05,
@@ -1061,12 +1075,12 @@ export const SHIPPED_PRICE_FILE: { fetchedOn: string; source: string; entries: R
   "output_cost_per_token_above_272k_tokens": 7.5e-07
  },
  "gpt-6-rosalind": {
-  "input_cost_per_token": 1.5e-05,
-  "input_cost_per_token_above_272k_tokens": 3e-05,
+  "input_cost_per_token": 1e-05,
+  "input_cost_per_token_above_272k_tokens": 2e-05,
   "litellm_provider": "openai",
   "mode": "chat",
-  "output_cost_per_token": 7.5e-05,
-  "output_cost_per_token_above_272k_tokens": 0.0001125
+  "output_cost_per_token": 5e-05,
+  "output_cost_per_token_above_272k_tokens": 7.5e-05
  },
  "gpt-6-sol": {
   "input_cost_per_token": 2e-06,
@@ -1091,6 +1105,30 @@ export const SHIPPED_PRICE_FILE: { fetchedOn: string; source: string; entries: R
   "mode": "chat",
   "output_cost_per_token": 5e-06,
   "output_cost_per_token_above_272k_tokens": 7.5e-06
+ },
+ "gpt-6.2-astra": {
+  "input_cost_per_token": 8e-06,
+  "input_cost_per_token_above_272k_tokens": 1.6e-05,
+  "litellm_provider": "openai",
+  "mode": "chat",
+  "output_cost_per_token": 4e-05,
+  "output_cost_per_token_above_272k_tokens": 6e-05
+ },
+ "gpt-6.2-astra-law": {
+  "input_cost_per_token": 8e-06,
+  "input_cost_per_token_above_272k_tokens": 1.6e-05,
+  "litellm_provider": "openai",
+  "mode": "chat",
+  "output_cost_per_token": 4e-05,
+  "output_cost_per_token_above_272k_tokens": 6e-05
+ },
+ "gpt-6.2-sol": {
+  "input_cost_per_token": 2e-06,
+  "input_cost_per_token_above_272k_tokens": 4e-06,
+  "litellm_provider": "openai",
+  "mode": "chat",
+  "output_cost_per_token": 1e-05,
+  "output_cost_per_token_above_272k_tokens": 1.5e-05
  },
  "gpt-audio": {
   "input_cost_per_token": 2.5e-06,
