@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -31,8 +32,13 @@ exit 99
 """
 
 
-def write_assets(directory: Path, image_digest: str, postgres: str = POSTGRES, sums: bool = True) -> Path:
+def write_assets(directory: Path, image_digest: str, postgres: str = POSTGRES, sums: bool = True, version: str = "v0.1.0-rc.1",
+                 runtime: bool = False) -> Path:
     directory.mkdir()
+    names = ["compose.yaml", "env.example", "release.json"]
+    if runtime:  # v0.2.0's assets carry a runtime overlay of their own (claude_code and codex only)
+        (directory / "compose.runtime.yaml").write_text("services:\n  runtime-1:\n    image: runtime\n", encoding="utf-8")
+        names.append("compose.runtime.yaml")
     (directory / "compose.yaml").write_text(
         f"services:\n  db:\n    image: {postgres}\n  api:\n    image: ghcr.io/coldphase/flux@{image_digest}\n",
         encoding="utf-8",
@@ -41,13 +47,10 @@ def write_assets(directory: Path, image_digest: str, postgres: str = POSTGRES, s
         "POSTGRES_PASSWORD=\nFLUX_AUTH_SECRET=\nFLUX_KEYRING_TOKEN=\nFLUX_KEY_PIN_SECRET=\nFLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\n", encoding="utf-8"
     )
     (directory / "release.json").write_text(
-        json.dumps({"version": "v0.1.0-rc.1", "image": f"ghcr.io/coldphase/flux@{image_digest}"}), encoding="utf-8"
+        json.dumps({"version": version, "image": f"ghcr.io/coldphase/flux@{image_digest}"}), encoding="utf-8"
     )
     if sums:
-        lines = [
-            f"{hashlib.sha256((directory / name).read_bytes()).hexdigest()}  {name}\n"
-            for name in ("compose.yaml", "env.example", "release.json")
-        ]
+        lines = [f"{hashlib.sha256((directory / name).read_bytes()).hexdigest()}  {name}\n" for name in names]
         (directory / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
     return directory
 
@@ -286,8 +289,9 @@ class LegSettingsTest(StubbedDocker):
         previous = self.dir / "previous"
         if not previous.exists():
             write_assets(previous, "sha256:" + "a" * 64)
-        merged = dict(os.environ, STUB_LOG=str(self.log), PATH=f"{self.dir / 'bin'}{os.pathsep}{os.environ['PATH']}", **env)
+        merged = dict(os.environ, STUB_LOG=str(self.log), PATH=f"{self.dir / 'bin'}{os.pathsep}{os.environ['PATH']}")
         merged["FLUX_SMOKE_PREVIOUS_ASSETS"] = str(previous)
+        merged.update(env)
         return subprocess.run(["bash", str(SCRIPT), str(self.candidate), str(self.dir / "state"), "projectsrc", "projectrst"], env=merged, capture_output=True, text=True)
 
     def test_the_upgrade_only_mode_needs_a_previous_release(self) -> None:
@@ -314,6 +318,28 @@ class LegSettingsTest(StubbedDocker):
         for line in ("FLUX_PERSONAL_RUNS=on", "FLUX_AI_PRIVATE_TARGETS=provider-mock"):
             self.assertIn(line, env.splitlines())
         self.assertRegex(env, r"(?m)^FLUX_BACKGROUND_KEY_HOST_FILE=/.+background\.key$")
+
+    def test_only_a_previous_release_from_v0_2_1_on_runs_pi_in_its_runtime(self) -> None:
+        """v0.2.0 ships a runtime overlay that refuses FLUX_AGENT_RUNTIME=pi: the release's version, not the file, decides (v0.2.2's matrix)."""
+        for version, runs_pi in (("v0.2.0", False), ("v0.2.1", True), ("v0.2.2-rc.1", True)):
+            with self.subTest(version=version):
+                previous = self.dir / f"previous-{version}"
+                write_assets(previous, "sha256:" + "a" * 64, version=version, runtime=True)
+                self.log.unlink(missing_ok=True)
+                shutil.rmtree(self.dir / "state", ignore_errors=True)
+                result = self.run_with(FLUX_SMOKE_LEGS="upgrade", FLUX_SMOKE_PREVIOUS_ASSETS=str(previous))
+                self.assertNotEqual(result.returncode, 0)  # the stub docker fails the first compose call: the previous release's
+                first = next(call for call in self.log.read_text().splitlines() if call.startswith("compose "))
+                self.assertIn(str(previous / "compose.yaml"), first)
+                self.assertEqual(str(previous / "compose.runtime.yaml") in first, runs_pi, first)
+                self.assertEqual("--profile runtime" in first, runs_pi, first)
+
+    def test_a_previous_release_without_a_release_version_is_refused(self) -> None:
+        previous = write_assets(self.dir / "previous-unnamed", "sha256:" + "a" * 64, version="latest")
+        result = self.run_with(FLUX_SMOKE_LEGS="upgrade", FLUX_SMOKE_PREVIOUS_ASSETS=str(previous))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("names no release version", result.stderr)
+        self.assertFalse(self.log.exists(), "docker must not be called before the previous release is accepted")
 
     def test_a_host_without_ptrace_scope_is_refused_before_any_compose_call(self) -> None:
         """The candidate's agent runtime (pi, #1441) needs Yama ptrace_scope >= 1: the upgrade leg says so at once, not after a runtime that never gets ready."""

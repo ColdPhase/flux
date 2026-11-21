@@ -48,7 +48,8 @@
 # Every agent on an API key runs in pi in the agent runtime from v0.2.1 on (#1441): the candidate of Leg 2 runs with the runtime overlay of its
 # own archive (docker/compose.runtime.yaml, the `runtime` profile, FLUX_AGENT_RUNTIME=pi, its own images by digest), and pi's model requests go
 # through the worker's model gateway to the provider mock, so the "new agent run" is the real path. A release before v0.2.1 ran its agents in the
-# worker and needs no runtime. The runtime's supervisor needs a host with kernel.yama.ptrace_scope >= 1 (docs/operations/agent-runtime.md): Leg 2
+# worker and is not given the runtime, though v0.2.0 ships a runtime file (for claude_code and codex, which refuses pi): which releases run pi is
+# read from the version in their release.json. The runtime's supervisor needs a host with kernel.yama.ptrace_scope >= 1 (docs/operations/agent-runtime.md): Leg 2
 # stops at its start and says so on a host without it.
 #
 # Ports default to 18081 (installation) and 18082 (restore); set FLUX_SMOKE_PORT and FLUX_SMOKE_RESTORE_PORT for
@@ -60,6 +61,7 @@ state_dir=${2:?temporary state directory required}
 source_project=${3:?source project name required}
 restore_project=${4:?restore project name required}
 previous_assets=${FLUX_SMOKE_PREVIOUS_ASSETS:-}
+previous_runs_pi="" # 1 when the previous release runs pi in its agent runtime (read from its release.json below)
 legs=${FLUX_SMOKE_LEGS:-all}
 recovery=${FLUX_SMOKE_RECOVERY:-}
 inject=${FLUX_SMOKE_INJECT:-}
@@ -114,6 +116,11 @@ if [ -n "$previous_assets" ]; then
   ( cd "$previous_assets" && check_sums ) || fail "the previous release's assets do not match its SHA256SUMS"
   previous_image=$(json_field "$previous_assets/release.json" image)
   [ "$previous_image" != "$candidate_image" ] || fail "the previous release and the candidate pin the same image ($candidate_image); nothing would be upgraded"
+  # Whether the previous release runs its agents in pi in its agent runtime: every release from v0.2.1 on (#1441), by the version its release.json
+  # names. v0.2.0 also ships a compose.runtime.yaml, but its runtime runs only claude_code and codex and refuses FLUX_AGENT_RUNTIME=pi.
+  previous_runs_pi=$(python3 -c 'import json, sys; sys.path.insert(0, sys.argv[1]); from release_versions import parse
+key = parse(json.load(open(sys.argv[2]))["version"]); print("" if key is None else ("1" if key[:3] >= (0, 2, 1) else "0"))' "$root/scripts/release" "$previous_assets/release.json")
+  [ -n "$previous_runs_pi" ] || fail "the previous release's release.json names no release version"
   [ -n "$(db_image "$previous_assets")" ] && [ -n "$(db_image "$assets")" ] || fail "a release pins no database image"
   # The database image may change between releases (v0.2.1 moves from the official Alpine image to Flux's own); its PostgreSQL major may
   # not, which INSTALL.md answers with a restore into a fresh installation. The data directory is checked on the new image below.
@@ -153,8 +160,8 @@ dc() { # project, environment file, assets directory, then Compose arguments
   if [ -n "$inject_overlay" ] && [ "$dir" = "$assets" ]; then files+=(-f "$inject_overlay"); fi
   # The candidate with agents runs its agent runtime with pi, as `./flux up` does (FLUX_AGENT_RUNTIME=pi, the `runtime` profile, the
   # archive's compose.runtime.yaml), and so does a previous release from v0.2.1 on, whose agents run only there (#1441, "Connect AI first"
-  # otherwise); a release before it, which ran its agents in the worker and has no runtime file, is not given it.
-  if agents_on "$env_file" && { [ "$dir" = "$assets" ] || [ -f "$(runtime_file "$dir")" ]; }; then
+  # otherwise). v0.2.0 ran its agents in the worker; its own runtime file runs claude_code and codex only and refuses pi, so it is not given it.
+  if agents_on "$env_file" && { [ "$dir" = "$assets" ] || { [ "$dir" = "$previous_assets" ] && [ "$previous_runs_pi" = 1 ]; }; }; then
     files+=(-f "$(runtime_file "$dir")"); profiles=(--profile runtime)
     runtime_env=("FLUX_AGENT_RUNTIME=pi" "FLUX_RUNTIME_MANAGER_SECRET=$runtime_manager_secret" "FLUX_RUNTIME_SECRET_1=$runtime_slot_secret")
   fi
