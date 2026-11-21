@@ -129,6 +129,10 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   const view = await phone.newPage();
   view.on('pageerror', (error) => errors.push(error.message));
   await view.goto(`/projects/${place.id}/tasks`);
+  // The phone's Board shows one status at a time and opens on To do (#1560, C-66): the reader picks Doing, where the task now is.
+  const status = view.getByRole('tablist', { name: 'Task status' });
+  await status.getByRole('tab', { name: /Doing/ }).click();
+  await status.getByRole('tab', { name: /Doing/, selected: true }).waitFor();
   await view.getByRole('button', { name: /Measure gestures at 5 lux/ }).click();
   const small = view.locator('.details.wd');
   await small.getByRole('region', { name: 'Done when' }).waitFor();
