@@ -240,8 +240,10 @@ class RoundFifteenTalk(unittest.TestCase):
         page.wait_for_timeout(1000)
         place = card.bounding_box()
         assert place
-        page.get_by_role("tab", name="Wiki").click()
-        expect(page).to_have_url(re.compile(r"/docs"))
+        # A space's views are one place (#1547, #1597: a tab replaces the entry, so Back from the Wiki leaves the space): the reader leaves for
+        # another place, Home in the tab bar, and Back brings the conversation back where it was.
+        page.get_by_role("navigation", name="Main places").get_by_role("link", name=re.compile("^Home")).click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.wait_for_timeout(800)
         page.go_back()
         expect(page).to_have_url(re.compile(rf"/projects/{project}$"))

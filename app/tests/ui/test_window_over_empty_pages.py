@@ -177,8 +177,11 @@ class WindowOverEmptyPages(unittest.TestCase):
                         self.assertEqual(foreign_at_centre(page, picker), "", f"the space picker of {kind} is reached through the empty {behind}")
                     if behind == "Wiki" and kind == "Task":
                         shot(page, "1234-create-over-empty-wiki-390-light")
-                    page.keyboard.press("Escape")
+                    # On a touch phone nothing is focused in the window (#1546), so Esc has no target: the phone's Back closes it and stays (#1545).
+                    at = page.url
+                    page.go_back()
                     expect(page.get_by_role("dialog")).to_have_count(0)
+                    expect(page).to_have_url(at)
 
     def test_04_the_search_window_is_whole_over_the_empty_pages(self) -> None:
         for scheme, phone in (("dark", False), ("light", True)):

@@ -476,9 +476,11 @@ class PrivateAiJourney(unittest.TestCase):
         sent = self.messages_sent()
         self.assertIn(DM_TOKEN, json.dumps(sent[-1]["body"]), "the DM's messages are in the brief: no tool reads a DM")
         self.assertNotIn(OPENING, json.dumps(sent[-1]["body"]), "the DM is all the model was given")
-        # A DM run's tools reach only this direct message (finding, reading around and summarising its messages, F-042 #1290-#1292) and read the
-        # web: a public page (#918) and the key's search, Flux's `flux_web_search` (#1441). Nothing that writes or reaches a space.
-        self.assertTrue(self.flux_tools(sent[-1]) <= {"flux_read_around", "flux_read_web", "flux_search", "flux_summarize", "flux_web_search"}, self.flux_tools(sent[-1]))
+        # A DM run's tools reach only this direct message (finding, reading around and summarising its messages, F-042 #1290-#1292; reading its
+        # files and looking at its pictures, #1590/#1596; listing what its people pinned, C-74/#1616) and read the web: a public page (#918) and
+        # the key's search, Flux's `flux_web_search` (#1441). Nothing that writes or reaches a space.
+        dm_tools = {"flux_list_pinned", "flux_read_around", "flux_read_file", "flux_read_web", "flux_search", "flux_summarize", "flux_view_image", "flux_web_search"}
+        self.assertTrue(self.flux_tools(sent[-1]) <= dm_tools, self.flux_tools(sent[-1]))
         self.assertTrue({"flux_read_around", "flux_search", "flux_summarize"} <= self.flux_tools(sent[-1]), self.flux_tools(sent[-1]))
         shot(jo, "private-ai-1440-direct-message")
         card.get_by_role("button", name="Show everyone").click()

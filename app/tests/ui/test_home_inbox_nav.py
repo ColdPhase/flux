@@ -412,6 +412,9 @@ class HomeInboxNav(unittest.TestCase):
         page.get_by_role("button", name="Search", exact=True).click()
         sheet = page.get_by_role("dialog", name="Search", exact=True)
         field = sheet.get_by_role("combobox", name="Search", exact=True)
+        # A touch screen raises no keyboard by itself (#1546, #1597): the field waits for a tap, which focuses it.
+        expect(field).not_to_be_focused()
+        field.tap()
         expect(field).to_be_focused()
         # The sheet is the one tool, as on the computer: no chips to choose a kind with, and Cancel closes it.
         self.assertEqual(sheet.get_by_role("group").count(), 0)
