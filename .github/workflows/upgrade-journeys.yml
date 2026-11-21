@@ -12,6 +12,7 @@ on:
     paths:
       - 'app/packages/db/migrations/**'
       - 'scripts/check_upgrade_matrix.sh'
+      - 'scripts/release/old_tree_apk_pins.py'
       - 'scripts/release/smoke_artifacts.sh'
       - 'scripts/release/smoke_data.py'
       - 'scripts/release/removed-columns.txt'

@@ -15,7 +15,8 @@
 #         the instance accepts new work, including a new agent run on the mock: the candidate runs it in pi in its agent runtime, the
 #         only place an agent on an API key runs from v0.2.1 on (#1441), through the worker's model gateway to the mock. The upgraded instance and the pre-upgrade backup are
 #         restored into fresh volumes (scripts/release/smoke_artifacts.sh, leg 2).
-#      b. SOURCE CHECKOUT: the release's source tree is started with ./flux up, seeded the same way, replaced by the candidate's tree,
+#      b. SOURCE CHECKOUT: the release's source tree is started with ./flux up (an exact apk pin of that tree that Alpine no longer serves is
+#         first moved to the version it serves now, printed as OLD TREE EDITED and named in the result), seeded the same way, replaced by the candidate's tree,
 #         and moved with ./flux upgrade -y (FLUX_AGENT_RUNTIME=pi, so the candidate's runtime starts); everything is read back and written to
 #         again, a new agent run included.
 #    In both legs, from v0.2.1 on, the post-upgrade journeys then use every feature on the OLD rows the release wrote, through the API and a
@@ -237,6 +238,11 @@ for tag in $releases; do
     port=$((base + 3))
     mkdir "$checkout"
     git -C "$root" archive "$tag" | tar -xf - -C "$checkout"
+    # Its owner built this tree's images back then; ./flux up always rebuilds them, and Alpine keeps one revision of each package, so an exact
+    # apk pin of an old tree can stop resolving (v0.2.1's py3-pip=26.1.2-r0). Only such pins move to the version Alpine serves now, each
+    # printed as OLD TREE EDITED and named in the result line; nothing else in the old tree changes (scripts/release/old_tree_apk_pins.py).
+    python3 "$root/scripts/release/old_tree_apk_pins.py" "$checkout" | tee "$work/pins-$tag.out"
+    repinned=$(sed -n 's/^OLD TREE EDITED: [^:]*: \([^ ]*\) -> \([^ ]*\) .*/\1 -> \2/p' "$work/pins-$tag.out" | paste -sd, - | sed 's/,/, /g')
     ( cd "$checkout" && FLUX_PROJECT="$project" FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux up >/dev/null )
     env_file="$checkout/docker/.env"
     head -c 32 /dev/urandom > "$work/background.key"; chmod 644 "$work/background.key"
@@ -282,7 +288,7 @@ for tag in $releases; do
       bash "$root/scripts/release/journeys_browser.sh" "http://127.0.0.1:$port" "$journeys_state" "$journeys_out/source-checkout-shots" ||
         fail "a main screen does not open on the data $tag wrote (browser pass above)"
     fi
-    record "$tag -> $candidate_version  source checkout        PASS  $(( $(date +%s) - started )) s"
+    record "$tag -> $candidate_version  source checkout        PASS  $(( $(date +%s) - started )) s${repinned:+  (apk pins of the old tree Alpine no longer serves, moved: $repinned)}"
     ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux clean -y >/dev/null 2>&1 ) || true
     docker rm -fv "$run_id-s$n-provider-mock" >/dev/null 2>&1 || true
     rm -rf "$checkout"
