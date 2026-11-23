@@ -28,7 +28,7 @@ ADD --checksum=sha256:af76ca5a1ebff0c2a9ec9c5b5b383ffc8557965f72829a4f35c72846a4
 FROM pg-search-${TARGETARCH} AS pg-search
 
 # postgres:18.7-trixie (Debian 13)
-FROM postgres:18.7-trixie@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
+FROM postgres:19.0-trixie@sha256:bb6e70add742cd868fb62cb3b2f67d1dd2bdd2b65a521e778420748753687c60
 ARG PG_SEARCH_VERSION
 # The pgvector build for this PostgreSQL minor (a later build may require a newer server, which the check below refuses).
 ARG PGVECTOR_VERSION=0.8.7-1.pgdg13+1
