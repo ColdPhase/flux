@@ -1,7 +1,7 @@
 # The retrieval bench's PostgreSQL (#1242): PostgreSQL 18 with pg_search (ParadeDB, BM25), pgvector, pg_trgm and unaccent, plus a
 # Polish Hunspell dictionary (sjp.pl via Debian's hunspell-pl) installed as the `polish` ispell dictionary. Bench only: Flux's own
 # database stays the official postgres:18 image until a recorded decision changes it.
-FROM paradedb/paradedb:0.26.6-pg18
+FROM paradedb/paradedb:v0.27.0-pg18
 USER root
 # A short Polish stop-word list written for the bench (the dictionary package ships none).
 COPY polish.stop /usr/share/postgresql/18/tsearch_data/polish.stop
