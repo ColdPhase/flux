@@ -30,7 +30,7 @@ services:
     ports: ["127.0.0.1:${BENCH_EMBED_PORT:-25911}:80"]
   meili:
     <<: *limits
-    image: getmeili/meilisearch:v1.56.2
+    image: getmeili/meilisearch:v1.57.0
     environment: { MEILI_MASTER_KEY: bench-master-key-0123456789, MEILI_NO_ANALYTICS: "true", MEILI_ENV: development }
     mem_limit: 1g
     memswap_limit: 1g
